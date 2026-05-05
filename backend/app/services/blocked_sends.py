@@ -19,12 +19,13 @@ class BlockedSendsService:
         campaign_id: str,
         reason: str,
         decision: str,
+        contact_id: str | None = None,
     ) -> BlockedSend:
         record = BlockedSend(
             id=f"blocked_{client_id}_{campaign_id}_authorization",
             client_id=client_id,
             campaign_id=campaign_id,
-            contact_id=None,
+            contact_id=contact_id,
             reason=reason,
             decision=SendDecision(decision),
             created_at=datetime.now(timezone.utc),

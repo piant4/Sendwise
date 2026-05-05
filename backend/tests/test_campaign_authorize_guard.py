@@ -406,14 +406,13 @@ def test_draft_and_paused_campaigns_block_before_contact_checks() -> None:
 
 def test_blocked_contact_authorization_logs_blocked_send_attempt() -> None:
     campaign = _campaign_with_status(CampaignStatus.ready)
+    blocked_contact = _contact_with_status(ContactStatus.unsubscribed)
     blocked_sends_repository = RecordingBlockedSendsRepository()
     service = CampaignsService(
         repository=CampaignStateRepository(campaign),
         guard=DeliverabilityGuard(),
         blocked_sends_service=BlockedSendsService(blocked_sends_repository),
-        contacts_service=StubContactsService(
-            contacts=[_contact_with_status(ContactStatus.unsubscribed)]
-        ),
+        contacts_service=StubContactsService(contacts=[blocked_contact]),
         email_sending_enabled=True,
     )
 
@@ -428,7 +427,7 @@ def test_blocked_contact_authorization_logs_blocked_send_attempt() -> None:
     record = blocked_sends_repository.records[0]
     assert record.client_id == campaign.client_id
     assert record.campaign_id == campaign.id
-    assert record.contact_id is None
+    assert record.contact_id == blocked_contact.id
     assert record.reason == "Contact state unsubscribed cannot send."
     assert record.decision.value == SendDecision.BLOCKED.value
 

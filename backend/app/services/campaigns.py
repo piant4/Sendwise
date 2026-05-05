@@ -101,6 +101,7 @@ class CampaignsService:
                     campaign_id=campaign.id,
                     reason=contact_decision.reason,
                     decision=contact_decision.decision.value,
+                    contact_id=contact.id,
                 )
                 return {
                     "status": contact_decision.decision.value,

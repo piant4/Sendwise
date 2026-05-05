@@ -78,6 +78,12 @@ class ClientsRepository:
     def list_admin_clients(self) -> list[Client]:
         return deepcopy(_ADMIN_CLIENTS)
 
+    def get_client(self, client_id: str) -> Client | None:
+        for client in self.list_admin_clients():
+            if client.id == client_id:
+                return client
+        return None
+
     def get_current_client_context(self) -> ClientContext:
         return deepcopy(_CLIENT_CONTEXT)
 

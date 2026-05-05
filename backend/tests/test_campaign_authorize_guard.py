@@ -55,6 +55,18 @@ class StubClientsService:
     def __init__(self, client_status: ClientStatus = ClientStatus.active) -> None:
         self.client_status = client_status
         self.calls = 0
+        self.client_ids: list[str] = []
+
+    def get_client(self, client_id: str) -> Client | None:
+        self.calls += 1
+        self.client_ids.append(client_id)
+        return Client(
+            id=client_id,
+            name="Scoped Client",
+            status=self.client_status,
+            created_at="2026-05-01T09:00:00Z",
+            updated_at="2026-05-05T09:00:00Z",
+        )
 
     def get_current_client_context(self) -> ClientContext:
         self.calls += 1
@@ -112,6 +124,12 @@ def _contact_with_status(status: ContactStatus) -> Contact:
         status=status,
         created_at="2026-05-05T09:00:00Z",
         updated_at="2026-05-05T09:00:00Z",
+    )
+
+
+def _campaign_for_client(client_id: str) -> Campaign:
+    return _campaign_with_status(CampaignStatus.ready).model_copy(
+        update={"client_id": client_id}
     )
 
 
@@ -226,6 +244,74 @@ def test_active_client_authorize_preserves_existing_behavior() -> None:
         "endpoint": f"POST /campaigns/{campaign.id}/authorize",
     }
     assert blocked_sends_repository.records == []
+
+
+def test_authorize_checks_lifecycle_for_campaign_client_id() -> None:
+    campaign = _campaign_for_client("client_nova")
+    clients_service = StubClientsService(ClientStatus.active)
+    service = CampaignsService(
+        repository=CampaignStateRepository(campaign),
+        guard=DeliverabilityGuard(),
+        blocked_sends_service=BlockedSendsService(RecordingBlockedSendsRepository()),
+        contacts_service=StubContactsService(
+            contacts=[_contact_with_status(ContactStatus.sendable)]
+        ),
+        clients_service=clients_service,
+        email_sending_enabled=True,
+    )
+
+    response = service.authorize_campaign(campaign.id)
+
+    assert response == {
+        "status": SendDecision.AUTHORIZED.value,
+        "endpoint": f"POST /campaigns/{campaign.id}/authorize",
+    }
+    assert clients_service.client_ids == [campaign.client_id]
+
+
+def test_paused_blocked_archived_campaign_client_blocks_when_current_is_active() -> None:
+    class MixedClientsService(StubClientsService):
+        def __init__(self, campaign_client_status: ClientStatus) -> None:
+            super().__init__(ClientStatus.active)
+            self.campaign_client_status = campaign_client_status
+
+        def get_client(self, client_id: str) -> Client | None:
+            client = super().get_client(client_id)
+            assert client is not None
+            return client.model_copy(update={"status": self.campaign_client_status})
+
+        def get_current_client_context(self) -> ClientContext:
+            context = super().get_current_client_context()
+            return context.model_copy(
+                update={
+                    "client": context.client.model_copy(
+                        update={"status": ClientStatus.active}
+                    )
+                }
+            )
+
+    for status in [ClientStatus.paused, ClientStatus.blocked, ClientStatus.archived]:
+        campaign = _campaign_for_client("client_nova")
+        blocked_sends_repository = RecordingBlockedSendsRepository()
+        service = CampaignsService(
+            repository=CampaignStateRepository(campaign),
+            guard=DeliverabilityGuard(),
+            blocked_sends_service=BlockedSendsService(blocked_sends_repository),
+            contacts_service=FailingContactsService(),
+            clients_service=MixedClientsService(status),
+            email_sending_enabled=True,
+        )
+
+        response = service.authorize_campaign(campaign.id)
+
+        assert response == {
+            "status": SendDecision.BLOCKED.value,
+            "endpoint": f"POST /campaigns/{campaign.id}/authorize",
+        }
+        assert len(blocked_sends_repository.records) == 1
+        record = blocked_sends_repository.records[0]
+        assert record.client_id == campaign.client_id
+        assert record.reason == f"Client state {status.value} cannot send."
 
 
 def test_paused_blocked_archived_clients_are_blocked_and_logged() -> None:

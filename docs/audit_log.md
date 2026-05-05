@@ -1396,3 +1396,20 @@ File modificati:
 
 Raccomandazione:
 - Milestone 4 should not be closed yet. The Guard hardening controls are mostly wired, but the client lifecycle check is not campaign-client-scoped, and that is a high-severity multi-client isolation gap in the authorize path.
+
+## 2026-05-05 - Campaign authorize client lifecycle scope fix
+
+Root cause:
+- `CampaignsService.authorize_campaign()` read the campaign correctly, but then checked client lifecycle through current-client context instead of the authorized campaign's `client_id`.
+
+Fix:
+- Added a clients repository/service lookup by `client_id`.
+- Updated campaign authorization to check lifecycle using `campaign.client_id` after the campaign read and before campaign state/target/contact checks.
+- Preserved the public authorize response shape.
+
+Regression guard:
+- Container pytest with mounted `backend/app` and `backend/tests`: passed, 38 tests.
+- `scripts/audit.sh`: passed.
+- `scripts/smoke_test.sh`: passed.
+- `docker compose config`: passed.
+- `git diff --check`: passed.

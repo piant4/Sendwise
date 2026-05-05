@@ -53,10 +53,11 @@ class CampaignsService:
             )
             return {"status": send_gate.decision.value, "endpoint": endpoint}
 
-        client_context = self.clients_service.get_current_client_context()
-        client_decision = self.guard.authorize_client_state(
-            client_context.client.status
-        )
+        client = self.clients_service.get_client(campaign.client_id)
+        if client is None:
+            return self.planned_admin_campaign_stub(endpoint)
+
+        client_decision = self.guard.authorize_client_state(client.status)
         if client_decision.decision.value == "blocked":
             self.blocked_sends_service.log_blocked_authorization(
                 client_id=campaign.client_id,

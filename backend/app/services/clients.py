@@ -10,6 +10,9 @@ class ClientsService:
     def list_admin_clients(self) -> list[Client]:
         return self.repository.list_admin_clients()
 
+    def get_client(self, client_id: str) -> Client | None:
+        return self.repository.get_client(client_id)
+
     def planned_admin_client_stub(self, endpoint: str) -> dict[str, str]:
         return {"status": "stub", "endpoint": endpoint}
 

@@ -1651,3 +1651,95 @@ Confirmation:
 Residual risks:
 - Missing campaign/client still falls back to the existing planned stub behavior.
 - Blocked send records remain in-memory stub persistence only.
+
+## 2026-05-05 - Milestone 5 Final Audit: Send Simulation Pipeline
+
+Branch: `feature/backend-core`
+Task type: `backend_audit`
+Implementation depth: `audit_only`
+
+1. Audit summary:
+- Milestone 5 send simulation pipeline is backend-only, Guard-preflighted, and still stub/simulation-only.
+- `authorize_campaign()` and `send_campaign()` share `CampaignsService._preflight_campaign_send()`.
+- No real email send, listmonk send, queue send, provider send, or backend `email_logs` write path was found.
+- Router ownership remains HTTP-only: `backend/app/api/campaigns.py` delegates to `CampaignsService` and does not contain sendability policy.
+- No high severity issue was found.
+
+2. Validazione send preflight:
+- `CampaignsService.authorize_campaign()` calls `_preflight_campaign_send(campaign_id)` before returning its public `status` plus `endpoint` shape.
+- `CampaignsService.send_campaign()` calls the same `_preflight_campaign_send(campaign_id)` before returning the existing send stub.
+- `_preflight_campaign_send()` checks campaign lookup, `EMAIL_SENDING_ENABLED`, campaign client state, campaign lifecycle state, target count, and contact sendability.
+- `EMAIL_SENDING_ENABLED` is evaluated by `DeliverabilityGuard.authorize_campaign_send()` and is fail-closed unless the raw env value is exactly `true`.
+- Multi-client isolation is preserved in the send path by resolving the campaign first, then checking `ClientsService.get_client(campaign.client_id)` and `ContactsService.list_campaign_contacts(campaign_id=campaign.id, client_id=campaign.client_id)`.
+
+3. Validazione no real send/listmonk:
+- `send_campaign()` returns `planned_admin_campaign_stub("POST /campaigns/{campaign_id}/send")`.
+- No call from `CampaignsService` to `ListmonkClient`, provider APIs, SMTP, queue, or `email_logs` exists.
+- `backend/app/integrations/listmonk/client.py` remains a placeholder stub and is not called by the send path.
+- `backend/app/api/events.py` contains listmonk/provider event stubs only, not send triggers.
+
+4. Logging validation:
+- Blocked preflight decisions call `BlockedSendsService.log_blocked_authorization()`.
+- `BlockedSendsService.log_blocked_authorization()` builds a `BlockedSend` record with `client_id`, `campaign_id`, optional `contact_id`, reason, blocked decision, and timestamp.
+- `BlockedSendsRepository.append_blocked_send()` appends to in-memory `_BLOCKED_SENDS`; there is no DB-backed blocked send persistence yet.
+- Send-denied tests cover blocked env, blocked campaign/client/contact, and allowed send path without logging.
+
+5. API invariants:
+- Send response shape is unchanged: `{"status": "stub", "endpoint": "POST /campaigns/{campaign_id}/send"}`.
+- Authorize response shape remains `{"status": <decision>, "endpoint": "POST /campaigns/{campaign_id}/authorize"}` when a campaign is found, and stub for missing campaign.
+- Router remains HTTP-only and contains no Guard, repository, listmonk, or persistence logic.
+- Service orchestration owns the preflight sequence; Guard owns decisions; repositories/services own in-memory reads and blocked-send append boundaries.
+
+6. Problemi trovati:
+- Issue: `blocked_sends` is still in-memory only.
+  Severity: medium
+  File: `backend/app/repositories/blocked_sends.py`
+  Rischio: blocked send audit records disappear on process restart and are not available across workers or deployments.
+  Suggested next micro-task: add a DB-backed blocked sends repository in a persistence-only milestone after schema/persistence scope is approved.
+- Issue: backend `email_logs` service/repository is not implemented.
+  Severity: medium
+  File: `backend/app/services/campaigns.py`, `db/init.sql`
+  Rischio: simulated or future operational send attempts cannot yet be audited through the intended business email log boundary.
+  Suggested next micro-task: define a minimal backend `email_logs` repository/service contract before any operational send or queue implementation.
+- Issue: listmonk adapter is present but unused by send.
+  Severity: low
+  File: `backend/app/integrations/listmonk/client.py`
+  Rischio: safe for current no-real-send constraints, but future integration must not place authorization decisions in the adapter.
+  Suggested next micro-task: keep listmonk engine-only and add adapter calls only after backend Guard preflight, dry-run semantics, and tests are approved.
+- Issue: missing campaign/client policy remains future behavior.
+  Severity: low
+  File: `backend/app/services/campaigns.py`
+  Rischio: missing campaign and missing client currently preserve stub behavior instead of explicit `404`/blocked policy, so future API hardening needs a contract decision.
+  Suggested next micro-task: create a small API contract task for missing campaign/client behavior before real send acceptance semantics.
+- Issue: usage limits are not integrated into send preflight.
+  Severity: medium
+  File: `backend/app/guard/deliverability_guard.py`, `backend/app/services/campaigns.py`
+  Rischio: future send volume controls are not enforced yet, though no real send exists today.
+  Suggested next micro-task: add a Guard-owned usage-limit check after usage persistence/read contracts are implemented.
+- Issue: real suppression-list persistence is not integrated.
+  Severity: medium
+  File: `backend/app/guard/deliverability_guard.py`, `backend/app/repositories/contacts.py`
+  Rischio: current suppression behavior is represented by contact status fixtures only; future imported suppression records would not independently block send until wired.
+  Suggested next micro-task: add repository-backed suppression lookup to Guard preflight in a dedicated suppression milestone.
+
+7. Test eseguiti:
+- `docker compose exec -T backend pytest backend/tests`: attempted; failed because the running backend container does not include `backend/tests`.
+- `docker compose run -T --rm -v "${PWD}\backend\tests:/app/backend/tests:ro" backend python -m pytest backend/tests`: passed, 42 tests.
+- `scripts/audit.sh`: passed via Git Bash after sandbox WSL/bash access denial.
+- `scripts/smoke_test.sh`: passed via Git Bash after sandbox WSL/bash access denial.
+- `docker compose config`: passed; Docker printed non-fatal access warnings for `C:\Users\Jacop\.docker\config.json`.
+- `git diff --check`: passed.
+
+8. Test non eseguiti:
+- Host `pytest backend/tests` did not run because pytest is not installed on the active host Python/PATH.
+- Frontend lint/build were not run because this was backend audit-only and frontend was outside scope.
+- DB migration tests were not run because schema changes were forbidden and no schema was modified.
+
+9. File modificati:
+- `docs/audit_log.md`
+- `docs/branch_handoffs/milestone_5_final_audit.md`
+
+10. Raccomandazione:
+- Milestone 5 can be closed for the send simulation pipeline.
+- Close condition rationale: send passes through Guard preflight, `EMAIL_SENDING_ENABLED` protects send, blocked send logging works for denied send preflight, response shape remains unchanged, no real email/listmonk/DB email log send path exists, router boundaries are preserved, and regression checks passed.
+- The residual issues above should remain queued as future persistence/integration hardening tasks, not blockers for Milestone 5 simulation closure.

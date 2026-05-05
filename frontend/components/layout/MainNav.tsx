@@ -1,7 +1,7 @@
 import Link from "next/link";
 
 const navItems = [
-  { href: "/", label: "Sendwise Home" },
+  { href: "/login", label: "Login" },
   { href: "/admin", label: "Admin" },
   { href: "/client", label: "Client" },
 ];

@@ -1,13 +1,16 @@
+import { MockLoginForm } from "../../components/auth/MockLoginForm";
+
 export default function LoginPage() {
   return (
     <main className="shell">
       <section className="panel">
-        <p className="eyebrow">V1 Skeleton</p>
-        <h1>Login Placeholder</h1>
+        <p className="eyebrow">Development login</p>
+        <h1>Sendwise login</h1>
         <p>
-          Real authentication is intentionally not implemented in Milestone 0.
-          This page reserves the route for a future secure login flow.
+          This is a mock frontend-only login for development until backend auth
+          is approved. Credentials are not validated, stored, or sent anywhere.
         </p>
+        <MockLoginForm />
       </section>
     </main>
   );

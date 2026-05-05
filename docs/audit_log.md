@@ -815,3 +815,72 @@ Files modified:
 
 Recommendation:
 - Next micro-task: implement an approved backend-only contact sendability authorization slice that introduces the minimal contacts repository/service boundary and integrates `DeliverabilityGuard.can_send_to_contact()` into campaign authorization, while preserving current API response shape unless a contract change request is accepted.
+
+## Contacts Service Repository Boundary
+
+Date: 2026-05-05
+Branch: `feature/backend-core`
+Task type: `backend_feature`
+Implementation depth: `shallow_service_repository_boundary`
+
+Skills applied:
+- `docs/codex_prompt_engine_v1.md`
+- `docs/codex_skills/check-anti-monolith.md`
+- `docs/codex_skills/run-regression-guard.md`
+
+Scope:
+- Created the minimal contacts router -> service -> repository boundary.
+- Preserved existing contacts endpoint paths, status codes, and response shapes.
+- Added in-memory contact stub data with explicit `client_id` and all contractual contact statuses.
+- Did not integrate contact sendability into the Deliverability Guard.
+
+Files created:
+- `backend/app/repositories/contacts.py`
+- `backend/app/services/contacts.py`
+- `backend/tests/test_contacts_boundary.py`
+
+Files modified:
+- `backend/app/api/contacts.py`
+- `docs/audit_log.md`
+
+Boundary confirmation:
+- Router remains HTTP-only and delegates contacts endpoints to `ContactsService`.
+- Service exposes contact stub use cases and calls `ContactsRepository`.
+- Repository owns in-memory contact stub rows only and filters by explicit `client_id`.
+
+Contact states present:
+- `sendable`
+- `suppressed`
+- `bounced`
+- `unsubscribed`
+- `blacklisted`
+- `pending`
+- `error`
+
+Tests added:
+- Contacts service/repository importability.
+- Contacts repository `client_id` filtering.
+- Contacts stub status coverage.
+
+Tests executed:
+- `git diff --check` passed, with CRLF warnings for `backend/app/api/contacts.py` and `docs/audit_log.md`.
+- In-memory Python syntax check passed for changed contacts API, service, repository, and test files.
+- Direct contacts service/repository import and contract check passed with the bundled Python runtime.
+- `docker compose config` passed, with Docker config access warnings for `C:\Users\Jacop\.docker\config.json`.
+
+Tests not executed and reason:
+- `python -m pytest backend/tests` did not run because local Python has no `pytest` module.
+- Bundled Python `-m pytest backend/tests` did not run because the bundled runtime has no `pytest` module.
+- Direct local import check with shell Python did not run because local Python has no `pydantic` module; the bundled Python import check passed.
+- `bash scripts/audit.sh` did not run because WSL Bash is unavailable: `/bin/bash` was not found after escalated retry.
+- `bash scripts/smoke_test.sh` did not run because WSL Bash is unavailable: `/bin/bash` was not found after escalated retry.
+- Docker container import/pytest checks did not run because the backend service is not running.
+
+Invariant confirmation:
+- No contacts API response shape change.
+- No email sending introduced.
+- No real DB, schema, listmonk, auth/RBAC, AI generation, campaign_contacts, or Guard integration introduced.
+- `client_id` is explicit in contact stub data.
+
+Next micro-task:
+- Add an approved backend-only contact sendability authorization slice that wires contact status evaluation into campaign authorization without changing response shape unless a contract change is approved.

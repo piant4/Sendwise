@@ -959,3 +959,127 @@ Residual risks:
 
 Next micro-task:
 - Add a tiny contact authorization handoff or audit note for replacing the stub association with real `campaign_contacts` only when DB-backed campaign-contact scope is approved.
+
+## Milestone 3 Final Audit - State Management Foundation
+
+Date: 2026-05-05
+Branch: `feature/backend-core`
+Task type: `backend_audit`
+Implementation depth: `audit_only`
+
+Skills applied:
+- `docs/codex_prompt_engine_v1.md`
+- Requested `docs/codex_skills/validate_persistence_and_state.md` was not present; applied repository equivalent `docs/codex_skills/validate-state-and-persistence.md`.
+- Requested `docs/codex_skills/audit_runtime_flow.md` was not present; applied repository equivalent `docs/codex_skills/audit-runtime-flow.md`.
+- Requested `docs/codex_skills/check_anti_monolith.md` was not present; applied repository equivalent `docs/codex_skills/check-anti-monolith.md`.
+- Requested `docs/codex_skills/run_regression_guard.md` was not present; applied repository equivalent `docs/codex_skills/run-regression-guard.md`.
+
+Source of truth checked:
+- `docs/states_v1.md`
+- `docs/data_model_v1.md`
+- `docs/api_contracts_v1.md`
+- `docs/architecture_v1.md`
+- `project_handoff_v1.md` was not present.
+
+Audit summary:
+- Milestone 3 state management foundation is mostly in place for the current in-memory backend slice.
+- Campaign state enum matches V1 and `DeliverabilityGuard.authorize_campaign_state()` authorizes only `ready` and `running`.
+- Contact state enum matches V1 and `DeliverabilityGuard.can_send_to_contact()` authorizes only `sendable`.
+- `POST /campaigns/{campaign_id}/authorize` now follows router -> service -> campaign guard -> contacts boundary -> contact guard, with blocked campaign states short-circuiting before contact lookup.
+- Blocked campaign and blocked contact decisions are logged internally through `BlockedSendsService` and `BlockedSendsRepository.append_blocked_send()`.
+- API response shape remains unchanged as `{"status", "endpoint"}` and does not expose Guard reasons.
+- No application code, tests, schema, frontend, Docker, env, Makefile, README, or dependency changes were made during this audit.
+
+Campaign state:
+- Contractual states: `draft`, `ready`, `running`, `paused`, `blocked`, `completed`, `failed`.
+- Implemented schema states: match contractual states in `backend/app/schemas/common.py`.
+- Guard behavior: `ready` and `running` return `authorized`; `draft`, `paused`, `blocked`, `completed`, and `failed` return `blocked`.
+- Required block coverage: `draft`, `paused`, `blocked`, `completed`, and `failed` are covered by guard/tests.
+- Current repository fixtures include only `ready` and `draft`; full negative campaign states are covered through service-level tests using copied campaign fixtures.
+
+Contact state:
+- Contractual states: `pending`, `sendable`, `suppressed`, `bounced`, `unsubscribed`, `blacklisted`, `error`.
+- Implemented schema states: match contractual states in `backend/app/schemas/common.py`.
+- Stub contact repository contains all contractual contact states and filters by explicit `client_id`.
+- Guard behavior: `sendable` returns `authorized`; `pending`, `suppressed`, `bounced`, `unsubscribed`, `blacklisted`, and `error` return `blocked`.
+- `campaign_contacts` remains an in-memory association stub inside `ContactsRepository`, not a DB-backed boundary.
+
+Authorize flow validation:
+- Router: `backend/app/api/campaigns.py` is HTTP-only and delegates to `CampaignsService.authorize_campaign(campaign_id)`.
+- Service: `backend/app/services/campaigns.py` orchestrates campaign lookup, campaign guard, blocked logging, contact lookup, contact guard, and blocked logging.
+- Campaign repository: `CampaignsRepository.get_campaign()` reads the in-memory campaign stub.
+- Campaign guard: blocks non-sendable campaign states before contacts are queried.
+- Contacts boundary: `ContactsService.list_campaign_contacts(campaign_id, client_id)` delegates to `ContactsRepository.list_campaign_contacts()`.
+- Contact guard: blocks the first non-sendable contact and short-circuits the response.
+- Short-circuit: blocked campaigns do not call contacts; blocked contacts stop at first blocked contact.
+
+Logging validation:
+- Campaign-state blocked decisions are logged with `client_id`, `campaign_id`, `reason`, `decision`, and `created_at`.
+- Contact-state blocked decisions are logged with the same structure, but currently do not include the blocked contact id.
+- Logging does not alter authorize response shape and does not expose `reason` to the caller.
+- Logging uses in-memory append only; no DB persistence is introduced.
+
+API invariants:
+- `POST /campaigns/{campaign_id}/authorize` response remains `status` plus `endpoint`.
+- No `reason` field is exposed.
+- Existing planned/stub contracts are not expanded.
+- No auth/RBAC, DB-backed persistence, listmonk, email sending, frontend, or Docker/env behavior was changed.
+
+Boundary architecture:
+- Router layer remains HTTP-only.
+- Service layer owns orchestration.
+- Repository layer owns in-memory data access and filtering.
+- Guard layer owns campaign/contact sendability decisions.
+- Blocked-send logging flows through service -> repository, not router or guard.
+- No forbidden UI/listmonk/PostgreSQL shortcut was found in the audited path.
+
+Multi-client isolation:
+- Campaigns and contacts carry explicit `client_id`.
+- Authorize passes `campaign.client_id` into the contacts boundary and blocked logging.
+- Contacts repository filters campaign contacts by both campaign association and explicit `client_id`.
+- Current-client stubs still derive from `get_current_client_id()` where applicable.
+
+Problems found:
+- Issue: Contact-level blocked authorization records do not identify the blocked contact.
+  Severity: medium
+  File: `backend/app/services/campaigns.py`, `backend/app/services/blocked_sends.py`
+  Risk: `blocked_sends` can explain that a contact state blocked authorization, but cannot point to which contact caused the block. This weakens auditability and future dashboard/debug workflows for batch authorization.
+  Suggested next micro-task: Extend the internal blocked authorization logging path to accept `contact_id` for contact-state blocks while preserving the public authorize response shape.
+- Issue: `campaign_contacts` remains an in-memory stub.
+  Severity: low
+  File: `backend/app/repositories/contacts.py`
+  Risk: The current foundation proves the boundary and `client_id` filter, but does not prove DB-backed consistency between `client_id`, `campaign_id`, and `contact_id`.
+  Suggested next micro-task: In an approved persistence slice, define the minimal repository/service contract for DB-backed `campaign_contacts` before any real batching or send execution.
+- Issue: Empty campaign-contact associations authorize if campaign state is `ready` or `running`.
+  Severity: low
+  File: `backend/app/services/campaigns.py`, `backend/app/repositories/contacts.py`
+  Risk: A ready/running campaign with no associated contacts returns `authorized` in the current stub flow. There is no real send path today, but future batching should define whether empty targets are `blocked`, `dry_run`, or a separate validation response.
+  Suggested next micro-task: Add an approved contract decision for empty authorization targets before DB-backed batches or real sends are introduced.
+
+Gap residui:
+- `campaign_contacts` is a stub and not backed by the real DB.
+- No real Business PostgreSQL repository is used by authorize.
+- No real auth/RBAC is implemented.
+- No listmonk or email sending path is introduced.
+- No client lifecycle guard is wired into authorize yet.
+- No CONTRACT CHANGE REQUEST is required for this audit because no API, DB, frontend, Docker/env, or contract-changing fix was made. A contract decision will be needed later if authorize should expose reasons or define empty-target semantics publicly.
+
+Tests executed:
+- `bash scripts/audit.sh`: passed after escalated Git Bash retry. Initial sandbox run failed with `couldn't create signal pipe, Win32 error 5`.
+- `bash scripts/smoke_test.sh`: passed via Git Bash.
+- `docker compose config`: passed; Docker emitted access warnings for `C:\Users\Jacop\.docker\config.json`.
+- `git diff --check`: passed.
+- Python AST syntax check for `backend/app`: passed.
+
+Tests not executed:
+- `PYTHONPATH=backend pytest backend/tests`: not executed because `pytest` is not installed on the active host Python PATH.
+- `PYTHONPATH=backend python -m pytest backend/tests`: not executed because the active host Python has no `pytest` module.
+- Direct import/check for service/repository/guard on host Python: not completed because `pydantic` is not installed in the active host Python.
+- Dockerized pytest/import checks: not executed because no compose services were running, and this audit did not start/build containers.
+
+Files modified:
+- `docs/audit_log.md`
+
+Recommendation:
+- Milestone 3 can be closed as a state-management foundation only, with the medium contact logging auditability issue carried as the next backend micro-task.
+- Milestone 3 should not be considered ready for real sending, DB-backed authorization, or production auditability until contact ids are logged for contact blocks, `campaign_contacts` is made persistent, client lifecycle checks are wired, and full pytest runs in a dependency-complete environment.

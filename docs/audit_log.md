@@ -1083,3 +1083,154 @@ Files modified:
 Recommendation:
 - Milestone 3 can be closed as a state-management foundation only, with the medium contact logging auditability issue carried as the next backend micro-task.
 - Milestone 3 should not be considered ready for real sending, DB-backed authorization, or production auditability until contact ids are logged for contact blocks, `campaign_contacts` is made persistent, client lifecycle checks are wired, and full pytest runs in a dependency-complete environment.
+
+## Deliverability Guard V1 Minimum Perimeter Audit
+
+Date: 2026-05-05
+Branch: `feature/backend-core`
+Task type: `backend_audit`
+Implementation depth: `audit_only`
+
+Skills applied:
+- `docs/codex_prompt_engine_v1.md`
+- Requested `docs/codex_skills/audit_runtime_flow.md` was not present; applied repository equivalent `docs/codex_skills/audit-runtime-flow.md`.
+- Requested `docs/codex_skills/validate_persistence_and_state.md` was not present; applied repository equivalent `docs/codex_skills/validate-state-and-persistence.md`.
+- Requested `docs/codex_skills/check_anti_monolith.md` was not present; applied repository equivalent `docs/codex_skills/check-anti-monolith.md`.
+- Requested `docs/codex_skills/run_regression_guard.md` was not present; applied repository equivalent `docs/codex_skills/run-regression-guard.md`.
+
+Source of truth checked:
+- `docs/states_v1.md`
+- `docs/data_model_v1.md`
+- `docs/api_contracts_v1.md`
+- `docs/architecture_v1.md`
+- `project_handoff_v1.md` was not present.
+
+Audit summary:
+- `backend/app/guard/deliverability_guard.py` currently owns three narrow checks: environment send mode via `authorize_campaign_send(email_sending_enabled)`, campaign lifecycle eligibility via `authorize_campaign_state(campaign_status)`, and contact sendability via `can_send_to_contact(contact_status)`.
+- `POST /campaigns/{campaign_id}/authorize` currently reaches `CampaignsService.authorize_campaign()`, loads a campaign, checks campaign state through the Guard, checks associated contacts through `ContactsService`, and logs blocked campaign/contact decisions through `BlockedSendsService`.
+- Campaign state and contact state are separated correctly at the Guard API level and in service orchestration: campaign blocks short-circuit before contact lookup; contact blocks are evaluated only after campaign state is authorizable.
+- The current runtime path does not call `authorize_campaign_send()` or `Settings.email_sending_enabled`, so `EMAIL_SENDING_ENABLED=false` is configured fail-closed in env/config but not enforced in campaign authorization.
+- Client lifecycle state, usage limits, suppression list records, real DB-backed `campaign_contacts`, and structured internal reason codes are not integrated into the current Guard V1 runtime path.
+- No application code, tests, API contracts, DB schema, frontend, Docker/env files, Makefile, README, dependencies, real sending, listmonk, auth/RBAC, or refactor were changed during this audit.
+
+Guard controls presenti:
+- Campaign state check: `ready` and `running` return `authorized`; `draft`, `paused`, `blocked`, `completed`, and `failed` return `blocked`.
+- Contact state check: `sendable` returns `authorized`; `pending`, `suppressed`, `bounced`, `unsubscribed`, `blacklisted`, and `error` return `blocked`.
+- Environment send-mode check exists as a Guard method: when `email_sending_enabled` is false, `authorize_campaign_send()` returns `dry_run`; when true, it still returns `blocked` because real send authorization is not implemented.
+- Blocked campaign/contact decisions are logged internally with `client_id`, `campaign_id`, readable `reason`, `decision`, and `created_at`.
+- Contacts are loaded through a separate contacts service/repository boundary using `campaign_id` plus `client_id`.
+
+Guard controls mancanti:
+- Client status guard for `paused`, `blocked`, and `archived`.
+- Runtime integration of `EMAIL_SENDING_ENABLED=false` / fail-closed send-mode in `CampaignsService.authorize_campaign()`.
+- Usage limit checks through `api_usage` or any limits boundary.
+- Suppression list lookup separate from contact status.
+- DB-backed `campaign_contacts` consistency across `client_id`, `campaign_id`, and `contact_id`.
+- Empty target guard: a ready/running campaign with no associated contacts currently returns `authorized`.
+- Structured internal reason codes; current reasons are readable strings only.
+- Contact id in contact-state blocked logging.
+- Public authorize response reasons are not exposed; current API shape remains `{"status", "endpoint"}`.
+
+Rischi prioritari:
+- Issue: Campaign authorization does not evaluate client lifecycle state.
+  Severity: high
+  File: `backend/app/services/campaigns.py`
+  Rischio: A campaign can be authorized for a client that is `paused`, `blocked`, or `archived`, violating `docs/states_v1.md`.
+  Suggested next micro-task: Add the smallest backend-only client lifecycle Guard slice that reads the campaign client state through a service/repository boundary before campaign/contact checks.
+- Issue: `EMAIL_SENDING_ENABLED=false` / fail-closed is not wired into authorize.
+  Severity: high
+  File: `backend/app/services/campaigns.py`, `backend/app/guard/deliverability_guard.py`, `backend/app/core/config.py`
+  Rischio: `CampaignsService.authorize_campaign()` can return `authorized` for ready/running campaigns with sendable contacts without checking the configured fail-closed send mode.
+  Suggested next micro-task: Inject/read `Settings.email_sending_enabled` in the service-owned authorization flow and call `DeliverabilityGuard.authorize_campaign_send()` before returning any authorizing decision.
+- Issue: Ready/running campaigns with no target contacts can authorize.
+  Severity: medium
+  File: `backend/app/services/campaigns.py`, `backend/app/repositories/contacts.py`
+  Rischio: Empty or unmapped campaign targets return `authorized` because the contact loop has no blocking decision to evaluate.
+  Suggested next micro-task: Define and implement the minimal internal empty-target decision for V1 authorization.
+- Issue: Contact-level blocked logs omit `contact_id`.
+  Severity: medium
+  File: `backend/app/services/campaigns.py`, `backend/app/services/blocked_sends.py`
+  Rischio: `blocked_sends` has enough data for campaign-level audit but not enough to identify which contact caused a contact-state block.
+  Suggested next micro-task: Extend internal blocked authorization logging to accept optional `contact_id` and pass it for contact-state blocks, preserving public response shape.
+- Issue: Missing structured internal reason codes.
+  Severity: medium
+  File: `backend/app/guard/deliverability_guard.py`, `backend/app/services/blocked_sends.py`
+  Rischio: Reason strings are readable but brittle for dashboards, filtering, regression tests, localization, and analytics.
+  Suggested next micro-task: Add an internal reason code alongside readable reason inside Guard/logging boundaries without changing the public authorize response unless approved.
+- Issue: Usage limits are not integrated.
+  Severity: medium
+  File: `backend/app/services/campaigns.py`, `backend/app/services/usage.py`
+  Rischio: V1 can authorize without checking quota/usage constraints once real limits are introduced.
+  Suggested next micro-task: Add a tiny usage-limit audit/guard boundary after client/env checks and before campaign/contact authorization.
+- Issue: Suppression records are not integrated separately from contact status.
+  Severity: medium
+  File: `backend/app/guard/deliverability_guard.py`, `backend/app/services/contacts.py`
+  Rischio: Contact `status=suppressed` blocks, but there is no `suppression_list` lookup, so persisted suppression records cannot independently prevent sends.
+  Suggested next micro-task: Add an approved backend-only suppression lookup boundary and feed the result into Guard authorization.
+- Issue: `campaign_contacts` is in-memory only.
+  Severity: low
+  File: `backend/app/repositories/contacts.py`
+  Rischio: Current stubs prove layering but not real persistence, relationship integrity, or DB-backed client isolation.
+  Suggested next micro-task: In an approved persistence task, replace the in-memory association with a minimal DB-backed repository contract for `campaign_contacts`.
+
+Suggested micro-task order:
+1. Wire `EMAIL_SENDING_ENABLED=false` fail-closed into `CampaignsService.authorize_campaign()` before any `authorized` result can be returned.
+2. Add client lifecycle authorization for paused/blocked/archived clients.
+3. Block or otherwise explicitly decide empty authorization targets.
+4. Add `contact_id` to internal blocked contact logging.
+5. Add structured internal reason codes for Guard and blocked_sends.
+6. Integrate suppression lookup as a separate backend-owned check.
+7. Integrate usage limits after the usage contract is ready.
+8. Move `campaign_contacts` from in-memory stub to approved DB-backed persistence.
+
+Flow audited:
+- `POST /campaigns/{campaign_id}/authorize` -> `CampaignsService.authorize_campaign()` -> `CampaignsRepository.get_campaign()` -> `DeliverabilityGuard.authorize_campaign_state()` -> `ContactsService.list_campaign_contacts()` -> `DeliverabilityGuard.can_send_to_contact()` -> `BlockedSendsService.log_blocked_authorization()` for blocked decisions.
+
+Expected contract:
+- Backend/FastAPI remains the gatekeeper.
+- No component bypasses the Deliverability Guard.
+- Client status, campaign status, contact state, suppression, usage limits, target presence, and `EMAIL_SENDING_ENABLED` must all be part of V1 send authorization before real sending.
+- Business PostgreSQL remains source of truth; listmonk is engine-only.
+
+Observed behavior:
+- Current flow enforces campaign and contact status only.
+- Blocked campaign/contact decisions are logged in memory.
+- Client lifecycle, usage, suppression-list lookup, DB persistence, and env fail-closed are not part of the authorize runtime flow.
+
+First divergence point:
+- `CampaignsService.authorize_campaign()` can return `authorized` after campaign/contact checks without first evaluating configured send mode or client lifecycle.
+
+Evidence:
+- `backend/app/services/campaigns.py` calls `authorize_campaign_state()` and `can_send_to_contact()`, but not `authorize_campaign_send()` or `get_settings().email_sending_enabled`.
+- `backend/app/core/config.py` parses `EMAIL_SENDING_ENABLED` fail-closed, and `.env.example` defaults it to `false`, but the authorize service does not consume that setting.
+
+Anti-monolith verdict:
+- Verdict: OK for audit-only; no code changes proposed in this task.
+- Touched layers: docs only.
+- Boundary risks: future fixes should stay split across service orchestration, Guard decisions, repository reads, and blocked_sends logging. Do not move persistence into Guard or business policy into routers.
+- Required split: client/env/usage/suppression checks should be added as tiny service/Guard slices, not a broad monolithic authorization helper.
+- Forbidden flows found: no UI/listmonk/PostgreSQL shortcut found in the audited path.
+
+CONTRACT CHANGE REQUEST:
+- Required before exposing Guard `reason`, structured reason codes, per-contact reasons, or empty-target semantics in the public `POST /campaigns/{campaign_id}/authorize` response.
+- Required before any DB schema change for usage limits, suppression, or `campaign_contacts`.
+- Not required for internal-only fail-closed, client lifecycle, contact-id logging, or structured internal reason storage if public API and DB schema remain unchanged.
+
+Test eseguiti:
+- `docker compose config`: passed; Docker emitted access warnings for `C:\Users\Jacop\.docker\config.json`.
+- `git diff --check`: passed.
+- Python AST syntax check for 45 Python files under `backend`: passed.
+
+Test non eseguiti:
+- `PYTHONPATH=backend pytest backend/tests`: not executed because `pytest` is not available in PATH.
+- `PYTHONPATH=backend python -m pytest backend/tests`: not executed because the active Python has no `pytest` module.
+- Direct backend import/check: not completed because the active Python has no `pydantic` module.
+- `bash scripts/audit.sh`: sandbox run failed with WSL access denied; escalated retry reached WSL but failed because `/bin/bash` is unavailable.
+- `bash scripts/smoke_test.sh`: sandbox run failed with WSL access denied; escalated retry reached WSL but failed because `/bin/bash` is unavailable.
+
+File modificati:
+- `docs/audit_log.md`
+- `docs/branch_handoffs/deliverability_guard_v1_perimeter_audit.md`
+
+Raccomandazione prossimo micro-task:
+- Implementare un micro-task backend-only che collega `EMAIL_SENDING_ENABLED=false` / fail-closed al flusso `CampaignsService.authorize_campaign()` prima di qualsiasi risultato `authorized`, senza cambiare response API, schema DB, frontend, Docker/env o introdurre real send.

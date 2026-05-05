@@ -1,0 +1,13 @@
+<mjml>
+  <mj-head>
+    <mj-title>Base Placeholder</mj-title>
+  </mj-head>
+  <mj-body>
+    <!-- Milestone 0 placeholder only. Real layout and AI placeholders come later. -->
+    <mj-section>
+      <mj-column>
+        <mj-text>Base email template placeholder.</mj-text>
+      </mj-column>
+    </mj-section>
+  </mj-body>
+</mjml>

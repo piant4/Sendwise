@@ -1,0 +1,64 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-email_ai}
+      POSTGRES_USER: ${POSTGRES_USER:-email_ai_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change_me}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./db/init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+    environment:
+      PROJECT_NAME: ${PROJECT_NAME:-email_ai_platform}
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+      BACKEND_API_KEY: ${BACKEND_API_KEY:-change_me}
+      EMAIL_SENDING_ENABLED: ${EMAIL_SENDING_ENABLED:-false}
+      LISTMONK_URL: ${LISTMONK_URL:-http://listmonk:9000}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      listmonk:
+        condition: service_started
+
+  frontend:
+    build:
+      context: ./frontend
+    environment:
+      NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:8000}
+      NEXT_PUBLIC_USE_MOCK_API: ${NEXT_PUBLIC_USE_MOCK_API:-true}
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+
+  listmonk:
+    image: listmonk/listmonk:latest
+    environment:
+      LISTMONK_app__address: 0.0.0.0:9000
+      LISTMONK_db__host: postgres
+      LISTMONK_db__port: 5432
+      LISTMONK_db__user: ${POSTGRES_USER:-email_ai_user}
+      LISTMONK_db__password: ${POSTGRES_PASSWORD:-change_me}
+      LISTMONK_db__database: listmonk
+      LISTMONK_db__ssl_mode: disable
+    ports:
+      - "9000:9000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    # Production must protect listmonk admin access. listmonk is engine only.
+
+volumes:
+  postgres_data:

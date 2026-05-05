@@ -1,0 +1,13 @@
+<mjml>
+  <mj-head>
+    <mj-title>Campaign Placeholder</mj-title>
+  </mj-head>
+  <mj-body>
+    <!-- Milestone 0 placeholder only. Real campaign copy and AI placeholders come later. -->
+    <mj-section>
+      <mj-column>
+        <mj-text>Campaign email template placeholder.</mj-text>
+      </mj-column>
+    </mj-section>
+  </mj-body>
+</mjml>

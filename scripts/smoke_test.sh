@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if ! command -v docker >/dev/null 2>&1; then
+  echo "Docker is unavailable. Install Docker before running smoke tests."
+  exit 1
+fi
+
+if ! docker compose version >/dev/null 2>&1; then
+  echo "Docker Compose is unavailable. Install Docker Compose before running smoke tests."
+  exit 1
+fi
+
+docker compose config >/dev/null
+bash scripts/audit.sh
+
+echo "Smoke test passed."

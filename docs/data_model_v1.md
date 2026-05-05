@@ -1,0 +1,181 @@
+# Data Model V1
+
+Source of truth: `project_handoff_v1.md`.
+
+This is a high-level planned model. Milestone 0 creates only understandable schema stubs.
+
+Mandatory rule:
+
+```txt
+Every business entity that belongs to a customer must include client_id or be reachable through a client_id relationship.
+```
+
+## States
+
+Client states:
+
+```txt
+trial
+active
+paused
+blocked
+archived
+```
+
+Campaign states:
+
+```txt
+draft
+ready
+running
+paused
+blocked
+completed
+failed
+```
+
+Contact states:
+
+```txt
+pending
+sendable
+suppressed
+bounced
+unsubscribed
+blacklisted
+error
+```
+
+## Entities
+
+### clients
+
+Purpose: Customer account/root tenant.
+
+Minimum fields: `id`, `name`, `status`, `created_at`, `updated_at`.
+
+Relation to `client_id`: Root entity; other customer business data references `clients.id`.
+
+V1 notes: Stores lifecycle state and future account limits.
+
+Anti-regression rules: Client status must be checked before sending; archived/blocked/paused clients cannot send.
+
+### client_users
+
+Purpose: Users associated with a client dashboard or admin ownership.
+
+Minimum fields: `id`, `client_id`, `email`, `role`, `created_at`, `updated_at`.
+
+Relation to `client_id`: Direct `client_id`.
+
+V1 notes: Real auth is not implemented in Milestone 0.
+
+Anti-regression rules: Client users must not access other clients' data.
+
+### campaigns
+
+Purpose: Product campaign record and state.
+
+Minimum fields: `id`, `client_id`, `name`, `status`, `subject`, `created_at`, `updated_at`.
+
+Relation to `client_id`: Direct `client_id`.
+
+V1 notes: listmonk campaign ids are stored separately in `listmonk_mappings`.
+
+Anti-regression rules: listmonk must not become the source of campaign state; blocked/paused/completed/failed campaigns cannot send.
+
+### contacts
+
+Purpose: Customer contact records and sendability state.
+
+Minimum fields: `id`, `client_id`, `email`, `status`, `created_at`, `updated_at`.
+
+Relation to `client_id`: Direct `client_id`.
+
+V1 notes: Import validation and deduplication come later.
+
+Anti-regression rules: Suppressed, bounced, unsubscribed, and blacklisted contacts cannot send.
+
+### campaign_contacts
+
+Purpose: Relationship between campaigns and contacts.
+
+Minimum fields: `id`, `client_id`, `campaign_id`, `contact_id`, `status`, `created_at`.
+
+Relation to `client_id`: Direct `client_id`; also reachable through campaign and contact.
+
+V1 notes: Supports future per-campaign inclusion/exclusion and send state.
+
+Anti-regression rules: `campaign_id`, `contact_id`, and `client_id` must remain consistent.
+
+### email_logs
+
+Purpose: Audit log of send attempts and outcomes.
+
+Minimum fields: `id`, `client_id`, `campaign_id`, `contact_id`, `status`, `provider_message_id`, `created_at`.
+
+Relation to `client_id`: Direct `client_id`.
+
+V1 notes: Created by backend-controlled sending and event processing.
+
+Anti-regression rules: No log should imply a send was authorized unless backend authorization existed.
+
+### api_usage
+
+Purpose: Track AI/API/token/send usage.
+
+Minimum fields: `id`, `client_id`, `usage_type`, `quantity`, `metadata`, `created_at`.
+
+Relation to `client_id`: Direct `client_id`.
+
+V1 notes: AI integration is not implemented in Milestone 0.
+
+Anti-regression rules: Usage must remain client-scoped.
+
+### suppression_list
+
+Purpose: Client-scoped and global suppression records.
+
+Minimum fields: `id`, `client_id`, `email`, `reason`, `created_at`.
+
+Relation to `client_id`: Nullable `client_id` for future global suppression; client-scoped rows include `client_id`.
+
+V1 notes: Suppression enforcement belongs to backend/Guard.
+
+Anti-regression rules: Suppressed addresses cannot send.
+
+### provider_events
+
+Purpose: Store normalized listmonk/provider events.
+
+Minimum fields: `id`, `client_id`, `campaign_id`, `contact_id`, `event_type`, `payload`, `created_at`.
+
+Relation to `client_id`: Direct `client_id` when mapped; otherwise must be resolved before business use.
+
+V1 notes: Provider event ingestion is planned/future.
+
+Anti-regression rules: Events must not overwrite business truth without backend validation.
+
+### blocked_sends
+
+Purpose: Record blocked authorization/send attempts and reasons.
+
+Minimum fields: `id`, `client_id`, `campaign_id`, `contact_id`, `reason`, `decision`, `created_at`.
+
+Relation to `client_id`: Direct `client_id`.
+
+V1 notes: Supports auditability and dashboard explanations.
+
+Anti-regression rules: Every blocked send must include a readable reason.
+
+### listmonk_mappings
+
+Purpose: Map business entities to listmonk technical ids.
+
+Minimum fields: `id`, `client_id`, `entity_type`, `entity_id`, `listmonk_type`, `listmonk_id`, `created_at`, `updated_at`.
+
+Relation to `client_id`: Direct `client_id`.
+
+V1 notes: Keeps listmonk operational data separate from business truth.
+
+Anti-regression rules: Mapping does not transfer business ownership to listmonk.

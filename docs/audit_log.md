@@ -1267,3 +1267,132 @@ Tests referenced:
 - `scripts/smoke_test.sh`
 - `docker compose config`
 - `git diff --check`
+
+## 2026-05-05 - Milestone 4 Deliverability Guard V1 Hardening Final Audit
+
+Branch: `feature/backend-core`
+Task type: `backend_audit`
+Implementation depth: `audit_only`
+
+Skills applied:
+- `docs/codex_prompt_engine_v1.md`
+- Requested `docs/codex_skills/audit_runtime_flow.md` was not present; applied repository equivalent `docs/codex_skills/audit-runtime-flow.md`.
+- Requested `docs/codex_skills/validate_persistence_and_state.md` was not present; applied repository equivalent `docs/codex_skills/validate-state-and-persistence.md`.
+- Requested `docs/codex_skills/check_anti_monolith.md` was not present; applied repository equivalent `docs/codex_skills/check-anti-monolith.md`.
+- Requested `docs/codex_skills/run_regression_guard.md` was not present; applied repository equivalent `docs/codex_skills/run-regression-guard.md`.
+
+Source of truth checked:
+- `docs/states_v1.md`
+- `docs/data_model_v1.md`
+- `docs/api_contracts_v1.md`
+- `docs/architecture_v1.md`
+- `project_handoff_v1.md` was not present.
+
+Audit summary:
+- Milestone 4 hardening is mostly present in the runtime authorize flow: env fail-closed, client lifecycle check, campaign state check, empty target guard, contact sendability guard, short-circuit behavior, blocked logging, and stable public response shape are all wired.
+- The expected flow is: `CampaignsRepository.get_campaign()` -> `DeliverabilityGuard.authorize_campaign_send()` -> `DeliverabilityGuard.authorize_client_state()` -> `DeliverabilityGuard.authorize_campaign_state()` -> `ContactsService.list_campaign_contacts(campaign_id, client_id)` -> `DeliverabilityGuard.authorize_campaign_targets()` -> `DeliverabilityGuard.can_send_to_contact()` -> `BlockedSendsService.log_blocked_authorization()` for blocked decisions.
+- No code, tests, API contract, DB schema, frontend, Docker/env, Makefile, README, dependency, listmonk, real sending, auth/RBAC, or worker behavior was changed by this audit.
+
+Validazione controlli Guard:
+- Fail-closed env: OK. `EMAIL_SENDING_ENABLED` defaults to `"false"` in `backend/app/core/config.py`, is true only when exactly `"true"`, and runs first in `CampaignsService.authorize_campaign()`. Missing or false values block and log.
+- Client lifecycle guard: PARTIAL. Guard blocks every non-`active` state, including `paused`, `blocked`, `archived`, and `trial`; it runs after env and before campaign state. The remaining issue is that it reads current-client context rather than a campaign-client-scoped context.
+- Campaign state guard: OK. `ready` and `running` authorize; `draft`, `paused`, `blocked`, `completed`, and `failed` block and short-circuit before contact lookup.
+- Empty target guard: OK for the current stub boundary. Empty associated contacts block after campaign state and before per-contact checks.
+- Contact sendability guard: OK. Only `sendable` authorizes; `pending`, `suppressed`, `bounced`, `unsubscribed`, `blacklisted`, and `error` block. Contact blocks include `contact_id`.
+
+Validazione flow completo:
+- Router HTTP-only: OK. `backend/app/api/campaigns.py` delegates authorize to `CampaignsService`.
+- Service orchestration: OK. The service owns ordering and short-circuiting.
+- Repository stub: OK. Campaign/contact/blocked-sends data access remains repository-owned and in-memory.
+- Guard separato: OK. Guard owns env, client, campaign, target-count, and contact decisions.
+- Flow order observed: campaign lookup -> env -> client -> campaign -> target list -> empty target -> contact state.
+
+Logging validation:
+- Env block logging: OK. Logs `client_id`, `campaign_id`, `contact_id=None`, `reason`, `decision`, and `created_at`.
+- Client lifecycle block logging: OK structurally, but inherits the client-scope issue described below.
+- Campaign state block logging: OK. `contact_id=None` is correct.
+- Empty target block logging: OK. `contact_id=None` is correct.
+- Contact state block logging: OK. `contact_id` is present for the blocked contact.
+- Record structure: OK. Internal records use the existing `BlockedSend` shape and preserve readable reasons.
+
+API invariants:
+- `POST /campaigns/{campaign_id}/authorize` response remains only `status` plus `endpoint`.
+- No `reason` is exposed in the public authorize response.
+- No API contracts were modified during this audit.
+- No public empty-target or per-contact reason semantics were introduced.
+
+Architettura:
+- Anti-monolith verdict: OK for the implemented shape. Router, service, repository, Guard, and blocked-sends logging remain separated.
+- Backend remains the gatekeeper; no UI/listmonk/PostgreSQL shortcut was found in the audited authorize path.
+- listmonk remains engine-only and is not involved in the authorization decision.
+- Business PostgreSQL remains the V1 source of truth contractually, but the current runtime path still uses in-memory stubs.
+
+Problemi trovati:
+- Issue: Client lifecycle authorization is not scoped to `campaign.client_id`.
+  Severity: high
+  File: `backend/app/services/campaigns.py`, `backend/app/repositories/campaigns.py`, `backend/app/services/clients.py`
+  Rischio: `authorize_campaign()` can load any campaign by id, including another client's admin stub campaign, then evaluate lifecycle using the current mock client context instead of the loaded campaign's client. This weakens multi-client isolation and can apply the wrong lifecycle state to the authorization decision.
+  Suggested next micro-task: Add a backend-only campaign-client-scoped lifecycle lookup, or make campaign lookup itself client-scoped for non-admin authorize callers, preserving the public response shape.
+- Issue: `CampaignsRepository.get_campaign()` has no `client_id` filter.
+  Severity: medium
+  File: `backend/app/repositories/campaigns.py`
+  Rischio: The authorize read path is keyed only by `campaign_id`; future non-admin callers could probe or authorize cross-client campaign ids before a scoped lookup is introduced.
+  Suggested next micro-task: Add the smallest repository/service method that reads a campaign by both `campaign_id` and explicit `client_id`, then use it in caller-scoped authorize flows.
+- Issue: `campaign_contacts` remains an in-memory stub.
+  Severity: low
+  File: `backend/app/repositories/contacts.py`
+  Rischio: Current checks prove ordering and `client_id` filtering in memory, but not DB-backed relationship integrity between `client_id`, `campaign_id`, and `contact_id`.
+  Suggested next micro-task: In an approved persistence task, replace the in-memory association with a minimal DB-backed campaign_contacts repository contract.
+- Issue: Usage limits are not integrated.
+  Severity: medium
+  File: `backend/app/services/campaigns.py`, `backend/app/services/usage.py`
+  Rischio: Authorization can succeed without quota/usage policy checks when limits become meaningful.
+  Suggested next micro-task: Add a tiny usage-limit guard boundary after env/client checks and before campaign/contact checks.
+- Issue: Real suppression lookup is not integrated.
+  Severity: medium
+  File: `backend/app/services/contacts.py`, `backend/app/guard/deliverability_guard.py`
+  Rischio: `ContactStatus.suppressed` blocks, but persisted `suppression_list` records are not independently checked.
+  Suggested next micro-task: Add a backend-owned suppression lookup and feed the result into the Guard without exposing reasons publicly.
+- Issue: Reason codes are readable strings only.
+  Severity: low
+  File: `backend/app/guard/deliverability_guard.py`, `backend/app/services/blocked_sends.py`
+  Rischio: Logs are human-readable but brittle for dashboards, filters, localization, analytics, and future regression assertions.
+  Suggested next micro-task: Add internal structured reason codes alongside readable reasons; create a CONTRACT CHANGE REQUEST first if this changes public API or DB schema.
+- Issue: Real auth/RBAC is not present.
+  Severity: low
+  File: `backend/app/core/security.py`
+  Rischio: Placeholder API-key security does not distinguish admin/client roles or tenant context in production terms.
+  Suggested next micro-task: Keep as a documented gap until the approved auth milestone; do not expose real tenant data before role/client context exists.
+
+Gap residui confermati:
+- Usage limits are not integrated.
+- Real suppression lookup is not integrated.
+- `campaign_contacts` is a stub.
+- Auth/RBAC is not present.
+- Reason codes are not structured.
+- Business DB-backed authorize persistence is not present.
+
+CONTRACT CHANGE REQUEST:
+- Not required for this audit because no code or contracts were changed.
+- Required before exposing Guard `reason`, structured reason codes, per-contact details, or empty-target semantics in the public authorize response.
+- Required before any DB schema change for usage limits, suppression, campaign_contacts, or blocked_sends reason-code persistence.
+- Required before frontend, Docker/env, or API contract changes.
+
+Test eseguiti:
+- `PYTHONPATH=backend python -m pytest backend/tests`: attempted locally; failed because local Python has no `pytest`.
+- `docker compose run --rm -v "<repo>\\backend\\app:/app/app:ro" -v "<repo>\\backend\\tests:/app/tests:ro" backend python -m pytest /app/tests`: passed, 36 tests.
+- `scripts/audit.sh`: initial sandbox Git Bash run failed with Win32 error 5; escalated Git Bash retry passed.
+- `scripts/smoke_test.sh`: passed via Git Bash.
+- `docker compose config`: passed; Docker emitted access warnings for `C:\Users\Jacop\.docker\config.json`.
+- `docker compose down`: executed after containerized pytest to stop/remove Compose dependencies started by the audit.
+
+Test non eseguiti:
+- Local host pytest suite did not run successfully because `pytest` is not installed in the active local Python.
+- No frontend lint/build was run because the task is backend audit-only and no frontend files changed.
+- No DB migration or schema test was run because schema changes are out of scope.
+
+File modificati:
+- `docs/audit_log.md`
+
+Raccomandazione:
+- Milestone 4 should not be closed yet. The Guard hardening controls are mostly wired, but the client lifecycle check is not campaign-client-scoped, and that is a high-severity multi-client isolation gap in the authorize path.

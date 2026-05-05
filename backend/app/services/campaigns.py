@@ -39,9 +39,16 @@ class CampaignsService:
 
     def authorize_campaign(self, campaign_id: str) -> dict[str, str]:
         endpoint = f"POST /campaigns/{campaign_id}/authorize"
+        decision = self._preflight_campaign_send(campaign_id)
+        if decision is None:
+            return self.planned_admin_campaign_stub(endpoint)
+
+        return {"status": decision, "endpoint": endpoint}
+
+    def _preflight_campaign_send(self, campaign_id: str) -> str | None:
         campaign = self.repository.get_campaign(campaign_id)
         if campaign is None:
-            return self.planned_admin_campaign_stub(endpoint)
+            return None
 
         send_gate = self.guard.authorize_campaign_send(self.email_sending_enabled)
         if send_gate.decision.value == "blocked":
@@ -51,11 +58,11 @@ class CampaignsService:
                 reason=send_gate.reason,
                 decision=send_gate.decision.value,
             )
-            return {"status": send_gate.decision.value, "endpoint": endpoint}
+            return send_gate.decision.value
 
         client = self.clients_service.get_client(campaign.client_id)
         if client is None:
-            return self.planned_admin_campaign_stub(endpoint)
+            return None
 
         client_decision = self.guard.authorize_client_state(client.status)
         if client_decision.decision.value == "blocked":
@@ -65,7 +72,7 @@ class CampaignsService:
                 reason=client_decision.reason,
                 decision=client_decision.decision.value,
             )
-            return {"status": client_decision.decision.value, "endpoint": endpoint}
+            return client_decision.decision.value
 
         decision = self.guard.authorize_campaign_state(campaign.status)
         if decision.decision.value == "blocked":
@@ -75,7 +82,7 @@ class CampaignsService:
                 reason=decision.reason,
                 decision=decision.decision.value,
             )
-            return {"status": decision.decision.value, "endpoint": endpoint}
+            return decision.decision.value
 
         contacts = self.contacts_service.list_campaign_contacts(
             campaign_id=campaign.id,
@@ -89,10 +96,7 @@ class CampaignsService:
                 reason=target_decision.reason,
                 decision=target_decision.decision.value,
             )
-            return {
-                "status": target_decision.decision.value,
-                "endpoint": endpoint,
-            }
+            return target_decision.decision.value
 
         for contact in contacts:
             contact_decision = self.guard.can_send_to_contact(contact.status)
@@ -104,12 +108,10 @@ class CampaignsService:
                     decision=contact_decision.decision.value,
                     contact_id=contact.id,
                 )
-                return {
-                    "status": contact_decision.decision.value,
-                    "endpoint": endpoint,
-                }
+                return contact_decision.decision.value
 
-        return {"status": decision.decision.value, "endpoint": endpoint}
+        return decision.decision.value
 
     def send_campaign(self, campaign_id: str) -> dict[str, str]:
+        self._preflight_campaign_send(campaign_id)
         return self.planned_admin_campaign_stub(f"POST /campaigns/{campaign_id}/send")

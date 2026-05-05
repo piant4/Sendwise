@@ -1610,3 +1610,44 @@ File modificati:
 
 Raccomandazione prossimo micro-task:
 - Implement a backend-only Guard preflight inside `CampaignsService.send_campaign()` that preserves the current response shape, logs blocked decisions through `BlockedSendsService`, does not call listmonk, does not send real email, and adds focused regression tests for fail-closed send behavior.
+
+## 2026-05-05 - Send Campaign Guard Preflight Fix
+
+Branch: `feature/backend-core`
+Task type: `backend_fix`
+Implementation depth: `minimal_guard_slice`
+
+Root cause:
+- `CampaignsService.send_campaign()` returned the planned send stub without running Guard V1, while `authorize_campaign()` already enforced `EMAIL_SENDING_ENABLED`, client lifecycle, campaign lifecycle, target, and contact checks.
+
+Fix:
+- Extracted the existing authorize orchestration into a private `CampaignsService._preflight_campaign_send()` helper.
+- `authorize_campaign()` now reuses that helper and preserves its public `status` plus `endpoint` response shape.
+- `send_campaign()` now runs the same preflight before returning the existing send stub response.
+- Blocked send preflight decisions continue to log through `BlockedSendsService.log_blocked_authorization()`.
+- Authorized send remains simulation/stub only.
+
+Files modified:
+- `backend/app/services/campaigns.py`
+- `backend/tests/test_campaign_authorize_guard.py`
+- `docs/audit_log.md`
+
+Regression guard:
+- Container pytest with `sendwise-backend` image and mounted workspace: passed, 42 tests.
+- `scripts/audit.sh`: first sandbox Git Bash attempt failed with Win32 error 5; escalated Git Bash retry passed.
+- `scripts/smoke_test.sh`: passed via Git Bash.
+- `docker compose config`: passed.
+- `git diff --check`: passed.
+
+Confirmation:
+- no router changes
+- no response shape changes
+- no real email sending
+- no listmonk calls
+- no DB/email_logs persistence
+- no schema changes
+- no frontend, Docker, env, Makefile, README, or dependency changes
+
+Residual risks:
+- Missing campaign/client still falls back to the existing planned stub behavior.
+- Blocked send records remain in-memory stub persistence only.

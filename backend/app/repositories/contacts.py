@@ -74,6 +74,10 @@ _CONTACTS: list[Contact] = [
     ),
 ]
 
+_CAMPAIGN_CONTACT_IDS: dict[str, list[str]] = {
+    "campaign_acme_welcome": ["contact_acme_sendable"],
+}
+
 
 class ContactsRepository:
     """In-memory contacts data boundary for backend-core stubs."""
@@ -91,3 +95,17 @@ class ContactsRepository:
             if contact.id == contact_id:
                 return deepcopy(contact)
         return None
+
+    def list_campaign_contacts(
+        self,
+        campaign_id: str,
+        client_id: str,
+    ) -> list[Contact]:
+        contact_ids = set(_CAMPAIGN_CONTACT_IDS.get(campaign_id, []))
+        return deepcopy(
+            [
+                contact
+                for contact in _CONTACTS
+                if contact.id in contact_ids and contact.client_id == client_id
+            ]
+        )

@@ -884,3 +884,78 @@ Invariant confirmation:
 
 Next micro-task:
 - Add an approved backend-only contact sendability authorization slice that wires contact status evaluation into campaign authorization without changing response shape unless a contract change is approved.
+
+## Contact Sendability Authorization Guard Slice
+
+Date: 2026-05-05
+Branch: `feature/backend-core`
+Task type: `backend_feature`
+Implementation depth: `minimal_guard_slice`
+
+Skills applied:
+- `docs/codex_prompt_engine_v1.md`
+- Requested `docs/codex_skills/validate-persistence-and-state.md` was not present; applied repository equivalent `docs/codex_skills/validate-state-and-persistence.md`.
+- `docs/codex_skills/check-anti-monolith.md`
+- `docs/codex_skills/run-regression-guard.md`
+
+Scope:
+- Added a minimal in-memory campaign-to-contact association inside the contacts repository boundary.
+- Added a contacts service method to read campaign contacts by `campaign_id` and `client_id`.
+- Implemented minimal contact status sendability in `DeliverabilityGuard.can_send_to_contact()`.
+- Updated `CampaignsService.authorize_campaign()` to evaluate contact sendability only after campaign state is authorizable.
+- Preserved the existing authorize response shape: `status` and `endpoint` only.
+
+Files created:
+- None
+
+Files modified:
+- `backend/app/services/campaigns.py`
+- `backend/app/services/contacts.py`
+- `backend/app/repositories/contacts.py`
+- `backend/app/guard/deliverability_guard.py`
+- `backend/tests/test_campaign_authorize_guard.py`
+- `docs/audit_log.md`
+
+Contact authorization states:
+- Authorized: `sendable`
+- Blocked: `pending`, `suppressed`, `bounced`, `unsubscribed`, `blacklisted`, `error`
+
+Tests added:
+- Ready campaign with all sendable contacts remains authorized.
+- Ready campaign with `unsubscribed`, `suppressed`, `bounced`, `blacklisted`, `error`, or `pending` contact is blocked.
+- Draft and paused campaigns block before contact checks.
+- Blocked contact authorization writes a `blocked_sends` authorization record through the existing service path.
+
+Tests executed:
+- `git diff --check` passed, with CRLF warnings only.
+- Python `py_compile` passed for changed backend service, repository, guard, and test files.
+- Bundled Python `py_compile` passed for changed backend service, repository, guard, and test files.
+- Direct import/check passed for `CampaignsService`, `ContactsService`, `ContactsRepository`, and `DeliverabilityGuard`.
+- Direct execution of all `test_campaign_authorize_guard.py` test functions passed with bundled Python.
+- Direct execution of all `test_contacts_boundary.py` test functions passed with bundled Python.
+- Python AST syntax check passed for 45 backend Python files.
+- `docker compose config` passed, with Docker config access warnings for `C:\Users\Jacop\.docker\config.json`.
+
+Tests not executed and reason:
+- `python -m pytest backend/tests` did not run because the active shell Python has no `pytest` module.
+- Direct execution of the entire test directory did not complete because `test_health.py` and `test_milestone_05_stubs.py` require `fastapi`, which is not installed in the bundled Python runtime.
+- `bash scripts/audit.sh` failed in sandbox with WSL access denied; escalated retry failed because `/bin/bash` is unavailable.
+- `bash scripts/smoke_test.sh` failed in sandbox with WSL access denied; escalated retry failed because `/bin/bash` is unavailable.
+
+Invariant confirmation:
+- Router files unchanged.
+- Authorize API response shape unchanged.
+- No DB schema changes.
+- No real `campaign_contacts` implementation.
+- No email sending, listmonk call, auth/RBAC, AI generation, frontend, Docker, env, Makefile, README, or dependency changes.
+- Campaign state guard still runs before contact checks.
+- Contacts boundary remains separate from campaigns and persistence stays in the repository layer.
+- `blocked_sends` logging continues through the existing `BlockedSendsService.log_blocked_authorization()` path.
+
+Residual risks:
+- Full pytest suite still needs an environment with `pytest` installed.
+- Bash-based audit and smoke scripts still need an environment with usable Bash.
+- Campaign/contact association is intentionally an in-memory stub and must be replaced only in a future approved DB-backed slice.
+
+Next micro-task:
+- Add a tiny contact authorization handoff or audit note for replacing the stub association with real `campaign_contacts` only when DB-backed campaign-contact scope is approved.

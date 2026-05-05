@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from enum import StrEnum
 
-from app.schemas.common import CampaignStatus
+from app.schemas.common import CampaignStatus, ContactStatus
 
 
 class SendDecision(StrEnum):
@@ -47,8 +47,14 @@ class DeliverabilityGuard:
             reason=f"Campaign state {campaign_status.value} cannot send.",
         )
 
-    def can_send_to_contact(self, *_args: object, **_kwargs: object) -> GuardResult:
+    def can_send_to_contact(self, contact_status: ContactStatus) -> GuardResult:
+        if contact_status == ContactStatus.sendable:
+            return GuardResult(
+                decision=SendDecision.AUTHORIZED,
+                reason="Contact state sendable can send.",
+            )
+
         return GuardResult(
             decision=SendDecision.BLOCKED,
-            reason="Contact sendability checks are not implemented in Milestone 0.",
+            reason=f"Contact state {contact_status.value} cannot send.",
         )

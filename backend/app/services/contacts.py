@@ -14,6 +14,16 @@ class ContactsService:
     def list_contacts(self, client_id: str | None = None) -> list[Contact]:
         return self.repository.list_contacts(client_id=client_id)
 
+    def list_campaign_contacts(
+        self,
+        campaign_id: str,
+        client_id: str,
+    ) -> list[Contact]:
+        return self.repository.list_campaign_contacts(
+            campaign_id=campaign_id,
+            client_id=client_id,
+        )
+
     def list_contacts_stub(self) -> dict[str, str]:
         self.repository.list_contacts(client_id=get_current_client_id())
         return {"status": "stub", "endpoint": "GET /contacts"}

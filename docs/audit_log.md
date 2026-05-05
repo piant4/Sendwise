@@ -1512,3 +1512,101 @@ File modificati:
 
 Raccomandazione:
 - Milestone 4 can be closed for the current approved stub scope. No high-severity Guard V1 issue remains after the campaign-client-scoped lifecycle fix. The remaining issues are documented non-blocking future-policy/persistence/auth gaps.
+
+## 2026-05-05 - Simulated Send Runtime Flow Audit
+
+Scope: Read-only backend audit of the current simulated send flow. No application code, tests, schema, Docker, frontend, env, dependencies, or README files were changed.
+
+Audit summary:
+- Current product contract requires FastAPI to remain the gatekeeper, `EMAIL_SENDING_ENABLED` to fail closed, and Guard authorization to happen before any send.
+- `POST /campaigns/{campaign_id}/authorize` is now service-owned and Guard-backed for existing campaigns.
+- `POST /campaigns/{campaign_id}/send` is service-owned but still a planned stub. It does not call Guard, does not inspect `EMAIL_SENDING_ENABLED`, does not call `blocked_sends`, and does not call listmonk or any email provider.
+- Immediate real-email risk is low because there is no real listmonk/provider send call in the send path. Latent Guard bypass risk is high because the send endpoint is the future operational boundary and currently bypasses Guard V1.
+
+Send endpoints attuali:
+- `POST /campaigns/{campaign_id}/authorize`: `backend/app/api/campaigns.py` delegates to `CampaignsService.authorize_campaign()`.
+- `POST /campaigns/{campaign_id}/send`: `backend/app/api/campaigns.py` delegates to `CampaignsService.send_campaign()`.
+- No additional backend `send` or `execute` product endpoints were found. `backend/app/integrations/listmonk/client.py` has only a stub `authorize_send()` helper, not an exposed API endpoint.
+- Related event endpoints exist but are not send triggers: `POST /events/listmonk` and `POST /events/provider` return endpoint-only stubs.
+
+Send response shape attuale:
+- Runtime HTTP evidence with default `EMAIL_SENDING_ENABLED=false`:
+  - `POST /campaigns/campaign_acme_welcome/authorize` returned `{"status":"blocked","endpoint":"POST /campaigns/campaign_acme_welcome/authorize"}`.
+  - `POST /campaigns/campaign_acme_welcome/send` returned `{"status":"stub","endpoint":"POST /campaigns/campaign_acme_welcome/send"}`.
+  - `POST /campaigns/campaign_missing/send` returned `{"status":"stub","endpoint":"POST /campaigns/campaign_missing/send"}`.
+- Current send shape is exactly `status` plus `endpoint`; it does not include send request id, queued/dry-run detail, Guard reason, contact counts, or provider/listmonk ids.
+
+Guard bypass risk:
+- `authorize` flow: router -> `CampaignsService.authorize_campaign()` -> campaign repository -> `DeliverabilityGuard.authorize_campaign_send()` -> client lifecycle Guard -> campaign lifecycle Guard -> target/contact Guard -> `BlockedSendsService.log_blocked_authorization()` for blocked decisions.
+- `send` flow: router -> `CampaignsService.send_campaign()` -> `planned_admin_campaign_stub()`.
+- First divergence: `CampaignsService.send_campaign()` returns a planned stub without verifying a prior authorization or re-running Guard.
+- Invariant status:
+  - no real email: holds today.
+  - no listmonk send: holds today.
+  - dry-run/simulation only: holds today by absence of real integration, not by an explicit send Guard.
+  - Guard mandatory before any send: not enforced by the send endpoint.
+
+Logging/listmonk/email status:
+- `blocked_sends`: schema, service, and in-memory repository exist. `append_blocked_send()` is implemented and `authorize` writes blocked decisions. `send` does not write blocked sends because it never denies through Guard.
+- `email_logs`: DB table and data model contract exist, but no backend schema/service/repository was found.
+- listmonk: placeholder adapter exists at `backend/app/integrations/listmonk/client.py`; it performs no HTTP requests and is not called by send.
+- `EMAIL_SENDING_ENABLED`: protects `authorize` through Guard, but does not protect `send`.
+
+Problemi trovati:
+- Issue: `POST /campaigns/{campaign_id}/send` bypasses Guard V1.
+  Severity: high
+  File: `backend/app/services/campaigns.py`
+  Rischio: when any real or queued send behavior is added behind this method, callers could trigger it without `EMAIL_SENDING_ENABLED`, client lifecycle, campaign lifecycle, target, contact, or suppression checks.
+  Suggested next micro-task: backend-only micro-fix that routes `send_campaign()` through the same Guard preflight boundary used by authorize before returning any accepted dry-run/queued result.
+- Issue: `EMAIL_SENDING_ENABLED` protects authorize but not send.
+  Severity: high
+  File: `backend/app/services/campaigns.py`, `backend/app/guard/deliverability_guard.py`
+  Rischio: fail-closed sending is only proven for authorization, not for the named send trigger.
+  Suggested next micro-task: make `send_campaign()` fail closed when `EMAIL_SENDING_ENABLED` is not exactly `true`, preserving the existing public response shape unless an API contract change is approved.
+- Issue: Send does not record blocked send attempts.
+  Severity: medium
+  File: `backend/app/services/campaigns.py`, `backend/app/services/blocked_sends.py`
+  Rischio: denied send attempts would not be visible in `/client/blocked-sends` or future admin audit surfaces.
+  Suggested next micro-task: call the blocked sends service from `send_campaign()` after blocked Guard decisions, using the repository append boundary.
+- Issue: No email logs service/repository exists.
+  Severity: medium
+  File: `backend/app/services`, `backend/app/repositories`, `db/init.sql`
+  Rischio: future send attempts cannot be audited through the intended `email_logs` boundary even though the DB table exists.
+  Suggested next micro-task: add a minimal backend-only email logs service/repository contract in a separate approved task before any operational send implementation.
+- Issue: Current send response shape is a generic stub, not an accepted dry-run/queued result.
+  Severity: low
+  File: `backend/app/services/campaigns.py`, `docs/api_contracts_v1.md`
+  Rischio: clients cannot distinguish planned stub from simulated acceptance, dry-run, queueing, or blocked behavior.
+  Suggested next micro-task: CONTRACT CHANGE REQUEST if public response fields are expanded; otherwise keep `status` plus `endpoint` while adding internal Guard enforcement first.
+- Issue: listmonk adapter is placeholder-only and no send adapter path exists.
+  Severity: low
+  File: `backend/app/integrations/listmonk/client.py`
+  Rischio: this is safe for no-real-email invariants today, but future work must avoid putting authorization decisions in the adapter.
+  Suggested next micro-task: keep listmonk adapter engine-only; add it only after backend Guard and dry-run boundaries are proven.
+
+CONTRACT CHANGE REQUEST:
+- Not required for the recommended next backend-only Guard enforcement if the public `status` plus `endpoint` shape is preserved.
+- Required before exposing new send response fields such as `reason`, `dry_run`, `send_request_id`, queue id, target counts, provider ids, or listmonk ids.
+- Required before adding DB schema fields or changing email log / blocked send persistence shape.
+
+Tests eseguiti:
+- `pytest backend/tests`: attempted on host; failed because `pytest` is not available in PowerShell PATH.
+- `docker compose run --rm --no-deps -v C:\Users\Jacop\Documents\Sendwise\backend\tests:/app/tests:ro backend python -m pytest tests`: passed, 38 tests.
+- `scripts/audit.sh`: first Git Bash sandbox attempt failed with Win32 error 5; escalated retry passed.
+- `scripts/smoke_test.sh`: passed.
+- `docker compose config`: passed; Docker emitted access warnings for `C:\Users\Jacop\.docker\config.json`.
+- `git diff --check`: passed.
+- HTTP spot checks against local backend container: authorize returned `blocked`, send returned `stub`.
+- `docker compose down`: executed after containerized checks to stop/remove services started for the audit.
+
+Tests non eseguiti:
+- Host pytest did not run because pytest is not installed on the active host PATH.
+- Frontend lint/build were not run because this was backend audit-only and frontend was out of scope.
+- DB migration/schema tests were not run because schema changes were forbidden and no schema was modified.
+
+File modificati:
+- `docs/audit_log.md`
+- `docs/branch_handoffs/send_simulated_flow_audit.md`
+
+Raccomandazione prossimo micro-task:
+- Implement a backend-only Guard preflight inside `CampaignsService.send_campaign()` that preserves the current response shape, logs blocked decisions through `BlockedSendsService`, does not call listmonk, does not send real email, and adds focused regression tests for fail-closed send behavior.

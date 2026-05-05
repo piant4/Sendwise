@@ -3,7 +3,8 @@ from fastapi import APIRouter, Depends, status
 from app.core.security import require_api_key
 from app.schemas.campaigns import Campaign
 from app.schemas.clients import Client
-from app.schemas.common import CampaignStatus, ClientStatus
+from app.schemas.common import CampaignStatus
+from app.services.clients import ClientsService
 
 router = APIRouter(
     prefix="/admin",
@@ -12,28 +13,12 @@ router = APIRouter(
 )
 
 
+clients_service = ClientsService()
+
+
 def stub_response(endpoint: str) -> dict[str, str]:
     return {"status": "stub", "endpoint": endpoint}
 
-
-# Milestone 0.5 stubs: stable mock payloads only. No auth, DB, service,
-# deliverability, or listmonk logic belongs in this router milestone.
-ADMIN_CLIENTS: list[Client] = [
-    Client(
-        id="client_acme",
-        name="Acme Studio",
-        status=ClientStatus.active,
-        created_at="2026-05-01T09:00:00Z",
-        updated_at="2026-05-05T09:00:00Z",
-    ),
-    Client(
-        id="client_nova",
-        name="Nova Retail",
-        status=ClientStatus.trial,
-        created_at="2026-05-02T10:30:00Z",
-        updated_at="2026-05-05T10:30:00Z",
-    ),
-]
 
 ADMIN_CAMPAIGNS: list[Campaign] = [
     Campaign(
@@ -59,57 +44,59 @@ ADMIN_CAMPAIGNS: list[Campaign] = [
 
 @router.get("/clients", response_model=list[Client])
 def list_clients() -> list[Client]:
-    return ADMIN_CLIENTS
+    return clients_service.list_admin_clients()
 
 
 @router.post("/clients", status_code=status.HTTP_202_ACCEPTED)
 def create_client() -> dict[str, str]:
-    return stub_response("POST /admin/clients")
+    return clients_service.planned_admin_client_stub("POST /admin/clients")
 
 
 @router.get("/clients/{client_id}")
 def get_client(client_id: str) -> dict[str, str]:
-    return stub_response(f"GET /admin/clients/{client_id}")
+    return clients_service.planned_admin_client_stub(f"GET /admin/clients/{client_id}")
 
 
 @router.patch("/clients/{client_id}")
 def update_client(client_id: str) -> dict[str, str]:
-    return stub_response(f"PATCH /admin/clients/{client_id}")
+    return clients_service.planned_admin_client_stub(f"PATCH /admin/clients/{client_id}")
 
 
 @router.post("/clients/{client_id}/pause")
 def pause_client(client_id: str) -> dict[str, str]:
-    return stub_response(f"POST /admin/clients/{client_id}/pause")
+    return clients_service.planned_admin_client_stub(f"POST /admin/clients/{client_id}/pause")
 
 
 @router.post("/clients/{client_id}/resume")
 def resume_client(client_id: str) -> dict[str, str]:
-    return stub_response(f"POST /admin/clients/{client_id}/resume")
+    return clients_service.planned_admin_client_stub(f"POST /admin/clients/{client_id}/resume")
 
 
 @router.post("/clients/{client_id}/block")
 def block_client(client_id: str) -> dict[str, str]:
-    return stub_response(f"POST /admin/clients/{client_id}/block")
+    return clients_service.planned_admin_client_stub(f"POST /admin/clients/{client_id}/block")
 
 
 @router.post("/clients/{client_id}/archive")
 def archive_client(client_id: str) -> dict[str, str]:
-    return stub_response(f"POST /admin/clients/{client_id}/archive")
+    return clients_service.planned_admin_client_stub(f"POST /admin/clients/{client_id}/archive")
 
 
 @router.get("/clients/{client_id}/campaigns")
 def list_client_campaigns(client_id: str) -> dict[str, str]:
-    return stub_response(f"GET /admin/clients/{client_id}/campaigns")
+    return clients_service.planned_admin_client_stub(f"GET /admin/clients/{client_id}/campaigns")
 
 
 @router.get("/clients/{client_id}/usage")
 def get_client_usage(client_id: str) -> dict[str, str]:
-    return stub_response(f"GET /admin/clients/{client_id}/usage")
+    return clients_service.planned_admin_client_stub(f"GET /admin/clients/{client_id}/usage")
 
 
 @router.get("/clients/{client_id}/blocked-sends")
 def list_client_blocked_sends(client_id: str) -> dict[str, str]:
-    return stub_response(f"GET /admin/clients/{client_id}/blocked-sends")
+    return clients_service.planned_admin_client_stub(
+        f"GET /admin/clients/{client_id}/blocked-sends"
+    )
 
 
 @router.get("/campaigns", response_model=list[Campaign])

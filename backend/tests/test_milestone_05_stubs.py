@@ -18,6 +18,14 @@ def test_admin_clients_stub_shape() -> None:
     assert isinstance(data, list)
     assert data
     assert {"id", "name", "status", "created_at", "updated_at"} <= data[0].keys()
+    assert {item["id"] for item in data} == {"client_acme", "client_nova"}
+
+
+def test_admin_clients_planned_stub_status_is_preserved() -> None:
+    response = client.post("/admin/clients")
+
+    assert response.status_code == 202
+    assert response.json() == {"status": "stub", "endpoint": "POST /admin/clients"}
 
 
 def test_admin_campaigns_stub_shape() -> None:
@@ -64,7 +72,14 @@ def test_client_usage_do_not_expose_multiple_client_ids() -> None:
     data = response.json()
     assert isinstance(data, list)
     assert _client_ids(data) == {"client_acme"}
-    expected_keys = {"id", "client_id", "usage_type", "quantity", "metadata", "created_at"}
+    expected_keys = {
+        "id",
+        "client_id",
+        "usage_type",
+        "quantity",
+        "metadata",
+        "created_at",
+    }
     assert expected_keys <= data[0].keys()
 
 
@@ -76,3 +91,13 @@ def test_client_blocked_sends_do_not_expose_multiple_client_ids() -> None:
     assert isinstance(data, list)
     assert _client_ids(data) == {"client_acme"}
     assert {"id", "client_id", "reason", "decision", "created_at"} <= data[0].keys()
+
+
+def test_client_planned_campaign_stub_shape_is_preserved() -> None:
+    response = client.get("/client/campaigns/campaign_acme_welcome")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "status": "stub",
+        "endpoint": "GET /client/campaigns/campaign_acme_welcome",
+    }

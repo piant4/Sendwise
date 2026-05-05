@@ -7,12 +7,19 @@ from app.schemas.common import CampaignStatus, ClientStatus
 
 
 MOCK_CLIENT_ID = get_current_client_id()
+DEFAULT_CLIENT_STATUS = ClientStatus.active
+CLIENT_LIFECYCLE_STATUSES = (
+    ClientStatus.active,
+    ClientStatus.paused,
+    ClientStatus.blocked,
+    ClientStatus.archived,
+)
 
 _ADMIN_CLIENTS: list[Client] = [
     Client(
         id=MOCK_CLIENT_ID,
         name="Acme Studio",
-        status=ClientStatus.active,
+        status=DEFAULT_CLIENT_STATUS,
         created_at="2026-05-01T09:00:00Z",
         updated_at="2026-05-05T09:00:00Z",
     ),
@@ -29,7 +36,7 @@ _CLIENT_CONTEXT = ClientContext(
     client=Client(
         id=MOCK_CLIENT_ID,
         name="Acme Studio",
-        status=ClientStatus.active,
+        status=DEFAULT_CLIENT_STATUS,
         created_at="2026-05-01T09:00:00Z",
         updated_at="2026-05-05T09:00:00Z",
     ),

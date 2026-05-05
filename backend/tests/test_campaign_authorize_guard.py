@@ -1,8 +1,13 @@
 from app.core.config import get_settings
-from app.guard.deliverability_guard import DeliverabilityGuard, SendDecision
+from app.guard.deliverability_guard import (
+    DeliverabilityGuard,
+    GuardResult,
+    SendDecision,
+)
 from app.repositories.campaigns import CampaignsRepository
 from app.schemas.campaigns import Campaign
-from app.schemas.common import CampaignStatus, ContactStatus
+from app.schemas.clients import Client, ClientContext, ClientUser
+from app.schemas.common import CampaignStatus, ClientStatus, ContactStatus
 from app.schemas.contacts import Contact
 from app.services.blocked_sends import BlockedSendsService
 from app.services.campaigns import CampaignsService
@@ -46,6 +51,49 @@ class FailingContactsService:
         raise AssertionError("contacts should not be checked for blocked campaigns")
 
 
+class StubClientsService:
+    def __init__(self, client_status: ClientStatus = ClientStatus.active) -> None:
+        self.client_status = client_status
+        self.calls = 0
+
+    def get_current_client_context(self) -> ClientContext:
+        self.calls += 1
+        return ClientContext(
+            client=Client(
+                id="client_acme",
+                name="Acme Studio",
+                status=self.client_status,
+                created_at="2026-05-01T09:00:00Z",
+                updated_at="2026-05-05T09:00:00Z",
+            ),
+            user=ClientUser(
+                id="user_acme_manager",
+                client_id="client_acme",
+                email="manager@example.test",
+                role="client_manager",
+                created_at="2026-05-01T09:05:00Z",
+                updated_at="2026-05-05T09:05:00Z",
+            ),
+        )
+
+
+class OrderTrackingGuard(DeliverabilityGuard):
+    def __init__(self) -> None:
+        self.calls: list[str] = []
+
+    def authorize_campaign_send(self, email_sending_enabled: bool) -> GuardResult:
+        self.calls.append("send")
+        return super().authorize_campaign_send(email_sending_enabled)
+
+    def authorize_client_state(self, client_status: ClientStatus) -> GuardResult:
+        self.calls.append("client")
+        return super().authorize_client_state(client_status)
+
+    def authorize_campaign_state(self, campaign_status: CampaignStatus) -> GuardResult:
+        self.calls.append("campaign")
+        return super().authorize_campaign_state(campaign_status)
+
+
 def _campaign_with_status(status: CampaignStatus) -> Campaign:
     campaign = CampaignsRepository().get_campaign("campaign_acme_welcome")
     assert campaign is not None
@@ -69,6 +117,7 @@ def _authorize_status(status: CampaignStatus) -> str:
         repository=CampaignStateRepository(campaign),
         guard=DeliverabilityGuard(),
         blocked_sends_service=BlockedSendsService(RecordingBlockedSendsRepository()),
+        clients_service=StubClientsService(),
         email_sending_enabled=True,
     )
 
@@ -150,6 +199,94 @@ def test_allowed_campaign_authorize_does_not_log_blocked_send_attempt() -> None:
         "endpoint": f"POST /campaigns/{campaign.id}/authorize",
     }
     assert blocked_sends_repository.records == []
+
+
+def test_active_client_authorize_preserves_existing_behavior() -> None:
+    campaign = _campaign_with_status(CampaignStatus.ready)
+    blocked_sends_repository = RecordingBlockedSendsRepository()
+    service = CampaignsService(
+        repository=CampaignStateRepository(campaign),
+        guard=DeliverabilityGuard(),
+        blocked_sends_service=BlockedSendsService(blocked_sends_repository),
+        contacts_service=StubContactsService(
+            contacts=[_contact_with_status(ContactStatus.sendable)]
+        ),
+        clients_service=StubClientsService(ClientStatus.active),
+        email_sending_enabled=True,
+    )
+
+    response = service.authorize_campaign(campaign.id)
+
+    assert response == {
+        "status": SendDecision.AUTHORIZED.value,
+        "endpoint": f"POST /campaigns/{campaign.id}/authorize",
+    }
+    assert blocked_sends_repository.records == []
+
+
+def test_paused_blocked_archived_clients_are_blocked_and_logged() -> None:
+    for status in [ClientStatus.paused, ClientStatus.blocked, ClientStatus.archived]:
+        campaign = _campaign_with_status(CampaignStatus.ready)
+        blocked_sends_repository = RecordingBlockedSendsRepository()
+        service = CampaignsService(
+            repository=CampaignStateRepository(campaign),
+            guard=DeliverabilityGuard(),
+            blocked_sends_service=BlockedSendsService(blocked_sends_repository),
+            contacts_service=FailingContactsService(),
+            clients_service=StubClientsService(status),
+            email_sending_enabled=True,
+        )
+
+        response = service.authorize_campaign(campaign.id)
+
+        assert response == {
+            "status": SendDecision.BLOCKED.value,
+            "endpoint": f"POST /campaigns/{campaign.id}/authorize",
+        }
+        assert len(blocked_sends_repository.records) == 1
+        record = blocked_sends_repository.records[0]
+        assert record.client_id == campaign.client_id
+        assert record.campaign_id == campaign.id
+        assert record.reason == f"Client state {status.value} cannot send."
+        assert record.decision.value == SendDecision.BLOCKED.value
+
+
+def test_client_lifecycle_check_runs_after_env_and_before_campaign_state() -> None:
+    campaign = _campaign_with_status(CampaignStatus.ready)
+    guard = OrderTrackingGuard()
+    service = CampaignsService(
+        repository=CampaignStateRepository(campaign),
+        guard=guard,
+        blocked_sends_service=BlockedSendsService(RecordingBlockedSendsRepository()),
+        contacts_service=StubContactsService(contacts=[]),
+        clients_service=StubClientsService(ClientStatus.active),
+        email_sending_enabled=True,
+    )
+
+    response = service.authorize_campaign(campaign.id)
+
+    assert response["status"] == SendDecision.AUTHORIZED.value
+    assert guard.calls == ["send", "client", "campaign"]
+
+
+def test_fail_closed_env_runs_before_client_lifecycle_check() -> None:
+    campaign = _campaign_with_status(CampaignStatus.ready)
+    guard = OrderTrackingGuard()
+    clients_service = StubClientsService(ClientStatus.paused)
+    service = CampaignsService(
+        repository=CampaignStateRepository(campaign),
+        guard=guard,
+        blocked_sends_service=BlockedSendsService(RecordingBlockedSendsRepository()),
+        contacts_service=FailingContactsService(),
+        clients_service=clients_service,
+        email_sending_enabled=False,
+    )
+
+    response = service.authorize_campaign(campaign.id)
+
+    assert response["status"] == SendDecision.BLOCKED.value
+    assert guard.calls == ["send"]
+    assert clients_service.calls == 0
 
 
 def test_ready_campaign_with_all_sendable_contacts_is_authorized() -> None:

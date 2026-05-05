@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from enum import StrEnum
 
-from app.schemas.common import CampaignStatus, ContactStatus
+from app.schemas.common import CampaignStatus, ClientStatus, ContactStatus
 
 
 class SendDecision(StrEnum):
@@ -45,6 +45,18 @@ class DeliverabilityGuard:
         return GuardResult(
             decision=SendDecision.BLOCKED,
             reason=f"Campaign state {campaign_status.value} cannot send.",
+        )
+
+    def authorize_client_state(self, client_status: ClientStatus) -> GuardResult:
+        if client_status == ClientStatus.active:
+            return GuardResult(
+                decision=SendDecision.AUTHORIZED,
+                reason="Client state active can send.",
+            )
+
+        return GuardResult(
+            decision=SendDecision.BLOCKED,
+            reason=f"Client state {client_status.value} cannot send.",
         )
 
     def can_send_to_contact(self, contact_status: ContactStatus) -> GuardResult:

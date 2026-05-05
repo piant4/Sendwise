@@ -3,6 +3,7 @@ from app.guard.deliverability_guard import DeliverabilityGuard
 from app.repositories.campaigns import CampaignsRepository
 from app.schemas.campaigns import Campaign
 from app.services.blocked_sends import BlockedSendsService
+from app.services.clients import ClientsService
 from app.services.contacts import ContactsService
 
 
@@ -13,12 +14,14 @@ class CampaignsService:
         guard: DeliverabilityGuard | None = None,
         blocked_sends_service: BlockedSendsService | None = None,
         contacts_service: ContactsService | None = None,
+        clients_service: ClientsService | None = None,
         email_sending_enabled: bool | None = None,
     ) -> None:
         self.repository = repository or CampaignsRepository()
         self.guard = guard or DeliverabilityGuard()
         self.blocked_sends_service = blocked_sends_service or BlockedSendsService()
         self.contacts_service = contacts_service or ContactsService()
+        self.clients_service = clients_service or ClientsService()
         self.email_sending_enabled = (
             get_settings().email_sending_enabled
             if email_sending_enabled is None
@@ -49,6 +52,19 @@ class CampaignsService:
                 decision=send_gate.decision.value,
             )
             return {"status": send_gate.decision.value, "endpoint": endpoint}
+
+        client_context = self.clients_service.get_current_client_context()
+        client_decision = self.guard.authorize_client_state(
+            client_context.client.status
+        )
+        if client_decision.decision.value == "blocked":
+            self.blocked_sends_service.log_blocked_authorization(
+                client_id=campaign.client_id,
+                campaign_id=campaign.id,
+                reason=client_decision.reason,
+                decision=client_decision.decision.value,
+            )
+            return {"status": client_decision.decision.value, "endpoint": endpoint}
 
         decision = self.guard.authorize_campaign_state(campaign.status)
         if decision.decision.value == "blocked":

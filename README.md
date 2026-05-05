@@ -1,83 +1,112 @@
-# Email AI Automation Platform V1
+# Sendwise
 
-Source of truth: `project_handoff_v1.md`. Older files are historical context only. If anything conflicts with the handoff, the handoff wins.
+> 🚀 Docker-first foundation for a multi-client email automation platform powered by a custom dashboard, FastAPI, PostgreSQL, and listmonk.
 
-This repository is the Milestone 0 base for a multi-client Email AI Automation Platform that can be installed on a Linux VPS with Docker and Docker Compose.
+Sendwise is the V1 skeleton for an installable Email AI Automation Platform. It defines the product boundary, service topology, API contracts, data ownership rules, and local/VPS deployment path for a controlled email system.
 
-No real sending is implemented in Milestone 0.
+⚠️ **Milestone status:** this repository is a platform skeleton. Real email sending and AI generation are intentionally disabled in the current milestone.
 
-## V1 Architecture
+## ✨ Highlights
+
+- 🧠 **FastAPI backend as the gatekeeper** for business rules, client isolation, send authorization, and Deliverability Guard checks.
+- 🖥️ **Custom Next.js dashboard** for admin and client-facing product workflows.
+- 🗄️ **Business PostgreSQL** as the source of truth for clients, campaigns, contacts, usage, suppressions, and send decisions.
+- 📬 **listmonk engine integration** for email mechanics, subscribers, technical campaigns, tracking, and SMTP/SES delivery.
+- 🧪 **Mailpit dev overlay** for safe local and staging email capture.
+- 🐳 **Docker Compose target** for local development and Linux VPS deployment.
+- 🔒 **Audit scripts and structural contracts** to protect the architecture from accidental shortcuts.
+
+## 🧱 Architecture
 
 ```txt
-UI Custom Next.js
-↓
+Custom Next.js UI
+        ↓
 FastAPI Backend
-↓
+        ↓
 Deliverability Guard + Business Logic
-↓
+        ↓
 Business PostgreSQL
-↓
+        ↓
 listmonk
-↓
+        ↓
 SMTP / Amazon SES
 ```
 
-Core principle:
+Core ownership rules:
+
+- **Backend is gatekeeper.** All product APIs, send decisions, client isolation, and business rules go through FastAPI.
+- **listmonk is engine only.** It handles operational email mechanics, but it does not own product state.
+- **PostgreSQL is the business source of truth.** Client data, campaigns, contacts, usage, suppressions, and mappings live there.
+- **UI calls the backend only.** The frontend must not call listmonk or write directly to PostgreSQL.
+- **n8n is optional, not core V1.** If n8n or Activepieces are added later, they must call the backend only.
+
+## 📦 Repository Structure
 
 ```txt
-Backend = brain/gatekeeper
-listmonk = email engine
-UI = product
-PostgreSQL = business source of truth
-n8n = optional future integration layer, not core V1
+.
+├── backend/                 # FastAPI service, API stubs, schemas, guard layer
+├── frontend/                # Next.js dashboard skeleton
+├── db/                      # PostgreSQL init and migration placeholders
+├── docs/                    # Architecture, API contracts, data model, audit docs
+├── listmonk/                # listmonk configuration boundary
+├── mailpit/                 # Dev/staging email capture boundary
+├── scripts/                 # Install, audit, healthcheck, and smoke scripts
+├── templates/               # MJML email template placeholders
+├── docker-compose.yml       # Core stack
+├── docker-compose.dev.yml   # Mailpit dev/staging overlay
+└── Makefile                 # Common developer commands
 ```
 
-## Components Included
+## 🛠️ Tech Stack
 
-- Custom Next.js frontend skeleton.
-- FastAPI backend skeleton.
-- Business PostgreSQL schema stubs.
-- listmonk service as email engine.
-- MJML placeholder templates.
-- Mailpit dev/staging compose overlay.
-- Audit, smoke, install, and healthcheck scripts.
+| Layer | Technology |
+| --- | --- |
+| Frontend | Next.js 15, React 19, TypeScript, Tailwind CSS |
+| Backend | FastAPI, Python |
+| Database | PostgreSQL 16 |
+| Email engine | listmonk |
+| Dev email capture | Mailpit |
+| Runtime | Docker, Docker Compose |
 
-## Components Optional
+## 🚀 Quick Start
 
-- n8n is optional, not core V1. If added later, it must call the backend only.
-- Activepieces can follow the same future integration rule.
-- Keycloak, Celery, and Metabase are future options, not Milestone 0 features.
+### Prerequisites
 
-## Components Excluded
+- Docker
+- Docker Compose
+- Make
 
-- Budibase as final dashboard.
-- Postal.
-- Rspamd.
-- Mautic.
-- Keila.
-- n8n as core V1.
-- Direct provider sending from backend as the default V1 path.
-- Direct UI access to listmonk or PostgreSQL.
-
-## Setup
+### Start the stack
 
 ```bash
-git clone <repo>
-cd <repo>
+git clone <repo-url>
+cd Sendwise
 cp .env.example .env
 bash scripts/install.sh
 docker compose up -d
 ```
 
-For dev/staging Mailpit:
+Services:
+
+- Frontend: <http://localhost:3000>
+- Backend: <http://localhost:8000>
+- Backend health: <http://localhost:8000/health>
+- listmonk: <http://localhost:9000>
+
+### Start with Mailpit for dev/staging
 
 ```bash
 docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
 ```
 
-Mailpit is dev/staging only and must not be used in production.
+Mailpit:
 
-## Development Commands
+- Web UI: <http://localhost:8025>
+- SMTP: `localhost:1025`
+
+Mailpit is dev/staging only and must not be used for production sending.
+
+## 🧪 Development Commands
 
 ```bash
 make audit
@@ -86,7 +115,16 @@ make health
 make compose-config
 ```
 
-Backend health endpoint:
+What they do:
+
+| Command | Purpose |
+| --- | --- |
+| `make audit` | Validates required files, service boundaries, and architectural guardrails. |
+| `make smoke` | Validates Docker Compose config and runs the audit. |
+| `make health` | Checks the backend health endpoint. |
+| `make compose-config` | Renders the effective Docker Compose configuration. |
+
+## ✅ Health Check
 
 ```txt
 GET /health
@@ -102,22 +140,79 @@ Expected response:
 }
 ```
 
-## Docker / VPS Target
+## 🔐 Safety Defaults
 
-The base target is a Linux VPS with Docker and Docker Compose. PostgreSQL is not publicly exposed in production compose. Backend may expose `8000` and frontend may expose `3000` for local development. listmonk admin access must be protected before production use.
+Sendwise is conservative by default:
 
-## Audit Rules
-
-- Backend is the only gatekeeper.
-- No email sending without backend authorization.
-- `EMAIL_SENDING_ENABLED` defaults to `false`.
-- Only exact string `"true"` enables sending in future logic.
-- UI does not call listmonk.
-- UI does not write to PostgreSQL.
-- listmonk is engine only.
-- Business PostgreSQL is source of truth.
-- n8n is optional future layer, not core V1.
-- Mailpit is dev/staging only.
-- PostgreSQL is not publicly exposed.
+- `EMAIL_SENDING_ENABLED=false` in `.env.example`.
+- Only the exact string `"true"` may enable future send logic.
+- PostgreSQL is not publicly exposed in the production compose file.
+- Mailpit is excluded from the production compose file.
+- listmonk admin access must be protected before production use.
 - Client data must be isolated by `client_id`.
-- Codex must not change contracts without explicit instruction.
+- No email may be sent without backend authorization.
+
+## 📚 Documentation
+
+The main project contracts live in `docs/`:
+
+- `docs/architecture_v1.md`
+- `docs/api_contracts_v1.md`
+- `docs/data_model_v1.md`
+- `docs/states_v1.md`
+- `docs/ownership_v1.md`
+- `docs/structural_contracts_v1.md`
+- `docs/audit_checklist_v1.md`
+
+These docs define how the product should evolve. When behavior changes, update the matching contract document with the code.
+
+## 🗺️ Roadmap
+
+Current milestone:
+
+- ✅ Docker Compose foundation
+- ✅ FastAPI skeleton and typed API stubs
+- ✅ Next.js dashboard skeleton
+- ✅ PostgreSQL schema stubs
+- ✅ listmonk as email engine boundary
+- ✅ Mailpit dev/staging overlay
+- ✅ Audit and smoke scripts
+- ⏳ Real send authorization flow
+- ⏳ Production authentication and roles
+- ⏳ AI content generation
+- ⏳ Provider/webhook event ingestion
+- ⏳ Background workers and scheduling
+
+Future optional integrations:
+
+- n8n or Activepieces as backend-only integration layers
+- Keycloak for a later auth milestone
+- Celery if background task volume justifies it
+- Metabase for internal read-only analytics
+
+## 🚫 Explicitly Out of Scope
+
+These are not part of core V1:
+
+- Budibase as the final dashboard
+- Postal
+- Rspamd
+- Mautic
+- Keila
+- n8n as core V1
+- Direct provider sending from the backend as the default V1 path
+- Direct UI access to listmonk or PostgreSQL
+
+## 🤝 Contributing
+
+Keep changes aligned with the repository contracts:
+
+1. Update code and docs together.
+2. Keep FastAPI as the single business gatekeeper.
+3. Keep listmonk as the engine, not the source of truth.
+4. Preserve `EMAIL_SENDING_ENABLED=false` as the safe default.
+5. Run `make audit` before opening a pull request.
+
+## 📄 License
+
+License information has not been added yet.

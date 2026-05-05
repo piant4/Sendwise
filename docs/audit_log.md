@@ -489,3 +489,107 @@ Files modified:
 
 Recommendation:
 - Milestone 2 can be closed for the current stub state. No client-facing data endpoint currently returns cross-client records, current client mock identity is centralized, repository/service isolation tests exist for the active client-facing read paths, and admin cross-client visibility is limited to admin-prefixed routes. Carry the two documented future risks into the auth/data-returning endpoint milestones.
+
+## State Management Stub Audit
+
+Date: 2026-05-05
+Branch: `feature/backend-core`
+Task type: `backend_audit`
+Implementation depth: audit-only
+
+Skills applied:
+- `docs/codex_prompt_engine_v1.md`
+- `docs/codex_skills/validate-state-and-persistence.md` (requested underscore filename not present; hyphenated equivalent used)
+- `docs/codex_skills/audit-runtime-flow.md` (requested underscore filename not present; hyphenated equivalent used)
+- `docs/codex_skills/check-anti-monolith.md` (requested underscore filename not present; hyphenated equivalent used)
+- `docs/codex_skills/run-regression-guard.md` (requested underscore filename not present; hyphenated equivalent used)
+
+Audit summary:
+- Source of truth checked: `docs/states_v1.md`, `docs/data_model_v1.md`, `docs/api_contracts_v1.md`, `docs/architecture_v1.md`.
+- `project_handoff_v1.md` is referenced by V1 docs but is not present in this checkout.
+- Backend schema enums match the V1 campaign/contact state sets.
+- Current campaign runtime stub data contains only `ready` and `draft`.
+- Current backend has a `Contact` schema and contact route stubs, but no contact repository/mock contact list returning contact statuses.
+- `campaign_contacts` exists in `db/init.sql` as a planned schema stub, with default `pending`, but has no backend schema, repository, service, or exposed API path.
+- No real campaign/contact state transitions are implemented. Pause/resume/block/archive/suppress endpoints return planned stub payloads and do not mutate state.
+- No real sending is implemented. Core campaign authorize/send endpoints return planned stub payloads and do not call `DeliverabilityGuard`; the Guard itself remains fail-closed if called.
+
+Contractual states detected:
+- Campaign states from V1: `draft`, `ready`, `running`, `paused`, `blocked`, `completed`, `failed`.
+- Campaign transitions from V1: `draft -> ready -> running -> completed`, `ready -> paused -> ready`, `running -> paused -> running`, `draft -> blocked`, `ready -> blocked`, `running -> blocked`, `running -> failed`, `paused -> blocked`.
+- Contact states from V1: `pending`, `sendable`, `suppressed`, `bounced`, `unsubscribed`, `blacklisted`, `error`.
+- Contact transitions from V1: `pending -> sendable`, `pending -> error`, `sendable -> suppressed`, `sendable -> bounced`, `sendable -> unsubscribed`, `sendable -> blacklisted`, `error -> pending`.
+- Send-blocking rules from V1: campaigns in `paused`, `blocked`, `completed`, or `failed` cannot send; contacts in `unsubscribed`, `blacklisted`, `bounced`, or `suppressed` cannot send; `pending` and `error` contacts also cannot send.
+
+States present in current stubs:
+- Backend campaign enum: all contractual campaign states are present in `backend/app/schemas/common.py`.
+- Backend contact enum: all contractual contact states are present in `backend/app/schemas/common.py`.
+- Backend admin campaign stub data: `ready`, `draft` in `backend/app/repositories/campaigns.py`.
+- Backend client campaign stub data: `ready`, `draft` in `backend/app/repositories/clients.py`.
+- Frontend mock campaign data: `ready`, `draft` in `frontend/lib/mock-api.ts`.
+- DB defaults: campaigns default to `draft`; contacts default to `pending`; `campaign_contacts` default to `pending` in `db/init.sql`.
+- Non-contractual states found in inspected backend/frontend/DB stubs: none.
+- Campaign `archived` was specifically checked because it appears in the prompt risk list; it is not a campaign state in V1 contracts and was not found in campaign stubs.
+- Contractual campaign states not represented by current campaign list data: `running`, `paused`, `blocked`, `completed`, `failed`.
+- Contractual contact states not represented by current backend data-returning stubs: all contact states, because contact endpoints return endpoint-only stub payloads.
+
+Transitions present or absent:
+- Present as enum/model vocabulary: campaign/contact states and send decisions.
+- Present as planned endpoints only: client pause/resume/block/archive; campaign pause/resume; contact suppress.
+- Present as real mutation: none found.
+- Present in Guard: fail-closed placeholder decisions only; no client/campaign/contact status inspection.
+- Present in listmonk adapter: stub operations only; no state ownership or send authorization.
+
+Problems found:
+- Issue: Campaign lifecycle action endpoints are planned stubs and do not mutate campaign/client state.
+  Severity: low
+  File: `backend/app/api/admin.py`, `backend/app/services/campaigns.py`
+  Risk: UI or callers receive a stub response from pause/resume/block/archive without a persisted state change. Current behavior matches planned-stub status, but it cannot prove lifecycle enforcement yet.
+  Suggested next micro-task: Implement the smallest service-owned campaign/client lifecycle transition slice with repository persistence and conflict checks, after an approved implementation task.
+- Issue: Core campaign authorize/send endpoints do not evaluate campaign status or contact status.
+  Severity: medium
+  File: `backend/app/services/campaigns.py`, `backend/app/guard/deliverability_guard.py`
+  Risk: There is no current real send path, so immediate accidental sending risk is low; however, when sending becomes data-returning/operational, campaigns in `paused`, `blocked`, `completed`, or `failed` would not be blocked unless Guard integration is added first.
+  Suggested next micro-task: Wire `POST /campaigns/{campaign_id}/authorize` through a backend Guard use case that checks client, campaign, contact, suppression, and fail-closed config before any send implementation.
+- Issue: Contact suppression/sendability endpoints are endpoint-only stubs with no contact repository state.
+  Severity: medium
+  File: `backend/app/api/contacts.py`, `backend/app/schemas/contacts.py`
+  Risk: `unsubscribed`, `blacklisted`, `bounced`, and `suppressed` are contract states but no current backend read/write path proves they block eligibility or persist suppression.
+  Suggested next micro-task: Add a contact service/repository state audit slice before implementation, then implement `suppress` as a backend-owned transition only in an approved fix/feature task.
+- Issue: `campaign_contacts` exists only as a DB schema stub.
+  Severity: low
+  File: `db/init.sql`
+  Risk: Per-campaign contact inclusion/send state is planned in the data model, but no backend boundary currently validates `client_id`, `campaign_id`, and `contact_id` consistency.
+  Suggested next micro-task: Define the minimal backend repository/service contract for `campaign_contacts` before any send batching or per-campaign contact state work.
+- Issue: Current data stubs do not include negative fixtures for non-sendable campaign or contact states.
+  Severity: low
+  File: `backend/app/repositories/campaigns.py`, `backend/app/repositories/clients.py`
+  Risk: Regression coverage cannot currently observe UI/API handling of non-sendable campaign/contact states, even though the enum vocabulary is present.
+  Suggested next micro-task: Add negative state fixtures and read-path tests only when the relevant state enforcement endpoint becomes part of an approved implementation task.
+
+Runtime flow notes:
+- Expected contract: UI/external caller -> FastAPI -> service -> Deliverability Guard/repository -> Business PostgreSQL/listmonk, with backend as gatekeeper.
+- Observed current flow for `POST /campaigns/{campaign_id}/send`: FastAPI router -> `CampaignsService.send_campaign()` -> planned stub response.
+- First divergence for future send readiness: service returns a planned stub and does not yet invoke Guard/repository. Fix status: not attempted.
+- Anti-monolith verdict for this audit: OK. No application layer was changed; documentation-only output stayed in allowed audit/handoff files.
+
+Tests executed:
+- `docker compose config` passed. Docker emitted warnings that `C:\Users\Jacopo\.docker\config.json` was access-denied, but Compose rendered a valid config.
+- `git diff --check` passed.
+
+Tests not executed:
+- `PYTHONPATH=backend pytest backend/tests` did not run because `pytest` is not available in PATH.
+- `python -m pytest backend/tests` did not run because `python` is not available in PATH.
+- Python syntax check with `python -m compileall backend/app backend/tests` did not run because `python` is not available in PATH.
+- `bash scripts/audit.sh` did not run in sandbox because Bash returned `Access is denied`; escalated retry reached WSL but failed because `/bin/bash` is unavailable.
+- `bash scripts/smoke_test.sh` did not run in sandbox because Bash returned `Access is denied`; escalated retry reached WSL but failed because `/bin/bash` is unavailable.
+
+Contract change request:
+- None. No API, DB, frontend, Docker, dependency, or schema change is required for this audit-only finding set.
+
+Files modified:
+- `docs/audit_log.md`
+- `docs/branch_handoffs/state_management_stub_audit.md`
+
+Recommendation:
+- Next micro-task: implement a backend-only authorization audit/Guard integration slice for `POST /campaigns/{campaign_id}/authorize`, proving that paused/blocked/completed/failed campaigns and unsubscribed/blacklisted/bounced/suppressed contacts are blocked before any real send path is introduced.

@@ -1,6 +1,8 @@
 from dataclasses import dataclass
 from enum import StrEnum
 
+from app.schemas.common import CampaignStatus
+
 
 class SendDecision(StrEnum):
     AUTHORIZED = "authorized"
@@ -31,6 +33,18 @@ class DeliverabilityGuard:
         return GuardResult(
             decision=SendDecision.BLOCKED,
             reason="Real send authorization is not implemented in Milestone 0.",
+        )
+
+    def authorize_campaign_state(self, campaign_status: CampaignStatus) -> GuardResult:
+        if campaign_status in {CampaignStatus.ready, CampaignStatus.running}:
+            return GuardResult(
+                decision=SendDecision.AUTHORIZED,
+                reason=f"Campaign state {campaign_status.value} is send-simulation eligible.",
+            )
+
+        return GuardResult(
+            decision=SendDecision.BLOCKED,
+            reason=f"Campaign state {campaign_status.value} cannot send.",
         )
 
     def can_send_to_contact(self, *_args: object, **_kwargs: object) -> GuardResult:

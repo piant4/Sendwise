@@ -29,6 +29,12 @@ _ADMIN_CAMPAIGNS: list[Campaign] = [
 class CampaignsRepository:
     """In-memory campaigns data boundary for Milestone 0.5 stubs."""
 
+    def get_campaign(self, campaign_id: str) -> Campaign | None:
+        for campaign in self.list_admin_campaigns():
+            if campaign.id == campaign_id:
+                return campaign
+        return None
+
     def list_admin_campaigns(self, client_id: str | None = None) -> list[Campaign]:
         campaigns = deepcopy(_ADMIN_CAMPAIGNS)
         if client_id is None:

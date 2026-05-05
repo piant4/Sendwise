@@ -23,6 +23,10 @@ _BLOCKED_SENDS: list[BlockedSend] = [
 class BlockedSendsRepository:
     """In-memory blocked sends data boundary for Milestone 0.5 stubs."""
 
+    def append_blocked_send(self, record: BlockedSend) -> BlockedSend:
+        _BLOCKED_SENDS.append(deepcopy(record))
+        return deepcopy(record)
+
     def list_blocked_sends(self, client_id: str | None = None) -> list[BlockedSend]:
         blocked_sends = _BLOCKED_SENDS
         if client_id is not None:

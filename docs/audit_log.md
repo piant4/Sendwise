@@ -593,3 +593,117 @@ Files modified:
 
 Recommendation:
 - Next micro-task: implement a backend-only authorization audit/Guard integration slice for `POST /campaigns/{campaign_id}/authorize`, proving that paused/blocked/completed/failed campaigns and unsubscribed/blacklisted/bounced/suppressed contacts are blocked before any real send path is introduced.
+
+## Blocked Authorization Attempts Audit
+
+Date: 2026-05-05
+Branch: `feature/backend-core`
+Task type: `backend_audit`
+Implementation depth: audit-only
+
+Skills applied:
+- `docs/codex_prompt_engine_v1.md`
+- Requested underscore skill paths were not present; applied repository equivalents:
+  - `docs/codex_skills/validate-state-and-persistence.md`
+  - `docs/codex_skills/audit-runtime-flow.md`
+  - `docs/codex_skills/extract-root-cause.md`
+  - `docs/codex_skills/check-anti-monolith.md`
+  - `docs/codex_skills/run-regression-guard.md`
+- Applied local audit skill runtime-flow reference.
+
+Audit summary:
+- Source of truth checked: `docs/states_v1.md`, `docs/api_contracts_v1.md`, `docs/data_model_v1.md`, `docs/architecture_v1.md`.
+- `project_handoff_v1.md` is referenced by V1 docs but is not present in this checkout.
+- `POST /campaigns/{campaign_id}/authorize` currently routes through `CampaignsService.authorize_campaign()`.
+- `CampaignsService.authorize_campaign()` reads the campaign from `CampaignsRepository.get_campaign()` and calls `DeliverabilityGuard.authorize_campaign_state()` when the campaign exists.
+- The current authorize response shape is `{"status": <decision>, "endpoint": <endpoint>}` for found campaigns, or `{"status": "stub", "endpoint": <endpoint>}` when the campaign is missing.
+- The current response does not include the Guard reason, even though `GuardResult` carries one and `docs/api_contracts_v1.md` says authorize output is `SendDecision` and reasons.
+- `blocked_sends` currently has a schema and in-memory repository list stub only; no append/create method exists.
+- No logging, persistence, DB, endpoint, response shape, listmonk, email sending, auth/RBAC, tests, or application code changes were made.
+
+Flow attuale authorize to Guard:
+- FastAPI router: `backend/app/api/campaigns.py` delegates `POST /campaigns/{campaign_id}/authorize` to `CampaignsService.authorize_campaign(campaign_id)`.
+- Service: `backend/app/services/campaigns.py` builds the endpoint string, calls `CampaignsRepository.get_campaign(campaign_id)`, returns the planned stub shape if missing, otherwise sends `campaign.status` to `DeliverabilityGuard.authorize_campaign_state()`.
+- Guard: `backend/app/guard/deliverability_guard.py` authorizes `ready` and `running`; blocks all other campaign statuses with reason `Campaign state <status> cannot send.`
+- Response: service returns only `status` and `endpoint`; it discards `GuardResult.reason`.
+- Current flow does not call `BlockedSendsService` or `BlockedSendsRepository`.
+
+Stato attuale blocked_sends boundary:
+- Schema: `backend/app/schemas/blocked_sends.py` defines `id`, `client_id`, nullable `campaign_id`, nullable `contact_id`, `reason`, `decision`, and `created_at`.
+- Data model contract: `docs/data_model_v1.md` defines `blocked_sends` as records of blocked authorization/send attempts and reasons; every blocked send must include a readable reason.
+- DB stub: `db/init.sql` has `blocked_sends` with `reason TEXT NOT NULL`, `decision TEXT NOT NULL DEFAULT 'blocked'`, and nullable campaign/contact foreign keys.
+- Repository: `backend/app/repositories/blocked_sends.py` owns one fake in-memory `BlockedSend` record for UI contract testing.
+- Repository support: current repository supports `list_blocked_sends(client_id: str | None = None)` only. No append/create/add method exists.
+- Service: `backend/app/services/blocked_sends.py` exposes current-client list plus planned admin stubs only.
+
+Decisione: logging in-memory possibile si/no:
+- Decision: No for the next micro-task unless an approved behavior change explicitly allows mutable in-memory audit records.
+- Severity: medium
+- File: `backend/app/repositories/blocked_sends.py`, `backend/app/services/campaigns.py`
+- Risk: adding mutable in-memory logging would change observable behavior of `GET /client/blocked-sends` in the same process and would introduce a real write path despite the current task forbidding logging/persistence changes.
+- Suggested next micro-task: add an approved backend-only micro-task to introduce a service-owned blocked authorization audit method and repository append/create contract, with tests proving response shape remains unchanged unless a contract change is approved.
+
+Problemi trovati:
+- Issue/decision: Authorize discards `GuardResult.reason`.
+  Severity: medium
+  File: `backend/app/services/campaigns.py`
+  Risk: blocked authorization decisions are no longer explainable at the API response or blocked_sends boundary, despite the Guard producing a readable reason and the V1 contract mentioning reasons.
+  Suggested next micro-task: decide whether the reason should be logged internally only or exposed in authorize response; if exposed, raise a contract change request before changing response shape.
+- Issue/decision: `blocked_sends` repository has list-only behavior.
+  Severity: medium
+  File: `backend/app/repositories/blocked_sends.py`
+  Risk: there is no minimal persistence boundary where `CampaignsService` can append a blocked authorization attempt without adding new repository behavior.
+  Suggested next micro-task: add a narrowly scoped `create`/`append` method to `BlockedSendsRepository` only in an approved implementation task.
+- Issue/decision: No current coupling from authorize flow to blocked_sends boundary.
+  Severity: medium
+  File: `backend/app/services/campaigns.py`, `backend/app/services/blocked_sends.py`
+  Risk: blocked campaign-state decisions are returned to the caller but not represented in the audit list, so `GET /client/blocked-sends` remains static and cannot explain actual authorize attempts.
+  Suggested next micro-task: inject or otherwise coordinate a `BlockedSendsService` call from `CampaignsService` after blocked Guard decisions, preserving router and repository boundaries.
+- Issue/decision: Current blocked_sends fixture references `campaign_acme_reactivation`, which is not in current campaign repository fixtures.
+  Severity: low
+  File: `backend/app/repositories/blocked_sends.py`, `backend/app/repositories/campaigns.py`
+  Risk: the UI contract fixture is readable but cannot be traced to an existing in-memory campaign during runtime-flow audits.
+  Suggested next micro-task: align fixtures only when blocked_sends records become behaviorally tied to campaign authorization.
+- Issue/decision: Existing test intentionally preserves response keys as `status` and `endpoint` only.
+  Severity: low
+  File: `backend/tests/test_campaign_authorize_guard.py`
+  Risk: exposing `reason` would intentionally break current regression expectations and therefore requires explicit contract/test update.
+  Suggested next micro-task: keep response shape unchanged for internal logging work; open CONTRACT CHANGE REQUEST if the product needs `reason` in authorize response.
+
+CONTRACT CHANGE REQUEST:
+- Not required for internal logging if the authorize response remains unchanged and no DB schema change is introduced.
+- Required if `POST /campaigns/{campaign_id}/authorize` starts exposing `reason` in the response, because current implementation/tests preserve `{"status", "endpoint"}` while `docs/api_contracts_v1.md` only states high-level `SendDecision` and reasons without a concrete implemented shape.
+- Not required for a future in-memory append/create repository method if it remains internal and preserves current API response shape.
+
+Root cause extraction:
+- Symptom: blocked authorize attempts are not recorded in `blocked_sends`.
+- Expected contract: blocked authorization/send attempts and reasons belong to the `blocked_sends` boundary.
+- First divergence: `CampaignsService.authorize_campaign()` receives a blocked Guard decision but returns immediately without passing the decision/reason to a blocked_sends service/repository boundary.
+- Primary root cause: missing write/append capability and orchestration between campaign authorization service and blocked_sends boundary.
+- Category: backend service plus repository/query.
+- Minimal fix boundary: backend service/repository only, without router response changes unless contract-approved.
+- Confidence: high from static inspection and direct import/check.
+
+Anti-monolith verdict:
+- Verdict: OK for audit-only. No application layer was changed.
+- Touched layers during future implementation should remain backend service plus backend repository only.
+- Forbidden flows found: none in current code; future logging must not move Guard decisions into router, frontend, DB triggers, listmonk, or scripts.
+
+Tests executed:
+- `docker compose config`: passed; Docker emitted access warnings for `C:\Users\Jacopo\.docker\config.json`.
+- `git diff --check`: passed.
+- Read-only Python AST syntax check with bundled Python passed for 42 backend app/test Python files.
+- Direct import/check with bundled Python passed for `CampaignsService`, `DeliverabilityGuard`, `CampaignsRepository`, and `BlockedSendsRepository`.
+
+Tests not executed:
+- `PYTHONPATH=backend pytest backend/tests`: `pytest` is not available in PATH.
+- Bundled Python `-m pytest backend/tests`: bundled Python has no `pytest` module.
+- `bash scripts/audit.sh`: sandbox returned `Access is denied`; escalated retry reached WSL but failed because `/bin/bash` is unavailable.
+- `bash scripts/smoke_test.sh`: sandbox returned `Access is denied`; escalated retry reached WSL but failed because `/bin/bash` is unavailable.
+
+Files modified:
+- `docs/audit_log.md`
+- `docs/branch_handoffs/blocked_authorization_attempts_audit.md`
+
+Recommendation:
+- Next micro-task: implement an approved backend-only internal logging slice for blocked authorize decisions, adding a minimal blocked_sends append/create boundary and keeping `POST /campaigns/{campaign_id}/authorize` response shape unchanged unless a contract change request is accepted.

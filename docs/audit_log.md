@@ -185,3 +185,51 @@ Confirmation:
 - no real DB, listmonk, email, auth/RBAC, AI generation, n8n, worker, or Deliverability Guard implementation attempted
 
 Recommendation: Milestone 1 is not closed yet. A micro-fix is needed for the core campaign router stub boundary before final closure.
+
+## Core Campaign Router Stub Boundary Fix
+
+Date: 2026-05-05
+Milestone: Milestone 1 - Service & Repository Foundation
+Scope: Minimal backend fix moving core `/campaigns` planned stub response construction out of the router and into `CampaignsService`.
+Implementation depth: minimal_fix
+
+Root cause:
+- Core campaign router still constructed planned stub responses inline through `stub_response()`, violating the router -> service -> repository boundary.
+
+Files modified:
+- `backend/app/api/campaigns.py`
+- `backend/app/services/campaigns.py`
+- `docs/audit_log.md`
+
+Fix applied:
+- Removed router-local `stub_response()` from `backend/app/api/campaigns.py`.
+- Added router delegation to `CampaignsService` for `POST /campaigns`, `POST /campaigns/{campaign_id}/authorize`, and `POST /campaigns/{campaign_id}/send`.
+- Preserved exact planned stub response bodies, endpoint paths, and status codes.
+
+Boundary confirmation:
+- Router remains HTTP-only and delegates to service.
+- Service returns the existing planned stub JSON shape.
+- Repository remains unchanged because no persistence data was needed.
+
+Tests executed:
+- In-memory Python syntax compile check for changed backend files passed.
+- Direct `CampaignsService` import and exact planned stub payload checks passed.
+- Manual router source check found no `stub`, `stub_response`, `endpoint`, or `status: stub` construction in `backend/app/api/campaigns.py`.
+- `docker compose config` passed with Docker config access warnings.
+- `git diff --check` passed.
+
+Tests not executed and reason:
+- `PYTHONPATH=backend pytest backend/tests` could not run because `python` is not available in the shell and the bundled Python runtime does not have `pytest` installed.
+- Direct router function import check could not run because the bundled Python runtime does not have `fastapi` installed.
+- `bash scripts/audit.sh` could not run because Bash failed with `Access is denied`.
+- `bash scripts/smoke_test.sh` could not run because Bash failed with `Access is denied`.
+
+Residual risks:
+- Full FastAPI endpoint regression still depends on an environment with backend dependencies available.
+
+Confirmation:
+- no API contract changes
+- no schema changes
+- no DB, listmonk, auth/RBAC, email sending, or Deliverability Guard implementation introduced
+- no frontend, admin router, client router, usage, blocked_sends, Docker, env, Makefile, README, or dependency changes made
+- fix is minimal and limited to the confirmed backend router/service boundary issue

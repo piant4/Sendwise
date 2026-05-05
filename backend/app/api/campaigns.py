@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, status
 
 from app.core.security import require_api_key
+from app.services.campaigns import CampaignsService
 
 router = APIRouter(
     prefix="/campaigns",
@@ -9,20 +10,19 @@ router = APIRouter(
 )
 
 
-def stub_response(endpoint: str) -> dict[str, str]:
-    return {"status": "stub", "endpoint": endpoint}
+campaigns_service = CampaignsService()
 
 
 @router.post("", status_code=status.HTTP_202_ACCEPTED)
 def create_campaign() -> dict[str, str]:
-    return stub_response("POST /campaigns")
+    return campaigns_service.create_campaign()
 
 
 @router.post("/{campaign_id}/authorize")
 def authorize_campaign(campaign_id: str) -> dict[str, str]:
-    return stub_response(f"POST /campaigns/{campaign_id}/authorize")
+    return campaigns_service.authorize_campaign(campaign_id)
 
 
 @router.post("/{campaign_id}/send")
 def send_campaign(campaign_id: str) -> dict[str, str]:
-    return stub_response(f"POST /campaigns/{campaign_id}/send")
+    return campaigns_service.send_campaign(campaign_id)

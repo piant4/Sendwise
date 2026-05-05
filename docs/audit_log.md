@@ -707,3 +707,111 @@ Files modified:
 
 Recommendation:
 - Next micro-task: implement an approved backend-only internal logging slice for blocked authorize decisions, adding a minimal blocked_sends append/create boundary and keeping `POST /campaigns/{campaign_id}/authorize` response shape unchanged unless a contract change request is accepted.
+
+## Contact State Backend Audit
+
+Date: 2026-05-05
+Branch: `feature/backend-core`
+Task type: `backend_audit`
+Implementation depth: audit-only
+
+Skills applied:
+- `docs/codex_prompt_engine_v1.md`
+- Requested underscore skill paths were not present; applied repository equivalents:
+  - `docs/codex_skills/validate-state-and-persistence.md`
+  - `docs/codex_skills/audit-runtime-flow.md`
+  - `docs/codex_skills/check-anti-monolith.md`
+  - `docs/codex_skills/run-regression-guard.md`
+
+Audit summary:
+- Source of truth checked: `docs/states_v1.md`, `docs/data_model_v1.md`, `docs/api_contracts_v1.md`, `docs/architecture_v1.md`.
+- `project_handoff_v1.md` is referenced by the V1 docs but is not present in this checkout.
+- Contacts has a FastAPI router and Pydantic schema, but no service/repository boundary.
+- Contacts endpoints are endpoint-only stubs and do not read, return, or mutate contact rows.
+- Contact state enum contains all contractual states.
+- No backend application contact fixture data was found.
+- `campaign_contacts` exists in docs and `db/init.sql`, but not as a backend schema/repository/service/API boundary.
+- Campaign authorize currently evaluates campaign state only. It does not evaluate contact state, campaign_contacts, suppression records, or target contact sendability.
+- No code, tests, DB schema, Docker, frontend, templates, README, Makefile, or env files were changed.
+
+Contact states contrattuali:
+- Contractual states: `pending`, `sendable`, `suppressed`, `bounced`, `unsubscribed`, `blacklisted`, `error`.
+- Blocking states for future sending: `suppressed`, `bounced`, `unsubscribed`, `blacklisted`, and `error`.
+- `pending` is not authorizable by default because `docs/states_v1.md` says it cannot send until validated.
+- `sendable` is the only normal contact-sendable state, but still requires campaign/client/send checks.
+
+Stato attuale contacts backend:
+- `backend/app/schemas/contacts.py` defines `Contact`.
+- `backend/app/schemas/common.py` defines `ContactStatus` with all contractual contact states.
+- `backend/app/api/contacts.py` defines `POST /contacts/import`, `GET /contacts`, and `POST /contacts/{contact_id}/suppress`.
+- No `backend/app/services/contacts.py` was found.
+- No `backend/app/repositories/contacts.py` was found.
+- No stub contact data rows were found in `backend/app`.
+
+Gap rispetto a Guard/sendability:
+- `backend/app/services/campaigns.py` calls `DeliverabilityGuard.authorize_campaign_state(campaign.status)` only.
+- `backend/app/guard/deliverability_guard.py` contains `can_send_to_contact()`, but it is a placeholder and is not called by the current authorize flow.
+- Blocked authorize logging currently uses `contact_id=None`, so it does not represent per-contact sendability decisions.
+- First divergence: campaign authorization can return `authorized` for a ready/running campaign without checking contact state.
+- Fix status: not attempted.
+
+Problemi trovati:
+- Issue/decision: Contacts endpoints are endpoint-only stubs with no contact service/repository boundary.
+  Severity: medium
+  File: `backend/app/api/contacts.py`
+  Risk: suppression/import/list responses do not prove persisted contact state, `client_id` scoped reads, or future send blocking.
+  Suggested next micro-task: add an approved backend-only contacts service/repository boundary audit/implementation slice before implementing suppression behavior.
+- Issue/decision: Contact schema exists, but there is no backend contact read/write path.
+  Severity: medium
+  File: `backend/app/schemas/contacts.py`
+  Risk: contractual states are typed but not backed by runtime retrieval, persistence, or scoped queries.
+  Suggested next micro-task: implement a minimal contacts repository contract with `client_id` scoped list/read operations in an approved implementation task.
+- Issue/decision: Campaign authorize does not evaluate contact state.
+  Severity: high
+  File: `backend/app/services/campaigns.py`
+  Risk: authorization can return `authorized` without checking whether target contacts are suppressed, bounced, unsubscribed, blacklisted, pending, or error.
+  Suggested next micro-task: wire campaign authorize through a contact sendability audit path before any real send path or batch authorization is introduced.
+- Issue/decision: `DeliverabilityGuard.can_send_to_contact()` is not integrated into authorize.
+  Severity: medium
+  File: `backend/app/guard/deliverability_guard.py`
+  Risk: contact blocking policy is not enforced by runtime flow.
+  Suggested next micro-task: define the smallest Guard input contract for contact status checks and call it from a service-owned authorize flow.
+- Issue/decision: `campaign_contacts` exists only in DB/docs, not backend application boundaries.
+  Severity: medium
+  File: `db/init.sql`
+  Risk: backend cannot prove campaign/contact/client consistency or per-campaign contact inclusion before authorization.
+  Suggested next micro-task: define a minimal backend `campaign_contacts` repository/service contract after contacts boundary exists.
+- Issue/decision: `pending` must not be considered authorizable by default.
+  Severity: medium
+  File: `docs/states_v1.md`
+  Risk: DB defaults contacts and campaign_contacts to `pending`; treating pending as sendable would bypass validation.
+  Suggested next micro-task: explicitly encode `pending` as blocked in future Guard contact-state tests and implementation.
+- Issue/decision: `sendable` is authorizable only after campaign/client/send checks also pass.
+  Severity: low
+  File: `docs/states_v1.md`
+  Risk: future implementation might treat contact `sendable` as sufficient by itself, bypassing campaign/client state and fail-closed checks.
+  Suggested next micro-task: implement Guard decisions as combined client + campaign + contact + environment checks.
+
+CONTRACT CHANGE REQUEST:
+- Required if future API responses for `POST /campaigns/{campaign_id}/authorize` expose per-contact reasons or contact state details beyond the current implemented shape.
+- Required if `pending` or `error` should become authorizable under any context.
+- Required if DB schema changes are needed for batch authorization/contact targeting beyond the existing `campaign_contacts` stub.
+
+Tests executed:
+- `docker compose config`: passed. Docker emitted access warnings for `C:\Users\Jacop\.docker\config.json`.
+- `git diff --check`: passed, with CRLF warning for `docs/audit_log.md`.
+- Python AST syntax check: passed for 42 Python files under `backend`.
+
+Tests not executed:
+- `PYTHONPATH=backend pytest backend/tests`: not executed because `pytest` is not available in PATH.
+- `PYTHONPATH=backend python -m pytest backend/tests`: not executed because the local Python environment has no `pytest` module.
+- Direct backend import/check: not completed because the local Python environment has no `pydantic` module.
+- `bash scripts/audit.sh`: sandbox run failed with WSL access denied; escalated retry reached WSL but failed because `/bin/bash` is unavailable.
+- `bash scripts/smoke_test.sh`: sandbox run failed with WSL access denied; escalated retry reached WSL but failed because `/bin/bash` is unavailable.
+
+Files modified:
+- `docs/audit_log.md`
+- `docs/branch_handoffs/contact_state_backend_audit.md`
+
+Recommendation:
+- Next micro-task: implement an approved backend-only contact sendability authorization slice that introduces the minimal contacts repository/service boundary and integrates `DeliverabilityGuard.can_send_to_contact()` into campaign authorization, while preserving current API response shape unless a contract change request is accepted.

@@ -3,6 +3,7 @@ from fastapi import APIRouter, Depends, status
 from app.core.security import require_api_key
 from app.schemas.campaigns import Campaign
 from app.schemas.clients import Client
+from app.services.blocked_sends import BlockedSendsService
 from app.services.campaigns import CampaignsService
 from app.services.clients import ClientsService
 from app.services.usage import UsageService
@@ -15,6 +16,7 @@ router = APIRouter(
 
 
 clients_service = ClientsService()
+blocked_sends_service = BlockedSendsService()
 campaigns_service = CampaignsService()
 usage_service = UsageService()
 
@@ -75,9 +77,7 @@ def get_client_usage(client_id: str) -> dict[str, str]:
 
 @router.get("/clients/{client_id}/blocked-sends")
 def list_client_blocked_sends(client_id: str) -> dict[str, str]:
-    return clients_service.planned_admin_client_stub(
-        f"GET /admin/clients/{client_id}/blocked-sends"
-    )
+    return blocked_sends_service.planned_admin_client_blocked_sends_stub(client_id)
 
 
 @router.get("/campaigns", response_model=list[Campaign])
@@ -108,7 +108,7 @@ def resume_campaign(campaign_id: str) -> dict[str, str]:
 
 @router.get("/blocked-sends")
 def list_blocked_sends() -> dict[str, str]:
-    return stub_response("GET /admin/blocked-sends")
+    return blocked_sends_service.planned_admin_blocked_sends_stub()
 
 
 @router.get("/api-usage")

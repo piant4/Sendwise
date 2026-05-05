@@ -1,9 +1,8 @@
 from copy import deepcopy
 
-from app.schemas.blocked_sends import BlockedSend
 from app.schemas.campaigns import Campaign
 from app.schemas.clients import Client, ClientContext, ClientUser
-from app.schemas.common import CampaignStatus, ClientStatus, SendDecision
+from app.schemas.common import CampaignStatus, ClientStatus
 
 
 MOCK_CLIENT_ID = "client_acme"
@@ -64,18 +63,6 @@ _CLIENT_CAMPAIGNS: list[Campaign] = [
     ),
 ]
 
-_CLIENT_BLOCKED_SENDS: list[BlockedSend] = [
-    BlockedSend(
-        id="blocked_acme_001",
-        client_id=MOCK_CLIENT_ID,
-        campaign_id="campaign_acme_reactivation",
-        contact_id="contact_acme_001",
-        reason="Milestone 0.5 fake blocked send for UI contract testing.",
-        decision=SendDecision.blocked,
-        created_at="2026-05-05T12:10:00Z",
-    )
-]
-
 
 class ClientsRepository:
     """In-memory clients data boundary for Milestone 0.5 stubs."""
@@ -92,14 +79,5 @@ class ClientsRepository:
                 campaign
                 for campaign in _CLIENT_CAMPAIGNS
                 if campaign.client_id == client_id
-            ]
-        )
-
-    def list_current_client_blocked_sends(self, client_id: str) -> list[BlockedSend]:
-        return deepcopy(
-            [
-                blocked_send
-                for blocked_send in _CLIENT_BLOCKED_SENDS
-                if blocked_send.client_id == client_id
             ]
         )

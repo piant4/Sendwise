@@ -5,6 +5,7 @@ from app.schemas.blocked_sends import BlockedSend
 from app.schemas.campaigns import Campaign
 from app.schemas.clients import ClientContext
 from app.schemas.usage import ApiUsage
+from app.services.blocked_sends import BlockedSendsService
 from app.services.clients import ClientsService
 from app.services.usage import UsageService
 
@@ -16,6 +17,7 @@ router = APIRouter(
 
 
 clients_service = ClientsService()
+blocked_sends_service = BlockedSendsService()
 usage_service = UsageService()
 
 
@@ -46,4 +48,4 @@ def get_usage() -> list[ApiUsage]:
 
 @router.get("/blocked-sends", response_model=list[BlockedSend])
 def get_blocked_sends() -> list[BlockedSend]:
-    return clients_service.list_current_client_blocked_sends()
+    return blocked_sends_service.list_current_client_blocked_sends()

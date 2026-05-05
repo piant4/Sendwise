@@ -1,13 +1,31 @@
 import type {
+  AdminOverviewSummary,
   ApiUsage,
   BlockedSend,
   Campaign,
   Client,
   ClientContext,
+  ClientOverviewSummary,
 } from "../types";
 
 const CLIENT_ACME = "client_acme";
 const CLIENT_NOVA = "client_nova";
+
+// Temporary frontend-only fixtures. UI pages/components should consume these
+// through frontend/lib/api.ts so real backend integration can replace them.
+const adminOverviewSummary: AdminOverviewSummary = {
+  totalClients: 2,
+  activeCampaigns: 1,
+  blockedSendsToday: 1,
+  monthlyAiCallsUsed: 42,
+};
+
+const clientOverviewSummary: ClientOverviewSummary = {
+  activeCampaigns: 1,
+  monthlyEmailLimit: 1000,
+  monthlyEmailsSent: 120,
+  blockedSendsThisMonth: 1,
+};
 
 const adminClients: Client[] = [
   {
@@ -103,6 +121,10 @@ const clientBlockedSends: BlockedSend[] = [
   },
 ];
 
+export async function getAdminOverviewSummary(): Promise<AdminOverviewSummary> {
+  return adminOverviewSummary;
+}
+
 export async function getAdminClients(): Promise<Client[]> {
   return adminClients;
 }
@@ -113,6 +135,10 @@ export async function getAdminCampaigns(): Promise<Campaign[]> {
 
 export async function getClientMe(): Promise<ClientContext> {
   return clientContext;
+}
+
+export async function getClientOverviewSummary(): Promise<ClientOverviewSummary> {
+  return clientOverviewSummary;
 }
 
 export async function getClientCampaigns(): Promise<Campaign[]> {

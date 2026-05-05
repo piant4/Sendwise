@@ -90,3 +90,17 @@ export interface BlockedSend {
   decision: SendDecision;
   created_at: string;
 }
+
+export interface AdminOverviewSummary {
+  totalClients: number;
+  activeCampaigns: number;
+  blockedSendsToday: number;
+  monthlyAiCallsUsed: number;
+}
+
+export interface ClientOverviewSummary {
+  activeCampaigns: number;
+  monthlyEmailLimit: number;
+  monthlyEmailsSent: number;
+  blockedSendsThisMonth: number;
+}

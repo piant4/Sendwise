@@ -4,7 +4,6 @@ from app.schemas.blocked_sends import BlockedSend
 from app.schemas.campaigns import Campaign
 from app.schemas.clients import Client, ClientContext, ClientUser
 from app.schemas.common import CampaignStatus, ClientStatus, SendDecision
-from app.schemas.usage import ApiUsage
 
 
 MOCK_CLIENT_ID = "client_acme"
@@ -65,25 +64,6 @@ _CLIENT_CAMPAIGNS: list[Campaign] = [
     ),
 ]
 
-_CLIENT_USAGE: list[ApiUsage] = [
-    ApiUsage(
-        id="usage_acme_api",
-        client_id=MOCK_CLIENT_ID,
-        usage_type="api_requests",
-        quantity=42,
-        metadata={"period": "2026-05"},
-        created_at="2026-05-05T12:00:00Z",
-    ),
-    ApiUsage(
-        id="usage_acme_dry_runs",
-        client_id=MOCK_CLIENT_ID,
-        usage_type="dry_run_sends",
-        quantity=3,
-        metadata={"period": "2026-05"},
-        created_at="2026-05-05T12:05:00Z",
-    ),
-]
-
 _CLIENT_BLOCKED_SENDS: list[BlockedSend] = [
     BlockedSend(
         id="blocked_acme_001",
@@ -113,11 +93,6 @@ class ClientsRepository:
                 for campaign in _CLIENT_CAMPAIGNS
                 if campaign.client_id == client_id
             ]
-        )
-
-    def list_current_client_usage(self, client_id: str) -> list[ApiUsage]:
-        return deepcopy(
-            [usage for usage in _CLIENT_USAGE if usage.client_id == client_id]
         )
 
     def list_current_client_blocked_sends(self, client_id: str) -> list[BlockedSend]:

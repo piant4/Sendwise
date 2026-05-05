@@ -2,7 +2,6 @@ from app.repositories.clients import ClientsRepository
 from app.schemas.blocked_sends import BlockedSend
 from app.schemas.campaigns import Campaign
 from app.schemas.clients import Client, ClientContext
-from app.schemas.usage import ApiUsage
 
 
 class ClientsService:
@@ -24,10 +23,6 @@ class ClientsService:
 
     def planned_client_stub(self, endpoint: str) -> dict[str, str]:
         return {"status": "stub", "endpoint": endpoint}
-
-    def list_current_client_usage(self) -> list[ApiUsage]:
-        client_id = self.repository.get_current_client_context().client.id
-        return self.repository.list_current_client_usage(client_id)
 
     def list_current_client_blocked_sends(self) -> list[BlockedSend]:
         client_id = self.repository.get_current_client_context().client.id

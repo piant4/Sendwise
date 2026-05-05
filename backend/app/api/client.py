@@ -6,6 +6,7 @@ from app.schemas.campaigns import Campaign
 from app.schemas.clients import ClientContext
 from app.schemas.usage import ApiUsage
 from app.services.clients import ClientsService
+from app.services.usage import UsageService
 
 router = APIRouter(
     prefix="/client",
@@ -15,6 +16,7 @@ router = APIRouter(
 
 
 clients_service = ClientsService()
+usage_service = UsageService()
 
 
 @router.get("/me", response_model=ClientContext)
@@ -39,7 +41,7 @@ def get_campaign_stats(campaign_id: str) -> dict[str, str]:
 
 @router.get("/usage", response_model=list[ApiUsage])
 def get_usage() -> list[ApiUsage]:
-    return clients_service.list_current_client_usage()
+    return usage_service.list_current_client_usage()
 
 
 @router.get("/blocked-sends", response_model=list[BlockedSend])

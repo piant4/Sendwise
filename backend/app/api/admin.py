@@ -5,6 +5,7 @@ from app.schemas.campaigns import Campaign
 from app.schemas.clients import Client
 from app.services.campaigns import CampaignsService
 from app.services.clients import ClientsService
+from app.services.usage import UsageService
 
 router = APIRouter(
     prefix="/admin",
@@ -15,6 +16,7 @@ router = APIRouter(
 
 clients_service = ClientsService()
 campaigns_service = CampaignsService()
+usage_service = UsageService()
 
 
 def stub_response(endpoint: str) -> dict[str, str]:
@@ -68,7 +70,7 @@ def list_client_campaigns(client_id: str) -> dict[str, str]:
 
 @router.get("/clients/{client_id}/usage")
 def get_client_usage(client_id: str) -> dict[str, str]:
-    return clients_service.planned_admin_client_stub(f"GET /admin/clients/{client_id}/usage")
+    return usage_service.planned_admin_client_usage_stub(client_id)
 
 
 @router.get("/clients/{client_id}/blocked-sends")
@@ -111,4 +113,4 @@ def list_blocked_sends() -> dict[str, str]:
 
 @router.get("/api-usage")
 def list_api_usage() -> dict[str, str]:
-    return stub_response("GET /admin/api-usage")
+    return usage_service.planned_admin_api_usage_stub()

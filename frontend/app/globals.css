@@ -23,8 +23,60 @@ a {
   color: inherit;
 }
 
-.shell {
+.app-shell {
   min-height: 100vh;
+}
+
+.app-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  border-bottom: 1px solid var(--border);
+  background: var(--panel);
+  padding: 18px 48px;
+}
+
+.brand-kicker,
+.brand-title {
+  margin: 0;
+}
+
+.brand-kicker {
+  color: var(--accent);
+  font-size: 13px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.brand-title {
+  color: var(--foreground);
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.main-nav,
+.link-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.main-nav a,
+.link-row a {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 10px 12px;
+  text-decoration: none;
+  background: #fff;
+}
+
+.main-nav a:hover,
+.link-row a:hover {
+  border-color: var(--accent);
+}
+
+.shell {
   padding: 48px;
 }
 
@@ -55,22 +107,17 @@ p {
   line-height: 1.6;
 }
 
-.nav {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
+.link-row {
   margin-top: 24px;
 }
 
-.nav a {
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 10px 12px;
-  text-decoration: none;
-  background: #fff;
-}
-
 @media (max-width: 720px) {
+  .app-header {
+    align-items: flex-start;
+    flex-direction: column;
+    padding: 18px 24px;
+  }
+
   .shell {
     padding: 24px;
   }

@@ -1,20 +1,14 @@
-import { getAdminCampaigns, getAdminClients } from "../../lib/api";
-
-export const dynamic = "force-dynamic";
-
-export default async function AdminPage() {
-  const [clients, campaigns] = await Promise.all([
-    getAdminClients(),
-    getAdminCampaigns(),
-  ]);
-
+export default function AdminPage() {
   return (
     <main className="shell">
       <section className="panel">
-        <p className="eyebrow">Milestone 0.5 Stub</p>
-        <h1>Admin Boundary</h1>
-        <p>Clients: {clients.length}</p>
-        <p>Campaigns: {campaigns.length}</p>
+        <p className="eyebrow">Sendwise Admin</p>
+        <h1>Admin Overview</h1>
+        <p>
+          Placeholder for the future operator dashboard. This page is
+          presentational and intentionally does not load clients, campaigns, or
+          deliverability data.
+        </p>
       </section>
     </main>
   );

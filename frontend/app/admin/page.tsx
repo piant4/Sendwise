@@ -2,15 +2,18 @@ import { DashboardCard } from "../../components/ui/DashboardCard";
 import { EmptyState } from "../../components/ui/EmptyState";
 import { SectionHeader } from "../../components/ui/SectionHeader";
 import { StatusBadge } from "../../components/ui/StatusBadge";
+import { getAdminOverviewSummary } from "../../lib/api";
 
-export default function AdminPage() {
+export default async function AdminPage() {
+  const summary = await getAdminOverviewSummary();
+
   return (
     <main className="shell">
       <section className="panel" style={{ display: "grid", gap: 24 }}>
         <SectionHeader
           title="Admin Overview"
-          description="Static operator dashboard placeholder. This page intentionally does not load clients, campaigns, or deliverability data."
-          actions={<StatusBadge label="Static shell" variant="neutral" />}
+          description="Operator dashboard summary from the frontend API boundary."
+          actions={<StatusBadge label="Mock-backed" variant="neutral" />}
         />
         <div
           style={{
@@ -21,20 +24,32 @@ export default function AdminPage() {
         >
           <DashboardCard
             title="Clients"
-            description="Reusable card shell for future admin metrics."
-            value="--"
-            footer="Data wiring belongs in a later task."
+            description="Total client accounts visible to the admin overview."
+            value={summary.totalClients.toLocaleString()}
+            footer="Read through frontend/lib/api.ts."
           />
           <DashboardCard
             title="Campaigns"
-            description="Presentation only, with no API calls."
-            value="--"
-            footer={<StatusBadge label="Static only" variant="success" />}
+            description="Active campaigns reported by the overview summary."
+            value={summary.activeCampaigns.toLocaleString()}
+            footer={<StatusBadge label="Overview summary" variant="success" />}
+          />
+          <DashboardCard
+            title="Blocked sends"
+            description="Blocked send attempts reported for today."
+            value={summary.blockedSendsToday.toLocaleString()}
+            footer="Displayed only; send rules stay backend-owned."
+          />
+          <DashboardCard
+            title="AI calls"
+            description="Monthly AI calls used across the overview."
+            value={summary.monthlyAiCallsUsed.toLocaleString()}
+            footer="Usage enforcement stays outside the UI."
           />
         </div>
         <EmptyState
-          title="No admin dashboard data loaded"
-          description="Future sections can reuse this state for clients, campaigns, usage, and blocked sends."
+          title="Detailed admin sections are not loaded"
+          description="This page consumes only the typed overview summary accessor."
         />
       </section>
     </main>

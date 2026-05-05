@@ -134,3 +134,36 @@ Confirmation:
 - no backend, DB, Docker, script, Makefile, listmonk, mailpit, package/config, or contract docs modified
 - no direct listmonk, PostgreSQL, SMTP, or database URL references added
 - no fetch calls added outside `frontend/lib/api.ts`
+
+## Frontend Overview Page Boundary Consumption
+
+Date: 2026-05-05
+Branch: feature/frontend-v1
+Scope: Minimal page wiring for `/admin` and `/client` to consume typed overview summary accessors through `frontend/lib/api.ts`.
+Files created: None.
+Files modified:
+- `frontend/app/admin/page.tsx`
+- `frontend/app/client/page.tsx`
+- `docs/audit_log.md`
+Tests executed:
+- `cd frontend && npm run lint` reached the known interactive Next.js ESLint setup prompt; ESLint was not configured.
+- `cd frontend && npm run build` passed.
+- `bash scripts/audit.sh` passed.
+- `bash scripts/smoke_test.sh` passed.
+- `docker compose config` passed.
+- `git diff --name-only` confirmed only allowed tracked files changed.
+- `rg "\bfetch\s*\(" frontend/app frontend/components frontend/lib` confirmed the only fetch remains in `frontend/lib/api.ts`.
+- `rg "mock-api" frontend/app frontend/components` returned no matches.
+- `rg -i "listmonk|postgres|postgresql|smtp|database_url|db_url" frontend/app frontend/components frontend/lib frontend/types` returned no frontend matches.
+Tests not executed and reason:
+- No backend pytest was run because this task did not touch backend behavior, database access, Guard logic, or API contracts.
+Residual risks:
+- Overview summaries remain mock-backed until matching backend contracts are approved.
+- Real auth, tenant enforcement, deliverability decisions, sending, AI generation, and limit enforcement remain backend-owned future work.
+- `npm run build` generated untracked `frontend/next-env.d.ts`; it was not included in this task.
+Confirmation:
+- pages import overview data only from `frontend/lib/api.ts`
+- no `frontend/lib`, `frontend/types`, or `frontend/components` files modified
+- no backend, DB, Docker, script, Makefile, listmonk, mailpit, package/config, or contract docs modified
+- no direct listmonk, PostgreSQL, SMTP, or database URL references added
+- no fetch calls added outside `frontend/lib/api.ts`

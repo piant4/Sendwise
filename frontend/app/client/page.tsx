@@ -2,15 +2,18 @@ import { DashboardCard } from "../../components/ui/DashboardCard";
 import { EmptyState } from "../../components/ui/EmptyState";
 import { SectionHeader } from "../../components/ui/SectionHeader";
 import { StatusBadge } from "../../components/ui/StatusBadge";
+import { getClientOverviewSummary } from "../../lib/api";
 
-export default function ClientPage() {
+export default async function ClientPage() {
+  const summary = await getClientOverviewSummary();
+
   return (
     <main className="shell">
       <section className="panel" style={{ display: "grid", gap: 24 }}>
         <SectionHeader
           title="Client Overview"
-          description="Static client dashboard placeholder. This page intentionally does not load campaigns, usage, or blocked-send data."
-          actions={<StatusBadge label="Static shell" variant="neutral" />}
+          description="Client dashboard summary from the frontend API boundary."
+          actions={<StatusBadge label="Mock-backed" variant="neutral" />}
         />
         <div
           style={{
@@ -21,20 +24,32 @@ export default function ClientPage() {
         >
           <DashboardCard
             title="Campaigns"
-            description="Reusable card shell for future client metrics."
-            value="--"
-            footer="No campaign data is requested here."
+            description="Active campaigns reported by the overview summary."
+            value={summary.activeCampaigns.toLocaleString()}
+            footer="Read through frontend/lib/api.ts."
           />
           <DashboardCard
-            title="Usage"
-            description="Presentation only, with no API calls."
-            value="--"
-            footer={<StatusBadge label="Static only" variant="success" />}
+            title="Emails sent"
+            description="Monthly email sends reported for this overview."
+            value={summary.monthlyEmailsSent.toLocaleString()}
+            footer={`Limit: ${summary.monthlyEmailLimit.toLocaleString()}`}
+          />
+          <DashboardCard
+            title="Monthly limit"
+            description="Email limit displayed from the summary payload."
+            value={summary.monthlyEmailLimit.toLocaleString()}
+            footer="Limit enforcement stays backend-owned."
+          />
+          <DashboardCard
+            title="Blocked sends"
+            description="Blocked send attempts reported for this month."
+            value={summary.blockedSendsThisMonth.toLocaleString()}
+            footer={<StatusBadge label="Overview summary" variant="success" />}
           />
         </div>
         <EmptyState
-          title="No client dashboard data loaded"
-          description="Future sections can reuse this state for campaigns, usage, and blocked sends."
+          title="Detailed client sections are not loaded"
+          description="This page consumes only the typed overview summary accessor."
         />
       </section>
     </main>

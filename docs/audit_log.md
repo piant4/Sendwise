@@ -1173,6 +1173,22 @@ Rischi prioritari:
   Rischio: Current stubs prove layering but not real persistence, relationship integrity, or DB-backed client isolation.
   Suggested next micro-task: In an approved persistence task, replace the in-memory association with a minimal DB-backed repository contract for `campaign_contacts`.
 
+## 2026-05-05 - EMAIL_SENDING_ENABLED authorize fail-closed guard
+
+Implemented state:
+- `POST /campaigns/{campaign_id}/authorize` now evaluates `EMAIL_SENDING_ENABLED` before campaign state and contact checks.
+- Missing or non-`true` `EMAIL_SENDING_ENABLED` blocks internally and logs through `BlockedSendsService.log_blocked_authorization()`.
+- `EMAIL_SENDING_ENABLED=true` allows the existing campaign state and contact checks to continue.
+
+Known limits:
+- No real send, listmonk dispatch, DB persistence, auth/RBAC, or response API change was introduced.
+- Blocked send logging remains on the existing in-memory stub path.
+
+Tests referenced:
+- `python -m compileall app tests`
+- `git diff --check`
+- `docker compose config`
+
 Suggested micro-task order:
 1. Wire `EMAIL_SENDING_ENABLED=false` fail-closed into `CampaignsService.authorize_campaign()` before any `authorized` result can be returned.
 2. Add client lifecycle authorization for paused/blocked/archived clients.

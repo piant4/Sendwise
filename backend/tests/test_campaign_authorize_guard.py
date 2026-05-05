@@ -1,3 +1,4 @@
+from app.core.config import get_settings
 from app.guard.deliverability_guard import DeliverabilityGuard, SendDecision
 from app.repositories.campaigns import CampaignsRepository
 from app.schemas.campaigns import Campaign
@@ -68,6 +69,7 @@ def _authorize_status(status: CampaignStatus) -> str:
         repository=CampaignStateRepository(campaign),
         guard=DeliverabilityGuard(),
         blocked_sends_service=BlockedSendsService(RecordingBlockedSendsRepository()),
+        email_sending_enabled=True,
     )
 
     response = service.authorize_campaign(campaign.id)
@@ -109,6 +111,7 @@ def test_blocked_campaign_authorize_logs_blocked_send_attempt() -> None:
         repository=CampaignStateRepository(campaign),
         guard=DeliverabilityGuard(),
         blocked_sends_service=blocked_sends_service,
+        email_sending_enabled=True,
     )
 
     response = service.authorize_campaign(campaign.id)
@@ -137,6 +140,7 @@ def test_allowed_campaign_authorize_does_not_log_blocked_send_attempt() -> None:
         repository=CampaignStateRepository(campaign),
         guard=DeliverabilityGuard(),
         blocked_sends_service=blocked_sends_service,
+        email_sending_enabled=True,
     )
 
     response = service.authorize_campaign(campaign.id)
@@ -162,6 +166,7 @@ def test_ready_campaign_with_all_sendable_contacts_is_authorized() -> None:
         guard=DeliverabilityGuard(),
         blocked_sends_service=BlockedSendsService(blocked_sends_repository),
         contacts_service=contacts_service,
+        email_sending_enabled=True,
     )
 
     response = service.authorize_campaign(campaign.id)
@@ -195,6 +200,7 @@ def test_ready_campaign_with_non_sendable_contact_is_blocked() -> None:
             contacts_service=StubContactsService(
                 contacts=[_contact_with_status(status)]
             ),
+            email_sending_enabled=True,
         )
 
         response = service.authorize_campaign(campaign.id)
@@ -215,6 +221,7 @@ def test_draft_and_paused_campaigns_block_before_contact_checks() -> None:
                 RecordingBlockedSendsRepository()
             ),
             contacts_service=FailingContactsService(),
+            email_sending_enabled=True,
         )
 
         response = service.authorize_campaign(campaign.id)
@@ -235,6 +242,7 @@ def test_blocked_contact_authorization_logs_blocked_send_attempt() -> None:
         contacts_service=StubContactsService(
             contacts=[_contact_with_status(ContactStatus.unsubscribed)]
         ),
+        email_sending_enabled=True,
     )
 
     response = service.authorize_campaign(campaign.id)
@@ -251,3 +259,52 @@ def test_blocked_contact_authorization_logs_blocked_send_attempt() -> None:
     assert record.contact_id is None
     assert record.reason == "Contact state unsubscribed cannot send."
     assert record.decision.value == SendDecision.BLOCKED.value
+
+
+def test_missing_email_sending_enabled_blocks_and_logs(monkeypatch) -> None:
+    monkeypatch.delenv("EMAIL_SENDING_ENABLED", raising=False)
+    get_settings.cache_clear()
+    campaign = _campaign_with_status(CampaignStatus.ready)
+    blocked_sends_repository = RecordingBlockedSendsRepository()
+    service = CampaignsService(
+        repository=CampaignStateRepository(campaign),
+        guard=DeliverabilityGuard(),
+        blocked_sends_service=BlockedSendsService(blocked_sends_repository),
+        contacts_service=FailingContactsService(),
+    )
+
+    response = service.authorize_campaign(campaign.id)
+
+    assert response == {
+        "status": SendDecision.BLOCKED.value,
+        "endpoint": f"POST /campaigns/{campaign.id}/authorize",
+    }
+    assert len(blocked_sends_repository.records) == 1
+    assert blocked_sends_repository.records[0].reason == (
+        'EMAIL_SENDING_ENABLED is not exactly "true".'
+    )
+    get_settings.cache_clear()
+
+
+def test_false_email_sending_enabled_blocks_and_logs(monkeypatch) -> None:
+    monkeypatch.setenv("EMAIL_SENDING_ENABLED", "false")
+    get_settings.cache_clear()
+    campaign = _campaign_with_status(CampaignStatus.ready)
+    blocked_sends_repository = RecordingBlockedSendsRepository()
+    service = CampaignsService(
+        repository=CampaignStateRepository(campaign),
+        guard=DeliverabilityGuard(),
+        blocked_sends_service=BlockedSendsService(blocked_sends_repository),
+        contacts_service=FailingContactsService(),
+    )
+
+    response = service.authorize_campaign(campaign.id)
+
+    assert set(response.keys()) == {"status", "endpoint"}
+    assert response["status"] == SendDecision.BLOCKED.value
+    assert response["endpoint"] == f"POST /campaigns/{campaign.id}/authorize"
+    assert len(blocked_sends_repository.records) == 1
+    assert blocked_sends_repository.records[0].decision.value == (
+        SendDecision.BLOCKED.value
+    )
+    get_settings.cache_clear()

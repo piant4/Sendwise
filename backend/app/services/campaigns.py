@@ -1,3 +1,4 @@
+from app.core.config import get_settings
 from app.guard.deliverability_guard import DeliverabilityGuard
 from app.repositories.campaigns import CampaignsRepository
 from app.schemas.campaigns import Campaign
@@ -12,11 +13,17 @@ class CampaignsService:
         guard: DeliverabilityGuard | None = None,
         blocked_sends_service: BlockedSendsService | None = None,
         contacts_service: ContactsService | None = None,
+        email_sending_enabled: bool | None = None,
     ) -> None:
         self.repository = repository or CampaignsRepository()
         self.guard = guard or DeliverabilityGuard()
         self.blocked_sends_service = blocked_sends_service or BlockedSendsService()
         self.contacts_service = contacts_service or ContactsService()
+        self.email_sending_enabled = (
+            get_settings().email_sending_enabled
+            if email_sending_enabled is None
+            else email_sending_enabled
+        )
 
     def list_admin_campaigns(self) -> list[Campaign]:
         return self.repository.list_admin_campaigns()
@@ -32,6 +39,16 @@ class CampaignsService:
         campaign = self.repository.get_campaign(campaign_id)
         if campaign is None:
             return self.planned_admin_campaign_stub(endpoint)
+
+        send_gate = self.guard.authorize_campaign_send(self.email_sending_enabled)
+        if send_gate.decision.value == "blocked":
+            self.blocked_sends_service.log_blocked_authorization(
+                client_id=campaign.client_id,
+                campaign_id=campaign.id,
+                reason=send_gate.reason,
+                decision=send_gate.decision.value,
+            )
+            return {"status": send_gate.decision.value, "endpoint": endpoint}
 
         decision = self.guard.authorize_campaign_state(campaign.status)
         if decision.decision.value == "blocked":

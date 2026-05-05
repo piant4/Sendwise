@@ -27,12 +27,12 @@ class DeliverabilityGuard:
     def authorize_campaign_send(self, email_sending_enabled: bool) -> GuardResult:
         if not email_sending_enabled:
             return GuardResult(
-                decision=SendDecision.DRY_RUN,
+                decision=SendDecision.BLOCKED,
                 reason='EMAIL_SENDING_ENABLED is not exactly "true".',
             )
         return GuardResult(
-            decision=SendDecision.BLOCKED,
-            reason="Real send authorization is not implemented in Milestone 0.",
+            decision=SendDecision.AUTHORIZED,
+            reason='EMAIL_SENDING_ENABLED is exactly "true".',
         )
 
     def authorize_campaign_state(self, campaign_status: CampaignStatus) -> GuardResult:

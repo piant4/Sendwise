@@ -1,9 +1,10 @@
 from copy import deepcopy
 
+from app.core.current_client import get_current_client_id
 from app.schemas.usage import ApiUsage
 
 
-MOCK_USAGE_CLIENT_ID = "client_acme"
+MOCK_USAGE_CLIENT_ID = get_current_client_id()
 
 _API_USAGE: list[ApiUsage] = [
     ApiUsage(

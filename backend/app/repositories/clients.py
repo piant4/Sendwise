@@ -1,15 +1,16 @@
 from copy import deepcopy
 
+from app.core.current_client import get_current_client_id
 from app.schemas.campaigns import Campaign
 from app.schemas.clients import Client, ClientContext, ClientUser
 from app.schemas.common import CampaignStatus, ClientStatus
 
 
-MOCK_CLIENT_ID = "client_acme"
+MOCK_CLIENT_ID = get_current_client_id()
 
 _ADMIN_CLIENTS: list[Client] = [
     Client(
-        id="client_acme",
+        id=MOCK_CLIENT_ID,
         name="Acme Studio",
         status=ClientStatus.active,
         created_at="2026-05-01T09:00:00Z",

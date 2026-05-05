@@ -1,10 +1,11 @@
 from copy import deepcopy
 
+from app.core.current_client import get_current_client_id
 from app.schemas.blocked_sends import BlockedSend
 from app.schemas.common import SendDecision
 
 
-MOCK_CLIENT_ID = "client_acme"
+MOCK_CLIENT_ID = get_current_client_id()
 
 _BLOCKED_SENDS: list[BlockedSend] = [
     BlockedSend(

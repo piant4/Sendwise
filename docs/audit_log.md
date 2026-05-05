@@ -233,3 +233,133 @@ Confirmation:
 - no DB, listmonk, auth/RBAC, email sending, or Deliverability Guard implementation introduced
 - no frontend, admin router, client router, usage, blocked_sends, Docker, env, Makefile, README, or dependency changes made
 - fix is minimal and limited to the confirmed backend router/service boundary issue
+
+## Backend Multi-Client Isolation Audit
+
+Date: 2026-05-05
+Branch: feature/backend-core
+Task type: backend_audit
+Implementation depth: audit_only
+Scope: Read-only audit of multi-client isolation for extracted backend domains: clients, campaigns, usage, and blocked_sends.
+
+Expected contract:
+- FastAPI remains the gatekeeper and must enforce client isolation.
+- Every customer-owned business entity must include `client_id` or be reachable through a `client_id` relationship.
+- Client dashboard endpoints must return only the caller client's data.
+- Admin endpoints may expose cross-client data only through admin routes.
+- No real auth/RBAC, DB persistence, listmonk, sending, or Deliverability Guard implementation is part of this audit.
+
+Client_id flow observed:
+- Current mock client context originates in `backend/app/repositories/clients.py` as `MOCK_CLIENT_ID = "client_acme"` and `_CLIENT_CONTEXT`.
+- `GET /client/me` returns `ClientsService.get_current_client_context()`.
+- `GET /client/campaigns` derives `client_id` from `ClientsRepository.get_current_client_context().client.id`, then calls `ClientsRepository.list_current_client_campaigns(client_id)`.
+- `GET /client/usage` uses `UsageService.list_current_client_usage()`, which imports `MOCK_USAGE_CLIENT_ID = "client_acme"` from `backend/app/repositories/usage.py`.
+- `GET /client/blocked-sends` uses `BlockedSendsService.list_current_client_blocked_sends()`, which imports `MOCK_CLIENT_ID = "client_acme"` from `backend/app/repositories/blocked_sends.py`.
+- Admin endpoints are separated under `/admin`; client endpoints are separated under `/client`; both currently share the placeholder API-key dependency.
+
+Boundary status by domain:
+- clients: OK for current stubs. Admin list intentionally returns both mock clients. Client context returns one mock client and matching user `client_id`.
+- campaigns: OK for current exposed data. Client campaign list filters by current mock client. Admin campaign list intentionally returns all mock campaigns. Repository supports optional `client_id` filtering, but the service exposes only the all-admin list today.
+- usage: OK for current exposed client data, but micro-fix needed before expanding beyond static stubs because the current client id is independently hardcoded in the usage repository.
+- blocked_sends: OK for current exposed client data, but micro-fix needed before expanding beyond static stubs because the current client id is independently hardcoded in the blocked_sends repository.
+
+Problems found:
+- Issue: Current client identity is duplicated across extracted domains instead of flowing from one mock/current client context.
+  Severity: medium
+  File: `backend/app/services/usage.py`, `backend/app/services/blocked_sends.py`, `backend/app/repositories/usage.py`, `backend/app/repositories/blocked_sends.py`
+  Risk: `GET /client/me` can report one client while `/client/usage` or `/client/blocked-sends` query another if one hardcoded mock id changes independently. No leakage is observed today because all constants currently equal `client_acme`, but the isolation boundary is brittle.
+  Suggested micro-fix: Pass the current mock `client_id` from the same current-client context used by `ClientsService`, or centralize the temporary mock current-client provider, then keep repository filtering explicit.
+- Issue: Admin per-client usage and blocked-sends routes are planned stubs and do not yet exercise repository filtering.
+  Severity: low
+  File: `backend/app/api/admin.py`
+  Risk: `GET /admin/clients/{client_id}/usage` and `GET /admin/clients/{client_id}/blocked-sends` return endpoint-only stub payloads, so the audit cannot prove their future read path will stay client-scoped when implemented.
+  Suggested micro-fix: When these planned endpoints become functional, route through service methods that pass the path `client_id` into repository filters and add read-only tests with at least two clients.
+- Issue: Placeholder auth separates admin and client routes by path only, not by role.
+  Severity: low
+  File: `backend/app/core/security.py`
+  Risk: A valid placeholder API key can reach both admin and client prefixes. This is expected in the current no-real-auth milestone, but it is not a production-grade admin/client boundary.
+  Suggested micro-fix: Keep as documented until the approved auth milestone; before real client data is exposed, introduce role/client context at the backend gatekeeper.
+
+Record/client_id evidence:
+- `campaigns`, `api_usage`, and `blocked_sends` schemas include required `client_id`.
+- `db/init.sql` defines `campaigns.client_id`, `api_usage.client_id`, and `blocked_sends.client_id` as `NOT NULL`.
+- `suppression_list.client_id` and `provider_events.client_id` are nullable by V1 contract and are outside the four-domain read surface audited here.
+- No real DB rows exist in the audited backend path; current data is in-memory static stub data.
+
+Checks executed:
+- Read and applied `docs/codex_prompt_engine_v1.md`.
+- Read and applied `docs/codex_skills/validate-state-and-persistence.md`.
+- Read and applied `docs/codex_skills/audit-runtime-flow.md`.
+- Read and applied `docs/codex_skills/check-anti-monolith.md`.
+- Read and applied `docs/codex_skills/run-regression-guard.md`.
+- Read and applied audit skill runtime-flow reference.
+- Reviewed V1 contracts: `docs/structural_contracts_v1.md`, `docs/api_contracts_v1.md`, `docs/data_model_v1.md`, and `docs/architecture_v1.md`.
+- Static inspection of backend API, service, repository, schema, DB stub, and existing tests for `client_id`.
+- `docker compose config` passed, with Docker config access warnings for `C:\Users\Jacopo\.docker\config.json`.
+- `git diff --check` passed.
+- In-memory Python syntax check passed for 38 backend app/test Python files using bundled Python and `PYTHONDONTWRITEBYTECODE=1`.
+- Direct service/repository checks passed: client campaign/usage/blocked_sends endpoints resolve to `client_acme`; admin campaigns intentionally include `client_acme` and `client_nova`; repository filters for campaigns, usage, and blocked_sends returned only the requested client data.
+
+Checks not executed and reason:
+- `PYTHONPATH=backend pytest backend/tests` could not run because `pytest` is not installed in the available shell.
+- `PYTHONPATH=backend python -m pytest backend/tests` with bundled Python could not run because the bundled Python environment has no `pytest` module.
+- `bash scripts/audit.sh` could not run in sandbox because Bash returned `Access is denied`; escalated retry reached WSL but failed because `/bin/bash` was not available.
+- `bash scripts/smoke_test.sh` could not run in sandbox because Bash returned `Access is denied`; escalated retry reached WSL but failed because `/bin/bash` was not available.
+
+Contract change request:
+- None. The identified micro-fix can preserve API, DB, frontend, Docker, and dependency contracts.
+
+Confirmation:
+- no application code modified during this audit
+- no backend API/service/repository code modified
+- no frontend, template, Docker, DB, Makefile, README, dependency, or schema changes made
+- no real auth/RBAC, DB persistence, listmonk, email sending, Deliverability Guard, or refactor implemented
+
+Recommendation:
+- Milestone 2 should wait for a small backend micro-fix that removes duplicated current-client hardcoding for usage and blocked_sends. Current client-facing responses do not leak cross-client data in the static stubs, but the mock isolation boundary is too brittle to carry forward unchanged.
+
+## Current Client Mock Centralization
+
+Date: 2026-05-05
+Branch: feature/backend-core
+Task type: backend_fix
+Implementation depth: minimal_fix
+
+Root cause:
+- The current mock client id was duplicated in repository constants across clients, usage, and blocked_sends. This made `/client/me`, `/client/usage`, and `/client/blocked-sends` vulnerable to drifting apart if one stub changed independently.
+
+Files created:
+- `backend/app/core/current_client.py`
+
+Files modified:
+- `backend/app/repositories/clients.py`
+- `backend/app/repositories/usage.py`
+- `backend/app/repositories/blocked_sends.py`
+- `docs/audit_log.md`
+
+Fix applied:
+- Added `get_current_client_id()` as the single temporary mock current-client provider.
+- Updated clients, usage, and blocked_sends repositories to derive their mock current-client constants from `get_current_client_id()`.
+- Preserved the current mock value: `client_acme`.
+
+Boundary confirmation:
+- No routers changed.
+- No API contracts changed.
+- No schema, DB, Docker, frontend, dependency, auth, RBAC, middleware, listmonk, or sending changes were introduced.
+- The new core module is limited to current mock client context and is not a general utility bucket.
+
+Checks executed:
+- In-memory Python syntax check passed for `backend/app/core/current_client.py`, `backend/app/repositories/clients.py`, `backend/app/repositories/usage.py`, and `backend/app/repositories/blocked_sends.py`.
+- Direct repository import and data guard passed: current client context, usage, and blocked_sends all resolve to `client_acme` and preserve existing record ids.
+- Direct service payload guard passed for `/client/me`, `/client/usage`, and `/client/blocked-sends` service paths.
+- Static search across touched current-client files found `"client_acme"` only in `backend/app/core/current_client.py`.
+- `docker compose config` passed with Docker config access warnings.
+- `git diff --check` passed with line-ending warnings only.
+
+Checks not executed and reason:
+- `python -m pytest backend/tests` could not run because `python` is not available in the shell.
+- Bundled Python `-m pytest backend/tests` could not run because `pytest` is not installed.
+- `bash scripts/audit.sh` and `bash scripts/smoke_test.sh` could not run in sandbox because Bash returned `Access is denied`; escalated retries reached WSL but failed because `/bin/bash` is unavailable.
+
+Residual risks:
+- Full HTTP endpoint regression still depends on an environment with backend runtime dependencies installed.

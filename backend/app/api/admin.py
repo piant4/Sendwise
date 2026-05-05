@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, status
 from app.core.security import require_api_key
 from app.schemas.campaigns import Campaign
 from app.schemas.clients import Client
-from app.schemas.common import CampaignStatus
+from app.services.campaigns import CampaignsService
 from app.services.clients import ClientsService
 
 router = APIRouter(
@@ -14,32 +14,11 @@ router = APIRouter(
 
 
 clients_service = ClientsService()
+campaigns_service = CampaignsService()
 
 
 def stub_response(endpoint: str) -> dict[str, str]:
     return {"status": "stub", "endpoint": endpoint}
-
-
-ADMIN_CAMPAIGNS: list[Campaign] = [
-    Campaign(
-        id="campaign_acme_welcome",
-        client_id="client_acme",
-        name="Welcome Series",
-        status=CampaignStatus.ready,
-        subject="Welcome to Acme Studio",
-        created_at="2026-05-03T08:00:00Z",
-        updated_at="2026-05-05T08:00:00Z",
-    ),
-    Campaign(
-        id="campaign_nova_launch",
-        client_id="client_nova",
-        name="Spring Launch",
-        status=CampaignStatus.draft,
-        subject="Spring preview",
-        created_at="2026-05-04T11:00:00Z",
-        updated_at="2026-05-05T11:00:00Z",
-    ),
-]
 
 
 @router.get("/clients", response_model=list[Client])
@@ -101,22 +80,28 @@ def list_client_blocked_sends(client_id: str) -> dict[str, str]:
 
 @router.get("/campaigns", response_model=list[Campaign])
 def list_campaigns() -> list[Campaign]:
-    return ADMIN_CAMPAIGNS
+    return campaigns_service.list_admin_campaigns()
 
 
 @router.get("/campaigns/{campaign_id}")
 def get_campaign(campaign_id: str) -> dict[str, str]:
-    return stub_response(f"GET /admin/campaigns/{campaign_id}")
+    return campaigns_service.planned_admin_campaign_stub(
+        f"GET /admin/campaigns/{campaign_id}"
+    )
 
 
 @router.post("/campaigns/{campaign_id}/pause")
 def pause_campaign(campaign_id: str) -> dict[str, str]:
-    return stub_response(f"POST /admin/campaigns/{campaign_id}/pause")
+    return campaigns_service.planned_admin_campaign_stub(
+        f"POST /admin/campaigns/{campaign_id}/pause"
+    )
 
 
 @router.post("/campaigns/{campaign_id}/resume")
 def resume_campaign(campaign_id: str) -> dict[str, str]:
-    return stub_response(f"POST /admin/campaigns/{campaign_id}/resume")
+    return campaigns_service.planned_admin_campaign_stub(
+        f"POST /admin/campaigns/{campaign_id}/resume"
+    )
 
 
 @router.get("/blocked-sends")

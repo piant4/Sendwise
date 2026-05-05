@@ -44,6 +44,19 @@ def test_admin_campaigns_stub_shape() -> None:
         "created_at",
         "updated_at",
     } <= data[0].keys()
+    assert [item["id"] for item in data] == [
+        "campaign_acme_welcome",
+        "campaign_nova_launch",
+    ]
+    assert _client_ids(data) == {"client_acme", "client_nova"}
+
+
+def test_admin_campaign_repository_can_filter_by_client_id() -> None:
+    from app.repositories.campaigns import CampaignsRepository
+
+    campaigns = CampaignsRepository().list_admin_campaigns(client_id="client_acme")
+
+    assert {campaign.client_id for campaign in campaigns} == {"client_acme"}
 
 
 def test_client_me_stub_shape_and_scope() -> None:

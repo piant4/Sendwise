@@ -103,3 +103,34 @@ Confirmation:
 - no real listmonk logic implemented
 - no n8n workflows implemented
 - no Celery, Keycloak, Metabase, Postal, Rspamd, or Budibase implemented
+
+## Backend Admin Campaign Boundary
+
+Date: 2026-05-05
+Milestone: Milestone 0.5 - Backend Core Boundary
+Scope: Moved admin campaign in-memory stub data and campaign-specific stub logic from the admin router into campaign service/repository boundaries.
+Files created:
+- `backend/app/repositories/campaigns.py`
+- `backend/app/services/campaigns.py`
+Files modified:
+- `backend/app/api/admin.py`
+- `backend/tests/test_milestone_05_stubs.py`
+- `docs/audit_log.md`
+Tests executed:
+- In-memory Python syntax compile check for changed backend/test files passed.
+- Direct campaign service/repository contract check passed.
+- `git diff --check` passed.
+Tests not executed and reason:
+- `PYTHONPATH=backend pytest backend/tests` could not run because `pytest` is not installed in the available Python environment.
+- `bash scripts/audit.sh` and `bash scripts/smoke_test.sh` could not run because `bash` is not available in the shell.
+- `docker compose config` could not run because `docker` is not available in the shell.
+- `python -m py_compile ...` could not run because bytecode writing to `backend/app/api/__pycache__` was denied; an in-memory syntax compile check was used instead.
+Residual risks:
+- Full FastAPI app startup and endpoint HTTP regression checks still need to run in an environment with project dependencies installed.
+Confirmation:
+- no API contract changes
+- no DB schema changes
+- no real persistence introduced
+- no real auth introduced
+- no email sending introduced
+- no listmonk integration introduced

@@ -103,3 +103,34 @@ Confirmation:
 - no real listmonk logic implemented
 - no n8n workflows implemented
 - no Celery, Keycloak, Metabase, Postal, Rspamd, or Budibase implemented
+
+## Frontend API Boundary Review
+
+Date: 2026-05-05
+Branch: feature/frontend-v1
+Scope: Minimal frontend API/mock boundary hardening for future admin and client overview summary consumption.
+Files created: None.
+Files modified:
+- `frontend/lib/api.ts`
+- `frontend/lib/mock-api.ts`
+- `frontend/types/index.ts`
+- `docs/audit_log.md`
+Tests executed:
+- `cd frontend && npm run lint` reached the known interactive Next.js ESLint setup prompt; ESLint was not configured.
+- `cd frontend && npm run build` passed.
+- `bash scripts/audit.sh` passed.
+- `bash scripts/smoke_test.sh` passed.
+- `docker compose config` passed.
+- `git diff --name-only` confirmed only allowed files changed.
+- `rg "\bfetch\s*\(" frontend/app frontend/components frontend/lib` confirmed the only fetch remains in `frontend/lib/api.ts`.
+- `rg -i "listmonk|postgres|postgresql|smtp|database_url|db_url" frontend/app frontend/components frontend/lib frontend/types` returned no frontend matches.
+Tests not executed and reason:
+- No backend pytest was run because this task did not touch backend behavior, database access, Guard logic, or API contracts.
+Residual risks:
+- Overview summaries are mock-only until matching backend API contracts are approved.
+- Real auth, tenant enforcement, deliverability decisions, sending, AI generation, and limit enforcement remain backend-owned future work.
+Confirmation:
+- no frontend app or component files modified
+- no backend, DB, Docker, script, Makefile, listmonk, mailpit, package/config, or contract docs modified
+- no direct listmonk, PostgreSQL, SMTP, or database URL references added
+- no fetch calls added outside `frontend/lib/api.ts`

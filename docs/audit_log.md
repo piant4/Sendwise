@@ -1250,3 +1250,20 @@ File modificati:
 
 Raccomandazione prossimo micro-task:
 - Implementare un micro-task backend-only che collega `EMAIL_SENDING_ENABLED=false` / fail-closed al flusso `CampaignsService.authorize_campaign()` prima di qualsiasi risultato `authorized`, senza cambiare response API, schema DB, frontend, Docker/env o introdurre real send.
+
+## 2026-05-05 - Empty target guard for campaign authorize
+
+Implemented state:
+- `POST /campaigns/{campaign_id}/authorize` now blocks internally when the campaign has no contacts from the existing campaign/contact stub association.
+- The empty-target decision runs after env, client lifecycle, and campaign state checks, and before per-contact sendability.
+- Blocked empty-target decisions log through the existing blocked_sends path with internal reason `no_campaign_contacts`.
+
+Known limits:
+- No public response shape, router, DB schema, real campaign_contacts table, listmonk integration, or sending behavior changed.
+
+Tests referenced:
+- `docker compose run --rm -v "<repo>\\backend\\app:/app/app:ro" -v "<repo>\\backend\\tests:/app/tests:ro" backend python -m pytest /app/tests`
+- `scripts/audit.sh`
+- `scripts/smoke_test.sh`
+- `docker compose config`
+- `git diff --check`

@@ -93,6 +93,10 @@ class OrderTrackingGuard(DeliverabilityGuard):
         self.calls.append("campaign")
         return super().authorize_campaign_state(campaign_status)
 
+    def authorize_campaign_targets(self, contact_count: int) -> GuardResult:
+        self.calls.append("target")
+        return super().authorize_campaign_targets(contact_count)
+
 
 def _campaign_with_status(status: CampaignStatus) -> Campaign:
     campaign = CampaignsRepository().get_campaign("campaign_acme_welcome")
@@ -258,7 +262,9 @@ def test_client_lifecycle_check_runs_after_env_and_before_campaign_state() -> No
         repository=CampaignStateRepository(campaign),
         guard=guard,
         blocked_sends_service=BlockedSendsService(RecordingBlockedSendsRepository()),
-        contacts_service=StubContactsService(contacts=[]),
+        contacts_service=StubContactsService(
+            contacts=[_contact_with_status(ContactStatus.sendable)]
+        ),
         clients_service=StubClientsService(ClientStatus.active),
         email_sending_enabled=True,
     )
@@ -266,7 +272,7 @@ def test_client_lifecycle_check_runs_after_env_and_before_campaign_state() -> No
     response = service.authorize_campaign(campaign.id)
 
     assert response["status"] == SendDecision.AUTHORIZED.value
-    assert guard.calls == ["send", "client", "campaign"]
+    assert guard.calls == ["send", "client", "campaign", "target"]
 
 
 def test_fail_closed_env_runs_before_client_lifecycle_check() -> None:
@@ -314,6 +320,35 @@ def test_ready_campaign_with_all_sendable_contacts_is_authorized() -> None:
     }
     assert contacts_service.calls == [(campaign.id, campaign.client_id)]
     assert blocked_sends_repository.records == []
+
+
+def test_ready_campaign_with_no_associated_contacts_is_blocked_and_logged() -> None:
+    campaign = _campaign_with_status(CampaignStatus.ready)
+    contacts_service = StubContactsService(contacts=[])
+    blocked_sends_repository = RecordingBlockedSendsRepository()
+    service = CampaignsService(
+        repository=CampaignStateRepository(campaign),
+        guard=DeliverabilityGuard(),
+        blocked_sends_service=BlockedSendsService(blocked_sends_repository),
+        contacts_service=contacts_service,
+        email_sending_enabled=True,
+    )
+
+    response = service.authorize_campaign(campaign.id)
+
+    assert response == {
+        "status": SendDecision.BLOCKED.value,
+        "endpoint": f"POST /campaigns/{campaign.id}/authorize",
+    }
+    assert contacts_service.calls == [(campaign.id, campaign.client_id)]
+    assert len(blocked_sends_repository.records) == 1
+
+    record = blocked_sends_repository.records[0]
+    assert record.client_id == campaign.client_id
+    assert record.campaign_id == campaign.id
+    assert record.contact_id is None
+    assert record.reason == "no_campaign_contacts"
+    assert record.decision.value == SendDecision.BLOCKED.value
 
 
 def test_ready_campaign_with_non_sendable_contact_is_blocked() -> None:

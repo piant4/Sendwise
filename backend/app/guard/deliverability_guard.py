@@ -59,6 +59,18 @@ class DeliverabilityGuard:
             reason=f"Client state {client_status.value} cannot send.",
         )
 
+    def authorize_campaign_targets(self, contact_count: int) -> GuardResult:
+        if contact_count > 0:
+            return GuardResult(
+                decision=SendDecision.AUTHORIZED,
+                reason="Campaign has associated contacts.",
+            )
+
+        return GuardResult(
+            decision=SendDecision.BLOCKED,
+            reason="no_campaign_contacts",
+        )
+
     def can_send_to_contact(self, contact_status: ContactStatus) -> GuardResult:
         if contact_status == ContactStatus.sendable:
             return GuardResult(

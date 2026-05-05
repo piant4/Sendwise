@@ -80,6 +80,19 @@ class CampaignsService:
             campaign_id=campaign.id,
             client_id=campaign.client_id,
         )
+        target_decision = self.guard.authorize_campaign_targets(len(contacts))
+        if target_decision.decision.value == "blocked":
+            self.blocked_sends_service.log_blocked_authorization(
+                client_id=campaign.client_id,
+                campaign_id=campaign.id,
+                reason=target_decision.reason,
+                decision=target_decision.decision.value,
+            )
+            return {
+                "status": target_decision.decision.value,
+                "endpoint": endpoint,
+            }
+
         for contact in contacts:
             contact_decision = self.guard.can_send_to_contact(contact.status)
             if contact_decision.decision.value == "blocked":

@@ -1,20 +1,20 @@
-import { getMockAdminCampaigns, getMockAdminClients } from "../../lib/mock-api";
+import { getAdminCampaigns, getAdminClients } from "../../lib/api";
 
-export default function AdminPage() {
-  const clients = getMockAdminClients();
-  const campaigns = getMockAdminCampaigns();
+export const dynamic = "force-dynamic";
+
+export default async function AdminPage() {
+  const [clients, campaigns] = await Promise.all([
+    getAdminClients(),
+    getAdminCampaigns(),
+  ]);
 
   return (
     <main className="shell">
       <section className="panel">
-        <p className="eyebrow">V1 Skeleton</p>
-        <h1>Admin Dashboard Placeholder</h1>
-        <p>
-          Admin data below comes from frontend mock helpers. The UI must call
-          only the FastAPI backend when real APIs are implemented.
-        </p>
-        <p>Mock clients: {clients.length}</p>
-        <p>Mock campaigns: {campaigns.length}</p>
+        <p className="eyebrow">Milestone 0.5 Stub</p>
+        <h1>Admin Boundary</h1>
+        <p>Clients: {clients.length}</p>
+        <p>Campaigns: {campaigns.length}</p>
       </section>
     </main>
   );

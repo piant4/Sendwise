@@ -1,20 +1,29 @@
-import { getMockClientCampaigns, getMockClientUsage } from "../../lib/mock-api";
+import {
+  getClientBlockedSends,
+  getClientCampaigns,
+  getClientMe,
+  getClientUsage,
+} from "../../lib/api";
 
-export default function ClientPage() {
-  const campaigns = getMockClientCampaigns();
-  const usage = getMockClientUsage();
+export const dynamic = "force-dynamic";
+
+export default async function ClientPage() {
+  const [context, campaigns, usage, blockedSends] = await Promise.all([
+    getClientMe(),
+    getClientCampaigns(),
+    getClientUsage(),
+    getClientBlockedSends(),
+  ]);
 
   return (
     <main className="shell">
       <section className="panel">
-        <p className="eyebrow">V1 Skeleton</p>
-        <h1>Client Dashboard Placeholder</h1>
-        <p>
-          Client data is scoped through mock helpers for now. Future real data
-          must come from backend APIs and remain isolated by client_id.
-        </p>
-        <p>Mock campaigns: {campaigns.length}</p>
-        <p>Mock API usage quantity: {usage.quantity}</p>
+        <p className="eyebrow">Milestone 0.5 Stub</p>
+        <h1>{context.client.name}</h1>
+        <p>Client ID: {context.client.id}</p>
+        <p>Campaigns: {campaigns.length}</p>
+        <p>Usage records: {usage.length}</p>
+        <p>Blocked sends: {blockedSends.length}</p>
       </section>
     </main>
   );

@@ -50,3 +50,13 @@ Run this checklist after each milestone and record results in `docs/audit_log.md
 - [ ] no unrequested refactors.
 - [ ] no backend bypass.
 - [ ] no restoration of old n8n-core architecture.
+
+## Milestone 0.5 - Parallel Work Boundary
+
+- [ ] backend schemas exist.
+- [ ] frontend types exist.
+- [ ] frontend mock API exists.
+- [ ] admin/client endpoint stubs exist.
+- [ ] client mock data uses a single client_id.
+- [ ] frontend API client supports mock mode.
+- [ ] ownership file defines backend/frontend split.

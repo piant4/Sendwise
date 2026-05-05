@@ -2,81 +2,109 @@
 
 Source of truth: `project_handoff_v1.md`.
 
-## Gate 0 - No Split Yet
+## Operational Boundary
 
-Before parallel work, these must exist:
-
-```txt
-structural contracts
-API contracts
-data model
-states
-repo skeleton
-audit script
-frontend mock API
-backend endpoint stubs
-```
-
-No one should start divergent backend/frontend implementation before Gate 0 is complete.
-
-## Gate 1 - Safe Split
-
-After Milestone 0/0.5:
+Current architecture rules:
 
 ```txt
-Person A -> Backend / DB / Guard / listmonk adapter
-Person B -> Frontend / UI / MJML / Mailpit / components
+backend is gatekeeper
+listmonk is engine only
+n8n is not core V1
 ```
 
-Person A owns:
+Contracts cannot be changed during feature branch work unless both developers approve.
+
+## Parallel Branches
+
+```txt
+Person A -> feature/backend-core
+Person B -> feature/frontend-v1
+```
+
+## Person A - Backend Core
+
+Owned folders:
 - `backend/`
 - `db/`
-- backend-owned listmonk adapter code
-- Deliverability Guard implementation
-- backend tests
 
-Person B owns:
+Allowed files:
+- `backend/app/api/`
+- `backend/app/schemas/`
+- `backend/app/services/`
+- `backend/app/repositories/`
+- `backend/app/guard/`
+- `backend/app/integrations/listmonk/`
+- `backend/tests/`
+- `db/`
+
+Forbidden files without explicit review:
 - `frontend/`
 - `templates/`
 - `mailpit/`
-- UI components and mock API evolution
-
-Shared files requiring coordination:
-- `docs/`
+- `listmonk/`
 - `docker-compose.yml`
 - `docker-compose.dev.yml`
 - `.env.example`
 - `Makefile`
-- `README.md`
+
+Audit rule:
+- Backend work must prove FastAPI remains the gatekeeper.
+- Backend work must preserve `client_id` isolation.
+- Backend work must not make listmonk the business source of truth.
+
+## Person B - Frontend V1
+
+Owned folders:
+- `frontend/`
+- `templates/`
+- `mailpit/`
+
+Allowed files:
+- `frontend/app/`
+- `frontend/components/`
+- `frontend/lib/`
+- `frontend/types/`
+- `templates/`
+- `mailpit/`
+
+Forbidden files without explicit review:
+- `backend/app/services/`
+- `backend/app/repositories/`
+- `backend/app/guard/`
+- `backend/app/integrations/listmonk/`
+- `db/`
+- `listmonk/`
+- `docker-compose.yml`
+- `docker-compose.dev.yml`
+- `.env.example`
+- `Makefile`
+
+Audit rule:
+- Frontend work must call FastAPI only.
+- Frontend work must not call PostgreSQL or listmonk directly.
+- Frontend work must not duplicate backend business, auth, or send authorization logic.
+
+## Shared Files Requiring Review
+
+- `docs/`
 - `scripts/`
-
-## Branch Strategy
-
-```txt
-main = stable
-develop = integration
-feature/backend-core
-feature/frontend-v1
-feature/listmonk-adapter
-feature/templates-mailpit
-feature/audit-tests
-```
-
-At the beginning, only these are required:
-
-```txt
-feature/backend-core
-feature/frontend-v1
-```
+- `README.md`
+- `docker-compose.yml`
+- `docker-compose.dev.yml`
+- `.env.example`
+- `Makefile`
+- API contracts and shared frontend/backend schema concepts
 
 ## Merge Rule
 
-```txt
 Merge every 1-2 days only if:
-make audit
-make smoke
+
+```txt
+bash scripts/audit.sh
+bash scripts/smoke_test.sh
 docker compose config
+backend and frontend checks relevant to the branch
 pass.
 ```
 
-Codex must not change contracts during merge unless explicitly instructed.
+Contract, schema, API, or ownership changes require review from both Person A and Person B before merge.

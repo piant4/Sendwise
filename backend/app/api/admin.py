@@ -1,6 +1,9 @@
 from fastapi import APIRouter, Depends, status
 
 from app.core.security import require_api_key
+from app.schemas.campaigns import Campaign
+from app.schemas.clients import Client
+from app.schemas.common import CampaignStatus, ClientStatus
 
 router = APIRouter(
     prefix="/admin",
@@ -13,9 +16,50 @@ def stub_response(endpoint: str) -> dict[str, str]:
     return {"status": "stub", "endpoint": endpoint}
 
 
-@router.get("/clients")
-def list_clients() -> dict[str, str]:
-    return stub_response("GET /admin/clients")
+# Milestone 0.5 stubs: stable mock payloads only. No auth, DB, service,
+# deliverability, or listmonk logic belongs in this router milestone.
+ADMIN_CLIENTS: list[Client] = [
+    Client(
+        id="client_acme",
+        name="Acme Studio",
+        status=ClientStatus.active,
+        created_at="2026-05-01T09:00:00Z",
+        updated_at="2026-05-05T09:00:00Z",
+    ),
+    Client(
+        id="client_nova",
+        name="Nova Retail",
+        status=ClientStatus.trial,
+        created_at="2026-05-02T10:30:00Z",
+        updated_at="2026-05-05T10:30:00Z",
+    ),
+]
+
+ADMIN_CAMPAIGNS: list[Campaign] = [
+    Campaign(
+        id="campaign_acme_welcome",
+        client_id="client_acme",
+        name="Welcome Series",
+        status=CampaignStatus.ready,
+        subject="Welcome to Acme Studio",
+        created_at="2026-05-03T08:00:00Z",
+        updated_at="2026-05-05T08:00:00Z",
+    ),
+    Campaign(
+        id="campaign_nova_launch",
+        client_id="client_nova",
+        name="Spring Launch",
+        status=CampaignStatus.draft,
+        subject="Spring preview",
+        created_at="2026-05-04T11:00:00Z",
+        updated_at="2026-05-05T11:00:00Z",
+    ),
+]
+
+
+@router.get("/clients", response_model=list[Client])
+def list_clients() -> list[Client]:
+    return ADMIN_CLIENTS
 
 
 @router.post("/clients", status_code=status.HTTP_202_ACCEPTED)
@@ -68,9 +112,9 @@ def list_client_blocked_sends(client_id: str) -> dict[str, str]:
     return stub_response(f"GET /admin/clients/{client_id}/blocked-sends")
 
 
-@router.get("/campaigns")
-def list_campaigns() -> dict[str, str]:
-    return stub_response("GET /admin/campaigns")
+@router.get("/campaigns", response_model=list[Campaign])
+def list_campaigns() -> list[Campaign]:
+    return ADMIN_CAMPAIGNS
 
 
 @router.get("/campaigns/{campaign_id}")

@@ -17,6 +17,8 @@ All product APIs must be called through FastAPI. UI, n8n, and external callers m
 
 ## Admin Clients
 
+Milestone 0.5: `GET /admin/clients` is stubbed with typed mock data.
+
 | Endpoint | Purpose | Allowed caller | Required scope/role | High-level input | High-level output | Main errors | Status |
 |---|---|---|---|---|---|---|---|
 | `GET /admin/clients` | List clients. | Admin dashboard. | Admin. | Filters, pagination. | Client summaries. | `401`, `403`. | `stub` |
@@ -33,6 +35,8 @@ All product APIs must be called through FastAPI. UI, n8n, and external callers m
 
 ## Admin Campaigns
 
+Milestone 0.5: `GET /admin/campaigns` is stubbed with typed mock data.
+
 | Endpoint | Purpose | Allowed caller | Required scope/role | High-level input | High-level output | Main errors | Status |
 |---|---|---|---|---|---|---|---|
 | `GET /admin/campaigns` | List all campaigns. | Admin dashboard. | Admin. | Filters, pagination. | Campaign summaries. | `401`, `403`. | `stub` |
@@ -44,14 +48,16 @@ All product APIs must be called through FastAPI. UI, n8n, and external callers m
 
 ## Client Dashboard
 
+Milestone 0.5: `GET /client/me`, `GET /client/campaigns`, `GET /client/usage`, and `GET /client/blocked-sends` are stubbed with typed mock data scoped to one mock client.
+
 | Endpoint | Purpose | Allowed caller | Required scope/role | High-level input | High-level output | Main errors | Status |
 |---|---|---|---|---|---|---|---|
 | `GET /client/me` | Read current client/user context. | Client dashboard. | Client user. | Auth context. | Client profile and permissions. | `401`, `403`. | `stub` |
 | `GET /client/campaigns` | List own campaigns. | Client dashboard. | Client user. | Filters, pagination. | Campaign summaries for caller's client only. | `401`, `403`. | `stub` |
 | `GET /client/campaigns/{campaign_id}` | Read own campaign detail. | Client dashboard. | Client user. | `campaign_id`. | Campaign detail if owned by caller's client. | `401`, `403`, `404`. | `planned` |
 | `GET /client/campaigns/{campaign_id}/stats` | Read campaign stats. | Client dashboard. | Client user. | `campaign_id`, date range. | Stats for caller's client only. | `401`, `403`, `404`. | `planned` |
-| `GET /client/usage` | Read own usage. | Client dashboard. | Client user. | Date range. | Usage records for caller's client. | `401`, `403`. | `planned` |
-| `GET /client/blocked-sends` | Read own blocked sends. | Client dashboard. | Client user. | Filters, pagination. | Blocked send records for caller's client. | `401`, `403`. | `planned` |
+| `GET /client/usage` | Read own usage. | Client dashboard. | Client user. | Date range. | Usage records for caller's client. | `401`, `403`. | `stub` |
+| `GET /client/blocked-sends` | Read own blocked sends. | Client dashboard. | Client user. | Filters, pagination. | Blocked send records for caller's client. | `401`, `403`. | `stub` |
 
 ## Campaigns
 

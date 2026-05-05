@@ -67,6 +67,14 @@ check_file .env.example
 check_file docker-compose.yml
 check_file docker-compose.dev.yml
 check_file backend/app/api/health.py
+check_file backend/app/schemas/clients.py
+check_file backend/app/schemas/campaigns.py
+check_file backend/app/schemas/contacts.py
+check_file backend/app/schemas/usage.py
+check_file backend/app/schemas/blocked_sends.py
+check_file frontend/types/index.ts
+check_file frontend/lib/mock-api.ts
+check_file frontend/lib/api.ts
 check_file README.md
 
 if ! grep -q '^EMAIL_SENDING_ENABLED=false$' .env.example; then
@@ -102,6 +110,27 @@ if ! grep -qi 'n8n is optional' README.md; then
   failures=$((failures + 1))
 else
   echo "OK README documents n8n optional status"
+fi
+
+if ! grep -Rqi 'backend is gatekeeper' README.md docs/ownership_v1.md; then
+  echo "FAIL README or ownership docs must state backend is gatekeeper"
+  failures=$((failures + 1))
+else
+  echo "OK backend gatekeeper boundary documented"
+fi
+
+if ! grep -Rqi 'listmonk is engine only' README.md docs/ownership_v1.md; then
+  echo "FAIL README or ownership docs must state listmonk is engine only"
+  failures=$((failures + 1))
+else
+  echo "OK listmonk engine-only boundary documented"
+fi
+
+if ! grep -Rqi 'n8n is not core V1' README.md docs/ownership_v1.md; then
+  echo "FAIL README or ownership docs must state n8n is not core V1"
+  failures=$((failures + 1))
+else
+  echo "OK n8n non-core boundary documented"
 fi
 
 if grep -Rqi 'listmonk' frontend/app frontend/lib frontend/types; then

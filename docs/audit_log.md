@@ -363,3 +363,129 @@ Checks not executed and reason:
 
 Residual risks:
 - Full HTTP endpoint regression still depends on an environment with backend runtime dependencies installed.
+
+## Milestone 2 Final Audit - Multi-client Isolation Enforcement
+
+Date: 2026-05-05
+Branch: feature/backend-core
+Task type: backend_audit
+Implementation depth: audit_only
+
+Applied operating skills:
+- `docs/codex_prompt_engine_v1.md`
+- Requested underscore skill paths were not present; applied repository equivalents:
+  - `docs/codex_skills/validate-state-and-persistence.md`
+  - `docs/codex_skills/audit-runtime-flow.md`
+  - `docs/codex_skills/check-anti-monolith.md`
+  - `docs/codex_skills/run-regression-guard.md`
+- Applied local audit skill runtime-flow reference.
+
+Audit summary:
+- Milestone 2 isolation is enforced for the current in-memory stub read surface.
+- Current client mock is centralized in `backend/app/core/current_client.py`.
+- Client-facing data endpoints under `/client` return only the current mock client data.
+- Admin cross-client data remains exposed only through `/admin` list endpoints in the current stub state.
+- No code, schema, frontend, Docker, dependency, auth/RBAC, DB, listmonk, or sending changes were made during this audit.
+
+Client_id isolation status:
+- Current client provider: `backend/app/core/current_client.py` exposes `get_current_client_id()` and currently returns `client_acme`.
+- Clients repository imports the provider and derives `MOCK_CLIENT_ID` from it.
+- Usage repository imports the provider and derives `MOCK_USAGE_CLIENT_ID` from it.
+- Blocked sends repository imports the provider and derives `MOCK_CLIENT_ID` from it.
+- `/client/me` returns one client context where `client.id == user.client_id == client_acme`.
+- `/client/campaigns` derives the current client from `ClientsRepository.get_current_client_context().client.id` and filters client campaigns by that id.
+- `/client/usage` passes the centralized mock client id into `UsageRepository.list_api_usage(client_id=...)`.
+- `/client/blocked-sends` passes the centralized mock client id into `BlockedSendsRepository.list_blocked_sends(client_id=...)`.
+- `/admin/clients` and `/admin/campaigns` intentionally expose cross-client mock data for admin list surfaces.
+
+Repository coverage:
+- `backend/tests/test_repository_client_isolation.py` covers:
+  - usage repository filtering out non-current client records
+  - blocked sends repository filtering out non-current client records
+  - clients repository using centralized current-client provider after monkeypatch/reload
+- `backend/tests/test_milestone_05_stubs.py` covers campaign repository client filtering for admin campaign data.
+- Repository filtering evidence from static inspection:
+  - `backend/app/repositories/clients.py` filters `_CLIENT_CAMPAIGNS` by explicit `client_id`.
+  - `backend/app/repositories/usage.py` filters `_API_USAGE` by optional explicit `client_id`.
+  - `backend/app/repositories/blocked_sends.py` filters `_BLOCKED_SENDS` by optional explicit `client_id`.
+  - `backend/app/repositories/campaigns.py` supports optional `client_id` filtering for admin campaign data.
+
+Service coverage:
+- `backend/tests/test_service_client_isolation.py` covers:
+  - `ClientsService.get_current_client_context()` and `ClientsService.list_current_client_campaigns()` using the patched current-client context
+  - `UsageService.list_current_client_usage()` using current-client usage scope
+  - `BlockedSendsService.list_current_client_blocked_sends()` using current-client blocked-send scope
+- `backend/tests/test_milestone_05_stubs.py` covers exposed client API behavior for:
+  - `/client/me`
+  - `/client/campaigns`
+  - `/client/usage`
+  - `/client/blocked-sends`
+  - planned `/client/campaigns/{campaign_id}` stub shape
+
+Hardcoded client_id review:
+- Expected central mock remains in `backend/app/core/current_client.py`: `client_acme`.
+- Admin multi-client campaign seed data still hardcodes `client_acme` and `client_nova` in `backend/app/repositories/campaigns.py`; this is admin-facing stub data and not used by `/client/campaigns`.
+- Clients repository still includes `client_nova` as admin list stub data.
+- No residual independent current-client hardcoding found in usage or blocked_sends repositories; both derive from the centralized provider.
+
+Client-facing endpoint coverage:
+- Covered and data-returning:
+  - `GET /client/me`
+  - `GET /client/campaigns`
+  - `GET /client/usage`
+  - `GET /client/blocked-sends`
+- Covered as planned stub:
+  - `GET /client/campaigns/{campaign_id}`
+- Present but not data-returning in current stub state:
+  - `GET /client/campaigns/{campaign_id}/stats`
+  - `POST /campaigns`
+  - `POST /campaigns/{campaign_id}/authorize`
+  - `POST /campaigns/{campaign_id}/send`
+  - `POST /contacts/import`
+  - `GET /contacts`
+  - `POST /contacts/{contact_id}/suppress`
+
+Admin cross-client vs client-scoped boundary:
+- Admin cross-client is currently allowed only under `/admin`:
+  - `GET /admin/clients` returns both `client_acme` and `client_nova`.
+  - `GET /admin/campaigns` returns campaigns for both `client_acme` and `client_nova`.
+- Client-scoped data is returned only under `/client` and is scoped to `client_acme` in the current mock state.
+- The shared placeholder API-key dependency is not a real admin/client role boundary. This is expected before the auth/RBAC milestone and remains a future production risk, not a Milestone 2 code divergence.
+
+Problems found:
+- Issue: Some client-capable planned endpoints are not service/repository isolation-tested yet because they return endpoint-only stubs rather than records.
+  Severity: low, future-implementation risk
+  File: `backend/app/api/client.py`, `backend/app/api/campaigns.py`, `backend/app/api/contacts.py`
+  Suggested next micro-task: When those planned endpoints become data-returning, route through service methods that obtain backend current-client or admin role context and add repository/service tests with at least two clients.
+- Issue: Placeholder API key allows reaching both `/admin` and `/client` route groups.
+  Severity: known milestone limitation
+  File: `backend/app/core/security.py`
+  Suggested next micro-task: In the approved auth/RBAC milestone, make backend auth context the source of current client and role, and keep admin cross-client reads role-gated.
+
+Contract change request:
+- None. No API, DB, frontend, Docker, dependency, or schema change is required for the audited current stub state.
+
+Tests executed:
+- `docker compose config` passed; Docker emitted access warnings for `C:\Users\Jacopo\.docker\config.json`.
+- `git diff --check` passed.
+- Read-only Python syntax check with bundled Python and `ast.parse` passed for 41 backend Python files.
+- Direct repository/service import checks passed with bundled Python:
+  - current client resolves to `client_acme`
+  - client service campaign, usage, and blocked-send reads resolve only to `client_acme`
+  - admin campaigns include `client_acme` and `client_nova`
+  - repository filters for `client_nova` return only requested/available scoped data or empty lists where no Nova records exist
+
+Tests not executed:
+- `PYTHONPATH=backend pytest backend/tests` did not run because `pytest` is not available in the shell PATH.
+- Bundled Python `-m pytest backend/tests` did not run because the bundled Python environment has no `pytest` module.
+- `bash scripts/audit.sh` did not run because Bash/WSL returned `Access is denied`.
+- `bash scripts/smoke_test.sh` did not run because Bash/WSL returned `Access is denied`.
+- HTTP endpoint checks with `fastapi.testclient` did not run because FastAPI is not installed in the bundled Python runtime.
+- `python -m compileall` was not counted as valid because it attempted to write `__pycache__` and hit access-denied errors; the read-only `ast.parse` syntax check was used instead.
+
+Files modified:
+- `docs/audit_log.md`
+- `docs/branch_handoffs/milestone_2_final_audit.md`
+
+Recommendation:
+- Milestone 2 can be closed for the current stub state. No client-facing data endpoint currently returns cross-client records, current client mock identity is centralized, repository/service isolation tests exist for the active client-facing read paths, and admin cross-client visibility is limited to admin-prefixed routes. Carry the two documented future risks into the auth/data-returning endpoint milestones.

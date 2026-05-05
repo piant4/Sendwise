@@ -134,3 +134,54 @@ Confirmation:
 - no real auth introduced
 - no email sending introduced
 - no listmonk integration introduced
+
+## Milestone 1 - Service & Repository Foundation Final Audit
+
+Date: 2026-05-05
+Milestone: Milestone 1 - Service & Repository Foundation
+Scope: Audit-only verification of router -> service -> repository boundaries for clients, campaigns, usage, and blocked_sends.
+Implementation depth: audit_only
+
+Boundary status:
+- clients: OK for extracted admin/client routes. Routers call `ClientsService`; service calls `ClientsRepository`; repository is in-memory only. Planned client stubs are service-owned.
+- campaigns: Micro-fix needed. Admin campaign routes use `CampaignsService` and `CampaignsRepository`, but core `/campaigns` routes still return router-local stubs from `backend/app/api/campaigns.py`.
+- usage: OK. Routers call `UsageService`; service calls `UsageRepository`; repository is in-memory only and filters by explicit `client_id` where applicable.
+- blocked_sends: OK. Routers call `BlockedSendsService`; service calls `BlockedSendsRepository`; repository is in-memory only and filters by explicit `client_id` where applicable.
+
+Problems found:
+- Issue: Core campaign router still owns stub response construction instead of delegating through a service boundary.
+  Severity: medium
+  File: `backend/app/api/campaigns.py`
+  Evidence: `stub_response()` is defined in the router and used by `POST /campaigns`, `POST /campaigns/{campaign_id}/authorize`, and `POST /campaigns/{campaign_id}/send`.
+  Suggested next micro-task: Move planned core campaign stubs behind `CampaignsService` while preserving the existing API response bodies and status codes.
+- Issue: Residual unused `stub_response()` helper remains in `backend/app/api/admin.py`.
+  Severity: low
+  File: `backend/app/api/admin.py`
+  Evidence: helper is still present in the router after extracted admin domains moved to services.
+  Suggested next micro-task: Remove the unused router helper if no route references it, without changing API contracts.
+
+Checks executed:
+- Contract/skill review: `docs/codex_prompt_engine_v1.md`, `docs/codex_skills/check-anti-monolith.md`, `docs/codex_skills/run-regression-guard.md`, audit runtime-flow skill, `docs/structural_contracts_v1.md`, `docs/api_contracts_v1.md`, and `docs/audit_checklist_v1.md`.
+- Static router/service/repository inspection for clients, campaigns, usage, and blocked_sends.
+- Search for direct repository imports in routers: none found.
+- Search for real DB/listmonk/email calls in inspected API/service/repository files: no real DB/listmonk/email integration found for the audited domains.
+- `docker compose config` passed with Docker config access warnings.
+- `git diff --check` passed.
+- In-memory Python syntax check passed for backend API, service, repository, and test files using bundled Python.
+- Direct import check passed for audited services and repositories using bundled Python.
+
+Checks not executed and reason:
+- `PYTHONPATH=backend pytest backend/tests` did not run because `pytest` is not installed in the available shell or bundled Python environment.
+- `bash scripts/audit.sh` did not run because Bash failed with `Access is denied`.
+- `bash scripts/smoke_test.sh` did not run because Bash failed with `Access is denied`.
+
+Contract change request:
+- None. The required fix should preserve existing API contracts and remain within backend service boundary work.
+
+Confirmation:
+- no application code modified during this audit
+- no backend API/service/repository code modified
+- no frontend, Docker, DB, template, Makefile, README, dependency, or schema changes made
+- no real DB, listmonk, email, auth/RBAC, AI generation, n8n, worker, or Deliverability Guard implementation attempted
+
+Recommendation: Milestone 1 is not closed yet. A micro-fix is needed for the core campaign router stub boundary before final closure.

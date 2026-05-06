@@ -9,8 +9,8 @@ import type {
 } from "../types";
 import * as mockApi from "./mock-api";
 
-// UI pages/components must consume dashboard data through this boundary.
-export const USE_MOCK_API = process.env.NEXT_PUBLIC_USE_MOCK_API === "true";
+// Default to mock mode unless the frontend is explicitly pointed at the backend.
+export const USE_MOCK_API = process.env.NEXT_PUBLIC_USE_MOCK_API !== "false";
 export const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL?.trim() ?? "";
 
 const DEFAULT_EMPTY_ADMIN_LIMITS = {

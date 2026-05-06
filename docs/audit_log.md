@@ -768,3 +768,85 @@ Confirmation:
 - no real auth, tokens, cookies, localStorage, or sessionStorage introduced
 - no real listmonk calls, real sending, AI generation, n8n, Celery, Keycloak, Metabase, Postal, Rspamd, or Budibase work implemented
 - fetches remain centralized in `frontend/lib/api.ts`
+## Milestone 0.8B.1 - Frontend Shell Bugfix & Runtime Hardening
+
+Date: 2026-05-06
+Branch: develop
+Scope:
+- audit and reproduce current frontend shell/runtime issues before fixing
+- remove the shell brand icon
+- restore correct mock-mode startup behavior
+- stop existing sidebar-linked routes from failing
+- verify frontend behavior in both mock and backend modes without touching backend contracts
+
+Files created:
+- `docs/branch_handoffs/frontend-shell-bugfix-0.8B.1-handoff.md`
+- `frontend/app/section-placeholder.tsx`
+- `frontend/app/admin/clients/page.tsx`
+- `frontend/app/admin/campaigns/page.tsx`
+- `frontend/app/admin/email-limits/page.tsx`
+- `frontend/app/admin/blocked-sends/page.tsx`
+- `frontend/app/admin/system/page.tsx`
+- `frontend/app/client/campaigns/page.tsx`
+- `frontend/app/client/email-limits/page.tsx`
+- `frontend/app/client/blocked-sends/page.tsx`
+
+Files modified:
+- `docs/audit_log.md`
+- `frontend/components/shared/BrandMark.tsx`
+- `frontend/components/layout/AppShell.tsx`
+- `frontend/components/layout/Sidebar.tsx`
+- `frontend/components/layout/MobileNav.tsx`
+- `frontend/components/layout/TopBar.tsx`
+- `frontend/lib/api.ts`
+
+Issues reproduced:
+- The shell brand rendered an icon next to `Sendwise`.
+- Plain `npm run dev` did not stay in mock mode when `NEXT_PUBLIC_USE_MOCK_API` was unset.
+- `/admin` and `/client` rendered the dashboard error state with `NEXT_PUBLIC_API_BASE_URL is required when NEXT_PUBLIC_USE_MOCK_API=false.` under that startup condition.
+- Sidebar-linked routes returned `404`: `/admin/clients`, `/admin/campaigns`, `/admin/email-limits`, `/admin/blocked-sends`, `/admin/system`, `/client/campaigns`, `/client/email-limits`, `/client/blocked-sends`.
+- No real `400` frontend route or backend API response was reproduced. The audited backend endpoints all returned `200 OK`.
+
+Implementation notes:
+- `frontend/lib/api.ts` now defaults to mock mode unless the env explicitly sets `NEXT_PUBLIC_USE_MOCK_API=false`.
+- `frontend/components/shared/BrandMark.tsx` now renders only the `Sendwise` wordmark.
+- Added minimal static app routes only for the already-linked shell URLs so navigation no longer points at missing pages.
+- `AppShell`, `Sidebar`, `MobileNav`, and `TopBar` now hide the mock badge when backend mode is active.
+- Verified mock-mode browser behavior on `http://localhost:3000` and backend-mode browser behavior on `http://localhost:3101`.
+- Verified `GET /health`, `GET /admin/clients`, `GET /admin/campaigns`, `GET /client/me`, `GET /client/campaigns`, `GET /client/usage`, and `GET /client/blocked-sends` against the running backend stub; each returned `200 OK`.
+
+Tests:
+- `cd frontend && npm run lint` passed.
+- `cd frontend && npm run build` passed.
+- `cd frontend && NEXT_PUBLIC_USE_MOCK_API=false NEXT_PUBLIC_API_BASE_URL=http://localhost:8000 npm run build` passed.
+- `bash scripts/audit.sh` passed.
+- `bash scripts/smoke_test.sh` passed.
+- `docker compose up -d backend` passed.
+- `docker compose config` passed.
+- `git diff --check` passed.
+- Boundary grep checks passed:
+  - no direct `mock-api` imports from `frontend/app` or `frontend/components`
+  - `fetch(` remains only in `frontend/lib/api.ts`
+  - no `listmonk`, `postgres`, `database`, or `smtp` references in allowed frontend runtime files
+  - no `localStorage`, `sessionStorage`, or `document.cookie` references in allowed frontend runtime files
+- Browser verification passed for the listed mock-mode routes on `http://localhost:3000`.
+- Browser verification passed for the listed backend-mode routes on `http://localhost:3101`.
+
+Tests not executed and reason:
+- A second concurrent backend-mode `npm run dev` session was not run because the workspace already had an active `next dev` process on `localhost:3000`, and Next 16 refused a second dev server in the same directory.
+- Backend-mode runtime verification was completed instead from a separate built frontend server on `http://localhost:3101`.
+
+Contract changes requested:
+- None.
+
+Risks:
+- The newly added sidebar route pages are static placeholders that prevent broken navigation but intentionally do not add new feature behavior.
+- `/login` remains intentionally mock-only until an approved auth milestone changes that boundary.
+- `/admin` and `/client` still reflect the current backend stub coverage and can show zero/empty aggregates where the backend does not yet expose richer data.
+
+Confirmation:
+- no backend, DB, Docker config, env, or contract files changed
+- no backend logic changed
+- no real auth, tokens, cookies, localStorage, or sessionStorage introduced
+- no real listmonk calls, real sending, AI generation, n8n, Celery, Keycloak, Metabase, Postal, Rspamd, or Budibase work implemented
+- fetches remain centralized in `frontend/lib/api.ts`

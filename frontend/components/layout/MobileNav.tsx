@@ -34,9 +34,10 @@ const ROLE_META: Record<
 
 interface MobileNavProps {
   role: AppRole;
+  isMockMode: boolean;
 }
 
-export function MobileNav({ role }: MobileNavProps) {
+export function MobileNav({ role, isMockMode }: MobileNavProps) {
   const [open, setOpen] = useState(false);
   const meta = ROLE_META[role];
 
@@ -86,7 +87,7 @@ export function MobileNav({ role }: MobileNavProps) {
             </p>
             <MainNav role={role} onNavigate={() => setOpen(false)} />
           </div>
-          <MockModeBadge />
+          {isMockMode ? <MockModeBadge /> : null}
         </div>
       </SheetContent>
     </Sheet>

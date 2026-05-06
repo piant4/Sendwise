@@ -33,9 +33,10 @@ const ROLE_META: Record<
 
 interface SidebarProps {
   role: AppRole;
+  isMockMode: boolean;
 }
 
-export function Sidebar({ role }: SidebarProps) {
+export function Sidebar({ role, isMockMode }: SidebarProps) {
   const meta = ROLE_META[role];
   const userInitials = meta.userName
     .split(" ")
@@ -71,7 +72,7 @@ export function Sidebar({ role }: SidebarProps) {
             <span>{meta.userEmail}</span>
           </div>
         </div>
-        <MockModeBadge />
+        {isMockMode ? <MockModeBadge /> : null}
       </div>
     </div>
   );

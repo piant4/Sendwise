@@ -7,6 +7,7 @@ interface TopBarProps {
   breadcrumb?: string[];
   actions?: ReactNode;
   leading?: ReactNode;
+  isMockMode: boolean;
 }
 
 export function TopBar({
@@ -14,6 +15,7 @@ export function TopBar({
   breadcrumb,
   actions,
   leading,
+  isMockMode,
 }: TopBarProps) {
   return (
     <header className="topbar">
@@ -36,7 +38,7 @@ export function TopBar({
           ) : null}
           <div className="topbar__title-row">
             <h1>{title}</h1>
-            <MockModeBadge />
+            {isMockMode ? <MockModeBadge /> : null}
           </div>
         </div>
       </div>

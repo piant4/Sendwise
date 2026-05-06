@@ -17,6 +17,7 @@ interface AppShellProps {
 export function AppShell({ children }: AppShellProps) {
   const pathname = usePathname();
   const role = getNavigationRole(pathname);
+  const isMockMode = process.env.NEXT_PUBLIC_USE_MOCK_API !== "false";
 
   if (!role) {
     return <>{children}</>;
@@ -32,13 +33,14 @@ export function AppShell({ children }: AppShellProps) {
   return (
     <div className="app-shell">
       <aside className="app-sidebar" aria-label="Barra laterale Sendwise">
-        <Sidebar role={role} />
+        <Sidebar role={role} isMockMode={isMockMode} />
       </aside>
       <div className="app-frame">
         <TopBar
           title={activeNavItem?.label ?? (role === "admin" ? "Admin" : "Cliente")}
           breadcrumb={breadcrumb}
-          leading={<MobileNav role={role} />}
+          leading={<MobileNav role={role} isMockMode={isMockMode} />}
+          isMockMode={isMockMode}
         />
         <div className="app-content">{children}</div>
       </div>

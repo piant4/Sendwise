@@ -199,3 +199,51 @@ Confirmation:
 - no backend, DB, Docker, scripts, Makefile, listmonk, mailpit, package/config, or contract docs modified
 - no direct listmonk, PostgreSQL, SMTP, or database URL references added
 - no fetch calls added outside `frontend/lib/api.ts`
+
+## Frontend Next 16 Dependency Upgrade
+
+Date: 2026-05-06
+Branch: feature/frontend-v1
+Scope: Controlled frontend dependency stack upgrade from Next.js 15 to Next.js 16.
+Files created: None.
+Files modified:
+- `frontend/package.json`
+- `frontend/tsconfig.json`
+- `docs/audit_log.md`
+Dependency changes:
+- `next` upgraded from `15.1.3` to `^16.2.4`.
+- `react` upgraded from `19.0.0` to `^19.2.5`.
+- `react-dom` upgraded from `19.0.0` to `^19.2.5`.
+- `typescript` remained `5.7.2`.
+Tests executed:
+- `cd frontend && node -v`
+- `cd frontend && npm -v`
+- `cd frontend && npm ls next react react-dom typescript`
+- `cd frontend && npm run build`
+- `bash scripts/audit.sh`
+- `bash scripts/smoke_test.sh`
+- `docker compose config`
+- `rg "\bfetch\s*\(" frontend/app frontend/components frontend/lib`
+- `rg "mock-api" frontend/app frontend/components`
+- `rg -i "listmonk|postgres|postgresql|smtp|database_url|db_url" frontend/app frontend/components frontend/lib frontend/types`
+- `rg -i "localStorage|sessionStorage|document.cookie|jwt|token" frontend/app frontend/components`
+- `cd frontend && rm -rf .next && npm run dev`
+- Runtime HTTP checks for `/`, `/login`, `/admin`, and `/client`.
+Tests not executed and reason:
+- `cd frontend && npm run lint` was not run because this repo has the known Next.js ESLint setup prompt and this task must not configure ESLint.
+Runtime route check:
+- `/` returned `307` redirect to `/login`.
+- `/login` returned `200` and rendered mock login with the mock mode indicator.
+- `/admin` returned `200` and rendered the mock-backed admin overview.
+- `/client` returned `200` and rendered the mock-backed client overview.
+Residual risks:
+- Next.js 16 requires Node.js `20.9.0+`; local preflight used Node `v25.6.1`.
+- `package-lock.json` is absent in this repo, so no lockfile was created under the max-new-files constraint.
+- `npm install` reported two moderate vulnerabilities; no broad audit fix was run because it would be outside the controlled upgrade scope.
+- Next.js 16 regenerates `frontend/next-env.d.ts` during build/dev; generated changes were not included in this task.
+Confirmation:
+- no frontend app, component, lib, or types files modified
+- no backend, DB, Docker, scripts, Makefile, listmonk, mailpit, or contract docs modified
+- no auth, route protection, tokens, cookies, localStorage, or sessionStorage introduced
+- no direct listmonk, PostgreSQL, SMTP, or database URL references added
+- no fetch calls added outside `frontend/lib/api.ts`

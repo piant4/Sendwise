@@ -545,3 +545,69 @@ Residual risks:
 Confirmation:
 - no application code changed
 - no backend, frontend, DB, Docker, script, Makefile, or env files modified
+
+## Milestone 0.7 - Frontend Backend Connection
+
+Date: 2026-05-06
+Branch: develop
+Scope:
+- Harden `frontend/lib/api.ts` for dual mock/backend operation through the existing API boundary
+- Keep mock mode behavior intact
+- Align frontend typing with current FastAPI stub payloads
+- Move `/admin` and `/client` to backend-derived overview data without adding backend routes
+
+Files created:
+- `docs/branch_handoffs/frontend-backend-connection-0.7-handoff.md`
+- `frontend/components/dashboard/AdminDashboard.tsx`
+- `frontend/components/dashboard/ClientDashboard.tsx`
+- `frontend/components/dashboard/DashboardErrorState.tsx`
+
+Files modified:
+- `docs/audit_log.md`
+- `frontend/app/admin/page.tsx`
+- `frontend/app/client/page.tsx`
+- `frontend/lib/api.ts`
+- `frontend/types/index.ts`
+
+Endpoints connected:
+- `GET /admin/clients`
+- `GET /admin/campaigns`
+- `GET /client/me`
+- `GET /client/campaigns`
+- `GET /client/usage`
+- `GET /client/blocked-sends`
+
+Implementation notes:
+- `frontend/lib/api.ts` now centralizes backend fetches, network failure handling, non-2xx handling, invalid JSON handling, and missing `NEXT_PUBLIC_API_BASE_URL` handling.
+- Mock mode still returns the existing `frontend/lib/mock-api.ts` fixtures and summaries unchanged.
+- Backend mode derives admin and client overview summaries from the allowed stub endpoints so the dashboards no longer stay mock-only when `NEXT_PUBLIC_USE_MOCK_API=false`.
+- `/admin` and `/client` were kept thin via dashboard components plus a shared error-state component.
+- Both pages are marked dynamic so backend-mode production builds do not fail by trying to pre-render unavailable local APIs.
+
+Tests:
+- `cd frontend && npm run lint` passed.
+- `cd frontend && npm run build` passed.
+- `cd frontend && NEXT_PUBLIC_USE_MOCK_API=false NEXT_PUBLIC_API_BASE_URL=http://localhost:8000 npm run build` passed.
+- `bash scripts/audit.sh` passed.
+- `bash scripts/smoke_test.sh` passed.
+- `docker compose config` passed.
+- `git diff --check` passed.
+- Boundary grep checks passed:
+  - no direct `mock-api` imports from `frontend/app` or `frontend/components`
+  - `fetch(` remains only in `frontend/lib/api.ts`
+  - no `listmonk`, `postgres`, `database`, or `smtp` references in allowed frontend runtime files
+  - no `localStorage`, `sessionStorage`, or `document.cookie` references in allowed frontend runtime files
+
+Tests not executed and reason:
+- No live browser or HTTP runtime verification was completed with the full local stack in backend mode. Docker Desktop had to be started during the session, and `docker compose up -d` did not finish bringing the stack up before handoff.
+
+Risks:
+- Admin backend mode still renders zero/empty values for overview fields that do not have matching backend stub endpoints yet.
+- Client backend mode still renders zero limits where the current backend stubs do not expose limit data.
+- A live backend-mode runtime check remains outstanding.
+
+Confirmation:
+- no backend, DB, Docker, or contract files were modified
+- no real auth, tokens, cookies, localStorage, sessionStorage, or session handling was introduced
+- no real listmonk calls, real sending, AI generation, n8n, Celery, Keycloak, Metabase, Postal, Rspamd, or Budibase work was implemented
+- fetches remain centralized in `frontend/lib/api.ts`

@@ -115,7 +115,7 @@ export interface AdminRecentBlockedSend {
 
 export interface AdminSystemStatus {
   api: "ok" | "warning";
-  mockData: "enabled";
+  mockData: "enabled" | "disabled";
   sending: "disabled";
   mailpit: "dev_only";
 }

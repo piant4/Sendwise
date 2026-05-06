@@ -59,6 +59,53 @@ const clientOverviewSummary: ClientOverviewSummary = {
   monthlyEmailLimit: 1000,
   monthlyEmailsSent: 120,
   blockedSendsThisMonth: 1,
+  campaignSummaries: [
+    {
+      id: "campaign_acme_welcome",
+      name: "Serie benvenuto",
+      status: "active",
+      sent: 120,
+      limit: 400,
+      lastActivityLabel: "Oggi, 09:20",
+    },
+    {
+      id: "campaign_acme_reactivation",
+      name: "Bozza riattivazione",
+      status: "draft",
+      sent: 0,
+      limit: 250,
+      lastActivityLabel: "Ieri, 14:00",
+    },
+    {
+      id: "campaign_acme_warmup",
+      name: "Controllo warmup dominio",
+      status: "blocked",
+      sent: 0,
+      limit: 100,
+      lastActivityLabel: "Ieri, 12:10",
+    },
+  ],
+  limitOverview: {
+    monthlyEmailLimit: 1000,
+    monthlyEmailsSent: 120,
+    dailyEmailLimit: 120,
+    dailyEmailsSent: 18,
+  },
+  readableBlockedSends: [
+    {
+      id: "blocked_acme_001",
+      campaignName: "Bozza riattivazione",
+      reason: "campaign_draft",
+      readableReason:
+        "La campagna e ancora in bozza e non puo essere valutata per l'invio.",
+      createdAtLabel: "Ieri, 12:10",
+    },
+  ],
+  accountStatus: {
+    status: "active",
+    label: "Account attivo",
+    note: "I dati mock mostrano l'account come attivo. L'autorizzazione di invio resta controllata dal backend.",
+  },
 };
 
 const adminClients: Client[] = [

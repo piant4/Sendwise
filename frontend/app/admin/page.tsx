@@ -5,36 +5,36 @@ import { getAdminOverviewSummary } from "../../lib/api";
 import type { AdminSystemStatus } from "../../types";
 
 const systemStatusLabels: Record<keyof AdminSystemStatus, string> = {
-  api: "Frontend API boundary",
-  mockData: "Mock data",
-  sending: "Sending",
+  api: "Boundary API frontend",
+  mockData: "Dati simulati",
+  sending: "Invio",
   mailpit: "Mailpit",
 };
 
 const systemStatusCopy: Record<AdminSystemStatus[keyof AdminSystemStatus], string> = {
   ok: "OK",
-  warning: "Warning",
-  enabled: "Enabled",
-  disabled: "Disabled",
-  dev_only: "Dev only",
+  warning: "Attenzione",
+  enabled: "Attivo",
+  disabled: "Disattivato",
+  dev_only: "Solo sviluppo",
 };
 
 export default async function AdminPage() {
   const summary = await getAdminOverviewSummary();
   const campaignStatuses = [
-    { label: "Active", value: summary.campaignStatusCounts.active },
-    { label: "Paused", value: summary.campaignStatusCounts.paused },
-    { label: "Blocked", value: summary.campaignStatusCounts.blocked },
-    { label: "Draft", value: summary.campaignStatusCounts.draft },
+    { label: "Attive", value: summary.campaignStatusCounts.active },
+    { label: "In pausa", value: summary.campaignStatusCounts.paused },
+    { label: "Bloccate", value: summary.campaignStatusCounts.blocked },
+    { label: "Bozze", value: summary.campaignStatusCounts.draft },
   ];
   const emailLimitRows = [
     {
-      label: "Monthly sent",
+      label: "Invii mensili",
       value: summary.emailLimitOverview.monthlySent,
       limit: summary.emailLimitOverview.monthlyLimit,
     },
     {
-      label: "Daily sent",
+      label: "Invii giornalieri",
       value: summary.emailLimitOverview.dailySent,
       limit: summary.emailLimitOverview.dailyLimit,
     },
@@ -51,9 +51,9 @@ export default async function AdminPage() {
         style={{ display: "grid", gap: 24, maxWidth: 1120 }}
       >
         <SectionHeader
-          title="Admin Overview"
-          description="Operational snapshot from the mock-backed frontend API boundary."
-          actions={<StatusBadge label="Mock-backed" variant="neutral" />}
+          title="Dashboard admin"
+          description="Panoramica operativa letta dal boundary API frontend con dati simulati."
+          actions={<StatusBadge label="Dati simulati" variant="neutral" />}
         />
         <div
           style={{
@@ -63,28 +63,28 @@ export default async function AdminPage() {
           }}
         >
           <DashboardCard
-            title="Clients"
-            description="Total client accounts visible to the admin overview."
+            title="Clienti"
+            description="Account cliente totali visibili nella panoramica admin."
             value={summary.totalClients.toLocaleString()}
-            footer="Read through the frontend API boundary."
+            footer="Lettura tramite frontend/lib/api.ts."
           />
           <DashboardCard
-            title="Campaigns"
-            description="Active campaigns reported by the overview summary."
+            title="Campagne"
+            description="Campagne attive riportate dal riepilogo."
             value={summary.activeCampaigns.toLocaleString()}
-            footer={<StatusBadge label="Overview summary" variant="success" />}
+            footer={<StatusBadge label="Panoramica" variant="success" />}
           />
           <DashboardCard
-            title="Blocked sends"
-            description="Send attempts blocked by backend-owned rules today."
+            title="Invii bloccati"
+            description="Tentativi di invio bloccati oggi da regole backend."
             value={summary.blockedSendsToday.toLocaleString()}
-            footer="Displayed only; send rules stay backend-owned."
+            footer="Solo visualizzazione: le regole di invio restano backend."
           />
           <DashboardCard
-            title="AI calls"
-            description="Monthly AI calls used across the overview."
+            title="Chiamate AI"
+            description="Chiamate AI mensili usate nella panoramica."
             value={summary.monthlyAiCallsUsed.toLocaleString()}
-            footer="Usage enforcement stays outside the UI."
+            footer="L'enforcement dei consumi resta fuori dalla UI."
           />
         </div>
         <div
@@ -95,8 +95,8 @@ export default async function AdminPage() {
           }}
         >
           <DashboardCard
-            title="Campaign status"
-            description="Compact status mix for the admin overview."
+            title="Stato campagne"
+            description="Sintesi compatta degli stati nella panoramica admin."
           >
             <div style={{ display: "grid", gap: 12 }}>
               {campaignStatuses.map((status) => (
@@ -117,8 +117,8 @@ export default async function AdminPage() {
           </DashboardCard>
 
           <DashboardCard
-            title="Email limits"
-            description="Limit usage displayed from mock overview data."
+            title="Limiti email"
+            description="Uso dei limiti mostrato dai dati simulati di panoramica."
           >
             <div style={{ display: "grid", gap: 14 }}>
               {emailLimitRows.map((row) => (
@@ -167,8 +167,8 @@ export default async function AdminPage() {
           }}
         >
           <DashboardCard
-            title="Recent blocked sends"
-            description="Preview of recent blocked attempts across clients."
+            title="Invii bloccati recenti"
+            description="Anteprima dei tentativi bloccati recenti tra i clienti."
           >
             <div style={{ display: "grid", gap: 12 }}>
               {summary.recentBlockedSends.map((blockedSend) => (
@@ -205,8 +205,8 @@ export default async function AdminPage() {
           </DashboardCard>
 
           <DashboardCard
-            title="System status"
-            description="Development-mode service notes for operators."
+            title="Stato sistema"
+            description="Note sui servizi in modalità sviluppo per gli operatori."
           >
             <div style={{ display: "grid", gap: 12 }}>
               {systemStatuses.map(([key, value]) => (

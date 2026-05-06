@@ -336,3 +336,93 @@ Confirmation:
 - no auth, route protection, tokens, cookies, localStorage, or sessionStorage introduced
 - no direct listmonk, PostgreSQL, SMTP, or database URL references added
 - no fetch calls added outside `frontend/lib/api.ts`
+
+## Client Overview V1 Foundation
+
+Date: 2026-05-06
+Branch: feature/frontend-v1
+Scope: Small mock-backed Client Overview V1 foundation through the typed frontend mock/API boundary and `/client` presentation.
+Files created: None.
+Files modified:
+- `frontend/types/index.ts`
+- `frontend/lib/mock-api.ts`
+- `frontend/app/client/page.tsx`
+- `docs/audit_log.md`
+Tests executed:
+- `cd frontend && npm run lint` passed.
+- `cd frontend && npm run build` passed.
+- `bash scripts/audit.sh` passed.
+- `bash scripts/smoke_test.sh` passed.
+- `docker compose config` passed.
+- `git diff --name-only` confirmed only allowed tracked files changed.
+- `rg "\bfetch\s*\(" frontend/app frontend/components frontend/lib` confirmed the only fetch remains in `frontend/lib/api.ts`.
+- `rg "mock-api" frontend/app frontend/components` returned no matches.
+- `rg -i "listmonk|postgres|postgresql|smtp|database_url|db_url" frontend/app frontend/components frontend/lib frontend/types` returned no matches.
+- `rg -i "localStorage|sessionStorage|document.cookie|jwt|token" frontend/app frontend/components` returned only the required client usage metric fields for token usage, not auth/session storage.
+- `cd frontend && rm -rf .next && npm run dev` ran on port 3001 because port 3000 was already in use.
+- Runtime HTTP checks for `/`, `/login`, `/admin`, and `/client`.
+Runtime route check:
+- `/` returned `307` redirect to `/login`.
+- `/login` returned `200` and rendered mock login with the mock mode indicator.
+- `/admin` returned `200` and rendered the existing mock-backed admin overview.
+- `/client` returned `200` and rendered expanded mock-backed Client Overview V1 sections.
+Tests not executed and reason:
+- No backend pytest was run because this task did not touch backend behavior, database access, Guard logic, or API contracts.
+Residual risks:
+- Client Overview V1 remains mock-backed until approved backend contracts exist.
+- Real auth, tenant enforcement, deliverability decisions, sending, AI generation, and limit enforcement remain backend-owned future work.
+- Next.js regenerated `frontend/next-env.d.ts` during build/dev; the generated diff was restored and not included.
+Confirmation:
+- `/client` imports data only from `frontend/lib/api.ts`.
+- `/`, `/login`, `/admin`, `frontend/components`, and package/config files were not modified.
+- no backend, DB, Docker, scripts, Makefile, listmonk, mailpit, or contract docs modified.
+- no auth, route protection, credential tokens, cookies, localStorage, or sessionStorage introduced.
+- no direct listmonk, PostgreSQL, SMTP, or database URL references added.
+- no fetch calls added outside `frontend/lib/api.ts`.
+
+## Client Overview Email Limits Copy Fix
+
+Date: 2026-05-06
+Branch: feature/frontend-v1
+Scope: Minimal mock-backed Client Overview correction to display email sending usage/limits instead of client-facing AI calls/tokens, with affected `/client` copy in Italian.
+Root cause: The Client Overview V1 mock/type/page model introduced AI calls/tokens as client-facing usage, but the product requirement is that the client-facing limit is email sending volume controlled by admin.
+Files created: None.
+Files modified:
+- `frontend/types/index.ts`
+- `frontend/lib/mock-api.ts`
+- `frontend/app/client/page.tsx`
+- `docs/audit_log.md`
+Tests executed:
+- `cd frontend && npm run lint` passed.
+- `cd frontend && npm run build` passed.
+- `bash scripts/audit.sh` passed.
+- `bash scripts/smoke_test.sh` passed.
+- `docker compose config` passed.
+- `git diff --name-only` confirmed only allowed tracked files changed.
+- `rg "\bfetch\s*\(" frontend/app frontend/components frontend/lib` confirmed the only fetch remains in `frontend/lib/api.ts`.
+- `rg "mock-api" frontend/app frontend/components` returned no matches.
+- `rg -i "listmonk|postgres|postgresql|smtp|database_url|db_url" frontend/app frontend/components frontend/lib frontend/types` returned no matches.
+- `rg -i "localStorage|sessionStorage|document.cookie|jwt|token" frontend/app frontend/components` returned no matches.
+- `rg -i "AI calls|Tokens|token usage|usage overview" frontend/app/client/page.tsx frontend/types/index.ts frontend/lib/mock-api.ts` returned no matches.
+- `cd frontend && rm -rf .next && npm run dev` initially hit sandbox `EPERM` on port bind, then ran with approval on port 3001 because port 3000 was already in use.
+- Runtime HTTP checks for `/`, `/login`, `/admin`, and `/client`.
+Runtime route check:
+- `/` returned `307` redirect to `/login`.
+- `/login` returned `200` and rendered mock login with the mock mode indicator.
+- `/admin` returned `200` and rendered the existing mock-backed Admin Overview V1.
+- `/client` returned `200` and rendered Italian email-limit based Client Overview copy.
+Tests not executed and reason:
+- No backend pytest was run because this task did not touch backend behavior, database access, Guard logic, or API contracts.
+Residual risks:
+- Client Overview remains mock-backed until approved backend contracts exist.
+- Admin dashboard still has its existing AI usage metric; this task intentionally changed only `/client`.
+- Real auth, tenant enforcement, deliverability decisions, sending, AI generation, and limit enforcement remain backend-owned future work.
+- Next.js regenerated `frontend/next-env.d.ts` during build/dev; the generated diff was restored and not included.
+Confirmation:
+- `/client` imports data only from `frontend/lib/api.ts`.
+- `/`, `/login`, `/admin`, `frontend/components`, and package/config files were not modified.
+- no backend, DB, Docker, scripts, Makefile, listmonk, mailpit, or contract docs modified.
+- no auth, route protection, credentials, auth tokens, cookies, localStorage, or sessionStorage introduced.
+- no direct listmonk, PostgreSQL, SMTP, or database URL references added.
+- no fetch calls added outside `frontend/lib/api.ts`.
+- client-facing AI call/token usage was removed from `/client`.

@@ -35,17 +35,70 @@ a {
 }
 
 .app-shell {
+  display: grid;
+  grid-template-columns: 272px minmax(0, 1fr);
   min-height: 100vh;
 }
 
+.app-sidebar {
+  background: #f4f8f7;
+  border-right: 1px solid var(--sw-border);
+  min-height: 100vh;
+}
+
+.sidebar-shell {
+  display: grid;
+  gap: 20px;
+  padding: 24px;
+  position: sticky;
+  top: 0;
+}
+
+.sidebar-brand {
+  display: grid;
+  gap: 4px;
+}
+
+.sidebar-section {
+  display: grid;
+  gap: 10px;
+}
+
+.sidebar-label {
+  color: var(--sw-muted);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0;
+  margin: 0;
+  text-transform: uppercase;
+}
+
+.app-frame {
+  min-width: 0;
+}
+
 .app-header {
-  display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 24px;
-  border-bottom: 1px solid var(--sw-border);
   background: var(--sw-panel);
+  border-bottom: 1px solid var(--sw-border);
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
   padding: 18px 48px;
+  position: sticky;
+  top: 0;
+  z-index: 20;
+}
+
+.app-header__brand {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  min-width: 0;
+}
+
+.app-content {
+  min-width: 0;
 }
 
 .brand-kicker,
@@ -73,7 +126,21 @@ a {
   gap: 12px;
 }
 
-.main-nav a,
+.main-nav {
+  align-items: stretch;
+  flex-direction: column;
+}
+
+.main-nav__link {
+  justify-content: flex-start;
+  width: 100%;
+}
+
+.main-nav__link[data-active="true"] {
+  border-color: var(--sw-accent);
+  box-shadow: inset 3px 0 0 var(--sw-accent);
+}
+
 .link-row a {
   border: 1px solid var(--sw-border);
   border-radius: 6px;
@@ -82,9 +149,42 @@ a {
   background: #fff;
 }
 
-.main-nav a:hover,
 .link-row a:hover {
   border-color: var(--sw-accent);
+}
+
+.mock-badge {
+  border-color: var(--sw-border);
+  color: var(--sw-dark);
+  height: auto;
+  justify-content: flex-start;
+  line-height: 1.35;
+  white-space: normal;
+}
+
+.mobile-nav-trigger {
+  display: none;
+}
+
+.mobile-nav-sheet {
+  background: #f7faf9;
+}
+
+.mobile-nav-content {
+  display: grid;
+  gap: 18px;
+  padding: 0 16px 16px;
+}
+
+.mock-login-submit {
+  background: var(--sw-accent);
+  border-color: var(--sw-accent);
+  color: #fff;
+  font-weight: 800;
+}
+
+.mock-login-submit:hover {
+  background: var(--sw-accent-strong);
 }
 
 .shell {
@@ -122,11 +222,26 @@ p {
   margin-top: 24px;
 }
 
-@media (max-width: 720px) {
+@media (max-width: 860px) {
+  .app-shell {
+    display: block;
+  }
+
+  .app-sidebar {
+    display: none;
+  }
+
   .app-header {
-    align-items: flex-start;
-    flex-direction: column;
-    padding: 18px 24px;
+    align-items: center;
+    padding: 14px 20px;
+  }
+
+  .app-header > .mock-badge {
+    display: none;
+  }
+
+  .mobile-nav-trigger {
+    display: inline-flex;
   }
 
   .shell {

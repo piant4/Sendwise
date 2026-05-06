@@ -2,6 +2,7 @@
 
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
+import { Button } from "../ui/button";
 
 type MockRole = "admin" | "client";
 
@@ -17,7 +18,7 @@ export function MockLoginForm() {
   return (
     <form
       onSubmit={handleSubmit}
-      aria-label="Mock login form"
+      aria-label="Modulo di accesso mock"
       style={{
         display: "grid",
         gap: "16px",
@@ -26,7 +27,7 @@ export function MockLoginForm() {
       }}
     >
       <label style={{ display: "grid", gap: "6px", fontWeight: 700 }}>
-        Username or email
+        Username o email
         <input
           name="username"
           type="text"
@@ -46,7 +47,7 @@ export function MockLoginForm() {
           name="password"
           type="password"
           autoComplete="current-password"
-          placeholder="Not validated in mock mode"
+          placeholder="Non validata in modalità mock"
           style={{
             border: "1px solid var(--border)",
             borderRadius: "6px",
@@ -56,7 +57,7 @@ export function MockLoginForm() {
         />
       </label>
       <label style={{ display: "grid", gap: "6px", fontWeight: 700 }}>
-        Development role
+        Ruolo di sviluppo
         <select
           name="role"
           value={role}
@@ -68,25 +69,17 @@ export function MockLoginForm() {
             padding: "11px 12px",
           }}
         >
-          <option value="client">Client user</option>
+          <option value="client">Utente cliente</option>
           <option value="admin">Admin</option>
         </select>
       </label>
-      <button
+      <Button
         type="submit"
-        style={{
-          background: "var(--accent)",
-          border: "1px solid var(--accent)",
-          borderRadius: "6px",
-          color: "#fff",
-          cursor: "pointer",
-          font: "inherit",
-          fontWeight: 800,
-          padding: "11px 14px",
-        }}
+        className="mock-login-submit"
+        size="lg"
       >
-        Continue
-      </button>
+        Continua
+      </Button>
     </form>
   );
 }

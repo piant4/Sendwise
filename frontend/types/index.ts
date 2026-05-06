@@ -136,4 +136,46 @@ export interface ClientOverviewSummary {
   monthlyEmailLimit: number;
   monthlyEmailsSent: number;
   blockedSendsThisMonth: number;
+  campaignSummaries: ClientCampaignSummary[];
+  limitOverview: ClientLimitOverview;
+  readableBlockedSends: ClientReadableBlockedSend[];
+  accountStatus: ClientAccountStatus;
+}
+
+export type ClientCampaignSummaryStatus =
+  | "draft"
+  | "active"
+  | "paused"
+  | "blocked"
+  | "completed"
+  | "archived";
+
+export interface ClientCampaignSummary {
+  id: string;
+  name: string;
+  status: ClientCampaignSummaryStatus;
+  sent: number;
+  limit: number;
+  lastActivityLabel: string;
+}
+
+export interface ClientLimitOverview {
+  monthlyEmailLimit: number;
+  monthlyEmailsSent: number;
+  dailyEmailLimit: number;
+  dailyEmailsSent: number;
+}
+
+export interface ClientReadableBlockedSend {
+  id: string;
+  campaignName: string;
+  reason: string;
+  readableReason: string;
+  createdAtLabel: string;
+}
+
+export interface ClientAccountStatus {
+  status: ClientStatus;
+  label: string;
+  note: string;
 }

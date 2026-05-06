@@ -4,11 +4,12 @@ export default function LoginPage() {
   return (
     <main className="shell">
       <section className="panel">
-        <p className="eyebrow">Development login</p>
-        <h1>Sendwise login</h1>
+        <p className="eyebrow">Accesso di sviluppo</p>
+        <h1>Accesso Sendwise</h1>
         <p>
-          This is a mock frontend-only login for development until backend auth
-          is approved. Credentials are not validated, stored, or sent anywhere.
+          Questa è una autenticazione mock solo frontend, usata finché la
+          autenticazione backend non viene approvata. Le credenziali non sono
+          validate, archiviate o inviate.
         </p>
         <MockLoginForm />
       </section>

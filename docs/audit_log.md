@@ -481,3 +481,44 @@ Confirmation:
 - no direct listmonk, PostgreSQL, SMTP, or database URL references added.
 - no fetch calls added outside `frontend/lib/api.ts`.
 - client-facing AI/token/daily-limit usage was removed from `/client`.
+
+## Milestone 0.6 — Integration Audit
+
+Date: 2026-05-06
+Branch: develop
+Branches merged:
+- feature/backend-core
+- feature/frontend-v1
+Scope:
+- Merge backend/frontend foundations into `develop`
+- Audit state and API compatibility between backend schemas/stubs and frontend shared types/mock boundary
+- Verify boundary rules, smoke/audit/build flows, and route inventory
+Conflicts:
+- No textual merge conflicts occurred.
+- One sandbox-related Git metadata permission issue blocked the first merge attempt; rerunning with elevated repo write access resolved it without content changes.
+Fixes:
+- Updated `frontend/types/index.ts` so `ClientCampaignSummaryStatus` reuses documented `CampaignStatus` values.
+- Updated `frontend/lib/mock-api.ts` so the client overview summary uses `running` instead of undocumented `active` for campaign state.
+Tests:
+- `bash scripts/audit.sh` passed.
+- `bash scripts/smoke_test.sh` passed.
+- `docker compose config` passed.
+- `git diff --check` passed.
+- `cd frontend && npm run lint` passed.
+- `cd frontend && npm run build` passed.
+- Boundary grep checks passed:
+  - no frontend `listmonk` references
+  - no frontend PostgreSQL/SMTP/database references
+  - no `mock-api` imports from frontend pages/components
+  - frontend `fetch(` remains centralized in `frontend/lib/api.ts`
+- Backend pytest not executed because `pytest` is unavailable in the local Python environment (`pytest: command not found`; `python3 -m pytest`: `No module named pytest`).
+Risks:
+- Sidebar links target routes not yet implemented: `/admin/clients`, `/admin/campaigns`, `/admin/email-limits`, `/admin/blocked-sends`, `/admin/system`, `/client/campaigns`, `/client/email-limits`, `/client/blocked-sends`.
+- `POST /campaigns/{campaign_id}/authorize` and `POST /campaigns/{campaign_id}/send` remain stub/planned rather than end-to-end typed integration contracts.
+- Admin/client overview summary helpers remain frontend mock-only and are not backed by backend endpoints yet.
+Confirmation:
+- No real email sending, AI generation, auth/RBAC, DB persistence work, listmonk execution, n8n workflows, Celery, Keycloak, Metabase, Postal, Rspamd, or Budibase was implemented.
+- Backend remains the gatekeeper.
+- Business PostgreSQL remains the documented business source of truth.
+- UI does not call listmonk or PostgreSQL directly.
+- `EMAIL_SENDING_ENABLED` remains fail-closed by exact `"true"` evaluation.

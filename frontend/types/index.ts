@@ -143,13 +143,7 @@ export interface ClientOverviewSummary {
   accountStatus: ClientAccountStatus;
 }
 
-export type ClientCampaignSummaryStatus =
-  | "draft"
-  | "active"
-  | "paused"
-  | "blocked"
-  | "completed"
-  | "archived";
+export type ClientCampaignSummaryStatus = CampaignStatus;
 
 export interface ClientCampaignSummary {
   id: string;

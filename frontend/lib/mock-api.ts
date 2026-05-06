@@ -63,7 +63,7 @@ const clientOverviewSummary: ClientOverviewSummary = {
     {
       id: "campaign_acme_welcome",
       name: "Serie benvenuto",
-      status: "active",
+      status: "running",
       sent: 120,
       limit: 400,
       lastActivityLabel: "Oggi, 09:20",

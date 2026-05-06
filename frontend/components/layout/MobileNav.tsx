@@ -6,6 +6,7 @@ import { Button } from "../ui/button";
 import {
   Sheet,
   SheetContent,
+  SheetDescription,
   SheetHeader,
   SheetTitle,
   SheetTrigger,
@@ -39,6 +40,9 @@ export function MobileNav() {
           >
             Sendwise
           </SheetTitle>
+          <SheetDescription className="sr-only">
+            Navigazione principale per le route Sendwise.
+          </SheetDescription>
         </SheetHeader>
         <div className="mobile-nav-content">
           <MainNav onNavigate={() => setOpen(false)} />

@@ -662,3 +662,49 @@ Confirmation:
 - no backend logic changed
 - no real auth, tokens, cookies, localStorage, or sessionStorage introduced
 - no real listmonk calls, real sending, AI generation, n8n, Celery, Keycloak, Metabase, Postal, Rspamd, or Budibase work implemented
+## Milestone 0.7.2 - Browser Backend Mode Smoke Check
+
+Date: 2026-05-06
+Branch: develop
+Scope:
+- verify browser rendering for `/login`, `/admin`, and `/client` in backend mode
+- confirm frontend/backend boundary behavior under a real browser session
+- apply only the smallest frontend-only fix required by runtime verification
+
+Files created:
+- `docs/branch_handoffs/browser-backend-mode-smoke-0.7.2-handoff.md`
+
+Files modified:
+- `docs/audit_log.md`
+- `frontend/components/layout/MobileNav.tsx`
+
+Implementation notes:
+- Verified `GET /health`, `GET /admin/clients`, `GET /admin/campaigns`, `GET /client/me`, `GET /client/campaigns`, `GET /client/usage`, and `GET /client/blocked-sends` against the running local backend stub.
+- Verified `/login`, `/admin`, and `/client` in a real browser with `NEXT_PUBLIC_USE_MOCK_API=false` and `NEXT_PUBLIC_API_BASE_URL=http://localhost:8000`.
+- Confirmed backend mode on `/admin` and `/client` through rendered values and the `Backend stub` badge while keeping `fetch(` centralized in `frontend/lib/api.ts`.
+- Added a `SheetDescription` to `frontend/components/layout/MobileNav.tsx` to remove the runtime warning emitted by the Radix sheet dialog when the mobile navigation opens.
+
+Tests:
+- `cd frontend && npm run lint` passed.
+- `cd frontend && npm run build` passed.
+- `cd frontend && NEXT_PUBLIC_USE_MOCK_API=false NEXT_PUBLIC_API_BASE_URL=http://localhost:8000 npm run build` passed.
+- `bash scripts/audit.sh` passed.
+- `bash scripts/smoke_test.sh` passed.
+- `docker compose config` passed.
+- `git diff --check` passed.
+- Required boundary grep checks passed.
+- Required localhost endpoint curls passed.
+- Real browser route verification passed for `/login`, `/admin`, and `/client`.
+
+Tests not executed and reason:
+- None.
+
+Risks:
+- `/login` remains intentionally mock-only until a separate auth milestone is approved.
+- Some `/admin` and `/client` summary fields remain zero/empty because the current backend stub does not expose fuller aggregate data yet.
+
+Confirmation:
+- no backend, DB, Docker config, env, or contract files changed
+- no real auth, tokens, cookies, localStorage, or sessionStorage introduced
+- no real listmonk calls, real sending, AI generation, n8n, Celery, Keycloak, Metabase, Postal, Rspamd, or Budibase work implemented
+- fetches remain centralized in `frontend/lib/api.ts`

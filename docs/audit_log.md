@@ -103,3 +103,381 @@ Confirmation:
 - no real listmonk logic implemented
 - no n8n workflows implemented
 - no Celery, Keycloak, Metabase, Postal, Rspamd, or Budibase implemented
+
+## Frontend API Boundary Review
+
+Date: 2026-05-05
+Branch: feature/frontend-v1
+Scope: Minimal frontend API/mock boundary hardening for future admin and client overview summary consumption.
+Files created: None.
+Files modified:
+- `frontend/lib/api.ts`
+- `frontend/lib/mock-api.ts`
+- `frontend/types/index.ts`
+- `docs/audit_log.md`
+Tests executed:
+- `cd frontend && npm run lint` reached the known interactive Next.js ESLint setup prompt; ESLint was not configured.
+- `cd frontend && npm run build` passed.
+- `bash scripts/audit.sh` passed.
+- `bash scripts/smoke_test.sh` passed.
+- `docker compose config` passed.
+- `git diff --name-only` confirmed only allowed files changed.
+- `rg "\bfetch\s*\(" frontend/app frontend/components frontend/lib` confirmed the only fetch remains in `frontend/lib/api.ts`.
+- `rg -i "listmonk|postgres|postgresql|smtp|database_url|db_url" frontend/app frontend/components frontend/lib frontend/types` returned no frontend matches.
+Tests not executed and reason:
+- No backend pytest was run because this task did not touch backend behavior, database access, Guard logic, or API contracts.
+Residual risks:
+- Overview summaries are mock-only until matching backend API contracts are approved.
+- Real auth, tenant enforcement, deliverability decisions, sending, AI generation, and limit enforcement remain backend-owned future work.
+Confirmation:
+- no frontend app or component files modified
+- no backend, DB, Docker, script, Makefile, listmonk, mailpit, package/config, or contract docs modified
+- no direct listmonk, PostgreSQL, SMTP, or database URL references added
+- no fetch calls added outside `frontend/lib/api.ts`
+
+## Frontend Overview Page Boundary Consumption
+
+Date: 2026-05-05
+Branch: feature/frontend-v1
+Scope: Minimal page wiring for `/admin` and `/client` to consume typed overview summary accessors through `frontend/lib/api.ts`.
+Files created: None.
+Files modified:
+- `frontend/app/admin/page.tsx`
+- `frontend/app/client/page.tsx`
+- `docs/audit_log.md`
+Tests executed:
+- `cd frontend && npm run lint` reached the known interactive Next.js ESLint setup prompt; ESLint was not configured.
+- `cd frontend && npm run build` passed.
+- `bash scripts/audit.sh` passed.
+- `bash scripts/smoke_test.sh` passed.
+- `docker compose config` passed.
+- `git diff --name-only` confirmed only allowed tracked files changed.
+- `rg "\bfetch\s*\(" frontend/app frontend/components frontend/lib` confirmed the only fetch remains in `frontend/lib/api.ts`.
+- `rg "mock-api" frontend/app frontend/components` returned no matches.
+- `rg -i "listmonk|postgres|postgresql|smtp|database_url|db_url" frontend/app frontend/components frontend/lib frontend/types` returned no frontend matches.
+Tests not executed and reason:
+- No backend pytest was run because this task did not touch backend behavior, database access, Guard logic, or API contracts.
+Residual risks:
+- Overview summaries remain mock-backed until matching backend contracts are approved.
+- Real auth, tenant enforcement, deliverability decisions, sending, AI generation, and limit enforcement remain backend-owned future work.
+- `npm run build` generated untracked `frontend/next-env.d.ts`; it was not included in this task.
+Confirmation:
+- pages import overview data only from `frontend/lib/api.ts`
+- no `frontend/lib`, `frontend/types`, or `frontend/components` files modified
+- no backend, DB, Docker, script, Makefile, listmonk, mailpit, package/config, or contract docs modified
+- no direct listmonk, PostgreSQL, SMTP, or database URL references added
+- no fetch calls added outside `frontend/lib/api.ts`
+
+## Frontend Mock Mode Indicator
+
+Date: 2026-05-05
+Branch: feature/frontend-v1
+Scope: Minimal presentational shell update to identify mock frontend-only auth and mock-backed data mode.
+Files created: None.
+Files modified:
+- `frontend/components/layout/AppShell.tsx`
+- `docs/audit_log.md`
+Tests executed:
+- `cd frontend && npm run lint` reached the known interactive Next.js ESLint setup prompt; ESLint was not configured.
+- `cd frontend && npm run build` passed.
+- `bash scripts/audit.sh` passed.
+- `bash scripts/smoke_test.sh` passed.
+- `docker compose config` passed.
+- `git diff --name-only` showed this task's files plus pre-existing dirty frontend mock-login files.
+- `rg "\bfetch\s*\(" frontend/app frontend/components frontend/lib` confirmed the only fetch remains in `frontend/lib/api.ts`.
+- `rg "mock-api" frontend/app frontend/components` returned no matches.
+- `rg -i "listmonk|postgres|postgresql|smtp|database_url|db_url" frontend/app frontend/components frontend/lib frontend/types` returned no frontend matches.
+- `rg -i "localStorage|sessionStorage|document.cookie|jwt|token" frontend/app frontend/components` returned no matches.
+Tests not executed and reason:
+- No backend pytest was run because this task did not touch backend behavior, database access, Guard logic, or API contracts.
+Residual risks:
+- Real auth, tenant enforcement, backend data, deliverability decisions, sending, AI generation, and limit enforcement remain future backend-owned work.
+Confirmation:
+- indicator is presentational only
+- no auth, route protection, credentials, tokens, cookies, localStorage, or sessionStorage introduced
+- no frontend app, frontend lib, frontend types, frontend auth, or frontend UI primitive files modified by this task
+- no backend, DB, Docker, scripts, Makefile, listmonk, mailpit, package/config, or contract docs modified
+- no direct listmonk, PostgreSQL, SMTP, or database URL references added
+- no fetch calls added outside `frontend/lib/api.ts`
+
+## Frontend Next 16 Dependency Upgrade
+
+Date: 2026-05-06
+Branch: feature/frontend-v1
+Scope: Controlled frontend dependency stack upgrade from Next.js 15 to Next.js 16.
+Files created: None.
+Files modified:
+- `frontend/package.json`
+- `frontend/tsconfig.json`
+- `docs/audit_log.md`
+Dependency changes:
+- `next` upgraded from `15.1.3` to `^16.2.4`.
+- `react` upgraded from `19.0.0` to `^19.2.5`.
+- `react-dom` upgraded from `19.0.0` to `^19.2.5`.
+- `typescript` remained `5.7.2`.
+Tests executed:
+- `cd frontend && node -v`
+- `cd frontend && npm -v`
+- `cd frontend && npm ls next react react-dom typescript`
+- `cd frontend && npm run build`
+- `bash scripts/audit.sh`
+- `bash scripts/smoke_test.sh`
+- `docker compose config`
+- `rg "\bfetch\s*\(" frontend/app frontend/components frontend/lib`
+- `rg "mock-api" frontend/app frontend/components`
+- `rg -i "listmonk|postgres|postgresql|smtp|database_url|db_url" frontend/app frontend/components frontend/lib frontend/types`
+- `rg -i "localStorage|sessionStorage|document.cookie|jwt|token" frontend/app frontend/components`
+- `cd frontend && rm -rf .next && npm run dev`
+- Runtime HTTP checks for `/`, `/login`, `/admin`, and `/client`.
+Tests not executed and reason:
+- `cd frontend && npm run lint` was not run because this repo has the known Next.js ESLint setup prompt and this task must not configure ESLint.
+Runtime route check:
+- `/` returned `307` redirect to `/login`.
+- `/login` returned `200` and rendered mock login with the mock mode indicator.
+- `/admin` returned `200` and rendered the mock-backed admin overview.
+- `/client` returned `200` and rendered the mock-backed client overview.
+Residual risks:
+- Next.js 16 requires Node.js `20.9.0+`; local preflight used Node `v25.6.1`.
+- `package-lock.json` is absent in this repo, so no lockfile was created under the max-new-files constraint.
+- `npm install` reported two moderate vulnerabilities; no broad audit fix was run because it would be outside the controlled upgrade scope.
+- Next.js 16 regenerates `frontend/next-env.d.ts` during build/dev; generated changes were not included in this task.
+Confirmation:
+- no frontend app, component, lib, or types files modified
+- no backend, DB, Docker, scripts, Makefile, listmonk, mailpit, or contract docs modified
+- no auth, route protection, tokens, cookies, localStorage, or sessionStorage introduced
+- no direct listmonk, PostgreSQL, SMTP, or database URL references added
+- no fetch calls added outside `frontend/lib/api.ts`
+
+## Admin Overview V1 Foundation
+
+Date: 2026-05-06
+Branch: feature/frontend-v1
+Scope: Small mock-backed admin overview foundation with minimal Sendwise/shadcn token hygiene, typed admin overview summary extension, and `/admin` presentation update.
+Files created: None.
+Files modified:
+- `frontend/app/globals.css`
+- `frontend/types/index.ts`
+- `frontend/lib/mock-api.ts`
+- `frontend/app/admin/page.tsx`
+- `docs/audit_log.md`
+Tests executed:
+- `cd frontend && npm run lint` passed.
+- `cd frontend && npm run build` passed.
+- `bash scripts/audit.sh` passed.
+- `bash scripts/smoke_test.sh` passed.
+- `docker compose config` passed.
+- `git diff --name-only` confirmed only allowed tracked files changed.
+- `rg "\bfetch\s*\(" frontend/app frontend/components frontend/lib` confirmed the only fetch remains in `frontend/lib/api.ts`.
+- `rg "mock-api" frontend/app frontend/components` returned no matches.
+- `rg -i "listmonk|postgres|postgresql|smtp|database_url|db_url" frontend/app frontend/components frontend/lib frontend/types` returned no matches.
+- `rg -i "localStorage|sessionStorage|document.cookie|jwt|token" frontend/app frontend/components` returned no matches.
+- `cd frontend && rm -rf .next && npm run dev` ran on port 3001 because port 3000 was already in use.
+- Runtime HTTP checks for `/`, `/login`, `/admin`, and `/client`.
+Runtime route check:
+- `/` returned `307` redirect to `/login`.
+- `/login` returned `200` and rendered mock login with the mock mode indicator.
+- `/admin` returned `200` and rendered expanded mock-backed Admin Overview V1 fields.
+- `/client` returned `200` and rendered the existing mock-backed client overview.
+Tests not executed and reason:
+- No backend pytest was run because this task did not touch backend behavior, database access, Guard logic, or API contracts.
+Residual risks:
+- Admin Overview V1 remains mock-backed until approved backend contracts exist.
+- Real auth, tenant enforcement, deliverability decisions, sending, AI generation, and limit enforcement remain backend-owned future work.
+Confirmation:
+- `/admin` imports data only from `frontend/lib/api.ts`.
+- `/`, `/login`, `/client`, `frontend/components`, and package/config files were not modified.
+- no backend, DB, Docker, scripts, Makefile, listmonk, mailpit, or contract docs modified.
+- no auth, route protection, tokens, cookies, localStorage, or sessionStorage introduced.
+- no direct listmonk, PostgreSQL, SMTP, or database URL references added.
+- no fetch calls added outside `frontend/lib/api.ts`.
+
+## Frontend Non-Interactive Lint Setup
+
+Date: 2026-05-06
+Branch: feature/frontend-v1
+Scope: Minimal frontend ESLint CLI setup for Next.js 16 so `npm run lint` runs without interactive setup or removed `next lint` behavior.
+Files created:
+- `frontend/eslint.config.mjs`
+- `frontend/package-lock.json`
+Files modified:
+- `frontend/package.json`
+- `docs/audit_log.md`
+Dependency changes:
+- Added `eslint` as a frontend dev dependency.
+- Added `eslint-config-next` as a frontend dev dependency.
+- No Next.js, React, or React DOM version changes.
+Tests executed:
+- `cd frontend && npm run lint` preflight failed non-interactively because `next lint` is removed in Next.js 16.
+- `cd frontend && npm run lint` passed after setup.
+- `cd frontend && npm run build` passed.
+- `bash scripts/audit.sh` passed.
+- `bash scripts/smoke_test.sh` passed.
+- `docker compose config` passed.
+- `git diff --name-only` reported tracked changes.
+- `rg "\bfetch\s*\(" frontend/app frontend/components frontend/lib` confirmed the only fetch remains in `frontend/lib/api.ts`.
+- `rg "mock-api" frontend/app frontend/components` returned no matches.
+- `rg -i "listmonk|postgres|postgresql|smtp|database_url|db_url" frontend/app frontend/components frontend/lib frontend/types` returned no matches.
+- `rg -i "localStorage|sessionStorage|document.cookie|jwt|token" frontend/app frontend/components` returned no matches.
+- `cd frontend && rm -rf .next && npm run dev` ran on port 3001 because port 3000 was already in use.
+- Runtime HTTP checks for `/`, `/login`, `/admin`, and `/client`.
+Tests not executed and reason:
+- No backend pytest was run because this task did not touch backend behavior, database access, Guard logic, or API contracts.
+Runtime route check:
+- `/` returned `307` redirect to `/login`.
+- `/login` returned `200` and rendered mock login with the mock mode indicator.
+- `/admin` returned `200` and rendered the mock-backed admin overview.
+- `/client` returned `200` and rendered the mock-backed client overview.
+Residual risks:
+- `npm install` reported two moderate vulnerabilities; no `npm audit fix` was run because that may make broader dependency changes outside this task.
+- `frontend/next-env.d.ts` is tracked and was regenerated during build/dev; generated diff was restored and not included.
+Confirmation:
+- no frontend app, component, lib, or types files modified
+- no backend, DB, Docker, scripts, Makefile, listmonk, mailpit, or contract docs modified
+- no auth, route protection, tokens, cookies, localStorage, or sessionStorage introduced
+- no direct listmonk, PostgreSQL, SMTP, or database URL references added
+- no fetch calls added outside `frontend/lib/api.ts`
+
+## Client Overview V1 Foundation
+
+Date: 2026-05-06
+Branch: feature/frontend-v1
+Scope: Small mock-backed Client Overview V1 foundation through the typed frontend mock/API boundary and `/client` presentation.
+Files created: None.
+Files modified:
+- `frontend/types/index.ts`
+- `frontend/lib/mock-api.ts`
+- `frontend/app/client/page.tsx`
+- `docs/audit_log.md`
+Tests executed:
+- `cd frontend && npm run lint` passed.
+- `cd frontend && npm run build` passed.
+- `bash scripts/audit.sh` passed.
+- `bash scripts/smoke_test.sh` passed.
+- `docker compose config` passed.
+- `git diff --name-only` confirmed only allowed tracked files changed.
+- `rg "\bfetch\s*\(" frontend/app frontend/components frontend/lib` confirmed the only fetch remains in `frontend/lib/api.ts`.
+- `rg "mock-api" frontend/app frontend/components` returned no matches.
+- `rg -i "listmonk|postgres|postgresql|smtp|database_url|db_url" frontend/app frontend/components frontend/lib frontend/types` returned no matches.
+- `rg -i "localStorage|sessionStorage|document.cookie|jwt|token" frontend/app frontend/components` returned only the required client usage metric fields for token usage, not auth/session storage.
+- `cd frontend && rm -rf .next && npm run dev` ran on port 3001 because port 3000 was already in use.
+- Runtime HTTP checks for `/`, `/login`, `/admin`, and `/client`.
+Runtime route check:
+- `/` returned `307` redirect to `/login`.
+- `/login` returned `200` and rendered mock login with the mock mode indicator.
+- `/admin` returned `200` and rendered the existing mock-backed admin overview.
+- `/client` returned `200` and rendered expanded mock-backed Client Overview V1 sections.
+Tests not executed and reason:
+- No backend pytest was run because this task did not touch backend behavior, database access, Guard logic, or API contracts.
+Residual risks:
+- Client Overview V1 remains mock-backed until approved backend contracts exist.
+- Real auth, tenant enforcement, deliverability decisions, sending, AI generation, and limit enforcement remain backend-owned future work.
+- Next.js regenerated `frontend/next-env.d.ts` during build/dev; the generated diff was restored and not included.
+Confirmation:
+- `/client` imports data only from `frontend/lib/api.ts`.
+- `/`, `/login`, `/admin`, `frontend/components`, and package/config files were not modified.
+- no backend, DB, Docker, scripts, Makefile, listmonk, mailpit, or contract docs modified.
+- no auth, route protection, credential tokens, cookies, localStorage, or sessionStorage introduced.
+- no direct listmonk, PostgreSQL, SMTP, or database URL references added.
+- no fetch calls added outside `frontend/lib/api.ts`.
+
+## Client Overview Email Limits Copy Fix
+
+Date: 2026-05-06
+Branch: feature/frontend-v1
+Scope: Minimal mock-backed Client Overview correction to display email sending usage/limits instead of client-facing AI calls/tokens, with affected `/client` copy in Italian.
+Root cause: The Client Overview V1 mock/type/page model introduced AI calls/tokens as client-facing usage, but the product requirement is that the client-facing limit is email sending volume controlled by admin.
+Files created: None.
+Files modified:
+- `frontend/types/index.ts`
+- `frontend/lib/mock-api.ts`
+- `frontend/app/client/page.tsx`
+- `docs/audit_log.md`
+Tests executed:
+- `cd frontend && npm run lint` passed.
+- `cd frontend && npm run build` passed.
+- `bash scripts/audit.sh` passed.
+- `bash scripts/smoke_test.sh` passed.
+- `docker compose config` passed.
+- `git diff --name-only` confirmed only allowed tracked files changed.
+- `rg "\bfetch\s*\(" frontend/app frontend/components frontend/lib` confirmed the only fetch remains in `frontend/lib/api.ts`.
+- `rg "mock-api" frontend/app frontend/components` returned no matches.
+- `rg -i "listmonk|postgres|postgresql|smtp|database_url|db_url" frontend/app frontend/components frontend/lib frontend/types` returned no matches.
+- `rg -i "localStorage|sessionStorage|document.cookie|jwt|token" frontend/app frontend/components` returned no matches.
+- `rg -i "AI calls|Tokens|token usage|usage overview" frontend/app/client/page.tsx frontend/types/index.ts frontend/lib/mock-api.ts` returned no matches.
+- `cd frontend && rm -rf .next && npm run dev` initially hit sandbox `EPERM` on port bind, then ran with approval on port 3001 because port 3000 was already in use.
+- Runtime HTTP checks for `/`, `/login`, `/admin`, and `/client`.
+Runtime route check:
+- `/` returned `307` redirect to `/login`.
+- `/login` returned `200` and rendered mock login with the mock mode indicator.
+- `/admin` returned `200` and rendered the existing mock-backed Admin Overview V1.
+- `/client` returned `200` and rendered Italian email-limit based Client Overview copy.
+Tests not executed and reason:
+- No backend pytest was run because this task did not touch backend behavior, database access, Guard logic, or API contracts.
+Residual risks:
+- Client Overview remains mock-backed until approved backend contracts exist.
+- Admin dashboard still has its existing AI usage metric; this task intentionally changed only `/client`.
+- Real auth, tenant enforcement, deliverability decisions, sending, AI generation, and limit enforcement remain backend-owned future work.
+- Next.js regenerated `frontend/next-env.d.ts` during build/dev; the generated diff was restored and not included.
+Confirmation:
+- `/client` imports data only from `frontend/lib/api.ts`.
+- `/`, `/login`, `/admin`, `frontend/components`, and package/config files were not modified.
+- no backend, DB, Docker, scripts, Makefile, listmonk, mailpit, or contract docs modified.
+- no auth, route protection, credentials, auth tokens, cookies, localStorage, or sessionStorage introduced.
+- no direct listmonk, PostgreSQL, SMTP, or database URL references added.
+- no fetch calls added outside `frontend/lib/api.ts`.
+- client-facing AI call/token usage was removed from `/client`.
+
+## Frontend Sidebar Role Nav And Client Email KPIs
+
+Date: 2026-05-06
+Branch: feature/frontend-v1
+Scope: Minimal mock-backed frontend shell correction for route-contextual sidebar/mobile navigation and client email delivery KPI model.
+Root cause: The shared `MainNav` rendered a static `/login`, `/admin`, and `/client` role switcher in every shell context, while the client overview type/mock/page still exposed daily email-limit fields instead of a client-facing delivery KPI grouping.
+Files created: None.
+Files modified:
+- `frontend/components/layout/AppShell.tsx`
+- `frontend/components/layout/MainNav.tsx`
+- `frontend/components/layout/Sidebar.tsx`
+- `frontend/components/layout/MobileNav.tsx`
+- `frontend/types/index.ts`
+- `frontend/lib/mock-api.ts`
+- `frontend/app/client/page.tsx`
+- `docs/audit_log.md`
+Tests executed:
+- `cd frontend && npm run lint` passed.
+- `cd frontend && npm run build` passed.
+- `bash scripts/audit.sh` passed.
+- `bash scripts/smoke_test.sh` passed.
+- `docker compose config` passed.
+- `git diff --check` passed.
+- `git diff --name-only` confirmed only allowed tracked files changed after restoring generated `frontend/next-env.d.ts`.
+- `rg "\bfetch\s*\(" frontend/app frontend/components frontend/lib` confirmed the only fetch remains in `frontend/lib/api.ts`.
+- `rg "mock-api" frontend/app frontend/components` returned no matches.
+- `rg -i "listmonk|postgres|postgresql|smtp|database_url|db_url" frontend/app frontend/components frontend/lib frontend/types` returned no matches.
+- `rg -i "localStorage|sessionStorage|document.cookie|jwt|auth token" frontend/app frontend/components` returned no matches.
+- `rg -n -i "AI calls|Tokens|token usage|usageOverview|dailyEmailLimit|dailyEmailsSent" frontend/app/client/page.tsx frontend/types/index.ts frontend/lib/mock-api.ts frontend/lib/api.ts` returned no matches.
+- `cd frontend && rm -rf .next && npm run dev` initially hit sandbox `EPERM` on port bind, then ran with approval on port 3001 because port 3000 was already in use.
+- Runtime browser checks for `/`, `/login`, `/admin`, and `/client` on `http://localhost:3001`.
+Runtime route check:
+- `/` redirected to `/login`.
+- `/login` rendered the mock login form and no dashboard navigation links.
+- `/admin` rendered the existing mock-backed admin overview with admin menu: Panoramica, Clienti, Campagne, Limiti email, Invii bloccati, Sistema.
+- `/client` rendered the corrected mock-backed client overview with client menu: Panoramica, Campagne, Limiti email, Invii bloccati.
+- `/client` showed Limite email mensile, Email inviate, Aperte, Finite in spam, Rimbalzate, and Invii bloccati.
+- `/client` did not show AI calls, token usage, or daily email limit terms.
+Tests not executed and reason:
+- No backend pytest was run because this task did not touch backend behavior, database access, Guard logic, API contracts, or schemas.
+Residual risks:
+- Route-contextual navigation is UI-only pathname inference, not real auth or tenant security.
+- Future placeholder links do not have pages yet and may render 404 until separately implemented.
+- Client KPIs remain mock-backed until approved backend contracts exist.
+- Admin dashboard still has its existing AI usage metric; this task intentionally changed only client-facing KPI presentation.
+Confirmation:
+- sidebar menu is route-contextual and mock-only, not real auth/security.
+- `/client` imports data only from `frontend/lib/api.ts`.
+- `/`, `/login`, `/admin`, package/config files, and generated `frontend/next-env.d.ts` were not modified.
+- no backend, DB, Docker, scripts, Makefile, listmonk, mailpit, or contract docs modified.
+- no auth, route protection, credentials, auth tokens, cookies, localStorage, or sessionStorage introduced.
+- no direct listmonk, PostgreSQL, SMTP, or database URL references added.
+- no fetch calls added outside `frontend/lib/api.ts`.
+- client-facing AI/token/daily-limit usage was removed from `/client`.

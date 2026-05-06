@@ -90,3 +90,99 @@ export interface BlockedSend {
   decision: SendDecision;
   created_at: string;
 }
+
+export interface AdminCampaignStatusCounts {
+  active: number;
+  paused: number;
+  blocked: number;
+  draft: number;
+}
+
+export interface AdminEmailLimitOverview {
+  monthlyLimit: number;
+  monthlySent: number;
+  dailyLimit: number;
+  dailySent: number;
+}
+
+export interface AdminRecentBlockedSend {
+  id: string;
+  clientName: string;
+  campaignName: string;
+  reason: string;
+  createdAtLabel: string;
+}
+
+export interface AdminSystemStatus {
+  api: "ok" | "warning";
+  mockData: "enabled";
+  sending: "disabled";
+  mailpit: "dev_only";
+}
+
+export interface AdminOverviewSummary {
+  totalClients: number;
+  activeCampaigns: number;
+  blockedSendsToday: number;
+  monthlyAiCallsUsed: number;
+  campaignStatusCounts: AdminCampaignStatusCounts;
+  emailLimitOverview: AdminEmailLimitOverview;
+  recentBlockedSends: AdminRecentBlockedSend[];
+  systemStatus: AdminSystemStatus;
+}
+
+export interface ClientOverviewSummary {
+  activeCampaigns: number;
+  monthlyEmailLimit: number;
+  monthlyEmailsSent: number;
+  blockedSendsThisMonth: number;
+  campaignSummaries: ClientCampaignSummary[];
+  limitOverview: ClientLimitOverview;
+  deliveryOverview: ClientDeliveryOverview;
+  readableBlockedSends: ClientReadableBlockedSend[];
+  accountStatus: ClientAccountStatus;
+}
+
+export type ClientCampaignSummaryStatus =
+  | "draft"
+  | "active"
+  | "paused"
+  | "blocked"
+  | "completed"
+  | "archived";
+
+export interface ClientCampaignSummary {
+  id: string;
+  name: string;
+  status: ClientCampaignSummaryStatus;
+  sent: number;
+  limit: number;
+  lastActivityLabel: string;
+}
+
+export interface ClientLimitOverview {
+  monthlyEmailLimit: number;
+  monthlyEmailsSent: number;
+}
+
+export interface ClientDeliveryOverview {
+  sent: number;
+  opened: number;
+  spam: number;
+  bounced: number;
+  blocked: number;
+}
+
+export interface ClientReadableBlockedSend {
+  id: string;
+  campaignName: string;
+  reason: string;
+  readableReason: string;
+  createdAtLabel: string;
+}
+
+export interface ClientAccountStatus {
+  status: ClientStatus;
+  label: string;
+  note: string;
+}

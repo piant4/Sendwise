@@ -1,12 +1,16 @@
 import type {
+  AdminOverviewSummary,
   ApiUsage,
   BlockedSend,
   Campaign,
   Client,
   ClientContext,
+  ClientOverviewSummary,
 } from "../types";
 import * as mockApi from "./mock-api";
 
+// UI pages/components must consume dashboard data through this boundary.
+// Mock-only summaries stay here until matching backend contracts exist.
 export const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 
@@ -27,6 +31,10 @@ async function apiGet<T>(path: string): Promise<T> {
   return response.json() as Promise<T>;
 }
 
+export function getAdminOverviewSummary(): Promise<AdminOverviewSummary> {
+  return mockApi.getAdminOverviewSummary();
+}
+
 export function getAdminClients(): Promise<Client[]> {
   return USE_MOCK_API
     ? mockApi.getAdminClients()
@@ -43,6 +51,10 @@ export function getClientMe(): Promise<ClientContext> {
   return USE_MOCK_API
     ? mockApi.getClientMe()
     : apiGet<ClientContext>("/client/me");
+}
+
+export function getClientOverviewSummary(): Promise<ClientOverviewSummary> {
+  return mockApi.getClientOverviewSummary();
 }
 
 export function getClientCampaigns(): Promise<Campaign[]> {

@@ -88,8 +88,13 @@ const clientOverviewSummary: ClientOverviewSummary = {
   limitOverview: {
     monthlyEmailLimit: 1000,
     monthlyEmailsSent: 120,
-    dailyEmailLimit: 120,
-    dailyEmailsSent: 18,
+  },
+  deliveryOverview: {
+    sent: 120,
+    opened: 74,
+    spam: 3,
+    bounced: 5,
+    blocked: 1,
   },
   readableBlockedSends: [
     {

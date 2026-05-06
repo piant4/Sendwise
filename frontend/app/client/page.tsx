@@ -146,21 +146,21 @@ export default async function ClientPage() {
             footer="Lettura tramite frontend/lib/api.ts."
           />
           <DashboardCard
-            title="Email mensili"
-            description="Email inviate nel mese per questo riepilogo."
-            value={summary.monthlyEmailsSent.toLocaleString()}
-            footer={`Limite mensile: ${summary.monthlyEmailLimit.toLocaleString()}`}
+            title="Limite email mensile"
+            description="Volume massimo mensile disponibile per l'account."
+            value={summary.limitOverview.monthlyEmailLimit.toLocaleString()}
+            footer="Il limite di invio è controllato dalla dashboard admin."
           />
           <DashboardCard
-            title="Limite mensile"
-            description="Limite email mostrato dal payload di riepilogo."
-            value={summary.monthlyEmailLimit.toLocaleString()}
-            footer="Il limite di invio è controllato dalla dashboard admin."
+            title="Email inviate"
+            description="Email inviate nel mese per questo riepilogo."
+            value={summary.limitOverview.monthlyEmailsSent.toLocaleString()}
+            footer="Dato mock del riepilogo cliente."
           />
           <DashboardCard
             title="Invii bloccati"
             description="Tentativi di invio bloccati riportati per questo mese."
-            value={summary.blockedSendsThisMonth.toLocaleString()}
+            value={summary.deliveryOverview.blocked.toLocaleString()}
             footer={<StatusBadge label="Riepilogo cliente" variant="success" />}
           />
         </div>
@@ -181,31 +181,37 @@ export default async function ClientPage() {
 
         <div style={responsiveGrid}>
           <DashboardCard
-            title="Uso email"
-            description="Email inviate rispetto ai limiti disponibili."
+            title="Limiti email"
+            description="Email inviate rispetto al limite mensile disponibile."
           >
             <div style={{ display: "grid", gap: 18 }}>
               <MeterRow
-                label="Email mensili"
+                label="Limite email mensile"
                 used={summary.limitOverview.monthlyEmailsSent}
                 limit={summary.limitOverview.monthlyEmailLimit}
-              />
-              <MeterRow
-                label="Email giornaliere"
-                used={summary.limitOverview.dailyEmailsSent}
-                limit={summary.limitOverview.dailyEmailLimit}
               />
             </div>
           </DashboardCard>
 
           <DashboardCard
-            title="Limiti email"
-            description="Volume di invio mostrato senza enforcement frontend."
+            title="Performance email"
+            description="Metriche di recapito e risposta mostrate dai dati simulati."
             footer="Nessuna azione reale disponibile in questa fase."
           >
-            <p style={{ margin: 0 }}>
-              Il limite di invio è controllato dalla dashboard admin.
-            </p>
+            <div style={{ display: "grid", gap: 12 }}>
+              {[
+                { label: "Email inviate", value: summary.deliveryOverview.sent },
+                { label: "Aperte", value: summary.deliveryOverview.opened },
+                { label: "Finite in spam", value: summary.deliveryOverview.spam },
+                { label: "Rimbalzate", value: summary.deliveryOverview.bounced },
+                { label: "Invii bloccati", value: summary.deliveryOverview.blocked },
+              ].map((metric) => (
+                <div key={metric.label} style={splitRowStyle}>
+                  <span style={{ color: "var(--muted)" }}>{metric.label}</span>
+                  <strong>{metric.value.toLocaleString()}</strong>
+                </div>
+              ))}
+            </div>
           </DashboardCard>
         </div>
 

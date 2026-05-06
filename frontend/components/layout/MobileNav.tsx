@@ -2,12 +2,10 @@
 
 import { useState } from "react";
 import { MenuIcon } from "lucide-react";
-import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import {
   Sheet,
   SheetContent,
-  SheetDescription,
   SheetHeader,
   SheetTitle,
   SheetTrigger,
@@ -31,15 +29,18 @@ export function MobileNav() {
       </SheetTrigger>
       <SheetContent className="mobile-nav-sheet" side="left">
         <SheetHeader>
-          <SheetTitle>Sendwise</SheetTitle>
-          <SheetDescription>
-            Autenticazione mock e dati simulati per lo sviluppo frontend.
-          </SheetDescription>
+          <SheetTitle
+            style={{
+              fontFamily: "Georgia, 'Times New Roman', serif",
+              fontSize: 28,
+              fontWeight: 600,
+              letterSpacing: 0,
+            }}
+          >
+            Sendwise
+          </SheetTitle>
         </SheetHeader>
         <div className="mobile-nav-content">
-          <Badge className="mock-badge" variant="outline">
-            Modalità mock: autenticazione frontend / dati simulati
-          </Badge>
           <MainNav onNavigate={() => setOpen(false)} />
         </div>
       </SheetContent>

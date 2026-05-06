@@ -19,7 +19,7 @@ export function AppShell({ children }: AppShellProps) {
             <MobileNav />
             <div>
               <p className="brand-kicker">Sendwise</p>
-              <p className="brand-title">Operazioni email AI</p>
+              <p className="brand-title">Dashboard operativa</p>
             </div>
           </div>
           <Badge className="mock-badge" variant="outline">

@@ -426,3 +426,58 @@ Confirmation:
 - no direct listmonk, PostgreSQL, SMTP, or database URL references added.
 - no fetch calls added outside `frontend/lib/api.ts`.
 - client-facing AI call/token usage was removed from `/client`.
+
+## Frontend Sidebar Role Nav And Client Email KPIs
+
+Date: 2026-05-06
+Branch: feature/frontend-v1
+Scope: Minimal mock-backed frontend shell correction for route-contextual sidebar/mobile navigation and client email delivery KPI model.
+Root cause: The shared `MainNav` rendered a static `/login`, `/admin`, and `/client` role switcher in every shell context, while the client overview type/mock/page still exposed daily email-limit fields instead of a client-facing delivery KPI grouping.
+Files created: None.
+Files modified:
+- `frontend/components/layout/AppShell.tsx`
+- `frontend/components/layout/MainNav.tsx`
+- `frontend/components/layout/Sidebar.tsx`
+- `frontend/components/layout/MobileNav.tsx`
+- `frontend/types/index.ts`
+- `frontend/lib/mock-api.ts`
+- `frontend/app/client/page.tsx`
+- `docs/audit_log.md`
+Tests executed:
+- `cd frontend && npm run lint` passed.
+- `cd frontend && npm run build` passed.
+- `bash scripts/audit.sh` passed.
+- `bash scripts/smoke_test.sh` passed.
+- `docker compose config` passed.
+- `git diff --check` passed.
+- `git diff --name-only` confirmed only allowed tracked files changed after restoring generated `frontend/next-env.d.ts`.
+- `rg "\bfetch\s*\(" frontend/app frontend/components frontend/lib` confirmed the only fetch remains in `frontend/lib/api.ts`.
+- `rg "mock-api" frontend/app frontend/components` returned no matches.
+- `rg -i "listmonk|postgres|postgresql|smtp|database_url|db_url" frontend/app frontend/components frontend/lib frontend/types` returned no matches.
+- `rg -i "localStorage|sessionStorage|document.cookie|jwt|auth token" frontend/app frontend/components` returned no matches.
+- `rg -n -i "AI calls|Tokens|token usage|usageOverview|dailyEmailLimit|dailyEmailsSent" frontend/app/client/page.tsx frontend/types/index.ts frontend/lib/mock-api.ts frontend/lib/api.ts` returned no matches.
+- `cd frontend && rm -rf .next && npm run dev` initially hit sandbox `EPERM` on port bind, then ran with approval on port 3001 because port 3000 was already in use.
+- Runtime browser checks for `/`, `/login`, `/admin`, and `/client` on `http://localhost:3001`.
+Runtime route check:
+- `/` redirected to `/login`.
+- `/login` rendered the mock login form and no dashboard navigation links.
+- `/admin` rendered the existing mock-backed admin overview with admin menu: Panoramica, Clienti, Campagne, Limiti email, Invii bloccati, Sistema.
+- `/client` rendered the corrected mock-backed client overview with client menu: Panoramica, Campagne, Limiti email, Invii bloccati.
+- `/client` showed Limite email mensile, Email inviate, Aperte, Finite in spam, Rimbalzate, and Invii bloccati.
+- `/client` did not show AI calls, token usage, or daily email limit terms.
+Tests not executed and reason:
+- No backend pytest was run because this task did not touch backend behavior, database access, Guard logic, API contracts, or schemas.
+Residual risks:
+- Route-contextual navigation is UI-only pathname inference, not real auth or tenant security.
+- Future placeholder links do not have pages yet and may render 404 until separately implemented.
+- Client KPIs remain mock-backed until approved backend contracts exist.
+- Admin dashboard still has its existing AI usage metric; this task intentionally changed only client-facing KPI presentation.
+Confirmation:
+- sidebar menu is route-contextual and mock-only, not real auth/security.
+- `/client` imports data only from `frontend/lib/api.ts`.
+- `/`, `/login`, `/admin`, package/config files, and generated `frontend/next-env.d.ts` were not modified.
+- no backend, DB, Docker, scripts, Makefile, listmonk, mailpit, or contract docs modified.
+- no auth, route protection, credentials, auth tokens, cookies, localStorage, or sessionStorage introduced.
+- no direct listmonk, PostgreSQL, SMTP, or database URL references added.
+- no fetch calls added outside `frontend/lib/api.ts`.
+- client-facing AI/token/daily-limit usage was removed from `/client`.

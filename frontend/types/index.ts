@@ -138,6 +138,7 @@ export interface ClientOverviewSummary {
   blockedSendsThisMonth: number;
   campaignSummaries: ClientCampaignSummary[];
   limitOverview: ClientLimitOverview;
+  deliveryOverview: ClientDeliveryOverview;
   readableBlockedSends: ClientReadableBlockedSend[];
   accountStatus: ClientAccountStatus;
 }
@@ -162,8 +163,14 @@ export interface ClientCampaignSummary {
 export interface ClientLimitOverview {
   monthlyEmailLimit: number;
   monthlyEmailsSent: number;
-  dailyEmailLimit: number;
-  dailyEmailsSent: number;
+}
+
+export interface ClientDeliveryOverview {
+  sent: number;
+  opened: number;
+  spam: number;
+  bounced: number;
+  blocked: number;
 }
 
 export interface ClientReadableBlockedSend {

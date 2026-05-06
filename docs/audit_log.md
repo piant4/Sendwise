@@ -611,3 +611,54 @@ Confirmation:
 - no real auth, tokens, cookies, localStorage, sessionStorage, or session handling was introduced
 - no real listmonk calls, real sending, AI generation, n8n, Celery, Keycloak, Metabase, Postal, Rspamd, or Budibase work was implemented
 - fetches remain centralized in `frontend/lib/api.ts`
+
+## Milestone 0.7.1 - Frontend Backend Mode Verification
+
+Date: 2026-05-06
+Branch: develop
+Scope:
+- Verify the existing frontend backend-mode integration against the current stub backend endpoints
+- Resolve the TypeScript `baseUrl` deprecation safely for the current toolchain
+- Reconfirm frontend boundary constraints without expanding scope
+
+Files created:
+- `docs/branch_handoffs/frontend-backend-verification-0.7.1-handoff.md`
+
+Files modified:
+- `docs/audit_log.md`
+- `frontend/tsconfig.json`
+
+Implementation notes:
+- `frontend/tsconfig.json` no longer uses `baseUrl`, which removes the deprecated option at the source while preserving the existing `@/*` alias mapping through `paths`.
+- The exact task-requested `ignoreDeprecations: "6.0"` value was tested and rejected by the installed compiler (`typescript@5.7.2`) and by `next build` with `TS5103: Invalid value for '--ignoreDeprecations'.`
+- Live HTTP verification succeeded for `GET /health`, `GET /admin/clients`, `GET /admin/campaigns`, `GET /client/me`, `GET /client/campaigns`, `GET /client/usage`, and `GET /client/blocked-sends`.
+- Backend mode build succeeded with `NEXT_PUBLIC_USE_MOCK_API=false NEXT_PUBLIC_API_BASE_URL=http://localhost:8000`.
+- No frontend API boundary regressions were found: `fetch(` remains in `frontend/lib/api.ts`, and no direct `mock-api`, storage, auth-token, cookie, database, SMTP, or listmonk usage was introduced in app/component/runtime files.
+
+Tests:
+- `cd frontend && npm run lint` passed.
+- `cd frontend && npx tsc -p tsconfig.json --noEmit` passed.
+- `cd frontend && npm run build` passed.
+- `cd frontend && NEXT_PUBLIC_USE_MOCK_API=false NEXT_PUBLIC_API_BASE_URL=http://localhost:8000 npm run build` passed.
+- `bash scripts/audit.sh` passed.
+- `bash scripts/smoke_test.sh` passed.
+- `docker compose config` passed.
+- `git diff --check` passed.
+- Required boundary grep checks passed.
+- Required localhost endpoint curls passed against the running backend stub.
+
+Tests not executed and reason:
+- No browser runtime verification was performed, so no browser-level backend-mode success is claimed.
+
+Contract changes requested:
+- None.
+
+Risks:
+- If the team wants the exact VS Code suppression value `ignoreDeprecations: "6.0"`, the TypeScript toolchain will need to be upgraded first because the current repo version rejects it.
+- Browser rendering behavior in backend mode remains to be validated in a real session.
+
+Confirmation:
+- no backend, DB, Docker config, env, or contract files changed
+- no backend logic changed
+- no real auth, tokens, cookies, localStorage, or sessionStorage introduced
+- no real listmonk calls, real sending, AI generation, n8n, Celery, Keycloak, Metabase, Postal, Rspamd, or Budibase work implemented

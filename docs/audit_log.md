@@ -850,3 +850,55 @@ Confirmation:
 - no real auth, tokens, cookies, localStorage, or sessionStorage introduced
 - no real listmonk calls, real sending, AI generation, n8n, Celery, Keycloak, Metabase, Postal, Rspamd, or Budibase work implemented
 - fetches remain centralized in `frontend/lib/api.ts`
+
+## Milestone 0.8C - Login Visual
+
+Date: 2026-05-06
+Branch: develop
+Scope:
+- restyle only `frontend/app/login/page.tsx`
+- keep `/login` outside the dashboard shell
+- preserve mock-only routing behavior without adding auth persistence or backend calls
+
+Files created:
+- `docs/branch_handoffs/frontend-login-visual-0.8C-handoff.md`
+
+Files modified:
+- `docs/audit_log.md`
+- `frontend/app/globals.css`
+- `frontend/app/login/page.tsx`
+
+Implementation notes:
+- Replaced the basic login panel with a premium split layout built directly from existing shared primitives and dedicated login CSS.
+- Kept the Sendwise wordmark visible without reintroducing a shell icon.
+- Preserved the Sendwise palette and 0.8B visual tone while keeping all visible copy in Italian.
+- Preserved the existing demo role switch and local route redirects to `/admin` and `/client`.
+- Moved the route styling foundation into semantic login classes in `frontend/app/globals.css` so the page does not depend on page-local arbitrary utility generation.
+- No changes were made to `frontend/components/auth/MockLoginForm.tsx` because that file is outside the allowed edit scope; the login page now owns its presentational mock form directly.
+
+Tests:
+- `cd frontend && npm run lint` passed.
+- `cd frontend && npm run build` passed.
+- `cd frontend && NEXT_PUBLIC_USE_MOCK_API=false NEXT_PUBLIC_API_BASE_URL=http://localhost:8000 npm run build` passed.
+- `bash scripts/audit.sh` passed.
+- `bash scripts/smoke_test.sh` passed.
+- `docker compose config` passed.
+- `git diff --check` passed.
+- `grep -R "from .*mock-api" frontend/app frontend/components || true` returned no matches.
+- `grep -R "fetch(" frontend/app frontend/components frontend/lib || true` confirmed the only fetch remains in `frontend/lib/api.ts`.
+- `grep -R "listmonk\|postgres\|database\|smtp" frontend/app frontend/components frontend/lib || true` returned no matches.
+- `grep -R "localStorage\|sessionStorage\|document.cookie" frontend/app frontend/components frontend/lib || true` returned no matches.
+- `curl -I http://localhost:3000/login` returned `HTTP/1.1 200 OK`.
+
+Tests not executed and reason:
+- Browser-based visual verification could not be completed because the available Playwright browser tooling requires a Chrome runtime that is not installed in this environment.
+
+Residual risks:
+- Final visual parity against the attached design artifact may need a manual browser pass because the reference zip was not present in the workspace for direct inspection during implementation.
+- The premium serif headline effect depends on locally available fallback fonts.
+
+Confirmation:
+- no backend, DB, Docker config, env, or contract files changed
+- no real auth, tokens, cookies, localStorage, or sessionStorage introduced
+- no real listmonk calls, real sending, AI generation, n8n, Celery, Keycloak, Metabase, Postal, Rspamd, or Budibase work implemented
+- no fetch calls added outside `frontend/lib/api.ts`

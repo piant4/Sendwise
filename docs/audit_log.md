@@ -248,6 +248,49 @@ Confirmation:
 - no direct listmonk, PostgreSQL, SMTP, or database URL references added
 - no fetch calls added outside `frontend/lib/api.ts`
 
+## Admin Overview V1 Foundation
+
+Date: 2026-05-06
+Branch: feature/frontend-v1
+Scope: Small mock-backed admin overview foundation with minimal Sendwise/shadcn token hygiene, typed admin overview summary extension, and `/admin` presentation update.
+Files created: None.
+Files modified:
+- `frontend/app/globals.css`
+- `frontend/types/index.ts`
+- `frontend/lib/mock-api.ts`
+- `frontend/app/admin/page.tsx`
+- `docs/audit_log.md`
+Tests executed:
+- `cd frontend && npm run lint` passed.
+- `cd frontend && npm run build` passed.
+- `bash scripts/audit.sh` passed.
+- `bash scripts/smoke_test.sh` passed.
+- `docker compose config` passed.
+- `git diff --name-only` confirmed only allowed tracked files changed.
+- `rg "\bfetch\s*\(" frontend/app frontend/components frontend/lib` confirmed the only fetch remains in `frontend/lib/api.ts`.
+- `rg "mock-api" frontend/app frontend/components` returned no matches.
+- `rg -i "listmonk|postgres|postgresql|smtp|database_url|db_url" frontend/app frontend/components frontend/lib frontend/types` returned no matches.
+- `rg -i "localStorage|sessionStorage|document.cookie|jwt|token" frontend/app frontend/components` returned no matches.
+- `cd frontend && rm -rf .next && npm run dev` ran on port 3001 because port 3000 was already in use.
+- Runtime HTTP checks for `/`, `/login`, `/admin`, and `/client`.
+Runtime route check:
+- `/` returned `307` redirect to `/login`.
+- `/login` returned `200` and rendered mock login with the mock mode indicator.
+- `/admin` returned `200` and rendered expanded mock-backed Admin Overview V1 fields.
+- `/client` returned `200` and rendered the existing mock-backed client overview.
+Tests not executed and reason:
+- No backend pytest was run because this task did not touch backend behavior, database access, Guard logic, or API contracts.
+Residual risks:
+- Admin Overview V1 remains mock-backed until approved backend contracts exist.
+- Real auth, tenant enforcement, deliverability decisions, sending, AI generation, and limit enforcement remain backend-owned future work.
+Confirmation:
+- `/admin` imports data only from `frontend/lib/api.ts`.
+- `/`, `/login`, `/client`, `frontend/components`, and package/config files were not modified.
+- no backend, DB, Docker, scripts, Makefile, listmonk, mailpit, or contract docs modified.
+- no auth, route protection, tokens, cookies, localStorage, or sessionStorage introduced.
+- no direct listmonk, PostgreSQL, SMTP, or database URL references added.
+- no fetch calls added outside `frontend/lib/api.ts`.
+
 ## Frontend Non-Interactive Lint Setup
 
 Date: 2026-05-06

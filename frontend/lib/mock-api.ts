@@ -18,6 +18,40 @@ const adminOverviewSummary: AdminOverviewSummary = {
   activeCampaigns: 1,
   blockedSendsToday: 1,
   monthlyAiCallsUsed: 42,
+  campaignStatusCounts: {
+    active: 1,
+    paused: 0,
+    blocked: 1,
+    draft: 1,
+  },
+  emailLimitOverview: {
+    monthlyLimit: 5000,
+    monthlySent: 1420,
+    dailyLimit: 400,
+    dailySent: 86,
+  },
+  recentBlockedSends: [
+    {
+      id: "blocked_admin_001",
+      clientName: "Acme Studio",
+      campaignName: "Reactivation Draft",
+      reason: "Campaign is still in draft state.",
+      createdAtLabel: "Today, 12:10",
+    },
+    {
+      id: "blocked_admin_002",
+      clientName: "Nova Retail",
+      campaignName: "Spring Launch",
+      reason: "Client is in trial review.",
+      createdAtLabel: "Yesterday, 16:40",
+    },
+  ],
+  systemStatus: {
+    api: "ok",
+    mockData: "enabled",
+    sending: "disabled",
+    mailpit: "dev_only",
+  },
 };
 
 const clientOverviewSummary: ClientOverviewSummary = {

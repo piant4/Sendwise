@@ -91,11 +91,44 @@ export interface BlockedSend {
   created_at: string;
 }
 
+export interface AdminCampaignStatusCounts {
+  active: number;
+  paused: number;
+  blocked: number;
+  draft: number;
+}
+
+export interface AdminEmailLimitOverview {
+  monthlyLimit: number;
+  monthlySent: number;
+  dailyLimit: number;
+  dailySent: number;
+}
+
+export interface AdminRecentBlockedSend {
+  id: string;
+  clientName: string;
+  campaignName: string;
+  reason: string;
+  createdAtLabel: string;
+}
+
+export interface AdminSystemStatus {
+  api: "ok" | "warning";
+  mockData: "enabled";
+  sending: "disabled";
+  mailpit: "dev_only";
+}
+
 export interface AdminOverviewSummary {
   totalClients: number;
   activeCampaigns: number;
   blockedSendsToday: number;
   monthlyAiCallsUsed: number;
+  campaignStatusCounts: AdminCampaignStatusCounts;
+  emailLimitOverview: AdminEmailLimitOverview;
+  recentBlockedSends: AdminRecentBlockedSend[];
+  systemStatus: AdminSystemStatus;
 }
 
 export interface ClientOverviewSummary {

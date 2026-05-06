@@ -2,80 +2,121 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Button } from "../ui/button";
+import type { LucideIcon } from "lucide-react";
+import {
+  Gauge,
+  LayoutGrid,
+  Megaphone,
+  ServerCog,
+  ShieldAlert,
+  Users,
+} from "lucide-react";
 
-const adminNavItems = [
-  { href: "/admin", label: "Panoramica" },
-  { href: "/admin/clients", label: "Clienti" },
-  { href: "/admin/campaigns", label: "Campagne" },
-  { href: "/admin/email-limits", label: "Limiti email" },
-  { href: "/admin/blocked-sends", label: "Invii bloccati" },
-  { href: "/admin/system", label: "Sistema" },
-];
+export type AppRole = "admin" | "client";
 
-const clientNavItems = [
-  { href: "/client", label: "Panoramica" },
-  { href: "/client/campaigns", label: "Campagne" },
-  { href: "/client/email-limits", label: "Limiti email" },
-  { href: "/client/blocked-sends", label: "Invii bloccati" },
-];
-
-interface MainNavProps {
-  onNavigate?: () => void;
+export interface NavItem {
+  href: string;
+  label: string;
+  icon: LucideIcon;
 }
 
-export function MainNav({ onNavigate }: MainNavProps) {
+export const ADMIN_NAV_ITEMS: NavItem[] = [
+  { href: "/admin", label: "Panoramica", icon: LayoutGrid },
+  { href: "/admin/clients", label: "Clienti", icon: Users },
+  { href: "/admin/campaigns", label: "Campagne", icon: Megaphone },
+  { href: "/admin/email-limits", label: "Limiti email", icon: Gauge },
+  { href: "/admin/blocked-sends", label: "Invii bloccati", icon: ShieldAlert },
+  { href: "/admin/system", label: "Sistema", icon: ServerCog },
+];
+
+export const CLIENT_NAV_ITEMS: NavItem[] = [
+  { href: "/client", label: "Panoramica", icon: LayoutGrid },
+  { href: "/client/campaigns", label: "Campagne", icon: Megaphone },
+  { href: "/client/email-limits", label: "Limiti email", icon: Gauge },
+  { href: "/client/blocked-sends", label: "Invii bloccati", icon: ShieldAlert },
+];
+
+export function getNavigationRole(pathname: string): AppRole | null {
+  if (pathname.startsWith("/admin")) {
+    return "admin";
+  }
+
+  if (pathname.startsWith("/client")) {
+    return "client";
+  }
+
+  return null;
+}
+
+export function getNavItems(role: AppRole): NavItem[] {
+  return role === "admin" ? ADMIN_NAV_ITEMS : CLIENT_NAV_ITEMS;
+}
+
+export function isNavItemActive(pathname: string, href: string) {
+  if (pathname === href) {
+    return true;
+  }
+
+  if (href === "/admin" || href === "/client") {
+    return false;
+  }
+
+  return pathname.startsWith(`${href}/`) || pathname === href;
+}
+
+export function getActiveNavItem(pathname: string) {
+  const role = getNavigationRole(pathname);
+
+  if (!role) {
+    return null;
+  }
+
+  return (
+    getNavItems(role).find((item) => isNavItemActive(pathname, item.href)) ??
+    getNavItems(role)[0]
+  );
+}
+
+interface MainNavProps {
+  role: AppRole;
+  onNavigate?: () => void;
+  className?: string;
+}
+
+export function MainNav({ role, onNavigate, className }: MainNavProps) {
   const pathname = usePathname();
-  const navItems = pathname.startsWith("/admin")
-    ? adminNavItems
-    : pathname.startsWith("/client")
-      ? clientNavItems
-      : [];
+  const navItems = getNavItems(role);
 
   if (navItems.length === 0) {
     return null;
   }
 
   return (
-    <nav className="main-nav" aria-label="Navigazione principale Sendwise">
-      <p className="sidebar-label">Navigazione</p>
-      {navItems.map((item) => (
-        <Button
-          key={item.href}
-          asChild
-          className="main-nav__link"
-          data-active={
-            pathname === item.href ||
-            (item.href !== "/admin" &&
-              item.href !== "/client" &&
-              pathname.startsWith(`${item.href}/`))
-          }
-          onClick={onNavigate}
-          size="lg"
-          variant={
-            pathname === item.href ||
-            (item.href !== "/admin" &&
-              item.href !== "/client" &&
-              pathname.startsWith(`${item.href}/`))
-              ? "secondary"
-              : "ghost"
-          }
-        >
-          <Link
-            href={item.href}
-            aria-current={
-              pathname === item.href ||
-              (item.href !== "/admin" &&
-                item.href !== "/client" &&
-                pathname.startsWith(`${item.href}/`))
-                ? "page"
-                : undefined
-            }
-          >
-            {item.label}
-          </Link>
-        </Button>
-      ))}
+    <nav
+      className={["main-nav", className].filter(Boolean).join(" ")}
+      aria-label="Navigazione principale Sendwise"
+    >
+      <ul className="main-nav__list">
+        {navItems.map((item) => {
+          const active = isNavItemActive(pathname, item.href);
+          const Icon = item.icon;
+
+          return (
+            <li key={item.href}>
+              <Link
+                href={item.href}
+                className="main-nav__link"
+                data-active={active}
+                aria-current={active ? "page" : undefined}
+                onClick={onNavigate}
+              >
+                <Icon className="main-nav__icon" aria-hidden="true" />
+                <span>{item.label}</span>
+              </Link>
+            </li>
+          );
+        })}
+      </ul>
     </nav>
   );
 }

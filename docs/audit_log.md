@@ -218,6 +218,66 @@ Dependency changes:
 Tests executed:
 - `cd frontend && node -v`
 - `cd frontend && npm -v`
+
+## Milestone 0.8B - Design Tokens + App Shell
+
+Date: 2026-05-06
+Branch: develop
+Scope: Shared frontend visual foundation only - design tokens, brand mark, app shell, contextual sidebar, reusable top bar, mobile drawer, mock mode badge, and shell styling aligned to the Sendwise design reference zip.
+Files created:
+- `docs/branch_handoffs/frontend-design-shell-0.8B-handoff.md`
+- `frontend/components/layout/TopBar.tsx`
+- `frontend/components/shared/BrandMark.tsx`
+- `frontend/components/shared/MockModeBadge.tsx`
+Files modified:
+- `frontend/app/globals.css`
+- `frontend/app/layout.tsx`
+- `frontend/components/layout/AppShell.tsx`
+- `frontend/components/layout/MainNav.tsx`
+- `frontend/components/layout/MobileNav.tsx`
+- `frontend/components/layout/Sidebar.tsx`
+- `docs/audit_log.md`
+Design tokens adapted:
+- Neutral `#CACFD6`
+- Pale mint `#D6E5E3`
+- Aqua accent `#9FD8CB`
+- Primary green `#517664`
+- Deep olive `#2D3319`
+- Background `#FAFAF7`
+- Surface `#FFFFFF`
+- Surface mint `#EEF4F2`
+- Border `#E3E5E0`
+Implementation notes:
+- Refactored the existing shell instead of creating a second app shell or duplicate navigation layer.
+- Preserved `/login` without shell wrapping by making `AppShell` route-aware.
+- Kept `frontend/lib/api.ts` as the only fetch boundary and did not add direct mock imports.
+- Used the existing shadcn `Sheet` for mobile navigation and kept all placeholder actions disabled/presentational.
+Tests executed:
+- `cd frontend && npm run lint`
+- `cd frontend && npm run build`
+- `cd frontend && NEXT_PUBLIC_USE_MOCK_API=false NEXT_PUBLIC_API_BASE_URL=http://localhost:8000 npm run build`
+- `bash scripts/audit.sh`
+- `bash scripts/smoke_test.sh`
+- `docker compose config`
+- `git diff --check`
+- `grep -R "from .*mock-api" frontend/app frontend/components || true`
+- `grep -R "fetch(" frontend/app frontend/components frontend/lib || true`
+- `grep -R "listmonk\|postgres\|database\|smtp" frontend/app frontend/components frontend/lib || true`
+- `grep -R "localStorage\|sessionStorage\|document.cookie" frontend/app frontend/components frontend/lib || true`
+Tests not executed and reason:
+- No browser-level visual verification was run in this milestone; validation stayed at build, audit, smoke, and static boundary checks.
+Risks remaining:
+- Admin/client dashboard internals are still the earlier milestone UI and will need a separate content restyling pass.
+- Small visual tuning issues may remain until the next milestone performs browser-level validation.
+Confirmation:
+- no backend changes
+- no DB changes
+- no Docker config changes
+- no real auth implemented
+- no real listmonk integration implemented
+- no real email sending implemented
+- no AI generation implemented
+- no n8n, Celery, Keycloak, Metabase, Postal, Rspamd, or Budibase implemented
 - `cd frontend && npm ls next react react-dom typescript`
 - `cd frontend && npm run build`
 - `bash scripts/audit.sh`

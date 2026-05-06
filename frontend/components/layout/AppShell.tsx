@@ -1,31 +1,45 @@
+"use client";
+
 import type { ReactNode } from "react";
-import { Badge } from "../ui/badge";
+import { usePathname } from "next/navigation";
 import { MobileNav } from "./MobileNav";
+import {
+  getActiveNavItem,
+  getNavigationRole,
+} from "./MainNav";
 import { Sidebar } from "./Sidebar";
+import { TopBar } from "./TopBar";
 
 interface AppShellProps {
   children: ReactNode;
 }
 
 export function AppShell({ children }: AppShellProps) {
+  const pathname = usePathname();
+  const role = getNavigationRole(pathname);
+
+  if (!role) {
+    return <>{children}</>;
+  }
+
+  const activeNavItem = getActiveNavItem(pathname);
+  const roleLabel = role === "admin" ? "Admin" : "Cliente";
+  const breadcrumb =
+    activeNavItem && activeNavItem.href !== `/${role}`
+      ? ["Sendwise", roleLabel, activeNavItem.label]
+      : ["Sendwise", roleLabel];
+
   return (
     <div className="app-shell">
       <aside className="app-sidebar" aria-label="Barra laterale Sendwise">
-        <Sidebar />
+        <Sidebar role={role} />
       </aside>
       <div className="app-frame">
-        <header className="app-header">
-          <div className="app-header__brand">
-            <MobileNav />
-            <div>
-              <p className="brand-kicker">Sendwise</p>
-              <p className="brand-title">Dashboard operativa</p>
-            </div>
-          </div>
-          <Badge className="mock-badge" variant="outline">
-            Modalità mock: autenticazione frontend / dati simulati
-          </Badge>
-        </header>
+        <TopBar
+          title={activeNavItem?.label ?? (role === "admin" ? "Admin" : "Cliente")}
+          breadcrumb={breadcrumb}
+          leading={<MobileNav role={role} />}
+        />
         <div className="app-content">{children}</div>
       </div>
     </div>

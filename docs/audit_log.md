@@ -522,3 +522,26 @@ Confirmation:
 - Business PostgreSQL remains the documented business source of truth.
 - UI does not call listmonk or PostgreSQL directly.
 - `EMAIL_SENDING_ENABLED` remains fail-closed by exact `"true"` evaluation.
+
+## Prompt Shortcuts V1
+
+Date: 2026-05-06
+Branch: develop
+Scope: docs-only prompt shortcut reference for compact Sendwise task prompts.
+Files created:
+- `docs/prompt_shortcuts_v1.md`
+Files modified:
+- `docs/audit_log.md`
+Tests executed:
+- `bash scripts/audit.sh`
+- `bash scripts/smoke_test.sh`
+- `docker compose config`
+- `git diff --check`
+Tests not executed and reason:
+- No backend pytest or frontend build/lint was run because this task changed docs only and did not modify backend, frontend, DB, Docker, scripts, or runtime behavior.
+Residual risks:
+- Prompt shortcuts are operational guidance only; future prompts still need explicit goal, scope, and allowed-file boundaries.
+- If the V1 contracts or Codex skills change later, `docs/prompt_shortcuts_v1.md` must be kept in sync.
+Confirmation:
+- no application code changed
+- no backend, frontend, DB, Docker, script, Makefile, or env files modified

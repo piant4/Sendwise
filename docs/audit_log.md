@@ -247,3 +247,49 @@ Confirmation:
 - no auth, route protection, tokens, cookies, localStorage, or sessionStorage introduced
 - no direct listmonk, PostgreSQL, SMTP, or database URL references added
 - no fetch calls added outside `frontend/lib/api.ts`
+
+## Frontend Non-Interactive Lint Setup
+
+Date: 2026-05-06
+Branch: feature/frontend-v1
+Scope: Minimal frontend ESLint CLI setup for Next.js 16 so `npm run lint` runs without interactive setup or removed `next lint` behavior.
+Files created:
+- `frontend/eslint.config.mjs`
+- `frontend/package-lock.json`
+Files modified:
+- `frontend/package.json`
+- `docs/audit_log.md`
+Dependency changes:
+- Added `eslint` as a frontend dev dependency.
+- Added `eslint-config-next` as a frontend dev dependency.
+- No Next.js, React, or React DOM version changes.
+Tests executed:
+- `cd frontend && npm run lint` preflight failed non-interactively because `next lint` is removed in Next.js 16.
+- `cd frontend && npm run lint` passed after setup.
+- `cd frontend && npm run build` passed.
+- `bash scripts/audit.sh` passed.
+- `bash scripts/smoke_test.sh` passed.
+- `docker compose config` passed.
+- `git diff --name-only` reported tracked changes.
+- `rg "\bfetch\s*\(" frontend/app frontend/components frontend/lib` confirmed the only fetch remains in `frontend/lib/api.ts`.
+- `rg "mock-api" frontend/app frontend/components` returned no matches.
+- `rg -i "listmonk|postgres|postgresql|smtp|database_url|db_url" frontend/app frontend/components frontend/lib frontend/types` returned no matches.
+- `rg -i "localStorage|sessionStorage|document.cookie|jwt|token" frontend/app frontend/components` returned no matches.
+- `cd frontend && rm -rf .next && npm run dev` ran on port 3001 because port 3000 was already in use.
+- Runtime HTTP checks for `/`, `/login`, `/admin`, and `/client`.
+Tests not executed and reason:
+- No backend pytest was run because this task did not touch backend behavior, database access, Guard logic, or API contracts.
+Runtime route check:
+- `/` returned `307` redirect to `/login`.
+- `/login` returned `200` and rendered mock login with the mock mode indicator.
+- `/admin` returned `200` and rendered the mock-backed admin overview.
+- `/client` returned `200` and rendered the mock-backed client overview.
+Residual risks:
+- `npm install` reported two moderate vulnerabilities; no `npm audit fix` was run because that may make broader dependency changes outside this task.
+- `frontend/next-env.d.ts` is tracked and was regenerated during build/dev; generated diff was restored and not included.
+Confirmation:
+- no frontend app, component, lib, or types files modified
+- no backend, DB, Docker, scripts, Makefile, listmonk, mailpit, or contract docs modified
+- no auth, route protection, tokens, cookies, localStorage, or sessionStorage introduced
+- no direct listmonk, PostgreSQL, SMTP, or database URL references added
+- no fetch calls added outside `frontend/lib/api.ts`

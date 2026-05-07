@@ -1091,3 +1091,60 @@ Confirmation:
 - no Clerk integration, real auth, signup, password reset, token, cookie, `localStorage`, or `sessionStorage` was introduced
 - no real listmonk calls, real sending, AI generation, n8n, Celery, Keycloak, Metabase, Postal, Rspamd, or Budibase work implemented
 - fetches remain centralized in `frontend/lib/api.ts`
+
+## Milestone 0.8F.1 - Dashboard KPI Card Grid Fix
+
+Date: 2026-05-07
+Branch: develop
+Scope:
+- fix the remaining KPI/stat card layout issue on `/admin` and `/client`
+- preserve the existing dashboard visual style and frontend-only architecture
+- keep the change limited to the smallest layout root cause
+
+Files created:
+- `docs/branch_handoffs/dashboard-kpi-grid-fix-0.8F.1-handoff.md`
+
+Files modified:
+- `frontend/app/globals.css`
+- `docs/audit_log.md`
+
+Implementation notes:
+- Identified the actual layout bug in the shared KPI wrapper CSS: both KPI wrappers declared column tracks but were missing `display: grid`.
+- Added grid display to the admin and client KPI wrappers so the existing two-column rules now apply as intended on desktop and tablet widths.
+- Reduced KPI card minimum height and padding slightly to remove excess vertical bulk while preserving the current palette, rounded corners, borders, and typography.
+- Left page logic, data boundaries, dashboard sections, and backend behavior untouched.
+
+Admin result:
+- KPI cards now render two per row on desktop-width layout instead of stacking one per row.
+
+Client result:
+- KPI cards now render two per row on desktop-width layout instead of stacking one per row.
+
+Verification:
+- `cd frontend && npm run lint` passed
+- `cd frontend && npm run build` passed
+- `cd frontend && NEXT_PUBLIC_USE_MOCK_API=false NEXT_PUBLIC_API_BASE_URL=http://localhost:8000 npm run build` passed
+- `bash scripts/audit.sh` passed
+- `bash scripts/smoke_test.sh` passed
+- `docker compose config` passed
+- `git diff --check` passed
+- `grep -R "from .*mock-api" frontend/app frontend/components || true` returned no matches
+- `grep -R "fetch(" frontend/app frontend/components frontend/lib || true` confirmed the only `fetch(` remains in `frontend/lib/api.ts`
+- `grep -R "listmonk\|postgres\|database\|smtp" frontend/app frontend/components frontend/lib || true` returned no matches
+- `grep -R "localStorage\|sessionStorage\|document.cookie" frontend/app frontend/components frontend/lib || true` returned no matches
+- Visual verification completed in the in-app browser on `/admin` and `/client` against the existing local dev server at `http://localhost:3000`
+
+Tests not executed and reason:
+- No separate live narrow-viewport browser pass was run; mobile behavior remains covered by the unchanged single-column media query.
+
+Contract changes requested:
+- None.
+
+Risks:
+- Final human QA on the intended acceptance viewport is still recommended to validate the preferred compactness and spacing feel.
+
+Confirmation:
+- no backend, DB, Docker config, env, or contract files changed
+- no Clerk integration, real auth, signup, password reset, token, cookie, `localStorage`, or `sessionStorage` was introduced
+- no real listmonk calls, real sending, AI generation, n8n, Celery, Keycloak, Metabase, Postal, Rspamd, or Budibase work implemented
+- fetches remain centralized in `frontend/lib/api.ts`

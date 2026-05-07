@@ -1589,6 +1589,20 @@ p {
   padding: 16px;
 }
 
+.login-feedback {
+  border-radius: 18px;
+  font-size: 0.88rem;
+  line-height: 1.6;
+  margin: 0;
+  padding: 14px 16px;
+}
+
+.login-feedback--error {
+  background: var(--sw-danger-bg);
+  border: 1px solid rgba(166, 70, 63, 0.2);
+  color: var(--sw-danger);
+}
+
 .login-submit {
   background: var(--sw-primary);
   border: 0;
@@ -1606,6 +1620,12 @@ p {
 
 .login-submit:hover {
   background: var(--sw-primary-hover);
+}
+
+.login-submit:disabled {
+  box-shadow: none;
+  cursor: wait;
+  opacity: 0.72;
 }
 
 .login-submit:active {

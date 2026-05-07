@@ -1,6 +1,6 @@
 import { ClientDashboard } from "../../components/dashboard/ClientDashboard";
 import { DashboardErrorState } from "../../components/dashboard/DashboardErrorState";
-import { getClientOverviewSummary, USE_MOCK_API } from "../../lib/api";
+import { getClientOverviewSummary } from "../../lib/api";
 
 export const dynamic = "force-dynamic";
 
@@ -15,12 +15,12 @@ export default async function ClientPage() {
   if ("errorMessage" in result) {
     return (
       <DashboardErrorState
-        title="Client Overview"
-        description="Client dashboard summary from the frontend API boundary."
+        title="Dashboard cliente"
+        description="Vista cliente letta dal boundary API frontend."
         errorMessage={result.errorMessage}
       />
     );
   }
 
-  return <ClientDashboard summary={result.summary} isMockMode={USE_MOCK_API} />;
+  return <ClientDashboard summary={result.summary} />;
 }

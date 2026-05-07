@@ -966,3 +966,72 @@ Confirmation:
 - no Clerk integration, real auth, signup, password reset, token, cookie, localStorage, or sessionStorage was introduced
 - no real listmonk calls, real sending, AI generation, n8n, Celery, Keycloak, Metabase, Postal, Rspamd, or Budibase work implemented
 - fetches remain centralized in `frontend/lib/api.ts`
+
+## Milestone 0.8E - Client Visual Dashboard + Admin/Login Polish
+
+Date: 2026-05-07
+Branch: develop
+Scope:
+- refine `/client` into the official client-facing dashboard
+- tighten `/admin` header, KPI density, and top summary surface
+- simplify `/login` into the official reserved-access page
+- increase the visual weight of the Sendwise wordmark across touched surfaces
+
+Files created:
+- `docs/branch_handoffs/frontend-client-visual-0.8E-handoff.md`
+- `frontend/components/admin/AdminTopBarActions.tsx`
+- `frontend/components/client/ClientDashboardHeader.tsx`
+- `frontend/components/client/ClientDeliveryCard.tsx`
+- `frontend/components/client/ClientKpiGrid.tsx`
+- `frontend/components/client/ClientRecentBlockedSendsCard.tsx`
+- `frontend/components/client/ClientRecentCampaignsCard.tsx`
+- `frontend/components/client/ClientSurface.tsx`
+- `frontend/components/client/clientStatus.ts`
+
+Files modified:
+- `docs/audit_log.md`
+- `frontend/app/client/page.tsx`
+- `frontend/app/globals.css`
+- `frontend/app/login/page.tsx`
+- `frontend/components/admin/AdminDashboardHeader.tsx`
+- `frontend/components/dashboard/AdminDashboard.tsx`
+- `frontend/components/dashboard/ClientDashboard.tsx`
+- `frontend/components/layout/AppShell.tsx`
+- `frontend/components/layout/TopBar.tsx`
+- `frontend/components/shared/BrandMark.tsx`
+
+Implementation notes:
+- Replaced the admin breadcrumb-style header with a title-only top bar and safe placeholder actions.
+- Reduced the admin hero surface to a compact summary and tightened KPI density to a two-column layout.
+- Rebuilt `/client` using dedicated presentational components under `frontend/components/client/` while preserving the current frontend API boundary.
+- Removed redundant and temporary explanatory UI from `/login` while preserving the existing local-only temporary route behavior.
+- Increased the weight and size of the `Sendwise` wordmark without changing the logo system.
+
+Tests:
+- `cd frontend && npm run lint` passed
+- `cd frontend && npm run build` passed
+- `cd frontend && NEXT_PUBLIC_USE_MOCK_API=false NEXT_PUBLIC_API_BASE_URL=http://localhost:8000 npm run build` passed
+- `bash scripts/audit.sh` passed
+- `bash scripts/smoke_test.sh` passed
+- `docker compose config` passed
+- `git diff --check` passed
+- `grep -R "from .*mock-api" frontend/app frontend/components || true` returned no matches
+- `grep -R "fetch(" frontend/app frontend/components frontend/lib || true` confirmed the only `fetch(` remains in `frontend/lib/api.ts`
+- `grep -R "listmonk\|postgres\|database\|smtp" frontend/app frontend/components frontend/lib || true` returned no matches
+- `grep -R "localStorage\|sessionStorage\|document.cookie" frontend/app frontend/components frontend/lib || true` returned no matches
+
+Tests not executed and reason:
+- Browser-based visual verification of `/admin`, `/client`, and `/login` was attempted against a local dev server, but Playwright could not attach because this environment does not have a Chrome runtime installed.
+
+Contract changes requested:
+- None.
+
+Risks:
+- Client limit values remain presentation-safe but can still display as unavailable until richer backend summary data exists.
+- Final human QA is recommended to confirm hierarchy and spacing on `/admin`, `/client`, and `/login`.
+
+Confirmation:
+- no backend, DB, Docker config, env, or contract files changed
+- no Clerk integration, real auth, signup, password reset, token, cookie, `localStorage`, or `sessionStorage` was introduced
+- no real listmonk calls, real sending, AI generation, n8n, Celery, Keycloak, Metabase, Postal, Rspamd, or Budibase work implemented
+- fetches remain centralized in `frontend/lib/api.ts`

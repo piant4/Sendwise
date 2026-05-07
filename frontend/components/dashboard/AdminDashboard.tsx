@@ -17,7 +17,7 @@ export function AdminDashboard({
   return (
     <main className="shell">
       <section className="admin-dashboard">
-        <AdminDashboardHeader isMockMode={isMockMode} />
+        <AdminDashboardHeader summary={summary} isMockMode={isMockMode} />
         <AdminKpiGrid summary={summary} />
 
         <div className="admin-dashboard__content">

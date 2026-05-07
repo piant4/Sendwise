@@ -9,7 +9,12 @@ export function BrandMark({
   compact = false,
   size = "md",
 }: BrandMarkProps) {
-  const classes = ["brand-mark", `brand-mark--${size}`, compact ? "brand-mark--compact" : "", className]
+  const classes = [
+    "brand-mark",
+    `brand-mark--${size}`,
+    compact ? "brand-mark--compact" : "",
+    className,
+  ]
     .filter(Boolean)
     .join(" ");
 

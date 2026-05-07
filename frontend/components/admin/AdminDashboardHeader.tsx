@@ -1,49 +1,58 @@
-import { Button } from "../ui/button";
 import { StatusBadge } from "../ui/StatusBadge";
+import type { AdminOverviewSummary } from "../../types";
 
 interface AdminDashboardHeaderProps {
+  summary: AdminOverviewSummary;
   isMockMode: boolean;
 }
 
 export function AdminDashboardHeader({
+  summary,
   isMockMode,
 }: AdminDashboardHeaderProps) {
   const environmentLabel = isMockMode ? "Ambiente locale" : "API frontend";
+  const summaryItems = [
+    {
+      label: "Clienti attivi",
+      value: summary.clientStatusCounts.active.toLocaleString(),
+    },
+    {
+      label: "Campagne presidiate",
+      value: summary.activeCampaigns.toLocaleString(),
+    },
+    {
+      label: "Blocchi odierni",
+      value: summary.blockedSendsToday.toLocaleString(),
+    },
+  ];
 
   return (
     <section className="admin-hero">
       <div className="admin-hero__copy">
-        <p className="admin-hero__eyebrow">Sendwise admin</p>
+        <p className="admin-hero__eyebrow">Riepilogo operativo</p>
         <div className="admin-hero__headline">
-          <h1 className="admin-hero__title">Controllo operativo centralizzato</h1>
+          <h2 className="admin-hero__title">Quadro compatto della giornata</h2>
           <p className="admin-hero__lead">
-            Vista primaria per clienti, campagne, limiti email e stato
-            piattaforma. L&apos;operativita resta controllata dal boundary
-            frontend attuale.
+            Vista interna per monitorare clienti, campagne, limiti e segnali di
+            blocco con una gerarchia piu rapida da leggere.
           </p>
         </div>
         <div className="admin-hero__status-row">
           <StatusBadge label={environmentLabel} variant="neutral" />
           <StatusBadge label="Accesso interno" variant="success" />
           <span className="admin-hero__helper">
-            Abilitazione account gestita internamente.
+            Nessuna azione di scrittura attiva in questa milestone.
           </span>
         </div>
       </div>
 
-      <div className="admin-hero__actions">
-        <div className="admin-hero__actions-copy">
-          <span>Azioni disponibili nelle prossime milestone</span>
-          <strong>Nessuna operazione scrive dati in questa vista.</strong>
-        </div>
-        <div className="admin-hero__actions-row">
-          <Button variant="outline" size="lg" disabled>
-            Esporta vista
-          </Button>
-          <Button size="lg" disabled>
-            Nuovo account
-          </Button>
-        </div>
+      <div className="admin-hero__summary" aria-label="Sintesi operativa">
+        {summaryItems.map((item) => (
+          <div key={item.label} className="admin-hero__summary-item">
+            <span>{item.label}</span>
+            <strong>{item.value}</strong>
+          </div>
+        ))}
       </div>
     </section>
   );

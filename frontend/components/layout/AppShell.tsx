@@ -2,6 +2,7 @@
 
 import type { ReactNode } from "react";
 import { usePathname } from "next/navigation";
+import { AdminTopBarActions } from "../admin/AdminTopBarActions";
 import { MobileNav } from "./MobileNav";
 import {
   getActiveNavItem,
@@ -24,11 +25,14 @@ export function AppShell({ children }: AppShellProps) {
   }
 
   const activeNavItem = getActiveNavItem(pathname);
-  const roleLabel = role === "admin" ? "Admin" : "Cliente";
-  const breadcrumb =
-    activeNavItem && activeNavItem.href !== `/${role}`
-      ? ["Sendwise", roleLabel, activeNavItem.label]
-      : ["Sendwise", roleLabel];
+  const title =
+    pathname === "/admin"
+      ? "Dashboard admin"
+      : pathname === "/client"
+        ? "Dashboard cliente"
+        : activeNavItem?.label ?? (role === "admin" ? "Admin" : "Cliente");
+  const actions = pathname === "/admin" ? <AdminTopBarActions /> : null;
+  const showUtilityButtons = false;
 
   return (
     <div className="app-shell">
@@ -37,10 +41,11 @@ export function AppShell({ children }: AppShellProps) {
       </aside>
       <div className="app-frame">
         <TopBar
-          title={activeNavItem?.label ?? (role === "admin" ? "Admin" : "Cliente")}
-          breadcrumb={breadcrumb}
+          title={title}
+          actions={actions}
           leading={<MobileNav role={role} isMockMode={isMockMode} />}
           isMockMode={isMockMode}
+          showUtilityButtons={showUtilityButtons}
         />
         <div className="app-content">{children}</div>
       </div>

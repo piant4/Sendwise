@@ -1343,3 +1343,69 @@ Risks remaining:
 
 Confirmation:
 - no backend, DB, Docker config, signup, custom password form, user CRUD, real listmonk, real sending, AI, n8n, Celery, Keycloak, Metabase, Postal, Rspamd, or Budibase work was implemented
+
+## Milestone 0.9C - Clerk Auth Runtime Verification
+
+Date: 2026-05-07
+Branch: develop
+Scope:
+- verify the existing Clerk auth vertical slice from `0.9B` against the current local runtime
+- confirm env and secret handling
+- run required regression and boundary checks
+- apply no code changes unless a confirmed minimal runtime bug fits the allowed scope
+
+Verified state:
+- `git status --short` was clean.
+- `git diff --cached --name-only || true` returned no staged files.
+- `git diff -- .env .env.local frontend/.env.local backend/.env.local || true` returned no tracked secret diff.
+- No local `.env` or `.env.local` files were present in the repo during verification.
+- Required Clerk env vars were not present in the current shell environment.
+- `cd frontend && npm run lint` passed.
+- `cd frontend && npm run build` passed.
+- `cd frontend && NEXT_PUBLIC_USE_MOCK_API=false NEXT_PUBLIC_API_BASE_URL=http://localhost:8000 npm run build` passed.
+- `PYTHONPATH=backend python3 -m pytest backend/tests` passed with `11` tests.
+- `bash scripts/audit.sh` passed.
+- `bash scripts/smoke_test.sh` passed.
+- `docker compose config` passed.
+- `git diff --check` passed.
+- Boundary checks passed:
+- the only frontend `fetch(` remains in `frontend/lib/api.ts`
+- no direct frontend `mock-api` imports from `frontend/app` or `frontend/components`
+- no frontend references to `listmonk`, `postgres`, `database`, or `smtp`
+- no frontend `localStorage`, `sessionStorage`, or `document.cookie`
+- no Sendwise `SignUpButton`, `/sign-up`, or `signup` exposure
+- Build output still includes `ƒ /login/[[...login]]`, confirming nested Clerk login paths do not fail at the Next route level.
+- Live backend negative-path checks:
+- `GET /health` returned `200`
+- `GET /admin/clients` without auth returned `401`
+- `GET /admin/clients` with invalid bearer token and missing Clerk backend config returned `500` with `Clerk auth is not fully configured on the backend.`
+
+First divergence found:
+- Live frontend requests to `/login`, `/admin`, and `/account` returned generic `500 Internal Server Error` responses when Clerk frontend env was absent.
+
+Root cause:
+- Category: frontend rendering
+- Primary cause: `ClerkProvider` throws before page render when `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` is missing.
+- Evidence: Next server log reported `@clerk/nextjs: Missing publishableKey.`
+- Minimal fix boundary: `frontend/app/layout.tsx`
+
+Fix status:
+- No app fix applied.
+- Reason: the confirmed minimal fix boundary is outside the allowed modification scope for this milestone.
+
+Known limits:
+- Real Clerk runtime verification was blocked because no real local Clerk env values were present.
+- Real Clerk Dashboard policy could not be confirmed from the workspace.
+- Real mapped Clerk test users were not available for live admin/client authorization checks.
+- Playwright browser verification was unavailable because the required local browser engine was not installed.
+
+Contract changes requested:
+- None.
+
+Risks:
+- Frontend missing-env behavior is not user-facing clear yet; the browser only receives a generic `500`.
+- End-to-end frontend-to-backend token transport with a real Clerk session remains unverified.
+- `AUTH_USER_MAPPINGS_JSON` remains temporary runtime mapping rather than `client_users` persistence.
+
+Confirmation:
+- no DB migration, `client_users` persistence, admin-created user flow, public signup, custom password form, real listmonk, real sending, AI, n8n, Celery, Keycloak, Metabase, Postal, Rspamd, or Budibase work was implemented

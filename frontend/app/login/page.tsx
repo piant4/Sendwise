@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent } from "react";
+import { LifeBuoy, ShieldCheck } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { BrandMark } from "../../components/shared/BrandMark";
 
@@ -28,22 +29,22 @@ export default function LoginPage() {
           <div className="login-copy">
             <p className="login-eyebrow">Piattaforma operativa</p>
             <h1 className="login-title">
-              Campagne email controllate, monitoraggio clienti e supervisione
-              dei limiti di invio.
+              Campagne email, clienti e controllo operativo nello stesso
+              workspace.
             </h1>
             <p className="login-lead">
-              Accesso riservato agli utenti autorizzati.
+              Spazio riservato per coordinare volumi, stato campagne e presidio
+              delle attivita essenziali Sendwise.
             </p>
           </div>
         </section>
 
         <section className="login-card">
           <div className="login-card__header">
-            <p className="login-card__eyebrow">Area riservata</p>
             <h2 className="login-card__title">Accedi</h2>
             <p className="login-card__description">
-              Inserisci le credenziali del tuo account per aprire la dashboard
-              operativa ufficiale.
+              Console riservata per gestire campagne email, clienti e controllo
+              operativo in un unico spazio.
             </p>
           </div>
 
@@ -64,10 +65,7 @@ export default function LoginPage() {
             </label>
 
             <label className="login-field">
-              <span className="login-field__row">
-                <span className="login-field__label">Password</span>
-                <span className="login-field__hint">Verifica interna</span>
-              </span>
+              <span className="login-field__label">Password</span>
               <input
                 className="login-input"
                 name="password"
@@ -83,12 +81,15 @@ export default function LoginPage() {
           </form>
 
           <div className="login-card__footer">
-            <span>Abilitazione account gestita internamente.</span>
-            <div className="login-card__links">
-              <span>Accesso locale temporaneo</span>
-              <span>Supporto interno</span>
-              <span>Nessuna registrazione pubblica</span>
+            <ShieldCheck aria-hidden="true" className="login-card__footer-icon" />
+            <div className="login-card__support">
+              <strong>Accesso riservato agli utenti autorizzati.</strong>
+              <span>
+                Abilitazione account e supporto operativo gestiti dal team
+                Sendwise.
+              </span>
             </div>
+            <LifeBuoy aria-hidden="true" className="login-card__footer-accent" />
           </div>
         </section>
       </div>

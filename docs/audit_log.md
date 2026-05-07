@@ -1035,3 +1035,59 @@ Confirmation:
 - no Clerk integration, real auth, signup, password reset, token, cookie, `localStorage`, or `sessionStorage` was introduced
 - no real listmonk calls, real sending, AI generation, n8n, Celery, Keycloak, Metabase, Postal, Rspamd, or Budibase work implemented
 - fetches remain centralized in `frontend/lib/api.ts`
+
+## Milestone 0.8F - Visual QA Polish for Admin / Client / Login
+
+Date: 2026-05-07
+Branch: develop
+Scope:
+- refine spacing, hierarchy, and compactness on `/admin`, `/client`, and `/login`
+- preserve the current Sendwise UI system and frontend API boundary
+- keep the milestone strictly frontend-only with no auth or backend work
+
+Files created:
+- `docs/branch_handoffs/frontend-visual-qa-0.8F-handoff.md`
+
+Files modified:
+- `docs/audit_log.md`
+- `frontend/app/globals.css`
+- `frontend/app/login/page.tsx`
+- `frontend/components/admin/AdminTopBarActions.tsx`
+- `frontend/components/dashboard/AdminDashboard.tsx`
+- `frontend/components/dashboard/ClientDashboard.tsx`
+
+Implementation notes:
+- Tightened admin and client card density by moving both dashboards to a clearer two-column content rhythm with wider follow-up metric blocks.
+- Reduced KPI stretch and improved card separation while preserving the existing palette, rounded surfaces, and Sendwise tone.
+- Refined the admin topbar action buttons with lightweight line icons and more intentional disabled styling.
+- Simplified the login card header copy and replaced the weak lower info row with a single reserved-access support block.
+- Deliberately skipped extra illustration or animation work because the existing glow treatment was sufficient and cleaner.
+
+Tests:
+- `cd frontend && npm run lint` passed
+- `cd frontend && npm run build` passed
+- `cd frontend && NEXT_PUBLIC_USE_MOCK_API=false NEXT_PUBLIC_API_BASE_URL=http://localhost:8000 npm run build` passed
+- `bash scripts/audit.sh` passed
+- `bash scripts/smoke_test.sh` passed
+- `docker compose config` passed
+- `git diff --check` passed
+- `grep -R "from .*mock-api" frontend/app frontend/components || true` returned no matches
+- `grep -R "fetch(" frontend/app frontend/components frontend/lib || true` confirmed the only `fetch(` remains in `frontend/lib/api.ts`
+- `grep -R "listmonk\|postgres\|database\|smtp" frontend/app frontend/components frontend/lib || true` returned no matches
+- `grep -R "localStorage\|sessionStorage\|document.cookie" frontend/app frontend/components frontend/lib || true` returned no matches
+- Browser verification completed on `/admin`, `/client`, and `/login` against the existing local dev server at `http://localhost:3000` using the in-app browser viewport
+
+Tests not executed and reason:
+- Dedicated Playwright-browser verification on a separate Chrome runtime was not available because the local Playwright backend does not have Chrome installed in this environment.
+
+Contract changes requested:
+- None.
+
+Risks:
+- Final human visual QA on a wide desktop viewport is still recommended to confirm spacing and card rhythm at the exact acceptance resolution.
+
+Confirmation:
+- no backend, DB, Docker config, env, or contract files changed
+- no Clerk integration, real auth, signup, password reset, token, cookie, `localStorage`, or `sessionStorage` was introduced
+- no real listmonk calls, real sending, AI generation, n8n, Celery, Keycloak, Metabase, Postal, Rspamd, or Budibase work implemented
+- fetches remain centralized in `frontend/lib/api.ts`

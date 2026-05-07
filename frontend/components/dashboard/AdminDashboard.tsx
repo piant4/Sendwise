@@ -21,11 +21,11 @@ export function AdminDashboard({
         <AdminKpiGrid summary={summary} />
 
         <div className="admin-dashboard__content">
-          <div className="admin-dashboard__stack">
-            <AdminRecentCampaignsCard summary={summary} />
-            <AdminBlockedSendsCard summary={summary} />
+          <AdminRecentCampaignsCard summary={summary} />
+          <AdminBlockedSendsCard summary={summary} />
+          <div className="admin-dashboard__content-wide">
+            <AdminOperationsRail summary={summary} />
           </div>
-          <AdminOperationsRail summary={summary} />
         </div>
       </section>
     </main>

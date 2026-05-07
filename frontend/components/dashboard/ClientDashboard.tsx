@@ -17,11 +17,11 @@ export function ClientDashboard({ summary }: ClientDashboardProps) {
         <ClientKpiGrid summary={summary} />
 
         <div className="client-dashboard__content">
-          <div className="client-dashboard__stack">
-            <ClientRecentCampaignsCard summary={summary} />
-            <ClientRecentBlockedSendsCard summary={summary} />
+          <ClientRecentCampaignsCard summary={summary} />
+          <ClientRecentBlockedSendsCard summary={summary} />
+          <div className="client-dashboard__content-wide">
+            <ClientDeliveryCard summary={summary} />
           </div>
-          <ClientDeliveryCard summary={summary} />
         </div>
       </section>
     </main>

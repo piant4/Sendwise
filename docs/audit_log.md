@@ -1798,3 +1798,56 @@ Confirmation:
 - no real listmonk implemented
 - no real sending implemented
 - no AI, n8n, Celery, Keycloak, Metabase, Postal, Rspamd, or Budibase implemented
+
+## Milestone 0.9E.2 — Clerk Runtime QA with Real Mapped Users
+
+Date: 2026-05-07
+Branch: develop
+
+Verified state:
+- Secret-safety checks passed:
+- `git status --short` was clean before task output
+- no tracked or staged diff was present for `.env`, `.env.local`, `frontend/.env.local`, or `backend/.env.local`
+- `frontend/.env.local` exists with frontend Clerk variables
+- `backend/.env.local` does not exist in this workspace
+- the current shell environment does not contain `CLERK_JWKS_URL`, `CLERK_ISSUER`, or `AUTH_USER_MAPPINGS_JSON`
+- Automated regression checks passed:
+- `PYTHONPATH=backend python3 -m pytest backend/tests`
+- `cd frontend && npm run lint`
+- `cd frontend && npm run build`
+- `cd frontend && NEXT_PUBLIC_USE_MOCK_API=false NEXT_PUBLIC_API_BASE_URL=http://localhost:8000 npm run build`
+- `bash scripts/audit.sh`
+- `bash scripts/smoke_test.sh`
+- `docker compose config`
+- `git diff --check`
+- Boundary grep checks passed:
+- `fetch(` remains isolated to `frontend/lib/api.ts`
+- no direct frontend `listmonk`, `postgres`, `database`, `smtp`, `localStorage`, `sessionStorage`, `document.cookie`, or signup exposure was found
+- no forbidden generic post-login `/admin` redirect match was found in the checked frontend paths
+- Live runtime checks executed outside the sandbox:
+- backend `GET /health` returned `200`
+- backend `GET /auth/me`, `GET /admin/clients`, and `GET /client/me` returned `401` without auth
+- frontend signed-out `/admin`, `/client`, and `/account` are protected and redirect or rewrite to `/login`
+- frontend `/login` renders the custom Sendwise login HTML and no signup or social button was visible in the rendered HTML
+- Code-path verification passed:
+- `frontend/app/auth/redirect/page.tsx` routes through backend-owned `getPostLoginRedirectPath()`
+- `frontend/lib/api.ts` attaches `Authorization: Bearer <token>` in backend mode using Clerk `auth().getToken()`
+- `getPostLoginRedirectPath()` decides `/admin` versus `/client` only from backend `GET /auth/me`
+
+Known limits:
+- Real backend Clerk runtime verification is blocked because local backend Clerk env is missing:
+- `CLERK_JWKS_URL`
+- `CLERK_ISSUER`
+- `AUTH_USER_MAPPINGS_JSON`
+- Real mapped admin and client Clerk users were not available in the workspace for live sign-in.
+- Clerk Dashboard settings for public signup, social login, local redirect URLs, and mapped test users were not confirmable from this workspace.
+- Interactive browser checks are limited because Playwright could not start Chrome on this machine.
+
+Observed blocker:
+- `GET /auth/me` with `Authorization: Bearer invalid-token` returned `500` with `Clerk auth is not fully configured on the backend.`
+- This does not count as an application bug for this milestone because the required Clerk backend verification env was not present locally.
+
+Scope confirmation:
+- No DB migration was implemented.
+- No `client_access` persistence was implemented.
+- No Clerk invitation API, admin invite flow, onboarding endpoint, public signup, custom password form, custom 2FA, real listmonk, real sending, AI, n8n, Celery, Keycloak, Metabase, Postal, Rspamd, or Budibase was implemented.

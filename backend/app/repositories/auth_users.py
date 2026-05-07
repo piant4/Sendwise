@@ -1,33 +1,43 @@
 import json
 from functools import lru_cache
-from typing import Literal, Optional
+from typing import Any, Literal, Optional
 
-from fastapi import Depends
-from pydantic import BaseModel, ValidationError, model_validator
+from fastapi import Depends, HTTPException, status
+from pydantic import BaseModel, ConfigDict, ValidationError, model_validator
 
 from app.core.config import Settings, get_settings
 
-AuthRole = Literal["admin_owner", "admin_operator", "client_owner", "client_viewer"]
+AuthAccessType = Literal["platform_admin", "client"]
 AuthStatus = Literal["invited", "active", "suspended", "archived"]
 
 
 class AuthUserRecord(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     id: Optional[str] = None
     clerk_user_id: str
     email: Optional[str] = None
-    role: AuthRole
+    access_type: AuthAccessType
     client_id: Optional[str] = None
     status: AuthStatus = "active"
 
     @model_validator(mode="after")
     def validate_client_scope(self) -> "AuthUserRecord":
-        if self.role.startswith("client_") and not self.client_id:
-            raise ValueError("Client roles require client_id in auth mapping.")
+        if self.access_type == "client" and not self.client_id:
+            raise ValueError("Client access requires client_id in auth mapping.")
+
+        if self.access_type == "platform_admin" and self.client_id is not None:
+            raise ValueError("Platform admin access must not include client_id.")
+
         return self
 
     @property
     def resolved_user_id(self) -> str:
         return self.id or self.clerk_user_id
+
+    @property
+    def role(self) -> str:
+        return self.access_type
 
 
 class AuthUserRepository:
@@ -47,15 +57,47 @@ def _load_records(raw_json: str) -> dict[str, AuthUserRecord]:
     except json.JSONDecodeError as error:
         raise ValueError("AUTH_USER_MAPPINGS_JSON must be valid JSON.") from error
 
-    if not isinstance(payload, list):
-        raise ValueError("AUTH_USER_MAPPINGS_JSON must decode to a list.")
+    if isinstance(payload, list):
+        if not payload:
+            return {}
+
+        raise ValueError(
+            "AUTH_USER_MAPPINGS_JSON must decode to an object keyed by Clerk user id."
+        )
+
+    if not isinstance(payload, dict):
+        raise ValueError(
+            "AUTH_USER_MAPPINGS_JSON must decode to an object keyed by Clerk user id."
+        )
 
     records: dict[str, AuthUserRecord] = {}
 
     try:
-        for item in payload:
-            record = AuthUserRecord.model_validate(item)
-            records[record.clerk_user_id] = record
+        for clerk_user_id, item in payload.items():
+            if not isinstance(clerk_user_id, str) or not clerk_user_id:
+                raise ValueError(
+                    "AUTH_USER_MAPPINGS_JSON keys must be non-empty Clerk user ids."
+                )
+
+            if not isinstance(item, dict):
+                raise ValueError(
+                    "AUTH_USER_MAPPINGS_JSON values must be objects keyed by Clerk user id."
+                )
+
+            declared_clerk_user_id = item.get("clerk_user_id")
+
+            if (
+                declared_clerk_user_id is not None
+                and declared_clerk_user_id != clerk_user_id
+            ):
+                raise ValueError(
+                    "AUTH_USER_MAPPINGS_JSON clerk_user_id must match its object key."
+                )
+
+            record_payload: dict[str, Any] = dict(item)
+            record_payload["clerk_user_id"] = clerk_user_id
+            record = AuthUserRecord.model_validate(record_payload)
+            records[clerk_user_id] = record
     except ValidationError as error:
         raise ValueError("AUTH_USER_MAPPINGS_JSON contains invalid auth records.") from error
 
@@ -70,4 +112,10 @@ def _build_auth_user_repository(raw_json: str) -> AuthUserRepository:
 def get_auth_user_repository(
     settings: Settings = Depends(get_settings),
 ) -> AuthUserRepository:
-    return _build_auth_user_repository(settings.auth_user_mappings_json)
+    try:
+        return _build_auth_user_repository(settings.auth_user_mappings_json)
+    except ValueError as error:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Invalid AUTH_USER_MAPPINGS_JSON backend configuration: {error}",
+        ) from error

@@ -1,5 +1,5 @@
 from functools import lru_cache
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 
 import jwt
 from fastapi import Depends, HTTPException, status
@@ -15,8 +15,8 @@ from app.repositories.auth_users import (
     get_auth_user_repository,
 )
 
-ADMIN_ROLES = {"admin_owner", "admin_operator"}
-CLIENT_ROLES = {"client_owner", "client_viewer"}
+PLATFORM_ADMIN_ACCESS = "platform_admin"
+CLIENT_ACCESS = "client"
 bearer_scheme = HTTPBearer(auto_error=False)
 
 
@@ -24,9 +24,13 @@ class AuthenticatedUser(BaseModel):
     id: str
     clerk_user_id: str
     email: Optional[str] = None
-    role: str
+    access_type: Literal["platform_admin", "client"]
     client_id: Optional[str] = None
-    status: str
+    status: Literal["invited", "active", "suspended", "archived"]
+
+    @property
+    def role(self) -> str:
+        return self.access_type
 
 
 def _raise_unauthorized(detail: str) -> None:
@@ -115,13 +119,13 @@ def get_current_user(
         id=mapped_user.resolved_user_id,
         clerk_user_id=clerk_user_id,
         email=_extract_email(claims, mapped_user),
-        role=mapped_user.role,
+        access_type=mapped_user.access_type,
         client_id=mapped_user.client_id,
         status=mapped_user.status,
     )
 
 
-def require_authenticated_user(
+def require_active_user(
     current_user: AuthenticatedUser = Depends(get_current_user),
 ) -> AuthenticatedUser:
     if current_user.status != "active":
@@ -133,10 +137,10 @@ def require_authenticated_user(
     return current_user
 
 
-def require_admin(
-    current_user: AuthenticatedUser = Depends(require_authenticated_user),
+def require_platform_admin(
+    current_user: AuthenticatedUser = Depends(require_active_user),
 ) -> AuthenticatedUser:
-    if current_user.role not in ADMIN_ROLES:
+    if current_user.access_type != PLATFORM_ADMIN_ACCESS:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Admin access is required for this endpoint.",
@@ -145,13 +149,19 @@ def require_admin(
     return current_user
 
 
-def require_client(
-    current_user: AuthenticatedUser = Depends(require_authenticated_user),
+def require_client_scope(
+    current_user: AuthenticatedUser = Depends(require_active_user),
 ) -> AuthenticatedUser:
-    if current_user.role not in CLIENT_ROLES or not current_user.client_id:
+    if current_user.access_type != CLIENT_ACCESS or not current_user.client_id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Client access is required for this endpoint.",
         )
 
+    return current_user
+
+
+def require_client(
+    current_user: AuthenticatedUser = Depends(require_client_scope),
+) -> AuthenticatedUser:
     return current_user

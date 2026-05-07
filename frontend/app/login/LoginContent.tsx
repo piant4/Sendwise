@@ -113,16 +113,14 @@ export function LoginContent() {
 
       <div className="login-layout">
         <section className="login-stage">
-          <div className="login-pills">
-            <span className="login-pill">Accesso riservato</span>
-          </div>
-
           <BrandMark size="lg" />
 
           <div className="login-copy">
-            <p className="login-eyebrow">Piattaforma operativa</p>
+            <div className="login-pills">
+              <span className="login-pill">Accesso riservato</span>
+            </div>
             <h1 className="login-title">
-              Campagne email, clienti e controllo operativo nello stesso
+              Campagne email, AI e controllo operativo nello stesso
               workspace.
             </h1>
             <p className="login-lead">
@@ -135,10 +133,6 @@ export function LoginContent() {
         <section className="login-card">
           <div className="login-card__header">
             <h2 className="login-card__title">Accedi</h2>
-            <p className="login-card__description">
-              Inserisci le credenziali del tuo account Sendwise per accedere
-              alla console operativa.
-            </p>
           </div>
 
           <form
@@ -189,10 +183,6 @@ export function LoginContent() {
               </p>
             ) : null}
 
-            <p className="login-helper">
-              Accesso riservato agli utenti autorizzati.
-            </p>
-
             <button
               className="login-submit"
               disabled={fetchStatus === "fetching" || isSubmitting}
@@ -211,7 +201,6 @@ export function LoginContent() {
                 Sendwise.
               </span>
             </div>
-            <LifeBuoy aria-hidden="true" className="login-card__footer-accent" />
           </div>
         </section>
       </div>

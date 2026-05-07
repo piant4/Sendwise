@@ -1507,3 +1507,50 @@ Confirmation:
 - no real listmonk implemented
 - no real sending implemented
 - no AI, n8n, Celery, Keycloak, Metabase, Postal, Rspamd, or Budibase implemented
+
+## Milestone 0.9E — Runtime Auth Model Alignment
+
+Date: 2026-05-07
+Branch: develop
+Scope:
+- align backend runtime auth from legacy role hierarchy to the V1 one-admin plus one-client access model
+- replace temporary auth mapping expectations with object-shaped Clerk-user keyed access mappings
+- keep protected admin, client, and campaign endpoints fail-closed without adding DB persistence, Clerk invitations, or UI redesign
+
+Verified state:
+- `backend/app/core/auth.py` now trusts `platform_admin` and `client` access kinds only, with `require_active_user`, `require_platform_admin`, and `require_client_scope` enforcing the simplified runtime contract.
+- `backend/app/repositories/auth_users.py` now validates object-shaped `AUTH_USER_MAPPINGS_JSON`, rejects non-empty legacy list mappings, rejects unknown access types, rejects client access without `client_id`, and rejects platform admin access with a trusted `client_id`.
+- `backend/app/api/admin.py` now depends on `require_platform_admin`.
+- `backend/app/api/campaigns.py` now depends on `require_active_user`.
+- `backend/tests/test_clerk_auth.py` now verifies public health, missing token `401`, invalid token `401`, active platform admin access, active client access, client-to-admin `403`, admin-to-client `403`, non-active status `403`, invalid mapping `500`, unknown access type `500`, and legacy role mapping `500`.
+- `.env.example` now documents the temporary object-shaped auth mapping placeholder with `access_type` values `platform_admin` and `client`.
+- `PYTHONPATH=backend python3 -m pytest backend/tests` passed.
+- `cd frontend && npm run lint` passed.
+- `cd frontend && npm run build` passed.
+- `cd frontend && NEXT_PUBLIC_USE_MOCK_API=false NEXT_PUBLIC_API_BASE_URL=http://localhost:8000 npm run build` passed.
+- `bash scripts/audit.sh` passed.
+- `bash scripts/smoke_test.sh` passed.
+- `docker compose config` passed.
+- `git diff --check` passed.
+
+Known limits:
+- Clerk frontend login redirects still contain hard `/admin` assumptions in `frontend/app/layout.tsx` and `frontend/app/login/[[...login]]/page.tsx`, but those files were outside the allowed edit scope for this milestone.
+- `frontend/components/auth/MockLoginForm.tsx` still contains a dev-only admin/client selector outside this milestone scope and appears unused by the current Clerk login route.
+- Runtime auth mapping remains backend env configuration rather than persisted `client_access` state.
+- The worktree contains an unrelated `frontend/app/globals.css` modification outside this milestone scope.
+
+Contract changes requested:
+- None.
+
+Confirmation:
+- no DB migration implemented
+- no `client_access` persistence implemented
+- no Clerk invitation API implemented
+- no admin invite flow implemented
+- no onboarding endpoint implemented
+- no public signup implemented
+- no custom password form implemented
+- no custom 2FA implemented
+- no real listmonk implemented
+- no real sending implemented
+- no AI, n8n, Celery, Keycloak, Metabase, Postal, Rspamd, or Budibase implemented

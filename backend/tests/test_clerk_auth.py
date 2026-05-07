@@ -1,5 +1,6 @@
 import json
 import time
+from typing import Any
 
 import jwt
 import pytest
@@ -41,7 +42,7 @@ def auth_env(monkeypatch: pytest.MonkeyPatch) -> None:
 
 @pytest.fixture
 def client() -> TestClient:
-    return TestClient(app)
+    return TestClient(app, raise_server_exceptions=False)
 
 
 @pytest.fixture
@@ -56,7 +57,9 @@ def signing_keypair(monkeypatch: pytest.MonkeyPatch) -> rsa.RSAPrivateKey:
     return private_key
 
 
-def set_auth_mappings(monkeypatch: pytest.MonkeyPatch, mappings: list[dict[str, str]]) -> None:
+def set_auth_mappings(
+    monkeypatch: pytest.MonkeyPatch, mappings: dict[str, dict[str, Any]]
+) -> None:
     monkeypatch.setenv("AUTH_USER_MAPPINGS_JSON", json.dumps(mappings))
     get_settings.cache_clear()
     _build_auth_user_repository.cache_clear()
@@ -129,15 +132,14 @@ def test_admin_mapping_can_access_admin_endpoints(
 ) -> None:
     set_auth_mappings(
         monkeypatch,
-        [
-            {
+        {
+            "user_admin": {
                 "id": "user_admin",
-                "clerk_user_id": "user_admin",
                 "email": "admin@sendwise.test",
-                "role": "admin_owner",
+                "access_type": "platform_admin",
                 "status": "active",
             }
-        ],
+        },
     )
     token = make_token(signing_keypair, clerk_user_id="user_admin", email="admin@sendwise.test")
 
@@ -156,16 +158,15 @@ def test_client_mapping_can_access_client_endpoints(
 ) -> None:
     set_auth_mappings(
         monkeypatch,
-        [
-            {
+        {
+            "user_client": {
                 "id": "user_client",
-                "clerk_user_id": "user_client",
                 "email": "client@acme.test",
-                "role": "client_viewer",
+                "access_type": "client",
                 "client_id": "client_acme",
                 "status": "active",
             }
-        ],
+        },
     )
     token = make_token(signing_keypair, clerk_user_id="user_client", email="client@acme.test")
 
@@ -176,7 +177,7 @@ def test_client_mapping_can_access_client_endpoints(
     assert {"client", "user"} <= data.keys()
     assert data["client"]["id"] == "client_acme"
     assert data["user"]["client_id"] == "client_acme"
-    assert data["user"]["role"] == "client_viewer"
+    assert data["user"]["role"] == "client"
 
 
 def test_client_role_cannot_access_admin_endpoints(
@@ -186,16 +187,15 @@ def test_client_role_cannot_access_admin_endpoints(
 ) -> None:
     set_auth_mappings(
         monkeypatch,
-        [
-            {
+        {
+            "user_client": {
                 "id": "user_client",
-                "clerk_user_id": "user_client",
                 "email": "client@acme.test",
-                "role": "client_viewer",
+                "access_type": "client",
                 "client_id": "client_acme",
                 "status": "active",
             }
-        ],
+        },
     )
     token = make_token(signing_keypair, clerk_user_id="user_client")
 
@@ -204,54 +204,127 @@ def test_client_role_cannot_access_admin_endpoints(
     assert response.status_code == 403
 
 
-def test_suspended_user_cannot_access_protected_endpoint(
+def test_platform_admin_cannot_access_client_endpoints(
     client: TestClient,
     monkeypatch: pytest.MonkeyPatch,
     signing_keypair: rsa.RSAPrivateKey,
 ) -> None:
     set_auth_mappings(
         monkeypatch,
-        [
-            {
-                "id": "user_client_suspended",
-                "clerk_user_id": "user_client_suspended",
-                "email": "client@acme.test",
-                "role": "client_viewer",
-                "client_id": "client_acme",
-                "status": "suspended",
+        {
+            "user_admin": {
+                "id": "user_admin",
+                "email": "admin@sendwise.test",
+                "access_type": "platform_admin",
+                "status": "active",
             }
-        ],
+        },
     )
-    token = make_token(signing_keypair, clerk_user_id="user_client_suspended")
+    token = make_token(signing_keypair, clerk_user_id="user_admin")
+
+    response = client.get("/client/me", headers=auth_header(token))
+
+    assert response.status_code == 403
+
+
+@pytest.mark.parametrize("status_value", ["invited", "suspended", "archived"])
+def test_non_active_user_cannot_access_protected_endpoint(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    signing_keypair: rsa.RSAPrivateKey,
+    status_value: str,
+) -> None:
+    set_auth_mappings(
+        monkeypatch,
+        {
+            "user_client_status": {
+                "id": "user_client_status",
+                "email": "client@acme.test",
+                "access_type": "client",
+                "client_id": "client_acme",
+                "status": status_value,
+            }
+        },
+    )
+    token = make_token(signing_keypair, clerk_user_id="user_client_status")
 
     response = client.get("/client/campaigns", headers=auth_header(token))
 
     assert response.status_code == 403
 
 
-def test_archived_user_cannot_access_protected_endpoint(
+def test_client_mapping_without_client_id_fails_closed(
     client: TestClient,
     monkeypatch: pytest.MonkeyPatch,
     signing_keypair: rsa.RSAPrivateKey,
 ) -> None:
     set_auth_mappings(
         monkeypatch,
-        [
-            {
-                "id": "user_client_archived",
-                "clerk_user_id": "user_client_archived",
+        {
+            "user_client_invalid": {
+                "id": "user_client_invalid",
                 "email": "client@acme.test",
-                "role": "client_viewer",
-                "client_id": "client_acme",
-                "status": "archived",
+                "access_type": "client",
+                "status": "active",
             }
-        ],
+        },
     )
-    token = make_token(signing_keypair, clerk_user_id="user_client_archived")
+    token = make_token(signing_keypair, clerk_user_id="user_client_invalid")
 
     response = client.get("/client/usage", headers=auth_header(token))
 
-    assert response.status_code == 403
+    assert response.status_code == 500
+    assert "Invalid AUTH_USER_MAPPINGS_JSON backend configuration" in response.text
+
+
+def test_unknown_access_type_fails_closed(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    signing_keypair: rsa.RSAPrivateKey,
+) -> None:
+    set_auth_mappings(
+        monkeypatch,
+        {
+            "user_unknown_access": {
+                "id": "user_unknown_access",
+                "email": "client@acme.test",
+                "access_type": "client_viewer",
+                "client_id": "client_acme",
+                "status": "active",
+            }
+        },
+    )
+    token = make_token(signing_keypair, clerk_user_id="user_unknown_access")
+
+    response = client.get("/client/me", headers=auth_header(token))
+
+    assert response.status_code == 500
+    assert "Invalid AUTH_USER_MAPPINGS_JSON backend configuration" in response.text
+
+
+def test_old_unsupported_role_values_fail_closed(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    signing_keypair: rsa.RSAPrivateKey,
+) -> None:
+    set_auth_mappings(
+        monkeypatch,
+        {
+            "user_legacy_role": {
+                "id": "user_legacy_role",
+                "email": "client@acme.test",
+                "role": "client_viewer",
+                "client_id": "client_acme",
+                "status": "active",
+            }
+        },
+    )
+    token = make_token(signing_keypair, clerk_user_id="user_legacy_role")
+
+    response = client.get("/client/me", headers=auth_header(token))
+
+    assert response.status_code == 500
+    assert "Invalid AUTH_USER_MAPPINGS_JSON backend configuration" in response.text
 
 
 def test_authorized_client_response_shapes_are_preserved(
@@ -261,16 +334,15 @@ def test_authorized_client_response_shapes_are_preserved(
 ) -> None:
     set_auth_mappings(
         monkeypatch,
-        [
-            {
+        {
+            "user_client": {
                 "id": "user_client",
-                "clerk_user_id": "user_client",
                 "email": "client@acme.test",
-                "role": "client_owner",
+                "access_type": "client",
                 "client_id": "client_acme",
                 "status": "active",
             }
-        ],
+        },
     )
     token = make_token(signing_keypair, clerk_user_id="user_client")
 

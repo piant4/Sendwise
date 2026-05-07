@@ -50,29 +50,54 @@ error
 
 ### clients
 
-Purpose: Customer account/root tenant.
+Purpose: Actual customer profile, person, or account for the client dashboard.
 
-Minimum fields: `id`, `name`, `status`, `created_at`, `updated_at`.
+Minimum fields: `id`, `email`, `personal_name`, `company_name`, `status`, `monthly_email_limit`, `daily_email_limit`, `created_at`, `updated_at`.
 
 Relation to `client_id`: Root entity; other customer business data references `clients.id`.
 
-V1 notes: Stores lifecycle state and future account limits.
+V1 notes:
 
-Anti-regression rules: Client status must be checked before sending; archived/blocked/paused clients cannot send.
+- `personal_name` is required for a fully onboarded client profile.
+- `company_name` is nullable and may represent a company, studio, or brand label.
+- Existing business fields may expand this entity later, but V1 keeps one client profile per logged-in customer account.
 
-### client_users
+Anti-regression rules:
 
-Purpose: Users associated with a client dashboard or admin ownership.
+- Client status must be checked before sending; archived, blocked, and paused clients cannot send.
+- The business profile must not store password values, password hashes, reset tokens, or session secrets.
 
-Minimum fields: `id`, `client_id`, `clerk_user_id`, `clerk_org_id`, `email`, `role`, `status`, `created_at`, `updated_at`.
+### client_access
 
-Relation to `client_id`: Direct `client_id` for client users. Platform admins may use nullable `client_id` or a dedicated platform scope in a later auth milestone.
+Purpose: Clerk-backed auth, invitation, and access mapping for a single client.
 
-V1 notes: Real auth is not implemented in Milestone 0. The planned auth contract uses Clerk as identity provider while Business PostgreSQL stores Sendwise role, status, and client mapping only. No password, password hash, password reset token, or session secret belongs in this table.
+Minimum fields: `id`, `client_id`, `email`, `clerk_user_id`, `clerk_invitation_id`, `status`, `invitation_status`, `invited_at`, `accepted_at`, `created_at`, `updated_at`.
 
-Planned statuses: `invited`, `active`, `suspended`, `archived`.
+Relation to `client_id`: Direct `client_id`. In V1, one client has one access mapping.
 
-Anti-regression rules: `clerk_user_id` must be unique; client users must not access other clients' data; backend resolves `client_id` from this mapping rather than trusting frontend input; suspended or archived users cannot access protected data.
+V1 notes:
+
+- `clerk_user_id` is nullable while the client is invited but has not accepted access yet.
+- `clerk_invitation_id` is nullable when no active invitation exists.
+- Real auth is not implemented in Milestone 0. The planned auth contract uses Clerk as the identity provider while Business PostgreSQL stores client access state and client mapping only.
+- V1 has no `role` field and no `client_users` table.
+- The platform admin is backend-controlled and is not modeled as a client access row.
+
+Allowed access statuses: `invited`, `active`, `suspended`, `archived`.
+
+Allowed invitation statuses: `pending`, `accepted`, `revoked`, `expired`.
+
+Anti-regression rules:
+
+- `client_id` must be unique in `client_access` for V1.
+- One client has one active Clerk-backed access in V1.
+- `clerk_user_id` must be unique when present.
+- `email` must be unique among active or invited client accesses.
+- Invited clients cannot access protected client data until access becomes `active`.
+- Suspended or archived client access cannot access protected client data.
+- Backend resolves `client_id` from this mapping rather than trusting frontend input.
+- No password, password hash, password reset token, or session secret belongs in this table.
+- Keeping `client_access` separate from `clients` preserves business profile data in `clients` while keeping Clerk-specific invitation and identity mapping out of the core customer profile.
 
 ### client_secrets
 

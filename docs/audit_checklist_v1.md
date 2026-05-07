@@ -18,7 +18,7 @@ Run this checklist after each milestone and record results in `docs/audit_log.md
 - [ ] endpoint protection planned/present.
 - [ ] API key/auth planned/present.
 - [ ] public signup disabled or explicitly still out of scope.
-- [ ] frontend does not trust role or `client_id`.
+- [ ] frontend does not trust access type or `client_id`.
 - [ ] Sendwise DB stores no user password, password hash, password reset token, or session secret.
 - [ ] protected backend requests use backend-owned auth verification or are explicitly documented as stubs.
 - [ ] secrets not committed.
@@ -26,12 +26,29 @@ Run this checklist after each milestone and record results in `docs/audit_log.md
 - [ ] PostgreSQL not publicly exposed.
 - [ ] listmonk admin not publicly exposed without protection.
 
+## Auth And Onboarding Contract
+
+- [ ] platform admin is backend-controlled.
+- [ ] there is no role selector in client access UI.
+- [ ] there is no admin or client selector in client access UI.
+- [ ] there is no multi-user or team client UI in V1.
+- [ ] invite-access endpoint accepts `email` only.
+- [ ] invite-access endpoint does not accept trusted role or access type from frontend.
+- [ ] onboarding endpoint does not accept trusted `client_id` or role from frontend.
+- [ ] onboarding endpoint accepts `personal_name` and optional `company_name`.
+- [ ] each client has at most one active access in V1.
+- [ ] client account cannot access admin endpoints.
+- [ ] invited, suspended, and archived access cannot access protected data.
+- [ ] no public signup route exists.
+- [ ] no `SignUpButton` is exposed.
+
 ## Multi-client
 
 - [ ] client_id isolation enforced in contracts.
 - [ ] client dashboard cannot access other clients.
 - [ ] every business entity maps to client_id.
 - [ ] backend resolves client scope from Business PostgreSQL mapping, not from frontend input.
+- [ ] client_id is backend-derived or path-derived and validated where required.
 
 ## Deliverability
 

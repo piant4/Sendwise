@@ -50,7 +50,7 @@ Mailpit captures email safely for inspection. It prevents accidental real sends 
 
 ## Why PostgreSQL Business DB Is Source Of Truth
 
-Business PostgreSQL stores customer-owned state: clients, users, campaigns, contacts, usage, suppression, provider events, blocked sends, and listmonk mappings. listmonk's data is operational and must not replace business truth.
+Business PostgreSQL stores customer-owned state: clients, client access mappings, campaigns, contacts, usage, suppression, provider events, blocked sends, and listmonk mappings. In V1, a client is the actual customer account that logs into `/client`, each client has exactly one Clerk-backed access mapping, and the single platform admin remains backend-controlled rather than modeled as a client account. listmonk's data is operational and must not replace business truth.
 
 ## Included Tools
 

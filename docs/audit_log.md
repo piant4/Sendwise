@@ -258,6 +258,56 @@ Tests executed:
 - `cd frontend && NEXT_PUBLIC_USE_MOCK_API=false NEXT_PUBLIC_API_BASE_URL=http://localhost:8000 npm run build`
 - `bash scripts/audit.sh`
 - `bash scripts/smoke_test.sh`
+
+## Milestone 0.9C.2 - Custom Clerk Login UI
+
+Date: 2026-05-07
+Branch: develop
+Milestone: Milestone 0.9C.2 - Custom Clerk Login UI
+Scope: Replace the prebuilt Clerk login surface on `/login` with a Sendwise-owned custom email/password form while preserving Clerk as the auth engine, the existing `/login/[[...login]]` route, and protected account/admin/client routes.
+Files created:
+- `docs/branch_handoffs/clerk-custom-login-0.9C.2-handoff.md`
+Files modified:
+- `frontend/app/login/LoginContent.tsx`
+- `frontend/app/globals.css`
+- `docs/audit_log.md`
+Root cause:
+- `frontend/app/login/LoginContent.tsx` rendered Clerk's prebuilt `<SignIn />` component directly.
+- That delegated visible auth UI to Clerk, which is incompatible with the Sendwise product requirement to keep signup, social login, Clerk branding, and default Clerk card chrome off the `/login` surface.
+Implementation result:
+- Replaced the prebuilt Clerk login component with a custom Sendwise form driven by Clerk `useSignIn()`.
+- Kept Italian-only copy, removed Sendwise-owned signup exposure, and redirected successful sign-in to `/admin`.
+- Preserved `/login/[[...login]]`, `/account` via Clerk `UserProfile`, and existing protected-route structure.
+Tests executed:
+- `cd frontend && npm run lint`
+- `cd frontend && npm run build`
+- `cd frontend && NEXT_PUBLIC_USE_MOCK_API=false NEXT_PUBLIC_API_BASE_URL=http://localhost:8000 npm run build`
+- `PYTHONPATH=backend python3 -m pytest backend/tests`
+- `bash scripts/audit.sh`
+- `bash scripts/smoke_test.sh`
+- `docker compose config`
+- `git diff --check`
+- `grep -R -n "from .*mock-api" frontend/app frontend/components || true`
+- `grep -R -n "fetch(" frontend/app frontend/components frontend/lib || true`
+- `grep -R -n "listmonk\|postgres\|database\|smtp" frontend/app frontend/components frontend/lib || true`
+- `grep -R -n "localStorage\|sessionStorage\|document.cookie" frontend/app frontend/components frontend/lib || true`
+- `grep -R -n "SignUpButton" frontend/app frontend/components frontend/lib || true`
+- `grep -R -n "sign-up" frontend/app frontend/components frontend/lib || true`
+- `grep -R -n "signup" frontend/app frontend/components frontend/lib || true`
+- `grep -R -n "Continue with Google\|Google" frontend/app frontend/components frontend/lib || true`
+Tests not executed and reason:
+- Live browser verification of `/login`, authenticated sign-in with a real Clerk user, signed-out redirect checks, and `/account` interaction were not completed in this turn.
+- The local browser verification path was blocked by in-app browser security/runtime limits, and no authorized test credentials were provided for a real Clerk session.
+Residual risks:
+- Live Clerk password-auth behavior still depends on Clerk Dashboard configuration for password sign-in, public signup disablement, and social-login disablement.
+- The custom form currently surfaces a controlled message if the Clerk project does not support password auth or requires extra factors not yet exposed in Sendwise UI.
+- Existing unrelated workspace change `frontend/.gitignore` remains outside this milestone.
+Confirmation:
+- no backend auth logic changed
+- no DB migration or `client_users` persistence implemented
+- no admin-created user flow implemented
+- no public signup, social login UI, custom password storage, or custom password reset/change form implemented
+- no real listmonk, real sending, AI, n8n, Celery, Keycloak, Metabase, Postal, Rspamd, or Budibase implemented
 - `docker compose config`
 - `git diff --check`
 - `grep -R "from .*mock-api" frontend/app frontend/components || true`
@@ -1409,3 +1459,51 @@ Risks:
 
 Confirmation:
 - no DB migration, `client_users` persistence, admin-created user flow, public signup, custom password form, real listmonk, real sending, AI, n8n, Celery, Keycloak, Metabase, Postal, Rspamd, or Budibase work was implemented
+
+## Milestone 0.9D-Prep - One Admin + One Client Account Contract
+
+Date: 2026-05-07
+Branch: develop
+Scope:
+- docs-only contract update for the V1 auth, data-model, API, architecture pointer, audit checklist, audit log, and branch handoff files
+- simplify V1 from multi-user client roles to one backend-controlled platform admin plus one Clerk-backed client account per client
+- define onboarding contract for Clerk password setup, required `personal_name`, and optional `company_name`
+
+Verified state:
+- `docs/auth_contract_v1.md` now defines one platform admin account, one client account per client, backend-resolved `client_id`, no role selection, no team or sub-user model, and Clerk-owned password management.
+- `docs/data_model_v1.md` now replaces planned `client_users` with planned `client_access` and documents the `clients` plus `client_access` split.
+- `docs/api_contracts_v1.md` now defines admin client-access endpoints, a client onboarding completion endpoint, and removes role or user-type contract language from V1 access flows.
+- `docs/audit_checklist_v1.md` now includes explicit checks for no role selector, no admin/client selector, no multi-user client UI, backend-controlled platform admin, backend-derived `client_id`, one active access per client, no public signup route, and no `SignUpButton`.
+- `docs/architecture_v1.md` now points to `client_access` mappings and clarifies that the platform admin is backend-controlled rather than a client account.
+- `bash scripts/audit.sh` passed.
+- `bash scripts/smoke_test.sh` passed.
+- `docker compose config` passed.
+- `git diff --check` passed.
+
+Known limits:
+- This milestone updates contracts only; no runtime auth behavior, Clerk API calls, database schema, invitation flow, or onboarding flow was implemented.
+- The workspace contains a pre-existing untracked file: `docs/branch_handoffs/clerk-custom-login-0.9C.2-handoff.md`. It was not modified by this task.
+
+Contract changes requested:
+- define V1 as one platform admin plus one Clerk-backed client account per client
+- remove V1 `client_users`, role selection, user-type selection, and team or sub-user assumptions
+- define client onboarding profile fields as required `personal_name` plus optional `company_name`
+- define future invite-access and onboarding-complete API contracts with backend-owned client scope
+
+Residual risks:
+- Existing runtime code and placeholder auth behavior still predate this simplified contract and will need a later implementation milestone to align code with docs.
+- The exact future persistence constraints for `email` uniqueness among active or invited access rows will need implementation-level enforcement details when schema work is approved.
+
+Confirmation:
+- no frontend runtime code implemented
+- no backend runtime code implemented
+- no DB migration implemented
+- no Clerk API call implemented
+- no client access implementation implemented
+- no onboarding implementation implemented
+- no public signup implemented
+- no custom password form implemented
+- no custom 2FA implemented
+- no real listmonk implemented
+- no real sending implemented
+- no AI, n8n, Celery, Keycloak, Metabase, Postal, Rspamd, or Budibase implemented

@@ -24,6 +24,18 @@ const DEFAULT_EMPTY_ADMIN_LIMITS = {
 } as const;
 
 const ACTIVE_CAMPAIGN_STATUSES = new Set<Campaign["status"]>(["ready", "running"]);
+const ADMIN_ROUTE = "/admin";
+const CLIENT_ROUTE = "/client";
+
+export type AuthAccessType = "platform_admin" | "client";
+export type AuthUserStatus = "invited" | "active" | "suspended" | "archived";
+
+export interface AuthMeResponse {
+  access_type: AuthAccessType;
+  client_id: string | null;
+  email: string | null;
+  status: AuthUserStatus;
+}
 
 function formatDateTimeLabel(value: string): string {
   const date = new Date(value);
@@ -124,6 +136,16 @@ async function apiGet<T>(path: string): Promise<T> {
   }
 }
 
+function assertBackendAuthRoutingEnabled(): void {
+  if (!USE_MOCK_API) {
+    return;
+  }
+
+  throw new Error(
+    "Post-login routing requires NEXT_PUBLIC_USE_MOCK_API=false so the frontend can resolve access through the backend.",
+  );
+}
+
 async function fetchAdminClients(): Promise<Client[]> {
   return apiGet<Client[]>("/admin/clients");
 }
@@ -146,6 +168,11 @@ async function fetchClientUsage(): Promise<ApiUsage[]> {
 
 async function fetchClientBlockedSends(): Promise<BlockedSend[]> {
   return apiGet<BlockedSend[]>("/client/blocked-sends");
+}
+
+async function fetchAuthMe(): Promise<AuthMeResponse> {
+  assertBackendAuthRoutingEnabled();
+  return apiGet<AuthMeResponse>("/auth/me");
 }
 
 function getClientStatusLabel(status: Client["status"]): string {
@@ -371,4 +398,10 @@ export function getClientBlockedSends(): Promise<BlockedSend[]> {
   return USE_MOCK_API
     ? mockApi.getClientBlockedSends()
     : fetchClientBlockedSends();
+}
+
+export async function getPostLoginRedirectPath(): Promise<string> {
+  const authMe = await fetchAuthMe();
+
+  return authMe.access_type === "platform_admin" ? ADMIN_ROUTE : CLIENT_ROUTE;
 }

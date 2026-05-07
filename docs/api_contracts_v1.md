@@ -17,6 +17,14 @@ V1 auth and access contract:
 - There is no role selector, no user-type selector, and no multi-user client-team model in V1.
 - Backend resolves trusted `client_id` from authenticated identity mapping.
 
+## Auth
+
+Milestone 0.9E.1: `GET /auth/me` is implemented as a minimal backend-owned auth-context endpoint for post-login redirect routing while `AUTH_USER_MAPPINGS_JSON` remains the temporary mapping source.
+
+| Endpoint | Purpose | Allowed caller | Required access | High-level input | High-level output | Main errors | Status |
+|---|---|---|---|---|---|---|---|
+| `GET /auth/me` | Resolve the authenticated Sendwise access context for post-login routing. | Authenticated Next.js login redirect flow and authenticated UI. | Active platform admin or active client account. | Clerk bearer token. | `access_type`, backend-owned `client_id`, `email`, `status`. | `401`, `403`. | `stub` |
+
 ## Health
 
 | Endpoint | Purpose | Allowed caller | Required access | High-level input | High-level output | Main errors | Status |

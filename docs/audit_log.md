@@ -1637,3 +1637,164 @@ Confirmation:
 - no custom password reset or change implemented
 - no real listmonk or real sending implemented
 - no AI, n8n, Celery, Keycloak, Metabase, Postal, Rspamd, or Budibase implemented
+
+## Milestone 0.9E.1 — Clerk Redirect Alignment
+
+Date: 2026-05-07
+Branch: develop
+Scope:
+- align post-login Clerk routing to backend-resolved access type
+- keep `AUTH_USER_MAPPINGS_JSON` as the temporary backend mapping source
+- avoid DB persistence, invitations, onboarding, and UI redesign
+
+Flow audited:
+- Expected contract:
+- Clerk identifies the user
+- FastAPI resolves trusted access type and trusted `client_id`
+- the frontend redirects to `/admin` for `platform_admin` and `/client` for `client` only after backend resolution
+- Observed behavior before fix:
+- `frontend/app/login/LoginContent.tsx` hard-coded the success redirect target to `/admin`
+- `frontend/app/login/[[...login]]/page.tsx` redirected every authenticated user to `/admin`
+- `frontend/app/layout.tsx` still contains `signInFallbackRedirectUrl="/admin"` and `signInForceRedirectUrl="/admin"`
+- backend runtime auth had no minimal `/auth/me` endpoint for frontend redirect resolution
+- First divergence point:
+- frontend post-login routing in `frontend/app/login/LoginContent.tsx` and `frontend/app/login/[[...login]]/page.tsx`
+- Evidence:
+- the custom Clerk login flow completed by calling `router.replace("/admin")`
+- authenticated visits to `/login` were immediately redirected to `/admin`
+- no backend-owned auth-context endpoint existed for the frontend to ask which dashboard route to use
+
+Root cause:
+- Symptom:
+- active client logins could be sent to `/admin` after successful Clerk authentication
+- Primary root cause:
+- frontend redirect handling was hard-coded to an admin route before any backend-owned access resolution step
+- Category:
+- frontend API client
+- Minimal fix boundary:
+- `frontend/app/login/LoginContent.tsx`
+- `frontend/app/login/[[...login]]/page.tsx`
+- `frontend/app/auth/redirect/page.tsx`
+- `frontend/lib/api.ts`
+- `backend/app/api/`
+- `backend/app/schemas/`
+- `backend/tests/test_clerk_auth.py`
+
+Verified state:
+- `backend/app/api/auth.py` now exposes `GET /auth/me` for active authenticated users and returns `access_type`, backend-owned `client_id`, `email`, and `status`.
+- `backend/app/schemas/auth.py` defines the minimal `GET /auth/me` response shape.
+- `frontend/lib/api.ts` now exposes a backend-only post-login redirect helper that calls `/auth/me` and maps `platform_admin` to `/admin` and `client` to `/client`.
+- `frontend/app/auth/redirect/page.tsx` now resolves the redirect server-side through the backend and fails closed with a small error state if auth resolution is unavailable.
+- `frontend/app/login/LoginContent.tsx` now routes successful Clerk session activation to `/auth/redirect` instead of `/admin`.
+- `frontend/app/login/[[...login]]/page.tsx` now routes already-authenticated users to `/auth/redirect` instead of `/admin`.
+- `frontend/proxy.ts` required no change; it still protects `/admin`, `/client`, and `/account` by authentication only.
+- `backend/tests/test_clerk_auth.py` now verifies `GET /auth/me` for both active `platform_admin` and active `client` mappings.
+
+Checks executed:
+- `PYTHONPATH=backend python3 -m pytest backend/tests`
+- `cd frontend && npm run lint`
+- `cd frontend && npm run build`
+- `cd frontend && NEXT_PUBLIC_USE_MOCK_API=false NEXT_PUBLIC_API_BASE_URL=http://localhost:8000 npm run build`
+- `bash scripts/audit.sh`
+- `bash scripts/smoke_test.sh`
+- `docker compose config`
+- `git diff --check`
+
+Known limits:
+- `frontend/app/layout.tsx` still contains hard-coded Clerk fallback and force redirect props pointing to `/admin`. The current custom login flow no longer depends on them, but any future Clerk-managed redirect path would still need follow-up.
+- post-login routing now fails closed if `NEXT_PUBLIC_USE_MOCK_API=true`, because backend resolution is required for this flow.
+- backend auth mapping remains the temporary `AUTH_USER_MAPPINGS_JSON` env configuration rather than persisted `client_access` state.
+
+Confirmation:
+- no DB migration implemented
+- no `client_access` persistence implemented
+- no Clerk invitation API implemented
+- no admin invite flow implemented
+- no onboarding completion endpoint implemented
+- no public signup implemented
+- no custom password form implemented
+- no custom 2FA implemented
+- no real listmonk integration implemented
+- no real sending implemented
+- no AI, n8n, Celery, Keycloak, Metabase, Postal, Rspamd, or Budibase implemented
+
+## Milestone 0.9E.1b — Remove Residual Clerk Admin Redirects
+
+Date: 2026-05-07
+Branch: develop
+Scope:
+- remove the remaining Clerk provider post-login `/admin` fallback from the shared frontend layout
+- preserve `/auth/redirect` as the only post-login route chooser
+- avoid backend, DB, invitation, onboarding, and UI changes
+
+Flow audited:
+- Expected contract:
+- Clerk identifies the user
+- `/auth/redirect` owns the post-login destination decision
+- the frontend never decides trusted `access_type` or `client_id`
+- Observed behavior before fix:
+- `frontend/app/layout.tsx` still configured `signInFallbackRedirectUrl="/admin"` and `signInForceRedirectUrl="/admin"`
+- that configuration could bypass `/auth/redirect` on Clerk-managed redirect paths
+- First divergence point:
+- shared Clerk provider configuration in `frontend/app/layout.tsx`
+- Evidence:
+- the live layout file still pointed both Clerk sign-in redirect props at `/admin`
+
+Root cause:
+- Symptom:
+- future Clerk-managed sign-in redirects could still send client users to `/admin`
+- Primary root cause:
+- stale Clerk provider redirect configuration remained after the earlier `/auth/redirect` rollout
+- Category:
+- frontend rendering
+- Minimal fix boundary:
+- `frontend/app/layout.tsx`
+
+Verified state:
+- `frontend/app/layout.tsx` now points `signInFallbackRedirectUrl` and `signInForceRedirectUrl` to `/auth/redirect`.
+- `afterSignOutUrl="/login"` remains unchanged.
+- `frontend/proxy.ts` required no change and still protects `/admin`, `/client`, and `/account` by authentication only.
+- Redirect grep returned no remaining forbidden post-login `/admin` fallback matches.
+- Broad `/admin` grep still returns only:
+- `frontend/components/layout/AppShell.tsx` and `frontend/components/layout/MainNav.tsx` admin navigation references
+- `frontend/lib/api.ts` backend-owned `ADMIN_ROUTE` target used only after `/auth/me`
+- `frontend/components/auth/MockLoginForm.tsx` dev-only mock role redirect logic outside the live Clerk flow and outside this task's allowed scope
+
+Checks executed:
+- `PYTHONPATH=backend python3 -m pytest backend/tests`
+- `cd frontend && npm run lint`
+- `cd frontend && npm run build`
+- `cd frontend && NEXT_PUBLIC_USE_MOCK_API=false NEXT_PUBLIC_API_BASE_URL=http://localhost:8000 npm run build`
+- `bash scripts/audit.sh`
+- `bash scripts/smoke_test.sh`
+- `docker compose config`
+- `git diff --check`
+- `grep -R "from .*mock-api" frontend/app frontend/components || true`
+- `grep -R "fetch(" frontend/app frontend/components frontend/lib || true`
+- `grep -R "listmonk\|postgres\|database\|smtp" frontend/app frontend/components frontend/lib || true`
+- `grep -R "localStorage\|sessionStorage\|document.cookie" frontend/app frontend/components frontend/lib || true`
+- `grep -R "SignUpButton\|sign-up\|signup" frontend/app frontend/components frontend/lib || true`
+- `grep -R "afterSignInUrl.*admin\|forceRedirectUrl.*admin\|fallbackRedirectUrl.*admin\|router.push('/admin')\|router.replace('/admin')" frontend/app frontend/components frontend/lib || true`
+- `grep -R '"/admin"' frontend/app frontend/components frontend/lib || true`
+
+Known limits:
+- Live Clerk runtime verification was not executed because no real mapped Clerk credentials were available in the workspace.
+- `frontend/components/auth/MockLoginForm.tsx` still contains a dev-only admin or client mock redirect outside the live Clerk flow and outside this task's allowed scope.
+- The worktree still contains the earlier uncommitted 0.9E.1 backend and frontend auth-alignment changes.
+
+Contract changes requested:
+- None.
+
+Confirmation:
+- no backend implemented or modified for this milestone
+- no DB migration implemented
+- no `client_access` persistence implemented
+- no Clerk invitation API implemented
+- no admin invite flow implemented
+- no onboarding endpoint implemented
+- no public signup implemented
+- no custom password form implemented
+- no custom 2FA implemented
+- no real listmonk implemented
+- no real sending implemented
+- no AI, n8n, Celery, Keycloak, Metabase, Postal, Rspamd, or Budibase implemented

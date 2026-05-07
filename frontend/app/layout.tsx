@@ -18,8 +18,8 @@ export default function RootLayout({
       <body className="theme">
         <ClerkProvider
           afterSignOutUrl="/login"
-          signInFallbackRedirectUrl="/admin"
-          signInForceRedirectUrl="/admin"
+          signInFallbackRedirectUrl="/auth/redirect"
+          signInForceRedirectUrl="/auth/redirect"
           signInUrl="/login"
         >
           <AppShell>{children}</AppShell>

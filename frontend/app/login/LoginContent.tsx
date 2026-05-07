@@ -7,7 +7,7 @@ import { useRouter } from "next/navigation";
 import { ChangeEvent, FormEvent, useState } from "react";
 import { BrandMark } from "../../components/shared/BrandMark";
 
-const LOGIN_REDIRECT_PATH = "/admin";
+const LOGIN_REDIRECT_PATH = "/auth/redirect";
 
 type FlowStep = "credentials" | "first_factor" | "second_factor";
 

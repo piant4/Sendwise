@@ -151,6 +151,35 @@ def test_admin_mapping_can_access_admin_endpoints(
     assert {"id", "name", "status", "created_at", "updated_at"} <= data[0].keys()
 
 
+def test_active_admin_can_read_auth_me(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    signing_keypair: rsa.RSAPrivateKey,
+) -> None:
+    set_auth_mappings(
+        monkeypatch,
+        {
+            "user_admin": {
+                "id": "user_admin",
+                "email": "admin@sendwise.test",
+                "access_type": "platform_admin",
+                "status": "active",
+            }
+        },
+    )
+    token = make_token(signing_keypair, clerk_user_id="user_admin", email="admin@sendwise.test")
+
+    response = client.get("/auth/me", headers=auth_header(token))
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "access_type": "platform_admin",
+        "client_id": None,
+        "email": "admin@sendwise.test",
+        "status": "active",
+    }
+
+
 def test_client_mapping_can_access_client_endpoints(
     client: TestClient,
     monkeypatch: pytest.MonkeyPatch,
@@ -178,6 +207,36 @@ def test_client_mapping_can_access_client_endpoints(
     assert data["client"]["id"] == "client_acme"
     assert data["user"]["client_id"] == "client_acme"
     assert data["user"]["role"] == "client"
+
+
+def test_active_client_can_read_auth_me(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    signing_keypair: rsa.RSAPrivateKey,
+) -> None:
+    set_auth_mappings(
+        monkeypatch,
+        {
+            "user_client": {
+                "id": "user_client",
+                "email": "client@acme.test",
+                "access_type": "client",
+                "client_id": "client_acme",
+                "status": "active",
+            }
+        },
+    )
+    token = make_token(signing_keypair, clerk_user_id="user_client", email="client@acme.test")
+
+    response = client.get("/auth/me", headers=auth_header(token))
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "access_type": "client",
+        "client_id": "client_acme",
+        "email": "client@acme.test",
+        "status": "active",
+    }
 
 
 def test_client_role_cannot_access_admin_endpoints(

@@ -6,7 +6,7 @@ export default async function LoginPage() {
   const { userId } = await auth();
 
   if (userId) {
-    redirect("/admin");
+    redirect("/auth/redirect");
   }
 
   return <LoginContent />;

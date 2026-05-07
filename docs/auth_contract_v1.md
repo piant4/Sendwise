@@ -118,6 +118,8 @@ Important rules:
 - Frontend may send a Clerk token.
 - Frontend must not send trusted `client_id`.
 - Frontend must not send trusted access type.
+- After Clerk login completes, the frontend must resolve the authenticated Sendwise access context through a backend-owned endpoint such as `GET /auth/me` before choosing `/admin` or `/client`.
+- Frontend must not infer `/admin` versus `/client` from local state, Clerk metadata, or user input.
 - Backend ignores any frontend attempt to choose client scope.
 - Backend authorization remains the gatekeeper even when the frontend route is already protected.
 

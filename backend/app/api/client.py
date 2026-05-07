@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends
 
+from app.api import auth as auth_api
 from app.core.auth import AuthenticatedUser, require_client
 from app.schemas.blocked_sends import BlockedSend
 from app.schemas.campaigns import Campaign
@@ -7,10 +8,12 @@ from app.schemas.clients import Client, ClientContext, ClientUser
 from app.schemas.common import CampaignStatus, ClientStatus, SendDecision
 from app.schemas.usage import ApiUsage
 
-router = APIRouter(
+client_router = APIRouter(
     prefix="/client",
     tags=["client"],
 )
+
+router = APIRouter()
 
 
 def stub_response(endpoint: str) -> dict[str, str]:
@@ -112,12 +115,12 @@ def build_client_context(current_user: AuthenticatedUser) -> ClientContext:
     )
 
 
-@router.get("/me", response_model=ClientContext)
+@client_router.get("/me", response_model=ClientContext)
 def get_me(current_user: AuthenticatedUser = Depends(require_client)) -> ClientContext:
     return build_client_context(current_user)
 
 
-@router.get("/campaigns", response_model=list[Campaign])
+@client_router.get("/campaigns", response_model=list[Campaign])
 def list_campaigns(
     current_user: AuthenticatedUser = Depends(require_client),
 ) -> list[Campaign]:
@@ -128,26 +131,26 @@ def list_campaigns(
     ]
 
 
-@router.get("/campaigns/{campaign_id}")
+@client_router.get("/campaigns/{campaign_id}")
 def get_campaign(
     campaign_id: str, _current_user: AuthenticatedUser = Depends(require_client)
 ) -> dict[str, str]:
     return stub_response(f"GET /client/campaigns/{campaign_id}")
 
 
-@router.get("/campaigns/{campaign_id}/stats")
+@client_router.get("/campaigns/{campaign_id}/stats")
 def get_campaign_stats(
     campaign_id: str, _current_user: AuthenticatedUser = Depends(require_client)
 ) -> dict[str, str]:
     return stub_response(f"GET /client/campaigns/{campaign_id}/stats")
 
 
-@router.get("/usage", response_model=list[ApiUsage])
+@client_router.get("/usage", response_model=list[ApiUsage])
 def get_usage(current_user: AuthenticatedUser = Depends(require_client)) -> list[ApiUsage]:
     return [usage for usage in CLIENT_USAGE if usage.client_id == current_user.client_id]
 
 
-@router.get("/blocked-sends", response_model=list[BlockedSend])
+@client_router.get("/blocked-sends", response_model=list[BlockedSend])
 def get_blocked_sends(
     current_user: AuthenticatedUser = Depends(require_client),
 ) -> list[BlockedSend]:
@@ -156,3 +159,7 @@ def get_blocked_sends(
         for blocked_send in CLIENT_BLOCKED_SENDS
         if blocked_send.client_id == current_user.client_id
     ]
+
+
+router.include_router(auth_api.router)
+router.include_router(client_router)

@@ -1148,3 +1148,52 @@ Confirmation:
 - no Clerk integration, real auth, signup, password reset, token, cookie, `localStorage`, or `sessionStorage` was introduced
 - no real listmonk calls, real sending, AI generation, n8n, Celery, Keycloak, Metabase, Postal, Rspamd, or Budibase work implemented
 - fetches remain centralized in `frontend/lib/api.ts`
+
+## Milestone 0.9A - Clerk Auth Contract + Backend Integration Plan
+
+Date: 2026-05-07
+Branch: develop
+Scope:
+- docs-only auth contract and implementation planning for Clerk with the existing Next.js frontend and FastAPI backend
+- define the future identity, route protection, backend verification, user mapping, secret-storage, and rollout phases without changing runtime code
+- keep the current Sendwise architecture and boundary rules intact
+
+Files created:
+- `docs/auth_contract_v1.md`
+- `docs/branch_handoffs/auth-contract-0.9A-handoff.md`
+
+Files modified:
+- `docs/architecture_v1.md`
+- `docs/data_model_v1.md`
+- `docs/audit_checklist_v1.md`
+- `docs/audit_log.md`
+
+Planning notes:
+- Clerk is defined as the identity and session provider, while FastAPI remains the authorization gatekeeper and Business PostgreSQL remains the business source of truth.
+- Public signup stays disabled; admin-created or invited users only.
+- Passwords, password hashes, reset tokens, and session secrets remain forbidden in Sendwise Business PostgreSQL.
+- `client_users` is now documented as the planned Clerk-to-business mapping table, and `client_secrets` is documented as a future encrypted table only if per-client provider credentials are needed later.
+- The rollout is staged into 0.9B through 0.9F so the frontend can connect earlier without prematurely changing backend, DB, Docker, or secret handling.
+
+Tests executed:
+- `bash scripts/audit.sh`
+- `bash scripts/smoke_test.sh`
+- `docker compose config`
+- `git diff --check`
+
+Tests not executed and reason:
+- No frontend build or lint was run because this milestone changed docs only and did not modify frontend runtime code.
+- No backend pytest was run because this milestone changed docs only and did not modify backend runtime code or tests.
+
+Risks remaining:
+- Clerk role names, `client_users` persistence, and backend token verification remain planned only and are not yet implemented in the runtime.
+- Current stub frontend and backend auth behavior still uses pre-contract placeholder flows and will need explicit alignment in Milestones 0.9B through 0.9E.
+- Platform-admin scoping, Clerk Organizations usage, and final invitation flow remain implementation decisions with recommended defaults but not final code.
+
+Confirmation:
+- no frontend runtime code changed
+- no backend runtime code changed
+- no DB migration or schema implementation changed
+- no Docker config changed
+- no Clerk install or real auth implementation added
+- no signup, password implementation, token or cookie storage, listmonk execution, real sending, AI, n8n, Celery, Keycloak, Metabase, Postal, Rspamd, or Budibase work implemented

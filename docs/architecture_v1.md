@@ -2,6 +2,8 @@
 
 Source of truth: `project_handoff_v1.md`.
 
+Planned auth and account-management contract: `docs/auth_contract_v1.md`.
+
 ## Overview
 
 V1 is an installable, Docker-based Email AI Automation Platform skeleton. The product direction is a custom Next.js UI, FastAPI backend, Business PostgreSQL database, listmonk email engine, and SMTP / Amazon SES provider path. Mailpit is available only in dev/staging.

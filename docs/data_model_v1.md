@@ -64,13 +64,27 @@ Anti-regression rules: Client status must be checked before sending; archived/bl
 
 Purpose: Users associated with a client dashboard or admin ownership.
 
-Minimum fields: `id`, `client_id`, `email`, `role`, `created_at`, `updated_at`.
+Minimum fields: `id`, `client_id`, `clerk_user_id`, `clerk_org_id`, `email`, `role`, `status`, `created_at`, `updated_at`.
+
+Relation to `client_id`: Direct `client_id` for client users. Platform admins may use nullable `client_id` or a dedicated platform scope in a later auth milestone.
+
+V1 notes: Real auth is not implemented in Milestone 0. The planned auth contract uses Clerk as identity provider while Business PostgreSQL stores Sendwise role, status, and client mapping only. No password, password hash, password reset token, or session secret belongs in this table.
+
+Planned statuses: `invited`, `active`, `suspended`, `archived`.
+
+Anti-regression rules: `clerk_user_id` must be unique; client users must not access other clients' data; backend resolves `client_id` from this mapping rather than trusting frontend input; suspended or archived users cannot access protected data.
+
+### client_secrets
+
+Purpose: Future encrypted storage for per-client provider credentials when Sendwise supports client-specific SMTP, SES, or API secrets.
+
+Minimum fields: `id`, `client_id`, `provider`, `secret_type`, `encrypted_value`, `key_version`, `status`, `last_verified_at`, `created_at`, `updated_at`.
 
 Relation to `client_id`: Direct `client_id`.
 
-V1 notes: Real auth is not implemented in Milestone 0.
+V1 notes: Not implemented in Milestone 0 and not required for the initial Clerk integration milestone. Global provider credentials should remain in deployment secret storage unless per-client secrets are explicitly needed.
 
-Anti-regression rules: Client users must not access other clients' data.
+Anti-regression rules: Secret values must never be stored in cleartext, returned to the frontend, or logged. Encryption keys must come from deployment secret storage rather than the database.
 
 ### campaigns
 

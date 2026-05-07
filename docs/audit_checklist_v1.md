@@ -17,7 +17,12 @@ Run this checklist after each milestone and record results in `docs/audit_log.md
 
 - [ ] endpoint protection planned/present.
 - [ ] API key/auth planned/present.
+- [ ] public signup disabled or explicitly still out of scope.
+- [ ] frontend does not trust role or `client_id`.
+- [ ] Sendwise DB stores no user password, password hash, password reset token, or session secret.
+- [ ] protected backend requests use backend-owned auth verification or are explicitly documented as stubs.
 - [ ] secrets not committed.
+- [ ] secret values are not returned to frontend or logs.
 - [ ] PostgreSQL not publicly exposed.
 - [ ] listmonk admin not publicly exposed without protection.
 
@@ -26,6 +31,7 @@ Run this checklist after each milestone and record results in `docs/audit_log.md
 - [ ] client_id isolation enforced in contracts.
 - [ ] client dashboard cannot access other clients.
 - [ ] every business entity maps to client_id.
+- [ ] backend resolves client scope from Business PostgreSQL mapping, not from frontend input.
 
 ## Deliverability
 

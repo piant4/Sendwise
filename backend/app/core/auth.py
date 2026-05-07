@@ -1,0 +1,157 @@
+from functools import lru_cache
+from typing import Any, Optional
+
+import jwt
+from fastapi import Depends, HTTPException, status
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from jwt import PyJWKClient
+from jwt.exceptions import InvalidTokenError, PyJWKClientError
+from pydantic import BaseModel
+
+from app.core.config import Settings, get_settings
+from app.repositories.auth_users import (
+    AuthUserRecord,
+    AuthUserRepository,
+    get_auth_user_repository,
+)
+
+ADMIN_ROLES = {"admin_owner", "admin_operator"}
+CLIENT_ROLES = {"client_owner", "client_viewer"}
+bearer_scheme = HTTPBearer(auto_error=False)
+
+
+class AuthenticatedUser(BaseModel):
+    id: str
+    clerk_user_id: str
+    email: Optional[str] = None
+    role: str
+    client_id: Optional[str] = None
+    status: str
+
+
+def _raise_unauthorized(detail: str) -> None:
+    raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=detail)
+
+
+def _raise_for_missing_clerk_config(settings: Settings) -> None:
+    if settings.clerk_jwks_url and settings.clerk_issuer:
+        return
+
+    raise HTTPException(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        detail="Clerk auth is not fully configured on the backend.",
+    )
+
+
+def _extract_email(claims: dict[str, Any], record: AuthUserRecord) -> Optional[str]:
+    return (
+        record.email
+        or claims.get("email")
+        or claims.get("email_address")
+        or claims.get("primary_email_address")
+    )
+
+
+@lru_cache
+def get_jwks_client(jwks_url: str) -> PyJWKClient:
+    return PyJWKClient(jwks_url)
+
+
+def verify_clerk_token(token: str, settings: Settings) -> dict[str, Any]:
+    _raise_for_missing_clerk_config(settings)
+
+    decode_options = {
+        "require": ["exp", "iss", "sub"],
+        "verify_aud": settings.clerk_audience is not None,
+    }
+
+    try:
+        signing_key = get_jwks_client(settings.clerk_jwks_url).get_signing_key_from_jwt(
+            token
+        )
+        return jwt.decode(
+            token,
+            key=signing_key.key,
+            algorithms=["RS256"],
+            issuer=settings.clerk_issuer,
+            audience=settings.clerk_audience,
+            options=decode_options,
+        )
+    except (InvalidTokenError, PyJWKClientError, ValueError) as error:
+        _raise_unauthorized(f"Invalid or expired Clerk token: {error}")
+
+
+def get_token_claims(
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(bearer_scheme),
+    settings: Settings = Depends(get_settings),
+) -> dict[str, Any]:
+    if credentials is None or credentials.scheme.lower() != "bearer":
+        _raise_unauthorized("Missing bearer token.")
+
+    if not credentials.credentials:
+        _raise_unauthorized("Missing bearer token.")
+
+    return verify_clerk_token(credentials.credentials, settings)
+
+
+def get_current_user(
+    claims: dict[str, Any] = Depends(get_token_claims),
+    repository: AuthUserRepository = Depends(get_auth_user_repository),
+) -> AuthenticatedUser:
+    clerk_user_id = claims.get("sub")
+
+    if not isinstance(clerk_user_id, str) or not clerk_user_id:
+        _raise_unauthorized("Clerk token is missing a subject claim.")
+
+    mapped_user = repository.get_by_clerk_user_id(clerk_user_id)
+
+    if mapped_user is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Authenticated Clerk user is not mapped to a Sendwise user.",
+        )
+
+    return AuthenticatedUser(
+        id=mapped_user.resolved_user_id,
+        clerk_user_id=clerk_user_id,
+        email=_extract_email(claims, mapped_user),
+        role=mapped_user.role,
+        client_id=mapped_user.client_id,
+        status=mapped_user.status,
+    )
+
+
+def require_authenticated_user(
+    current_user: AuthenticatedUser = Depends(get_current_user),
+) -> AuthenticatedUser:
+    if current_user.status != "active":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Authenticated Sendwise user is not active.",
+        )
+
+    return current_user
+
+
+def require_admin(
+    current_user: AuthenticatedUser = Depends(require_authenticated_user),
+) -> AuthenticatedUser:
+    if current_user.role not in ADMIN_ROLES:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin access is required for this endpoint.",
+        )
+
+    return current_user
+
+
+def require_client(
+    current_user: AuthenticatedUser = Depends(require_authenticated_user),
+) -> AuthenticatedUser:
+    if current_user.role not in CLIENT_ROLES or not current_user.client_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Client access is required for this endpoint.",
+        )
+
+    return current_user

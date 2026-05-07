@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends
 
-from app.core.security import require_api_key
+from app.core.auth import AuthenticatedUser, require_client
 from app.schemas.blocked_sends import BlockedSend
 from app.schemas.campaigns import Campaign
 from app.schemas.clients import Client, ClientContext, ClientUser
@@ -10,7 +10,6 @@ from app.schemas.usage import ApiUsage
 router = APIRouter(
     prefix="/client",
     tags=["client"],
-    dependencies=[Depends(require_api_key)],
 )
 
 
@@ -22,23 +21,8 @@ def stub_response(endpoint: str) -> dict[str, str]:
 # mock client scope. No auth, DB, service, deliverability, or listmonk logic.
 MOCK_CLIENT_ID = "client_acme"
 
-CLIENT_CONTEXT = ClientContext(
-    client=Client(
-        id=MOCK_CLIENT_ID,
-        name="Acme Studio",
-        status=ClientStatus.active,
-        created_at="2026-05-01T09:00:00Z",
-        updated_at="2026-05-05T09:00:00Z",
-    ),
-    user=ClientUser(
-        id="user_acme_manager",
-        client_id=MOCK_CLIENT_ID,
-        email="manager@example.test",
-        role="client_manager",
-        created_at="2026-05-01T09:05:00Z",
-        updated_at="2026-05-05T09:05:00Z",
-    ),
-)
+DEFAULT_CREATED_AT = "2026-05-01T09:00:00Z"
+DEFAULT_UPDATED_AT = "2026-05-05T09:05:00Z"
 
 CLIENT_CAMPAIGNS: list[Campaign] = [
     Campaign(
@@ -92,32 +76,83 @@ CLIENT_BLOCKED_SENDS: list[BlockedSend] = [
     )
 ]
 
+CLIENT_DIRECTORY: dict[str, Client] = {
+    MOCK_CLIENT_ID: Client(
+        id=MOCK_CLIENT_ID,
+        name="Acme Studio",
+        status=ClientStatus.active,
+        created_at=DEFAULT_CREATED_AT,
+        updated_at="2026-05-05T09:00:00Z",
+    )
+}
+
+
+def build_client_context(current_user: AuthenticatedUser) -> ClientContext:
+    client = CLIENT_DIRECTORY.get(current_user.client_id or "")
+
+    if client is None:
+        client = Client(
+            id=current_user.client_id or MOCK_CLIENT_ID,
+            name="Client scope",
+            status=ClientStatus.active,
+            created_at=DEFAULT_CREATED_AT,
+            updated_at=DEFAULT_UPDATED_AT,
+        )
+
+    return ClientContext(
+        client=client,
+        user=ClientUser(
+            id=current_user.id,
+            client_id=client.id,
+            email=current_user.email or "unavailable@sendwise.invalid",
+            role=current_user.role,
+            created_at=DEFAULT_CREATED_AT,
+            updated_at=DEFAULT_UPDATED_AT,
+        ),
+    )
+
 
 @router.get("/me", response_model=ClientContext)
-def get_me() -> ClientContext:
-    return CLIENT_CONTEXT
+def get_me(current_user: AuthenticatedUser = Depends(require_client)) -> ClientContext:
+    return build_client_context(current_user)
 
 
 @router.get("/campaigns", response_model=list[Campaign])
-def list_campaigns() -> list[Campaign]:
-    return CLIENT_CAMPAIGNS
+def list_campaigns(
+    current_user: AuthenticatedUser = Depends(require_client),
+) -> list[Campaign]:
+    return [
+        campaign
+        for campaign in CLIENT_CAMPAIGNS
+        if campaign.client_id == current_user.client_id
+    ]
 
 
 @router.get("/campaigns/{campaign_id}")
-def get_campaign(campaign_id: str) -> dict[str, str]:
+def get_campaign(
+    campaign_id: str, _current_user: AuthenticatedUser = Depends(require_client)
+) -> dict[str, str]:
     return stub_response(f"GET /client/campaigns/{campaign_id}")
 
 
 @router.get("/campaigns/{campaign_id}/stats")
-def get_campaign_stats(campaign_id: str) -> dict[str, str]:
+def get_campaign_stats(
+    campaign_id: str, _current_user: AuthenticatedUser = Depends(require_client)
+) -> dict[str, str]:
     return stub_response(f"GET /client/campaigns/{campaign_id}/stats")
 
 
 @router.get("/usage", response_model=list[ApiUsage])
-def get_usage() -> list[ApiUsage]:
-    return CLIENT_USAGE
+def get_usage(current_user: AuthenticatedUser = Depends(require_client)) -> list[ApiUsage]:
+    return [usage for usage in CLIENT_USAGE if usage.client_id == current_user.client_id]
 
 
 @router.get("/blocked-sends", response_model=list[BlockedSend])
-def get_blocked_sends() -> list[BlockedSend]:
-    return CLIENT_BLOCKED_SENDS
+def get_blocked_sends(
+    current_user: AuthenticatedUser = Depends(require_client),
+) -> list[BlockedSend]:
+    return [
+        blocked_send
+        for blocked_send in CLIENT_BLOCKED_SENDS
+        if blocked_send.client_id == current_user.client_id
+    ]

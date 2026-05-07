@@ -1197,3 +1197,149 @@ Confirmation:
 - no Docker config changed
 - no Clerk install or real auth implementation added
 - no signup, password implementation, token or cookie storage, listmonk execution, real sending, AI, n8n, Celery, Keycloak, Metabase, Postal, Rspamd, or Budibase work implemented
+
+## Milestone 0.9B - Clerk Auth Vertical Slice
+
+Date: 2026-05-07
+Branch: develop
+Scope:
+- implement the first Clerk authentication vertical slice across the Next.js frontend and FastAPI backend
+- protect `/admin`, `/client`, and `/account`
+- attach Clerk session tokens to frontend backend-mode API requests
+- verify Clerk JWTs in FastAPI and derive a backend-owned authenticated user context
+- keep public signup disabled in the Sendwise UI
+
+Files created:
+- `backend/app/core/auth.py`
+- `backend/app/repositories/auth_users.py`
+- `backend/tests/test_clerk_auth.py`
+- `frontend/app/account/[[...account]]/page.tsx`
+- `frontend/components/shared/AccountUserButton.tsx`
+- `frontend/proxy.ts`
+- `docs/branch_handoffs/clerk-auth-vertical-slice-0.9B-handoff.md`
+
+Files removed:
+- `backend/tests/test_milestone_05_stubs.py`
+
+Files modified:
+- `backend/app/api/admin.py`
+- `backend/app/api/campaigns.py`
+- `backend/app/api/client.py`
+- `backend/app/core/config.py`
+- `backend/app/core/security.py`
+- `backend/app/schemas/blocked_sends.py`
+- `backend/app/schemas/campaigns.py`
+- `backend/requirements.txt`
+- `.env.example`
+- `frontend/app/layout.tsx`
+- `frontend/app/login/page.tsx`
+- `frontend/components/layout/AppShell.tsx`
+- `frontend/components/layout/Sidebar.tsx`
+- `frontend/lib/api.ts`
+- `frontend/package.json`
+- `frontend/package-lock.json`
+- `docs/audit_log.md`
+
+Implementation notes:
+- Added `@clerk/nextjs` to the frontend and wrapped the root layout with `ClerkProvider`.
+- Replaced the local fake login submit flow with Clerk `SignIn` and disabled sign-up UI on the Sendwise login page.
+- Added Clerk `clerkMiddleware()` in `frontend/proxy.ts` and explicitly protected `/admin`, `/client`, and `/account`.
+- Added `/account` with Clerk `UserProfile` and integrated a Clerk `UserButton` into the topbar while removing the fake local user identity card.
+- Kept `fetch(` centralized in `frontend/lib/api.ts` and attached Clerk session tokens with server-side `auth().getToken()` in backend mode.
+- Replaced the placeholder API-key gate on admin and client dashboard endpoints with Clerk JWT verification plus backend-owned role and status enforcement.
+- Used a temporary backend-only `AUTH_USER_MAPPINGS_JSON` repository for Clerk user to Sendwise role and `client_id` mapping. This is fail-closed and explicitly temporary until `client_users` persistence lands in `0.9D`.
+
+Verification:
+- `cd frontend && npm run lint` passed
+- `cd frontend && npm run build` passed
+- `cd frontend && NEXT_PUBLIC_USE_MOCK_API=false NEXT_PUBLIC_API_BASE_URL=http://localhost:8000 npm run build` passed
+- `bash scripts/audit.sh` passed
+- `bash scripts/smoke_test.sh` passed
+- `docker compose config` passed
+- `git diff --check` passed
+- `PYTHONPATH=backend python3 -m pytest backend/tests` passed
+- `grep -R "from .*mock-api" frontend/app frontend/components || true` returned no matches
+- `grep -R "fetch(" frontend/app frontend/components frontend/lib || true` confirmed the only `fetch(` remains in `frontend/lib/api.ts`
+- `grep -R "listmonk\\|postgres\\|database\\|smtp" frontend/app frontend/components frontend/lib || true` returned no matches
+- `grep -R "localStorage\\|sessionStorage\\|document.cookie" frontend/app frontend/components frontend/lib || true` returned no matches
+- `grep -R "SignUpButton\\|sign-up\\|signup" frontend/app frontend/components frontend/lib || true` returned no matches
+
+Tests not executed and reason:
+- No live Clerk browser sign-in was executed because real Clerk instance credentials and manual restricted-signup configuration were not provided in this turn.
+- No authenticated browser or curl verification was executed against a real backend because no live Clerk user ids were mapped for local runtime use.
+
+Contract changes requested:
+- None.
+
+Risks:
+- The backend mapping is temporary env-backed state rather than `client_users` persistence.
+- Frontend middleware enforces authentication but not role-specific route UX yet; backend role enforcement remains authoritative.
+- `frontend/app/login/page.tsx` does not use a catch-all Clerk sign-in route, so more complex nested Clerk path flows should be validated live with real credentials.
+
+Confirmation:
+- no DB secrets, passwords, password hashes, reset tokens, or session secrets were committed or stored
+- no public signup UI or route was added
+- no frontend-trusted role or `client_id` was introduced
+- no real listmonk calls, real sending, AI generation, n8n, Celery, Keycloak, Metabase, Postal, Rspamd, or Budibase work was implemented
+
+## Milestone 0.9B.1 - Clerk Login Catch-All Route Fix
+
+Date: 2026-05-07
+Branch: develop
+Scope:
+- fix the known Clerk login route limitation by replacing the single `/login` page route with an optional catch-all App Router route
+- preserve the existing Sendwise login visual design
+- keep login and nested Clerk login paths public without changing the auth architecture
+
+Files created:
+- `frontend/app/login/LoginContent.tsx`
+- `frontend/app/login/[[...login]]/page.tsx`
+- `docs/branch_handoffs/clerk-login-catchall-0.9B.1-handoff.md`
+
+Files modified:
+- `frontend/proxy.ts`
+- `docs/audit_log.md`
+
+Files removed:
+- `frontend/app/login/page.tsx`
+
+Verified behavior:
+- Confirmed the root cause at the frontend route layer: the repo previously rendered Clerk `SignIn` only from `frontend/app/login/page.tsx`, so nested Clerk path flows under `/login/*` had no matching optional catch-all route.
+- Preserved the existing login UI by moving the current Sendwise login JSX and Clerk appearance config into `frontend/app/login/LoginContent.tsx`.
+- Mounted login through `frontend/app/login/[[...login]]/page.tsx` and preserved the existing signed-in redirect to `/admin`.
+- Kept `withSignUp={false}` in the Clerk `SignIn` component.
+- Made `frontend/proxy.ts` explicitly treat `/login` and `/login(.*)` as public while preserving existing protected matchers for `/admin(.*)`, `/client(.*)`, and `/account(.*)`.
+- Verified through both frontend builds that Next now emits the route `ƒ /login/[[...login]]`.
+- Verified boundary checks still pass:
+- no direct `mock-api` imports from app or components
+- the only frontend `fetch(` remains in `frontend/lib/api.ts`
+- no `listmonk`, `postgres`, `database`, or `smtp` references in frontend app/components/lib
+- no `localStorage`, `sessionStorage`, or `document.cookie`
+- no `SignUpButton`, `/sign-up`, or `signup` exposure in frontend app/components/lib
+
+Tests executed:
+- `cd frontend && npm run lint`
+- `cd frontend && npm run build`
+- `cd frontend && NEXT_PUBLIC_USE_MOCK_API=false NEXT_PUBLIC_API_BASE_URL=http://localhost:8000 npm run build`
+- `bash scripts/audit.sh`
+- `bash scripts/smoke_test.sh`
+- `docker compose config`
+- `git diff --check`
+- `PYTHONPATH=backend python3 -m pytest backend/tests`
+- `grep -R "from .*mock-api" frontend/app frontend/components || true`
+- `grep -R "fetch(" frontend/app frontend/components frontend/lib || true`
+- `grep -R "listmonk\|postgres\|database\|smtp" frontend/app frontend/components frontend/lib || true`
+- `grep -R "localStorage\|sessionStorage\|document.cookie" frontend/app frontend/components frontend/lib || true`
+- `grep -R "SignUpButton\|sign-up\|signup" frontend/app frontend/components frontend/lib || true`
+
+Tests not executed and reason:
+- No live Clerk sign-in flow was executed because real Clerk environment values and authorized test credentials were not provided.
+- No live browser or HTTP verification was run against a started local Next server for `/login/*`; route compatibility was verified at build level through the emitted App Router route tree.
+
+Risks remaining:
+- Live Clerk nested route behavior still depends on valid runtime Clerk configuration and credentials.
+- Public signup must still remain disabled or restricted in the Clerk Dashboard; this fix does not override Clerk instance policy.
+- The workspace still contains unrelated pre-existing dirty changes outside this milestone.
+
+Confirmation:
+- no backend, DB, Docker config, signup, custom password form, user CRUD, real listmonk, real sending, AI, n8n, Celery, Keycloak, Metabase, Postal, Rspamd, or Budibase work was implemented

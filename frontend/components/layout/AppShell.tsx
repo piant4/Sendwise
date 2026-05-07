@@ -3,6 +3,7 @@
 import type { ReactNode } from "react";
 import { usePathname } from "next/navigation";
 import { AdminTopBarActions } from "../admin/AdminTopBarActions";
+import { AccountUserButton } from "../shared/AccountUserButton";
 import { MobileNav } from "./MobileNav";
 import {
   getActiveNavItem,
@@ -31,7 +32,12 @@ export function AppShell({ children }: AppShellProps) {
       : pathname === "/client"
         ? "Dashboard cliente"
         : activeNavItem?.label ?? (role === "admin" ? "Admin" : "Cliente");
-  const actions = pathname === "/admin" ? <AdminTopBarActions /> : null;
+  const actions = (
+    <>
+      {pathname === "/admin" ? <AdminTopBarActions /> : null}
+      <AccountUserButton />
+    </>
+  );
   const showUtilityButtons = false;
 
   return (

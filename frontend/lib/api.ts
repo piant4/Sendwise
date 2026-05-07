@@ -1,3 +1,4 @@
+import { auth } from "@clerk/nextjs/server";
 import type {
   AdminClientStatusCounts,
   AdminOverviewSummary,
@@ -72,6 +73,28 @@ async function readErrorDetails(response: Response): Promise<string> {
   return text.trim() || response.statusText || "Unknown error";
 }
 
+async function getApiHeaders(): Promise<HeadersInit> {
+  const headers: HeadersInit = {
+    "Content-Type": "application/json",
+  };
+
+  if (USE_MOCK_API) {
+    return headers;
+  }
+
+  const { getToken } = await auth();
+  const token = await getToken();
+
+  if (!token) {
+    throw new Error("Missing Clerk session token for protected backend request.");
+  }
+
+  return {
+    ...headers,
+    Authorization: `Bearer ${token}`,
+  };
+}
+
 async function apiGet<T>(path: string): Promise<T> {
   const requestUrl = `${getRequiredApiBaseUrl()}${path}`;
   let response: Response;
@@ -79,9 +102,7 @@ async function apiGet<T>(path: string): Promise<T> {
   try {
     response = await fetch(requestUrl, {
       cache: "no-store",
-      headers: {
-        "Content-Type": "application/json",
-      },
+      headers: await getApiHeaders(),
     });
   } catch (error) {
     const message =

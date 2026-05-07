@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { ClerkProvider } from "@clerk/nextjs";
 import { AppShell } from "../components/layout/AppShell";
 import "./globals.css";
 
@@ -15,7 +16,14 @@ export default function RootLayout({
   return (
     <html lang="it">
       <body className="theme">
-        <AppShell>{children}</AppShell>
+        <ClerkProvider
+          afterSignOutUrl="/login"
+          signInFallbackRedirectUrl="/admin"
+          signInForceRedirectUrl="/admin"
+          signInUrl="/login"
+        >
+          <AppShell>{children}</AppShell>
+        </ClerkProvider>
       </body>
     </html>
   );

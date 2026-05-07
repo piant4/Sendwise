@@ -9,8 +9,6 @@ const ROLE_META: Record<
     workspaceType: string;
     workspaceInitials: string;
     sectionLabel: string;
-    userName: string;
-    userEmail: string;
   }
 > = {
   admin: {
@@ -18,16 +16,12 @@ const ROLE_META: Record<
     workspaceType: "Ambiente admin",
     workspaceInitials: "SW",
     sectionLabel: "Operazioni",
-    userName: "Marta Bellini",
-    userEmail: "marta@sendwise.local",
   },
   client: {
     workspaceName: "Acme Studio",
     workspaceType: "Workspace cliente",
     workspaceInitials: "AC",
     sectionLabel: "Dashboard",
-    userName: "Lorenzo Conti",
-    userEmail: "lorenzo@acmestudio.it",
   },
 };
 
@@ -38,11 +32,6 @@ interface SidebarProps {
 
 export function Sidebar({ role, isMockMode }: SidebarProps) {
   const meta = ROLE_META[role];
-  const userInitials = meta.userName
-    .split(" ")
-    .map((chunk) => chunk[0])
-    .slice(0, 2)
-    .join("");
 
   return (
     <div className="sidebar-shell">
@@ -63,14 +52,9 @@ export function Sidebar({ role, isMockMode }: SidebarProps) {
         <MainNav role={role} />
       </div>
       <div className="sidebar-account">
-        <div className="sidebar-account__identity">
-          <div className="sidebar-account__avatar" aria-hidden="true">
-            {userInitials}
-          </div>
-          <div className="sidebar-account__copy">
-            <span>{meta.userName}</span>
-            <span>{meta.userEmail}</span>
-          </div>
+        <div className="sidebar-account__copy">
+          <span>Sessione protetta</span>
+          <span>Gestione account e sicurezza tramite Clerk.</span>
         </div>
         {isMockMode ? <MockModeBadge /> : null}
       </div>

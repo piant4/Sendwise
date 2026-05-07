@@ -4,8 +4,8 @@ import { AppShell } from "../components/layout/AppShell";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Sendwise V1",
-  description: "Sendwise V1 frontend shell",
+  title: "Sendwise",
+  description: "Campagne email, AI e controllo operativonello stesso workspace.",
 };
 
 export default function RootLayout({

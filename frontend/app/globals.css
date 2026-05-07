@@ -1580,7 +1580,7 @@ p {
 
 .login-form {
   gap: 16px;
-  padding: 28px;
+  padding: 5px 28px 28px;
 }
 
 .login-field {

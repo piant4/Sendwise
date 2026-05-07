@@ -1554,3 +1554,86 @@ Confirmation:
 - no real listmonk implemented
 - no real sending implemented
 - no AI, n8n, Celery, Keycloak, Metabase, Postal, Rspamd, or Budibase implemented
+
+## Milestone 0.9C.3 — Custom Clerk Login Verification Steps
+
+Date: 2026-05-07
+Branch: develop
+Scope:
+- extend the Sendwise custom Clerk login UI to continue through Clerk intermediate verification states
+- keep the custom `/login` surface Italian-only and Sendwise-owned
+- preserve no-signup, no-social, and no-backend-change boundaries
+
+Flow audited:
+- Expected contract:
+- `/login` remains custom Next.js UI
+- Clerk identifies users and drives sign-in state transitions
+- intermediate first-factor and second-factor states should continue inside the custom UI instead of dropping to Clerk prebuilt UI or blocking generically
+- backend auth logic stays unchanged
+- Observed behavior before fix:
+- the old custom form only completed on `signIn.status === "complete"`
+- `needs_first_factor` and `needs_second_factor` were mapped to generic blocking errors
+- First divergence point:
+- frontend login flow control in `frontend/app/login/LoginContent.tsx`
+- Evidence:
+- the old code returned a terminal generic message for `needs_second_factor`
+- the old code returned a terminal generic message for `needs_first_factor`
+- the installed Clerk SDK proxy in this repo exposes supported factor metadata and custom-flow methods that can continue the sign-in inside Sendwise UI
+
+Root cause:
+- Symptom:
+- users with Clerk accounts that require additional verification could not complete sign-in from the custom Sendwise page
+- Primary root cause:
+- frontend rendering and flow handling treated Clerk intermediate states as final errors
+- Category:
+- frontend rendering
+- Minimal fix boundary:
+- `frontend/app/login/LoginContent.tsx`
+
+Verified state:
+- `frontend/app/login/LoginContent.tsx` now uses a Sendwise-owned multi-step flow built on Clerk custom-flow methods.
+- Password-first sign-in continues through `signIn.create(...)` plus `signIn.password(...)` when password is a supported first factor.
+- First-factor continuation now supports `email_code` and `phone_code`.
+- Second-factor continuation now supports `totp`, `phone_code`, `email_code`, and `backup_code`.
+- Code-based factors support controlled resend flows through the available Clerk send-code APIs.
+- Successful completion activates the Clerk session through `clerk.setActive({ session: createdSessionId })`.
+- Controlled Italian error messages now cover invalid credentials, invalid codes, expired codes, unsupported factor shapes, throttling, and temporary auth unavailability.
+- Live browser verification on `http://localhost:3000/login` confirmed:
+- the page loads
+- the custom Sendwise UI renders
+- invalid credentials show `Email o password non validi.`
+- no signup or social UI is visible
+- no hydration warning was observed in browser logs; only the expected Clerk development-keys warning appeared
+
+Checks executed:
+- `cd frontend && npm run lint`
+- `cd frontend && npm run build`
+- `cd frontend && NEXT_PUBLIC_USE_MOCK_API=false NEXT_PUBLIC_API_BASE_URL=http://localhost:8000 npm run build`
+- `PYTHONPATH=backend python3 -m pytest backend/tests`
+- `bash scripts/audit.sh`
+- `bash scripts/smoke_test.sh`
+- `docker compose config`
+- `git diff --check`
+- boundary grep checks for mock API imports, direct fetches, listmonk/DB/SMTP references, storage/cookie writes, signup strings, and Google/social strings
+- in-app browser verification of `/login`
+
+Known limits:
+- A live additional-verification success path was not completed in this turn because no authorized QA credentials or TOTP or backup codes were available in the workspace.
+- The frontend redirect target after successful auth remains hard-coded to `/admin` in existing route behavior outside this milestone's allowed redirect follow-up.
+- Unsupported future Clerk factor combinations still fail closed with support guidance instead of prebuilt Clerk UI.
+- The worktree contains an unrelated pre-existing modification in `frontend/app/globals.css` outside this milestone scope.
+
+Contract changes requested:
+- None.
+
+Confirmation:
+- no backend auth logic changed
+- no DB migration implemented
+- no `client_access` persistence implemented
+- no admin-created invitation flow implemented
+- no public signup implemented
+- no social login implemented
+- no custom password storage implemented
+- no custom password reset or change implemented
+- no real listmonk or real sending implemented
+- no AI, n8n, Celery, Keycloak, Metabase, Postal, Rspamd, or Budibase implemented

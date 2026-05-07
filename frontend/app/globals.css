@@ -537,6 +537,355 @@ a {
   padding: 28px;
 }
 
+.admin-dashboard,
+.admin-dashboard__stack,
+.admin-rail,
+.admin-metric-list,
+.admin-progress-stack,
+.admin-list {
+  display: grid;
+}
+
+.admin-dashboard {
+  gap: 24px;
+  margin: 0 auto;
+  max-width: 1240px;
+}
+
+.admin-hero,
+.admin-surface,
+.admin-kpi-card {
+  background: rgba(255, 255, 255, 0.88);
+  border: 1px solid rgba(202, 207, 214, 0.62);
+  box-shadow: 0 20px 54px rgba(45, 51, 25, 0.06);
+}
+
+.admin-hero {
+  align-items: end;
+  backdrop-filter: blur(18px);
+  background-image:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.96), rgba(238, 244, 242, 0.94)),
+    radial-gradient(circle at top right, rgba(159, 216, 203, 0.18), transparent 18rem);
+  border-radius: 28px;
+  display: grid;
+  gap: 28px;
+  grid-template-columns: minmax(0, 1.45fr) minmax(280px, 0.9fr);
+  padding: 28px;
+}
+
+.admin-hero__copy,
+.admin-hero__headline {
+  display: grid;
+  gap: 16px;
+}
+
+.admin-hero__eyebrow,
+.admin-surface__eyebrow {
+  color: var(--sw-primary);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  margin: 0;
+  text-transform: uppercase;
+}
+
+.admin-hero__title {
+  color: var(--sw-olive);
+  font-size: clamp(2.3rem, 4.4vw, 4rem);
+  font-weight: 600;
+  letter-spacing: -0.05em;
+  line-height: 0.95;
+  margin: 0;
+  max-width: 11ch;
+}
+
+.admin-hero__lead {
+  color: #5a6250;
+  font-size: 1rem;
+  line-height: 1.75;
+  margin: 0;
+  max-width: 44rem;
+}
+
+.admin-hero__status-row,
+.admin-hero__actions-row,
+.admin-row__footer,
+.admin-system-item,
+.admin-metric-item,
+.admin-progress-block__header,
+.admin-kpi-card__topline,
+.admin-row__header {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: space-between;
+}
+
+.admin-hero__helper {
+  color: var(--sw-text-muted);
+  font-size: 0.8rem;
+}
+
+.admin-hero__actions {
+  background: rgba(250, 250, 247, 0.84);
+  border: 1px solid var(--sw-border);
+  border-radius: 24px;
+  display: grid;
+  gap: 18px;
+  padding: 20px;
+}
+
+.admin-hero__actions-copy {
+  display: grid;
+  gap: 8px;
+}
+
+.admin-hero__actions-copy span {
+  color: var(--sw-text-faint);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.admin-hero__actions-copy strong {
+  color: var(--sw-olive);
+  font-size: 1rem;
+  line-height: 1.4;
+}
+
+.admin-kpi-grid {
+  gap: 16px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.admin-kpi-card {
+  border-radius: 24px;
+  display: grid;
+  gap: 12px;
+  min-height: 190px;
+  padding: 22px;
+}
+
+.admin-kpi-card[data-tone="clients"] {
+  background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(214, 229, 227, 0.52));
+}
+
+.admin-kpi-card[data-tone="campaigns"] {
+  background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(159, 216, 203, 0.22));
+}
+
+.admin-kpi-card[data-tone="blocked"] {
+  background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(246, 235, 218, 0.74));
+}
+
+.admin-kpi-card[data-tone="limits"] {
+  background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(242, 244, 240, 0.96));
+}
+
+.admin-kpi-card__title {
+  color: var(--sw-text-muted);
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.admin-kpi-card__pulse {
+  background: var(--sw-primary);
+  border-radius: 999px;
+  box-shadow: 0 0 0 6px rgba(214, 229, 227, 0.7);
+  display: inline-flex;
+  height: 10px;
+  width: 10px;
+}
+
+.admin-kpi-card__value {
+  color: var(--sw-olive);
+  font-size: clamp(2rem, 3vw, 3rem);
+  letter-spacing: -0.05em;
+  line-height: 1;
+}
+
+.admin-kpi-card__detail,
+.admin-kpi-card__note,
+.admin-row__support,
+.admin-row__meta,
+.admin-row__timestamp,
+.admin-empty-state {
+  color: var(--sw-text-muted);
+  margin: 0;
+}
+
+.admin-kpi-card__detail {
+  font-size: 0.92rem;
+  line-height: 1.55;
+}
+
+.admin-kpi-card__note {
+  font-size: 0.8rem;
+  line-height: 1.5;
+  margin-top: auto;
+}
+
+.admin-dashboard__content {
+  align-items: start;
+  display: grid;
+  gap: 16px;
+  grid-template-columns: minmax(0, 1.45fr) minmax(300px, 0.9fr);
+}
+
+.admin-dashboard__stack,
+.admin-rail {
+  gap: 16px;
+}
+
+.admin-surface {
+  border-radius: 24px;
+  display: grid;
+  gap: 18px;
+  padding: 22px;
+}
+
+.admin-surface__header,
+.admin-row__copy {
+  display: grid;
+  gap: 6px;
+}
+
+.admin-surface__header {
+  align-items: start;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.admin-surface__title {
+  color: var(--sw-olive);
+  font-size: 1.1rem;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  margin: 0;
+}
+
+.admin-surface__description {
+  color: var(--sw-text-muted);
+  font-size: 0.92rem;
+  line-height: 1.65;
+  margin: 0;
+  max-width: 42rem;
+}
+
+.admin-surface__body,
+.admin-list {
+  gap: 12px;
+}
+
+.admin-row {
+  background: rgba(250, 250, 247, 0.84);
+  border: 1px solid rgba(202, 207, 214, 0.52);
+  border-radius: 18px;
+  display: grid;
+  gap: 10px;
+  padding: 16px;
+}
+
+.admin-row--alert {
+  background: rgba(246, 235, 218, 0.34);
+}
+
+.admin-row__title {
+  color: var(--sw-olive);
+  font-size: 0.96rem;
+  line-height: 1.4;
+}
+
+.admin-row__meta,
+.admin-row__timestamp,
+.admin-row__footer,
+.admin-inline-button,
+.admin-metric-item span,
+.admin-progress-block__header span {
+  font-size: 0.82rem;
+}
+
+.admin-row__support {
+  font-size: 0.9rem;
+  line-height: 1.65;
+}
+
+.admin-row__footer {
+  border-top: 1px solid rgba(202, 207, 214, 0.52);
+  padding-top: 10px;
+}
+
+.admin-inline-button {
+  background: transparent;
+  border: 1px solid var(--sw-border-strong);
+  border-radius: 999px;
+  color: var(--sw-text-faint);
+  cursor: default;
+  padding: 7px 11px;
+}
+
+.admin-empty-state {
+  background: rgba(250, 250, 247, 0.72);
+  border: 1px dashed var(--sw-border-strong);
+  border-radius: 18px;
+  padding: 18px;
+}
+
+.admin-metric-list,
+.admin-progress-stack {
+  gap: 14px;
+}
+
+.admin-metric-item {
+  border-bottom: 1px solid rgba(202, 207, 214, 0.52);
+  padding-bottom: 12px;
+}
+
+.admin-metric-item:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+
+.admin-metric-item span,
+.admin-progress-block__header span,
+.admin-system-item span {
+  color: var(--sw-text-muted);
+}
+
+.admin-metric-item strong,
+.admin-progress-block__header strong {
+  color: var(--sw-olive);
+  font-size: 0.94rem;
+}
+
+.admin-progress-block {
+  display: grid;
+  gap: 8px;
+}
+
+.admin-progress {
+  background: rgba(202, 207, 214, 0.32);
+  border-radius: 999px;
+  height: 8px;
+  overflow: hidden;
+}
+
+.admin-progress__fill {
+  background: linear-gradient(90deg, var(--sw-primary), var(--sw-aqua));
+  border-radius: inherit;
+  height: 100%;
+}
+
+.admin-system-list {
+  display: grid;
+  gap: 12px;
+}
+
 .eyebrow {
   margin: 0 0 8px;
   color: var(--sw-primary);
@@ -955,12 +1304,8 @@ p {
   gap: 14px;
 }
 
-.login-card__links a {
-  text-decoration: none;
-}
-
-.login-card__links a:hover {
-  color: var(--sw-olive);
+.login-card__links span {
+  color: inherit;
 }
 
 @media (max-width: 860px) {
@@ -1005,6 +1350,23 @@ p {
 
   .panel {
     padding: 20px;
+  }
+
+  .admin-hero,
+  .admin-dashboard__content {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-kpi-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .admin-hero__actions-row {
+    width: 100%;
+  }
+
+  .admin-hero__actions-row > * {
+    flex: 1 1 0;
   }
 
   h1 {
@@ -1055,6 +1417,21 @@ p {
 @media (max-width: 560px) {
   .login-page {
     padding: 18px;
+  }
+
+  .admin-kpi-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-hero,
+  .admin-surface,
+  .admin-kpi-card {
+    border-radius: 22px;
+    padding: 18px;
+  }
+
+  .admin-hero__title {
+    font-size: 2.15rem;
   }
 
   .login-title {

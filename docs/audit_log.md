@@ -902,3 +902,67 @@ Confirmation:
 - no real auth, tokens, cookies, localStorage, or sessionStorage introduced
 - no real listmonk calls, real sending, AI generation, n8n, Celery, Keycloak, Metabase, Postal, Rspamd, or Budibase work implemented
 - no fetch calls added outside `frontend/lib/api.ts`
+
+## Milestone 0.8D - Admin Visual Dashboard + Login Official Cleanup
+
+Date: 2026-05-07
+Branch: develop
+Scope:
+- restyle `/admin` as the primary Sendwise operational dashboard
+- clean `/login` so it no longer presents as demo/mock
+- preserve the current frontend architecture and temporary local-only access behavior
+
+Files created:
+- `docs/branch_handoffs/frontend-admin-visual-0.8D-handoff.md`
+- `frontend/components/admin/AdminBlockedSendsCard.tsx`
+- `frontend/components/admin/AdminDashboardHeader.tsx`
+- `frontend/components/admin/AdminKpiGrid.tsx`
+- `frontend/components/admin/AdminOperationsRail.tsx`
+- `frontend/components/admin/AdminRecentCampaignsCard.tsx`
+- `frontend/components/admin/AdminSurface.tsx`
+
+Files modified:
+- `docs/audit_log.md`
+- `frontend/app/globals.css`
+- `frontend/app/login/page.tsx`
+- `frontend/components/dashboard/AdminDashboard.tsx`
+- `frontend/lib/api.ts`
+- `frontend/lib/mock-api.ts`
+- `frontend/types/index.ts`
+
+Implementation notes:
+- Replaced the previous admin stub card layout with a structured dashboard made of a control header, KPI cards, recent campaigns, recent blocked sends, and a compact operational rail.
+- Kept the page boundary intact by expanding only the typed admin summary fields needed for presentation: client status counts and recent campaigns.
+- Preserved the existing `page -> component -> api.ts -> mock/backend -> types` flow and kept `frontend/components/dashboard/AdminDashboard.tsx` as a thin composition layer.
+- Removed visible demo/mock wording and the role selector from `/login`.
+- Preserved a single temporary local access route to `/admin` for controlled internal verification without introducing auth persistence or backend calls.
+
+Tests:
+- `cd frontend && npm run lint` passed.
+- `cd frontend && npm run build` passed.
+- `cd frontend && NEXT_PUBLIC_USE_MOCK_API=false NEXT_PUBLIC_API_BASE_URL=http://localhost:8000 npm run build` passed.
+- `bash scripts/audit.sh` passed.
+- `bash scripts/smoke_test.sh` passed.
+- `docker compose config` passed.
+- `git diff --check` passed.
+- `grep -R "from .*mock-api" frontend/app frontend/components || true` returned no matches.
+- `grep -R "fetch(" frontend/app frontend/components frontend/lib || true` confirmed the only `fetch(` remains in `frontend/lib/api.ts`.
+- `grep -R "listmonk\|postgres\|database\|smtp" frontend/app frontend/components frontend/lib || true` returned no matches.
+- `grep -R "localStorage\|sessionStorage\|document.cookie" frontend/app frontend/components frontend/lib || true` returned no matches.
+
+Tests not executed and reason:
+- Browser-based visual verification of `/login` and `/admin` could not be completed because the available Playwright browser tooling requires a Chrome runtime that is not installed in this environment.
+
+Contract changes requested:
+- None.
+
+Risks:
+- Backend mode still returns zero or empty admin aggregates for fields that do not yet have richer backend endpoints.
+- Final manual browser QA is still recommended because automated screenshot verification was blocked by the missing local Chrome runtime.
+
+Confirmation:
+- no backend, DB, Docker config, env, or contract files changed
+- no `/client` redesign was performed
+- no Clerk integration, real auth, signup, password reset, token, cookie, localStorage, or sessionStorage was introduced
+- no real listmonk calls, real sending, AI generation, n8n, Celery, Keycloak, Metabase, Postal, Rspamd, or Budibase work implemented
+- fetches remain centralized in `frontend/lib/api.ts`

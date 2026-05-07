@@ -98,11 +98,28 @@ export interface AdminCampaignStatusCounts {
   draft: number;
 }
 
+export interface AdminClientStatusCounts {
+  trial: number;
+  active: number;
+  paused: number;
+  blocked: number;
+  archived: number;
+}
+
 export interface AdminEmailLimitOverview {
   monthlyLimit: number;
   monthlySent: number;
   dailyLimit: number;
   dailySent: number;
+}
+
+export interface AdminRecentCampaign {
+  id: string;
+  clientName: string;
+  campaignName: string;
+  subject: string;
+  status: CampaignStatus;
+  updatedAtLabel: string;
 }
 
 export interface AdminRecentBlockedSend {
@@ -126,7 +143,9 @@ export interface AdminOverviewSummary {
   blockedSendsToday: number;
   monthlyAiCallsUsed: number;
   campaignStatusCounts: AdminCampaignStatusCounts;
+  clientStatusCounts: AdminClientStatusCounts;
   emailLimitOverview: AdminEmailLimitOverview;
+  recentCampaigns: AdminRecentCampaign[];
   recentBlockedSends: AdminRecentBlockedSend[];
   systemStatus: AdminSystemStatus;
 }

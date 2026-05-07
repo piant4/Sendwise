@@ -1,5 +1,7 @@
 import type {
+  AdminClientStatusCounts,
   AdminOverviewSummary,
+  AdminRecentCampaign,
   ApiUsage,
   BlockedSend,
   Campaign,
@@ -146,12 +148,24 @@ function buildAdminOverviewSummary(
   clients: Client[],
   campaigns: Campaign[],
 ): AdminOverviewSummary {
+  const clientStatusCounts: AdminClientStatusCounts = {
+    trial: 0,
+    active: 0,
+    paused: 0,
+    blocked: 0,
+    archived: 0,
+  };
   const campaignStatusCounts = {
     active: 0,
     paused: 0,
     blocked: 0,
     draft: 0,
   };
+  const clientNames = new Map(clients.map((client) => [client.id, client.name]));
+
+  for (const client of clients) {
+    clientStatusCounts[client.status] += 1;
+  }
 
   for (const campaign of campaigns) {
     if (isActiveCampaignStatus(campaign.status)) {
@@ -174,6 +188,21 @@ function buildAdminOverviewSummary(
     }
   }
 
+  const recentCampaigns: AdminRecentCampaign[] = [...campaigns]
+    .sort(
+      (left, right) =>
+        new Date(right.updated_at).getTime() - new Date(left.updated_at).getTime(),
+    )
+    .slice(0, 4)
+    .map((campaign) => ({
+      id: campaign.id,
+      clientName: clientNames.get(campaign.client_id) ?? "Cliente non disponibile",
+      campaignName: campaign.name,
+      subject: campaign.subject,
+      status: campaign.status,
+      updatedAtLabel: formatDateTimeLabel(campaign.updated_at),
+    }));
+
   return {
     totalClients: clients.length,
     activeCampaigns: campaigns.filter((campaign) =>
@@ -182,7 +211,9 @@ function buildAdminOverviewSummary(
     blockedSendsToday: 0,
     monthlyAiCallsUsed: 0,
     campaignStatusCounts,
+    clientStatusCounts,
     emailLimitOverview: DEFAULT_EMPTY_ADMIN_LIMITS,
+    recentCampaigns,
     recentBlockedSends: [],
     systemStatus: {
       api: "ok",

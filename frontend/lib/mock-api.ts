@@ -24,26 +24,51 @@ const adminOverviewSummary: AdminOverviewSummary = {
     blocked: 1,
     draft: 1,
   },
+  clientStatusCounts: {
+    trial: 1,
+    active: 1,
+    paused: 0,
+    blocked: 0,
+    archived: 0,
+  },
   emailLimitOverview: {
     monthlyLimit: 5000,
     monthlySent: 1420,
     dailyLimit: 400,
     dailySent: 86,
   },
+  recentCampaigns: [
+    {
+      id: "campaign_nova_launch",
+      clientName: "Nova Retail",
+      campaignName: "Spring Launch",
+      subject: "Anteprima stagione",
+      status: "draft",
+      updatedAtLabel: "05/05/26, 13:00",
+    },
+    {
+      id: "campaign_acme_welcome",
+      clientName: "Acme Studio",
+      campaignName: "Welcome Series",
+      subject: "Welcome to Acme Studio",
+      status: "ready",
+      updatedAtLabel: "05/05/26, 10:00",
+    },
+  ],
   recentBlockedSends: [
     {
       id: "blocked_admin_001",
       clientName: "Acme Studio",
       campaignName: "Reactivation Draft",
-      reason: "Campaign is still in draft state.",
-      createdAtLabel: "Today, 12:10",
+      reason: "La campagna e ancora in bozza e non puo essere inviata.",
+      createdAtLabel: "Oggi, 12:10",
     },
     {
       id: "blocked_admin_002",
       clientName: "Nova Retail",
       campaignName: "Spring Launch",
-      reason: "Client is in trial review.",
-      createdAtLabel: "Yesterday, 16:40",
+      reason: "Il cliente e ancora in verifica operativa.",
+      createdAtLabel: "Ieri, 16:40",
     },
   ],
   systemStatus: {
@@ -216,7 +241,13 @@ export async function getAdminClients(): Promise<Client[]> {
 }
 
 export async function getAdminCampaigns(): Promise<Campaign[]> {
-  return adminCampaigns;
+  return [
+    {
+      ...adminCampaigns[1],
+      subject: "Anteprima stagione",
+    },
+    adminCampaigns[0],
+  ];
 }
 
 export async function getClientMe(): Promise<ClientContext> {

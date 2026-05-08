@@ -15,6 +15,8 @@ import * as mockApi from "./mock-api";
 // Default to mock mode unless the frontend is explicitly pointed at the backend.
 export const USE_MOCK_API = process.env.NEXT_PUBLIC_USE_MOCK_API !== "false";
 export const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL?.trim() ?? "";
+const INTERNAL_API_BASE_URL =
+  process.env.BACKEND_URL?.trim() || API_BASE_URL;
 
 const DEFAULT_EMPTY_ADMIN_LIMITS = {
   monthlyLimit: 0,
@@ -55,13 +57,16 @@ function isActiveCampaignStatus(status: Campaign["status"]): boolean {
 }
 
 function getRequiredApiBaseUrl(): string {
-  if (!API_BASE_URL) {
+  const candidateApiBaseUrl =
+    typeof window === "undefined" ? INTERNAL_API_BASE_URL : API_BASE_URL;
+
+  if (!candidateApiBaseUrl) {
     throw new Error(
-      "NEXT_PUBLIC_API_BASE_URL is required when NEXT_PUBLIC_USE_MOCK_API=false.",
+      "NEXT_PUBLIC_API_BASE_URL is required in the browser and BACKEND_URL is required for server-side container requests when NEXT_PUBLIC_USE_MOCK_API=false.",
     );
   }
 
-  return API_BASE_URL.replace(/\/$/, "");
+  return candidateApiBaseUrl.replace(/\/$/, "");
 }
 
 async function readErrorDetails(response: Response): Promise<string> {

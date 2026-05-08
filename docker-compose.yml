@@ -21,6 +21,10 @@ services:
       PROJECT_NAME: ${PROJECT_NAME:-email_ai_platform}
       ENVIRONMENT: ${ENVIRONMENT:-development}
       BACKEND_API_KEY: ${BACKEND_API_KEY:-change_me}
+      CLERK_ISSUER: ${CLERK_ISSUER:-https://your-clerk-instance.clerk.accounts.dev}
+      CLERK_JWKS_URL: ${CLERK_JWKS_URL:-https://your-clerk-instance.clerk.accounts.dev/.well-known/jwks.json}
+      CLERK_AUDIENCE: ${CLERK_AUDIENCE:-}
+      AUTH_USER_MAPPINGS_JSON: ${AUTH_USER_MAPPINGS_JSON:-{"user_clerk_admin_id":{"email":"admin@example.com","access_type":"platform_admin","status":"active","client_id":null},"user_clerk_client_id":{"email":"client@example.com","access_type":"client","status":"active","client_id":"client_demo"}}}
       EMAIL_SENDING_ENABLED: ${EMAIL_SENDING_ENABLED:-false}
       LISTMONK_URL: ${LISTMONK_URL:-http://listmonk:9000}
       FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
@@ -35,9 +39,24 @@ services:
   frontend:
     build:
       context: ./frontend
+      args:
+        NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY:-pk_test_replace_me}
+        CLERK_SECRET_KEY: ${CLERK_SECRET_KEY:-sk_test_replace_me}
+        NEXT_PUBLIC_CLERK_SIGN_IN_URL: ${NEXT_PUBLIC_CLERK_SIGN_IN_URL:-/login}
+        NEXT_PUBLIC_CLERK_AFTER_SIGN_IN_URL: ${NEXT_PUBLIC_CLERK_AFTER_SIGN_IN_URL:-/auth/redirect}
+        NEXT_PUBLIC_CLERK_AFTER_SIGN_OUT_URL: ${NEXT_PUBLIC_CLERK_AFTER_SIGN_OUT_URL:-/login}
+        NEXT_PUBLIC_USE_MOCK_API: ${NEXT_PUBLIC_USE_MOCK_API:-false}
+        NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:8000}
+        BACKEND_URL: ${BACKEND_URL:-http://backend:8000}
     environment:
+      NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY:-pk_test_replace_me}
+      CLERK_SECRET_KEY: ${CLERK_SECRET_KEY:-sk_test_replace_me}
+      NEXT_PUBLIC_CLERK_SIGN_IN_URL: ${NEXT_PUBLIC_CLERK_SIGN_IN_URL:-/login}
+      NEXT_PUBLIC_CLERK_AFTER_SIGN_IN_URL: ${NEXT_PUBLIC_CLERK_AFTER_SIGN_IN_URL:-/auth/redirect}
+      NEXT_PUBLIC_CLERK_AFTER_SIGN_OUT_URL: ${NEXT_PUBLIC_CLERK_AFTER_SIGN_OUT_URL:-/login}
       NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:8000}
-      NEXT_PUBLIC_USE_MOCK_API: ${NEXT_PUBLIC_USE_MOCK_API:-true}
+      NEXT_PUBLIC_USE_MOCK_API: ${NEXT_PUBLIC_USE_MOCK_API:-false}
+      BACKEND_URL: ${BACKEND_URL:-http://backend:8000}
     ports:
       - "3000:3000"
     depends_on:

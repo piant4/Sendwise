@@ -238,6 +238,80 @@ Files modified:
 - `frontend/components/layout/Sidebar.tsx`
 - `docs/audit_log.md`
 Design tokens adapted:
+
+## Milestone 0.9E.3 - Docker Clerk Runtime Alignment
+
+Date: 2026-05-08
+Branch: develop
+Scope: Docker/env alignment for the Clerk-auth frontend and backend runtime so Compose serves the current custom Clerk login instead of stale mock frontend artifacts.
+Files created:
+- `frontend/.dockerignore`
+- `docs/branch_handoffs/docker-clerk-runtime-alignment-0.9E.3-handoff.md`
+Files modified:
+- `docker-compose.yml`
+- `frontend/Dockerfile`
+- `frontend/lib/api.ts`
+- `.env.example`
+- `docs/audit_log.md`
+Root cause:
+- The frontend container was built and started as a host-style dev runtime: `frontend/Dockerfile` ran `next dev` and copied the entire frontend context, which allowed host `.next` artifacts and `frontend/.env.local` to bleed into Docker.
+- Compose also defaulted `NEXT_PUBLIC_USE_MOCK_API=true` and did not pass the Clerk/backend env contract into the containers or frontend build.
+- The first verified divergence was therefore Docker/runtime configuration, not current frontend source. Current source no longer routes `/login` through `MockLoginForm`, but the copied host `.next` tree still contained the old mock login bundle.
+Tests executed:
+- `docker compose config`
+- `git diff --check`
+- `PYTHONPATH=backend python3 -m pytest backend/tests`
+- `cd frontend && npm run lint`
+- `cd frontend && npm run build`
+- `cd frontend && NEXT_PUBLIC_USE_MOCK_API=false NEXT_PUBLIC_API_BASE_URL=http://localhost:8000 BACKEND_URL=http://backend:8000 npm run build`
+- `bash scripts/audit.sh`
+- `bash scripts/smoke_test.sh`
+- `grep -R "from .*mock-api" frontend/app frontend/components || true`
+- `grep -R "fetch(" frontend/app frontend/components frontend/lib || true`
+- `grep -R "listmonk\|postgres\|database\|smtp" frontend/app frontend/components frontend/lib || true`
+- `grep -R "localStorage\|sessionStorage\|document.cookie" frontend/app frontend/components frontend/lib || true`
+- `grep -R "SignUpButton\|sign-up\|signup" frontend/app frontend/components frontend/lib || true`
+- `grep -R "Ruolo di sviluppo\|Accesso di sviluppo\|Modalità mock: autenticazione frontend" frontend/app frontend/components || true`
+- `docker compose down`
+- `docker compose build --no-cache frontend backend`
+- `docker compose up -d`
+- `docker compose ps`
+- `docker compose exec backend printenv | grep -E "^(CLERK|AUTH_USER)"`
+- `docker compose exec frontend printenv | grep -E "^(NEXT_PUBLIC_|CLERK_SECRET_KEY|BACKEND_URL)"`
+- `docker compose exec frontend sh -lc 'wget -qO- http://backend:8000/health && printf "\\n---\\n" && wget -S -qO- --server-response http://backend:8000/auth/me 2>&1 | sed -n "1,12p"'`
+- `curl -i http://127.0.0.1:8000/health`
+- `curl -i http://127.0.0.1:8000/auth/me`
+- `curl -i -H 'Authorization: Bearer invalid-token' http://127.0.0.1:8000/auth/me`
+- `curl -i http://127.0.0.1:3000/login`
+- `curl -I http://127.0.0.1:3000/admin`
+- `curl -I http://127.0.0.1:3000/client`
+- `curl -I http://127.0.0.1:3000/auth/redirect`
+Verification summary:
+- Frontend Docker context dropped from about `1.35GB` to about `15.82kB` on the no-cache rebuild after adding `frontend/.dockerignore` and explicit production build stages.
+- Frontend logs now show `Next.js 16.2.4` with `next start`/standalone behavior and no `.env.local` loading inside the container.
+- Host `/login` now renders the current custom Clerk login with `Sendwise`, `Accesso riservato`, and `Accedi`, while the old mock strings are absent from rendered HTML.
+- Backend `/health` returns `200`.
+- Backend `/auth/me` without auth returns `401`.
+- Backend `/auth/me` with an invalid bearer token now returns `401` instead of backend-misconfigured `500`.
+- Signed-out `/admin`, `/client`, and `/auth/redirect` redirect to `/login`.
+Tests not executed and reason:
+- Live signed-in `/auth/redirect` routing to `/admin` or `/client` was not executed because real mapped Clerk users and verified `AUTH_USER_MAPPINGS_JSON` identities were not available in tracked repo config.
+- Positive-path Clerk login against backend-owned mapped users remains dependent on local secret `.env` content that stays ignored.
+Residual risks:
+- `MockLoginForm` and its strings still exist as dormant mock-support code in `frontend/components/auth/MockLoginForm.tsx`; it is no longer rendered by Docker, but the fallback code remains in the repo by design.
+- Real admin/client post-login routing still depends on supplying valid local `AUTH_USER_MAPPINGS_JSON` values for actual Clerk user ids.
+Confirmation:
+- no DB migration implemented
+- no `client_access` persistence implemented
+- no Clerk invitation API implemented
+- no admin invite flow implemented
+- no onboarding endpoint implemented
+- no public signup implemented
+- no custom password form implemented
+- no custom 2FA implemented
+- no real listmonk sending implemented
+- no real email sending implemented
+- no AI, n8n, Celery, Keycloak, Metabase, Postal, Rspamd, or Budibase implemented
 - Neutral `#CACFD6`
 - Pale mint `#D6E5E3`
 - Aqua accent `#9FD8CB`

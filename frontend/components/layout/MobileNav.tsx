@@ -94,7 +94,11 @@ export function MobileNav({ role, isMockMode }: MobileNavProps) {
               onAction={() => setOpen(false)}
             />
           </div>
-          {isMockMode ? <MockModeBadge /> : null}
+          {isMockMode ? (
+            <div className="mobile-nav-badge-row">
+              <MockModeBadge />
+            </div>
+          ) : null}
         </div>
       </SheetContent>
     </Sheet>

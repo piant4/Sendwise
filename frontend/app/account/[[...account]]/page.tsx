@@ -2,9 +2,35 @@ import { UserProfile } from "@clerk/nextjs";
 
 export default function AccountPage() {
   return (
-    <main className="min-h-screen bg-[radial-gradient(circle_at_top,rgba(110,231,183,0.18),transparent_28%),linear-gradient(180deg,#06131b_0%,#071923_44%,#091f29_100%)] px-4 py-10 text-white sm:px-6 lg:px-8">
-      <div className="mx-auto flex min-h-[calc(100vh-5rem)] max-w-6xl items-start justify-center">
-        <UserProfile path="/account" routing="path" />
+    <main className="account-page">
+      <div className="account-page__glow account-page__glow--mint" />
+      <div className="account-page__glow account-page__glow--aqua" />
+
+      <div className="account-layout">
+        <section className="account-hero">
+          <p className="account-hero__eyebrow">Area riservata</p>
+          <h1 className="account-hero__title">Account</h1>
+          <p className="account-hero__lead">
+            Gestisci profilo, email e sicurezza del tuo accesso Sendwise.
+          </p>
+        </section>
+
+        <section className="account-card" aria-label="Gestione account">
+          <div className="account-card__intro">
+            <span className="account-card__badge">Centro account</span>
+            <div className="account-card__copy">
+              <h2>Profilo e sicurezza</h2>
+              <p>
+                Le impostazioni sensibili restano gestite da Clerk, incluse email,
+                password e verifiche del tuo accesso.
+              </p>
+            </div>
+          </div>
+
+          <div className="account-card__profile">
+            <UserProfile path="/account" routing="path" />
+          </div>
+        </section>
       </div>
     </main>
   );

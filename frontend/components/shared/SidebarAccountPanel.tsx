@@ -65,7 +65,7 @@ export function SidebarAccountPanel({
       <div className="sidebar-account__actions">
         <Link
           href="/account"
-          className="sidebar-account__action"
+          className="sidebar-account__action sidebar-account__action--secondary"
           onClick={onAction}
         >
           Gestisci account

@@ -53,8 +53,8 @@ export function Sidebar({ role, isMockMode }: SidebarProps) {
         <MainNav role={role} />
       </div>
       <div className="sidebar-account">
-        <SidebarAccountPanel isMockMode={isMockMode} />
         {isMockMode ? <MockModeBadge /> : null}
+        <SidebarAccountPanel isMockMode={isMockMode} />
       </div>
     </div>
   );

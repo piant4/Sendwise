@@ -621,6 +621,7 @@ export function LoginContent() {
   const showResendButton =
     !!selectedChoice?.requiresCodeSend &&
     preparedFactorKey === selectedChoice.key;
+  const isVerificationStep = flowStep !== "credentials";
 
   return (
     <main className="login-page">
@@ -646,7 +647,10 @@ export function LoginContent() {
           </div>
         </section>
 
-        <section className="login-card">
+        <section
+          className="login-card"
+          data-step={isVerificationStep ? "verification" : "credentials"}
+        >
           <div className="login-card__header">
             <h2 className="login-card__title">
               {getCardTitle(flowStep, selectedChoice)}
@@ -732,22 +736,24 @@ export function LoginContent() {
             ) : null}
 
             {showVerificationFields ? (
-              <div className="login-field">
-                <label className="login-field__label" htmlFor="login-code">
-                  {getVerificationLabel(selectedChoice)}
-                </label>
-                <input
-                  id="login-code"
-                  name="code"
-                  type="text"
-                  autoComplete="one-time-code"
-                  className="login-input"
-                  disabled={isSubmitting}
-                  onChange={(event) => setVerificationCode(event.target.value)}
-                  placeholder="Inserisci il codice"
-                  required
-                  value={verificationCode}
-                />
+              <div className="login-verification-stack">
+                <div className="login-field">
+                  <label className="login-field__label" htmlFor="login-code">
+                    {getVerificationLabel(selectedChoice)}
+                  </label>
+                  <input
+                    id="login-code"
+                    name="code"
+                    type="text"
+                    autoComplete="one-time-code"
+                    className="login-input"
+                    disabled={isSubmitting}
+                    onChange={(event) => setVerificationCode(event.target.value)}
+                    placeholder="Inserisci il codice"
+                    required
+                    value={verificationCode}
+                  />
+                </div>
               </div>
             ) : null}
 
@@ -766,7 +772,7 @@ export function LoginContent() {
                 {isSubmitting ? "Accesso in corso..." : "Accedi"}
               </button>
             ) : showVerificationFields ? (
-              <>
+              <div className="login-actions">
                 <button className="login-submit" disabled={isSubmitting} type="submit">
                   {isSubmitting
                     ? "Verifica in corso..."
@@ -775,7 +781,7 @@ export function LoginContent() {
 
                 {showResendButton ? (
                   <button
-                    className="login-submit"
+                    className="login-submit login-submit--secondary"
                     disabled={isSubmitting}
                     onClick={handleResendCode}
                     type="button"
@@ -783,21 +789,14 @@ export function LoginContent() {
                     Invia di nuovo il codice
                   </button>
                 ) : null}
-              </>
+              </div>
             ) : null}
 
             {flowStep !== "credentials" ? (
               <button
-                className="login-field__hint"
+                className="login-reset-action"
                 disabled={isSubmitting}
                 onClick={handleResetFlow}
-                style={{
-                  background: "transparent",
-                  border: 0,
-                  cursor: isSubmitting ? "wait" : "pointer",
-                  padding: 0,
-                  textAlign: "left",
-                }}
                 type="button"
               >
                 Usa un&apos;altra email

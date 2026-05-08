@@ -16,6 +16,8 @@ class ClientRecord(BaseModel):
     personal_name: Optional[str] = None
     company_name: Optional[str] = None
     status: str
+    email_limit_per_campaign: Optional[int] = None
+    max_campaigns: Optional[int] = None
     monthly_email_limit: Optional[int] = None
     daily_email_limit: Optional[int] = None
     created_at: datetime
@@ -82,6 +84,8 @@ class ClientRepository:
         personal_name: Optional[str],
         company_name: Optional[str],
         status: Optional[str] = None,
+        email_limit_per_campaign: Optional[int] = None,
+        max_campaigns: Optional[int] = None,
         monthly_email_limit: Optional[int] = None,
         daily_email_limit: Optional[int] = None,
     ) -> ClientRecord:
@@ -100,6 +104,8 @@ class PostgresClientRepository(ClientRepository):
                 personal_name,
                 company_name,
                 status,
+                email_limit_per_campaign,
+                max_campaigns,
                 monthly_email_limit,
                 daily_email_limit,
                 created_at,
@@ -123,6 +129,8 @@ class PostgresClientRepository(ClientRepository):
                 personal_name,
                 company_name,
                 status,
+                email_limit_per_campaign,
+                max_campaigns,
                 monthly_email_limit,
                 daily_email_limit,
                 created_at,
@@ -146,6 +154,8 @@ class PostgresClientRepository(ClientRepository):
                 personal_name,
                 company_name,
                 status,
+                email_limit_per_campaign,
+                max_campaigns,
                 monthly_email_limit,
                 daily_email_limit,
                 created_at,
@@ -183,6 +193,8 @@ class PostgresClientRepository(ClientRepository):
                 personal_name,
                 company_name,
                 status,
+                email_limit_per_campaign,
+                max_campaigns,
                 monthly_email_limit,
                 daily_email_limit,
                 created_at,
@@ -205,6 +217,8 @@ class PostgresClientRepository(ClientRepository):
         personal_name: Optional[str],
         company_name: Optional[str],
         status: Optional[str] = None,
+        email_limit_per_campaign: Optional[int] = None,
+        max_campaigns: Optional[int] = None,
         monthly_email_limit: Optional[int] = None,
         daily_email_limit: Optional[int] = None,
     ) -> ClientRecord:
@@ -215,6 +229,8 @@ class PostgresClientRepository(ClientRepository):
                 personal_name = %s,
                 company_name = %s,
                 status = COALESCE(%s, status),
+                email_limit_per_campaign = %s,
+                max_campaigns = %s,
                 monthly_email_limit = %s,
                 daily_email_limit = %s,
                 updated_at = NOW()
@@ -225,6 +241,8 @@ class PostgresClientRepository(ClientRepository):
                 personal_name,
                 company_name,
                 status,
+                email_limit_per_campaign,
+                max_campaigns,
                 monthly_email_limit,
                 daily_email_limit,
                 created_at,
@@ -240,6 +258,8 @@ class PostgresClientRepository(ClientRepository):
                         personal_name,
                         company_name,
                         status,
+                        email_limit_per_campaign,
+                        max_campaigns,
                         monthly_email_limit,
                         daily_email_limit,
                         client_id,

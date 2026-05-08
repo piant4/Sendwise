@@ -2,6 +2,8 @@ ALTER TABLE clients
     ADD COLUMN IF NOT EXISTS email TEXT,
     ADD COLUMN IF NOT EXISTS personal_name TEXT,
     ADD COLUMN IF NOT EXISTS company_name TEXT,
+    ADD COLUMN IF NOT EXISTS email_limit_per_campaign INTEGER,
+    ADD COLUMN IF NOT EXISTS max_campaigns INTEGER,
     ADD COLUMN IF NOT EXISTS monthly_email_limit INTEGER,
     ADD COLUMN IF NOT EXISTS daily_email_limit INTEGER;
 

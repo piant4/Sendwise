@@ -107,6 +107,14 @@ def update_client(
         personal_name=payload_values.get("personal_name", existing_client.personal_name),
         company_name=payload_values.get("company_name", existing_client.company_name),
         status=existing_client.status,
+        email_limit_per_campaign=payload_values.get(
+            "email_limit_per_campaign",
+            existing_client.email_limit_per_campaign,
+        ),
+        max_campaigns=payload_values.get(
+            "max_campaigns",
+            existing_client.max_campaigns,
+        ),
         monthly_email_limit=payload_values.get(
             "monthly_email_limit",
             existing_client.monthly_email_limit,
@@ -144,36 +152,28 @@ def reinvite_client_access(
     )
 
 
-@router.post("/clients/{client_id}/pause")
-def pause_client(
+@router.post("/clients/{client_id}/revoke-access", response_model=Client)
+def revoke_client_access(
     client_id: str,
     _current_user: AuthenticatedUser = Depends(require_platform_admin),
-) -> dict[str, str]:
-    return stub_response(f"POST /admin/clients/{client_id}/pause")
+    clients_service: ClientsService = Depends(get_clients_service),
+    client_access_service: ClientAccessService = Depends(get_client_access_service),
+) -> Client:
+    client = clients_service.get_client_by_id(client_id)
+    access = client_access_service.revoke_access(client.id)
+    return build_client_schema(client, access=access)
 
 
-@router.post("/clients/{client_id}/resume")
-def resume_client(
-    client_id: str,
-    _current_user: AuthenticatedUser = Depends(require_platform_admin),
-) -> dict[str, str]:
-    return stub_response(f"POST /admin/clients/{client_id}/resume")
-
-
-@router.post("/clients/{client_id}/block")
-def block_client(
-    client_id: str,
-    _current_user: AuthenticatedUser = Depends(require_platform_admin),
-) -> dict[str, str]:
-    return stub_response(f"POST /admin/clients/{client_id}/block")
-
-
-@router.post("/clients/{client_id}/archive")
+@router.post("/clients/{client_id}/archive", response_model=Client)
 def archive_client(
     client_id: str,
     _current_user: AuthenticatedUser = Depends(require_platform_admin),
-) -> dict[str, str]:
-    return stub_response(f"POST /admin/clients/{client_id}/archive")
+    clients_service: ClientsService = Depends(get_clients_service),
+    client_access_service: ClientAccessService = Depends(get_client_access_service),
+) -> Client:
+    archived_client = clients_service.archive_client(client_id)
+    archived_access = client_access_service.archive_access(archived_client.id)
+    return build_client_schema(archived_client, access=archived_access)
 
 
 @router.get("/clients/{client_id}/campaigns")

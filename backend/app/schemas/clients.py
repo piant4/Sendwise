@@ -32,6 +32,8 @@ class Client(BaseModel):
     company_name: Optional[str] = None
     name: str
     status: ClientStatus
+    email_limit_per_campaign: Optional[int] = None
+    max_campaigns: Optional[int] = None
     monthly_email_limit: Optional[int] = None
     daily_email_limit: Optional[int] = None
     created_at: datetime
@@ -72,5 +74,7 @@ class AdminClientUpdateRequest(BaseModel):
 
     personal_name: Optional[str] = None
     company_name: Optional[str] = None
+    email_limit_per_campaign: Optional[int] = None
+    max_campaigns: Optional[int] = None
     monthly_email_limit: Optional[int] = None
     daily_email_limit: Optional[int] = None

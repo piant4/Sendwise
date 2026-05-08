@@ -1,6 +1,7 @@
 import { auth } from "@clerk/nextjs/server";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { AdminClientAccessActions } from "../../../../components/admin/AdminClientAccessActions";
 import {
   getAdminClient,
   isApiError,
@@ -48,14 +49,46 @@ function getFieldNumber(value: FormDataEntryValue | null): number | null {
   return Number.isFinite(numericValue) ? numericValue : null;
 }
 
+function getAccessStatusLabel(status?: string | null): string {
+  switch (status) {
+    case "active":
+      return "Accesso attivo";
+    case "invited":
+      return "Accesso invitato";
+    case "suspended":
+      return "Accesso revocato";
+    case "archived":
+      return "Accesso archiviato";
+    default:
+      return "Accesso non configurato";
+  }
+}
+
+function getInvitationStatusLabel(status?: string | null): string {
+  switch (status) {
+    case "accepted":
+      return "Invito accettato";
+    case "pending":
+      return "Invito in attesa";
+    case "revoked":
+      return "Invito revocato";
+    case "expired":
+      return "Invito scaduto";
+    default:
+      return "Invito non inviato";
+  }
+}
+
 async function updateClientLimitsAction(clientId: string, formData: FormData) {
   "use server";
 
   try {
     const { getToken } = await auth();
     await updateAdminClientLimits(clientId, {
-      monthly_email_limit: getFieldNumber(formData.get("monthly_email_limit")),
-      daily_email_limit: getFieldNumber(formData.get("daily_email_limit")),
+      email_limit_per_campaign: getFieldNumber(
+        formData.get("email_limit_per_campaign"),
+      ),
+      max_campaigns: getFieldNumber(formData.get("max_campaigns")),
     }, await getToken());
   } catch (error) {
     const message =
@@ -130,7 +163,7 @@ export default async function AdminClientDetailPage({
 
         {saved ? (
           <p className="admin-clients-feedback admin-clients-feedback--success">
-            Limiti email aggiornati correttamente.
+            Limiti cliente aggiornati correttamente.
           </p>
         ) : null}
 
@@ -188,15 +221,17 @@ export default async function AdminClientDetailPage({
             <dl className="admin-client-detail__facts">
               <div>
                 <dt>Stato accesso</dt>
-                <dd>{client.access?.status ?? "non configurato"}</dd>
+                <dd>{getAccessStatusLabel(client.access?.status)}</dd>
               </div>
               <div>
                 <dt>Stato invito</dt>
-                <dd>{client.access?.invitation_status ?? "non inviato"}</dd>
+                <dd>{getInvitationStatusLabel(client.access?.invitation_status)}</dd>
               </div>
               <div>
                 <dt>Portal slug</dt>
-                <dd>{client.access?.portal_slug ?? "-"}</dd>
+                <dd className="admin-client-detail__portal-slug">
+                  {client.access?.portal_slug ?? "-"}
+                </dd>
               </div>
               <div>
                 <dt>Invitato il</dt>
@@ -221,7 +256,8 @@ export default async function AdminClientDetailPage({
                 <p className="admin-surface__eyebrow">Limiti</p>
                 <h2 className="admin-clients-card__title">Controllo email</h2>
                 <p className="admin-clients-card__description">
-                  Aggiorna i massimali consentiti per il cliente.
+                  Aggiorna i limiti amministrativi senza introdurre enforcement
+                  campagne non ancora previsto in questa milestone.
                 </p>
               </div>
             </div>
@@ -231,26 +267,26 @@ export default async function AdminClientDetailPage({
               className="admin-client-detail__limits-form"
             >
               <label className="admin-clients-form__field">
-                <span>Limite email mensile</span>
+                <span>Limite email per campagna</span>
                 <input
                   className="admin-clients-form__input"
                   type="number"
-                  name="monthly_email_limit"
+                  name="email_limit_per_campaign"
                   min="0"
-                  defaultValue={client.monthly_email_limit ?? ""}
-                  placeholder="Es. 10000"
+                  defaultValue={client.email_limit_per_campaign ?? ""}
+                  placeholder="Es. 5000"
                 />
               </label>
 
               <label className="admin-clients-form__field">
-                <span>Limite email giornaliero</span>
+                <span>Numero massimo campagne</span>
                 <input
                   className="admin-clients-form__input"
                   type="number"
-                  name="daily_email_limit"
+                  name="max_campaigns"
                   min="0"
-                  defaultValue={client.daily_email_limit ?? ""}
-                  placeholder="Es. 500"
+                  defaultValue={client.max_campaigns ?? ""}
+                  placeholder="Es. 12"
                 />
               </label>
 
@@ -277,12 +313,19 @@ export default async function AdminClientDetailPage({
             <div className="admin-client-detail__placeholder">
               <strong>Dati non disponibili</strong>
               <span>
-                Quando il backend esporra campagne, usage e blocked sends per
-                cliente, questa vista mostrera i riepiloghi reali.
+                Campagne, usage e blocked sends cliente non sono ancora esposti
+                da endpoint backend dedicati. La vista mostra solo placeholder
+                onesti finche quei dati non esistono davvero.
               </span>
             </div>
           </article>
         </section>
+
+        <AdminClientAccessActions
+          clientId={client.id}
+          clientStatus={client.status}
+          accessStatus={client.access?.status}
+        />
       </section>
     </main>
   );

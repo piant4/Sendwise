@@ -12,6 +12,8 @@ CREATE TABLE IF NOT EXISTS clients (
     personal_name TEXT,
     company_name TEXT,
     status TEXT NOT NULL DEFAULT 'active',
+    email_limit_per_campaign INTEGER,
+    max_campaigns INTEGER,
     monthly_email_limit INTEGER,
     daily_email_limit INTEGER,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),

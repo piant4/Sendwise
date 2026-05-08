@@ -14,6 +14,10 @@ function sanitizeAccessErrorDetail(error: ApiError): string {
     return "L'account autenticato non e ancora associato a un accesso Sendwise valido.";
   }
 
+  if (error.detail.includes("Client access is not available for this Sendwise account.")) {
+    return "L'accesso cliente Sendwise e stato revocato, sospeso o archiviato.";
+  }
+
   if (error.detail.includes("Missing Clerk session token")) {
     return "Sessione Clerk non disponibile per la verifica dell'accesso.";
   }

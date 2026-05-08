@@ -1,4 +1,5 @@
 import { auth } from "@clerk/nextjs/server";
+import { ChevronRight } from "lucide-react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getAdminClients, isApiError } from "../../../lib/api";
@@ -37,6 +38,64 @@ function truncatePortalSlug(portalSlug?: string | null): string {
 
 function getClientDisplayName(client: Client): string {
   return client.company_name || client.personal_name || client.name || client.email;
+}
+
+function getAccessStatusLabel(status?: string | null): string {
+  switch (status) {
+    case "active":
+      return "Accesso attivo";
+    case "invited":
+      return "Accesso invitato";
+    case "suspended":
+      return "Accesso revocato";
+    case "archived":
+      return "Accesso archiviato";
+    default:
+      return "Accesso non configurato";
+  }
+}
+
+function getInvitationStatusLabel(status?: string | null): string {
+  switch (status) {
+    case "accepted":
+      return "Invito accettato";
+    case "pending":
+      return "Invito in attesa";
+    case "revoked":
+      return "Invito revocato";
+    case "expired":
+      return "Invito scaduto";
+    default:
+      return "Invito non inviato";
+  }
+}
+
+function getProfileStatusLabel(status: Client["status"]): string {
+  switch (status) {
+    case "active":
+      return "Profilo attivo";
+    case "trial":
+      return "Profilo trial";
+    case "paused":
+      return "Profilo in pausa";
+    case "blocked":
+      return "Profilo bloccato";
+    case "archived":
+      return "Profilo archiviato";
+    default:
+      return status;
+  }
+}
+
+function getClientLimitsLabel(client: Client): string {
+  if (
+    client.email_limit_per_campaign == null &&
+    client.max_campaigns == null
+  ) {
+    return "Limiti non impostati";
+  }
+
+  return `${client.email_limit_per_campaign ?? "-"} email · ${client.max_campaigns ?? "-"} campagne`;
 }
 
 function buildClientStats(clients: Client[]) {
@@ -145,11 +204,11 @@ export default async function AdminClientsPage() {
                 <div className="admin-clients-table-shell">
                   <div className="admin-clients-table admin-clients-table--header">
                     <span>Cliente</span>
-                    <span>Stato accesso</span>
+                    <span>Accesso</span>
                     <span>Invito</span>
-                    <span>Portal slug</span>
-                    <span>Limiti email</span>
-                    <span>Date</span>
+                    <span>Limiti</span>
+                    <span>Stato profilo</span>
+                    <span aria-hidden="true"></span>
                   </div>
 
                   <ul className="admin-clients-records">
@@ -158,6 +217,7 @@ export default async function AdminClientsPage() {
                         <Link
                           href={`/admin/clients/${client.id}`}
                           className="admin-clients-table admin-clients-table--row"
+                          aria-label={`Apri dettaglio cliente ${getClientDisplayName(client)}`}
                         >
                           <div className="admin-clients-cell admin-clients-cell--primary">
                             <strong>{getClientDisplayName(client)}</strong>
@@ -168,37 +228,35 @@ export default async function AdminClientsPage() {
                           </div>
 
                           <div className="admin-clients-cell">
-                            <strong>{client.access?.status ?? "senza accesso"}</strong>
-                            <span>Profilo: {client.status}</span>
+                            <strong>{getAccessStatusLabel(client.access?.status)}</strong>
+                            <span>
+                              {client.access?.portal_slug
+                                ? `Portale ${truncatePortalSlug(client.access.portal_slug)}`
+                                : "Portal slug non disponibile"}
+                            </span>
                           </div>
 
                           <div className="admin-clients-cell">
-                            <strong>
-                              {client.access?.invitation_status ?? "non inviato"}
-                            </strong>
+                            <strong>{getInvitationStatusLabel(client.access?.invitation_status)}</strong>
+                            <span>
+                              Invitato: {formatDateLabel(client.access?.invited_at)}
+                            </span>
+                          </div>
+
+                          <div className="admin-clients-cell">
+                            <strong>{getClientLimitsLabel(client)}</strong>
+                            <span>Per campagna / numero campagne</span>
+                          </div>
+
+                          <div className="admin-clients-cell">
+                            <strong>{getProfileStatusLabel(client.status)}</strong>
                             <span>
                               Accettato: {formatDateLabel(client.access?.accepted_at)}
                             </span>
                           </div>
 
-                          <div className="admin-clients-cell">
-                            <strong>{truncatePortalSlug(client.access?.portal_slug)}</strong>
-                            <span>{client.access?.portal_slug ?? "-"}</span>
-                          </div>
-
-                          <div className="admin-clients-cell">
-                            <strong>
-                              {client.monthly_email_limit ?? "-"} /{" "}
-                              {client.daily_email_limit ?? "-"}
-                            </strong>
-                            <span>Mensile / giornaliero</span>
-                          </div>
-
-                          <div className="admin-clients-cell">
-                            <strong>
-                              Invitato: {formatDateLabel(client.access?.invited_at)}
-                            </strong>
-                            <span>Creato: {formatDateLabel(client.created_at)}</span>
+                          <div className="admin-clients-cell admin-clients-cell--chevron">
+                            <ChevronRight aria-hidden="true" />
                           </div>
                         </Link>
                       </li>

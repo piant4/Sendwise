@@ -16,12 +16,24 @@ type ToastState =
 
 function getSafeInviteErrorMessage(error: unknown): string {
   if (isApiError(error)) {
+    if (error.isNetworkError) {
+      return "Il browser non riesce a raggiungere il backend Sendwise per inviare l'invito.";
+    }
+
     if (error.status === 409) {
       return "Questa email e gia associata a un accesso cliente attivo o in invito.";
     }
 
     if (error.status === 422) {
-      return "Inserisci un indirizzo email valido prima di inviare l'invito.";
+      return error.detail || "Inserisci un indirizzo email valido prima di inviare l'invito.";
+    }
+
+    if (error.status === 401 || error.status === 403) {
+      return "La sessione admin non e valida per creare un nuovo invito cliente.";
+    }
+
+    if (error.detail.trim()) {
+      return error.detail;
     }
   }
 

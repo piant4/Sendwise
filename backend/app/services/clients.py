@@ -59,7 +59,7 @@ def is_client_profile_complete(client: ClientRecord) -> bool:
     )
 
 
-def validate_email_limit(
+def validate_non_negative_int(
     value: Optional[int],
     *,
     field_label: str,
@@ -91,6 +91,8 @@ def build_client_schema(
         company_name=client.company_name,
         name=_build_client_name(client),
         status=client.status,
+        email_limit_per_campaign=client.email_limit_per_campaign,
+        max_campaigns=client.max_campaigns,
         monthly_email_limit=client.monthly_email_limit,
         daily_email_limit=client.daily_email_limit,
         created_at=client.created_at,
@@ -142,6 +144,11 @@ class ClientsService:
             email=email,
             personal_name=personal_name,
             company_name=company_name,
+            status=existing.status,
+            email_limit_per_campaign=existing.email_limit_per_campaign,
+            max_campaigns=existing.max_campaigns,
+            monthly_email_limit=existing.monthly_email_limit,
+            daily_email_limit=existing.daily_email_limit,
         )
 
     def update_client(
@@ -152,6 +159,8 @@ class ClientsService:
         personal_name: Optional[str],
         company_name: Optional[str],
         status: Optional[str] = None,
+        email_limit_per_campaign: Optional[int] = None,
+        max_campaigns: Optional[int] = None,
         monthly_email_limit: Optional[int] = None,
         daily_email_limit: Optional[int] = None,
     ) -> ClientRecord:
@@ -167,11 +176,19 @@ class ClientsService:
                 field_label="company_name",
             ),
             status=status,
-            monthly_email_limit=validate_email_limit(
+            email_limit_per_campaign=validate_non_negative_int(
+                email_limit_per_campaign,
+                field_label="email_limit_per_campaign",
+            ),
+            max_campaigns=validate_non_negative_int(
+                max_campaigns,
+                field_label="max_campaigns",
+            ),
+            monthly_email_limit=validate_non_negative_int(
                 monthly_email_limit,
                 field_label="monthly_email_limit",
             ),
-            daily_email_limit=validate_email_limit(
+            daily_email_limit=validate_non_negative_int(
                 daily_email_limit,
                 field_label="daily_email_limit",
             ),
@@ -202,6 +219,22 @@ class ClientsService:
             personal_name=normalized_personal_name,
             company_name=normalized_company_name,
             status=existing.status,
+            email_limit_per_campaign=existing.email_limit_per_campaign,
+            max_campaigns=existing.max_campaigns,
+            monthly_email_limit=existing.monthly_email_limit,
+            daily_email_limit=existing.daily_email_limit,
+        )
+
+    def archive_client(self, client_id: str) -> ClientRecord:
+        existing = self.get_client_by_id(client_id)
+        return self.update_client(
+            client_id=existing.id,
+            email=existing.email,
+            personal_name=existing.personal_name,
+            company_name=existing.company_name,
+            status="archived",
+            email_limit_per_campaign=existing.email_limit_per_campaign,
+            max_campaigns=existing.max_campaigns,
             monthly_email_limit=existing.monthly_email_limit,
             daily_email_limit=existing.daily_email_limit,
         )

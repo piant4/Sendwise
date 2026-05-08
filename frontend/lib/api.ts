@@ -318,6 +318,28 @@ async function patchAdminClient(
   );
 }
 
+async function postAdminClientRevokeAccess(
+  clientId: string,
+  accessToken?: string | null,
+): Promise<Client> {
+  return apiPost<Client, Record<string, never>>(
+    `/admin/clients/${clientId}/revoke-access`,
+    {},
+    accessToken,
+  );
+}
+
+async function postAdminClientArchive(
+  clientId: string,
+  accessToken?: string | null,
+): Promise<Client> {
+  return apiPost<Client, Record<string, never>>(
+    `/admin/clients/${clientId}/archive`,
+    {},
+    accessToken,
+  );
+}
+
 async function postClientOnboarding(
   payload: CompleteClientOnboardingInput,
   accessToken?: string | null,
@@ -565,6 +587,38 @@ export function updateAdminClientLimits(
   }
 
   return patchAdminClient(clientId, payload, accessToken);
+}
+
+export function revokeAdminClientAccess(
+  clientId: string,
+  accessToken?: string | null,
+): Promise<Client> {
+  if (USE_MOCK_API) {
+    throw new ApiError({
+      path: `/admin/clients/${clientId}/revoke-access`,
+      status: 500,
+      detail:
+        "Client access revocation requires NEXT_PUBLIC_USE_MOCK_API=false so the backend can persist the change.",
+    });
+  }
+
+  return postAdminClientRevokeAccess(clientId, accessToken);
+}
+
+export function archiveAdminClient(
+  clientId: string,
+  accessToken?: string | null,
+): Promise<Client> {
+  if (USE_MOCK_API) {
+    throw new ApiError({
+      path: `/admin/clients/${clientId}/archive`,
+      status: 500,
+      detail:
+        "Client archive requires NEXT_PUBLIC_USE_MOCK_API=false so the backend can persist the change.",
+    });
+  }
+
+  return postAdminClientArchive(clientId, accessToken);
 }
 
 export function getAdminCampaigns(

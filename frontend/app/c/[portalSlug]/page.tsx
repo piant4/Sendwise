@@ -2,7 +2,7 @@ import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 import { ClientDashboard } from "../../../components/dashboard/ClientDashboard";
 import { DashboardErrorState } from "../../../components/dashboard/DashboardErrorState";
-import { getAuthMe, getClientOverviewSummary } from "../../../lib/api";
+import { getAuthMe, getClientOverviewSummary, isApiError } from "../../../lib/api";
 
 export const dynamic = "force-dynamic";
 
@@ -23,7 +23,11 @@ export default async function ClientPortalPage({
 
   try {
     authMe = await getAuthMe(accessToken);
-  } catch {
+  } catch (error) {
+    if (isApiError(error) && [401, 403].includes(error.status ?? 0)) {
+      redirect("/auth/redirect");
+    }
+
     redirect("/login");
   }
 

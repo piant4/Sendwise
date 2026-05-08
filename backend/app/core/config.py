@@ -1,7 +1,7 @@
 from functools import lru_cache
 from os import getenv
 from typing import List, Optional, Union
-from urllib.parse import quote
+from urllib.parse import quote, urlsplit
 
 from pydantic import BaseModel, Field
 
@@ -74,6 +74,20 @@ class Settings(BaseModel):
             f"postgresql://{quoted_user}:{quoted_password}"
             f"@{self.postgres_host}:{self.postgres_port}/{quoted_db}"
         )
+
+    @property
+    def frontend_origin(self) -> str:
+        frontend_url = self.frontend_url.strip()
+
+        if not frontend_url:
+            return ""
+
+        parsed_url = urlsplit(frontend_url)
+
+        if not parsed_url.scheme or not parsed_url.netloc:
+            return ""
+
+        return f"{parsed_url.scheme}://{parsed_url.netloc}"
 
 
 @lru_cache

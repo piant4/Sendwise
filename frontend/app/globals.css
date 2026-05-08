@@ -348,6 +348,12 @@ a {
   gap: 8px;
   min-height: 40px;
   padding-inline: 14px;
+  transition:
+    transform 0.15s ease,
+    border-color 0.15s ease,
+    background-color 0.15s ease,
+    box-shadow 0.15s ease,
+    color 0.15s ease;
 }
 
 .admin-topbar-action[data-slot="button"]:disabled {
@@ -369,6 +375,15 @@ a {
   background: rgba(81, 118, 100, 0.12);
   border-color: rgba(81, 118, 100, 0.24);
   color: var(--sw-primary);
+}
+
+.admin-topbar-action--primary[data-slot="button"]:hover,
+.admin-topbar-action--primary[data-slot="button"]:focus-visible {
+  background: rgba(81, 118, 100, 0.18);
+  border-color: rgba(81, 118, 100, 0.36);
+  box-shadow: 0 16px 30px rgba(81, 118, 100, 0.12);
+  color: var(--sw-primary-hover);
+  transform: translateY(-1px);
 }
 
 .topbar__icon-button,
@@ -915,12 +930,12 @@ a {
   align-items: stretch;
   gap: 14px;
   grid-template-columns:
-    minmax(220px, 1.6fr)
+    minmax(220px, 1.8fr)
     minmax(140px, 0.9fr)
     minmax(140px, 0.9fr)
-    minmax(170px, 1fr)
-    minmax(150px, 0.9fr)
-    minmax(170px, 1fr);
+    minmax(180px, 1fr)
+    minmax(160px, 0.95fr)
+    28px;
 }
 
 .admin-clients-table--header {
@@ -947,9 +962,11 @@ a {
     box-shadow 0.15s ease;
 }
 
-.admin-clients-table--row:hover {
+.admin-clients-table--row:hover,
+.admin-clients-table--row:focus-visible {
   border-color: rgba(81, 118, 100, 0.28);
   box-shadow: 0 18px 34px rgba(45, 51, 25, 0.08);
+  outline: none;
   transform: translateY(-1px);
 }
 
@@ -973,6 +990,18 @@ a {
 
 .admin-clients-cell--primary strong {
   font-size: 0.98rem;
+}
+
+.admin-clients-cell--chevron {
+  align-items: center;
+  color: var(--sw-text-faint);
+  justify-content: center;
+  padding-top: 2px;
+}
+
+.admin-clients-cell--chevron svg {
+  height: 18px;
+  width: 18px;
 }
 
 .admin-client-detail__grid {
@@ -1009,6 +1038,11 @@ a {
   margin: 8px 0 0;
 }
 
+.admin-client-detail__portal-slug {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
 .admin-client-detail__limits-form {
   gap: 14px;
   margin-top: 20px;
@@ -1028,6 +1062,88 @@ a {
 .admin-client-detail__placeholder strong {
   color: var(--sw-olive);
   font-size: 0.94rem;
+}
+
+.admin-client-actions,
+.admin-client-actions__buttons,
+.admin-client-actions__confirm,
+.admin-client-actions__confirm-buttons {
+  display: grid;
+}
+
+.admin-client-actions {
+  gap: 16px;
+}
+
+.admin-client-actions__buttons {
+  gap: 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-top: 20px;
+}
+
+.admin-client-actions__button {
+  align-items: center;
+  border: 1px solid var(--sw-border);
+  border-radius: 14px;
+  cursor: pointer;
+  display: inline-flex;
+  font: inherit;
+  font-weight: 700;
+  gap: 10px;
+  justify-content: center;
+  min-height: 46px;
+  padding: 0 18px;
+  transition:
+    border-color 0.15s ease,
+    background-color 0.15s ease,
+    color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.admin-client-actions__button:disabled {
+  cursor: default;
+  opacity: 0.62;
+}
+
+.admin-client-actions__button--warning {
+  background: rgba(246, 235, 218, 0.92);
+  border-color: rgba(182, 128, 58, 0.24);
+  color: #8b5f24;
+}
+
+.admin-client-actions__button--danger {
+  background: rgba(244, 225, 223, 0.92);
+  border-color: rgba(166, 70, 63, 0.22);
+  color: var(--sw-danger);
+}
+
+.admin-client-actions__button--ghost {
+  background: rgba(255, 255, 255, 0.96);
+  color: var(--sw-olive);
+}
+
+.admin-client-actions__confirm {
+  background: rgba(242, 244, 240, 0.78);
+  border: 1px solid rgba(202, 207, 214, 0.72);
+  border-radius: 18px;
+  gap: 8px;
+  margin-top: 18px;
+  padding: 16px;
+}
+
+.admin-client-actions__confirm strong {
+  color: var(--sw-olive);
+}
+
+.admin-client-actions__confirm span {
+  color: var(--sw-text-muted);
+  line-height: 1.6;
+}
+
+.admin-client-actions__confirm-buttons {
+  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-top: 6px;
 }
 
 .admin-dashboard,
@@ -2520,7 +2636,9 @@ p {
   border: 1px solid rgba(202, 207, 214, 0.8);
   border-radius: 24px;
   box-shadow: 0 28px 80px rgba(45, 51, 25, 0.18);
+  max-height: calc(100vh - 48px);
   max-width: 520px;
+  overflow: auto;
   padding: 24px;
   width: min(100%, 520px);
 }
@@ -2736,6 +2854,58 @@ p {
   padding: 12px 14px;
 }
 
+.not-found-page {
+  align-items: center;
+  display: flex;
+  justify-content: center;
+  min-height: 100vh;
+  padding: 24px;
+}
+
+.not-found-card,
+.not-found-card__actions {
+  display: grid;
+}
+
+.not-found-card {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(238, 244, 242, 0.94));
+  border: 1px solid rgba(202, 207, 214, 0.78);
+  border-radius: 28px;
+  box-shadow: 0 28px 76px rgba(45, 51, 25, 0.12);
+  gap: 16px;
+  max-width: 620px;
+  padding: 32px;
+  width: min(100%, 620px);
+}
+
+.not-found-card__eyebrow {
+  color: var(--sw-text-faint);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  margin: 0;
+  text-transform: uppercase;
+}
+
+.not-found-card__title {
+  color: var(--sw-olive);
+  font-size: clamp(2rem, 4vw, 2.6rem);
+  letter-spacing: -0.05em;
+  margin: 0;
+}
+
+.not-found-card__message {
+  color: var(--sw-text-muted);
+  line-height: 1.7;
+  margin: 0;
+}
+
+.not-found-card__actions {
+  gap: 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
 @media (max-width: 860px) {
   .app-shell {
     display: block;
@@ -2792,7 +2962,10 @@ p {
   .admin-client-detail__facts,
   .admin-clients-table,
   .invite-modal__actions,
-  .access-state-card__actions {
+  .access-state-card__actions,
+  .admin-client-actions__buttons,
+  .admin-client-actions__confirm-buttons,
+  .not-found-card__actions {
     grid-template-columns: 1fr;
   }
 

@@ -81,6 +81,8 @@ class FakeClientRepository(ClientRepository):
             personal_name=personal_name,
             company_name=company_name,
             status=status,
+            email_limit_per_campaign=None,
+            max_campaigns=None,
             monthly_email_limit=None,
             daily_email_limit=None,
             created_at=timestamp,
@@ -97,6 +99,8 @@ class FakeClientRepository(ClientRepository):
         personal_name: Optional[str],
         company_name: Optional[str],
         status: Optional[str] = None,
+        email_limit_per_campaign: Optional[int] = None,
+        max_campaigns: Optional[int] = None,
         monthly_email_limit: Optional[int] = None,
         daily_email_limit: Optional[int] = None,
     ) -> ClientRecord:
@@ -107,6 +111,8 @@ class FakeClientRepository(ClientRepository):
                 "personal_name": personal_name,
                 "company_name": company_name,
                 "status": status or existing.status,
+                "email_limit_per_campaign": email_limit_per_campaign,
+                "max_campaigns": max_campaigns,
                 "monthly_email_limit": monthly_email_limit,
                 "daily_email_limit": daily_email_limit,
                 "updated_at": datetime.now(timezone.utc),
@@ -357,6 +363,8 @@ def build_client_record(
     personal_name: Optional[str] = "Mario",
     company_name: Optional[str] = "Demo Studio",
     status: str = "active",
+    email_limit_per_campaign: Optional[int] = None,
+    max_campaigns: Optional[int] = None,
     monthly_email_limit: Optional[int] = None,
     daily_email_limit: Optional[int] = None,
 ) -> ClientRecord:
@@ -367,6 +375,8 @@ def build_client_record(
         personal_name=personal_name,
         company_name=company_name,
         status=status,
+        email_limit_per_campaign=email_limit_per_campaign,
+        max_campaigns=max_campaigns,
         monthly_email_limit=monthly_email_limit,
         daily_email_limit=daily_email_limit,
         created_at=timestamp,
@@ -834,6 +844,22 @@ def test_platform_admin_can_call_invite_endpoint(
     assert stored_access.portal_slug == payload["access"]["portal_slug"]
 
 
+def test_admin_invite_preflight_allows_frontend_origin(client: TestClient) -> None:
+    response = client.options(
+        "/admin/clients",
+        headers={
+            "Origin": "http://localhost:3000",
+            "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": "authorization,content-type",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == "http://localhost:3000"
+    assert "POST" in response.headers["access-control-allow-methods"]
+    assert "authorization" in response.headers["access-control-allow-headers"].lower()
+
+
 def test_platform_admin_can_create_invite_with_email_only(
     client: TestClient,
     monkeypatch: pytest.MonkeyPatch,
@@ -981,18 +1007,18 @@ def test_admin_client_detail_and_limits_update_work(
     update_response = client.patch(
         f"/admin/clients/{client_record.id}",
         headers=auth_header(token),
-        json={"monthly_email_limit": 1200, "daily_email_limit": 90},
+        json={"email_limit_per_campaign": 1200, "max_campaigns": 9},
     )
 
     assert detail_response.status_code == 200
     assert detail_response.json()["access"]["portal_slug"] == "a" * 32
     assert update_response.status_code == 200
-    assert update_response.json()["monthly_email_limit"] == 1200
-    assert update_response.json()["daily_email_limit"] == 90
+    assert update_response.json()["email_limit_per_campaign"] == 1200
+    assert update_response.json()["max_campaigns"] == 9
     updated_client = client_repository.get_by_id(client_record.id)
     assert updated_client is not None
-    assert updated_client.monthly_email_limit == 1200
-    assert updated_client.daily_email_limit == 90
+    assert updated_client.email_limit_per_campaign == 1200
+    assert updated_client.max_campaigns == 9
 
 
 def test_client_cannot_update_admin_client_limits(
@@ -1009,10 +1035,86 @@ def test_client_cannot_update_admin_client_limits(
     response = client.patch(
         f"/admin/clients/{client_record.id}",
         headers=auth_header(token),
-        json={"monthly_email_limit": 1},
+        json={"email_limit_per_campaign": 1},
     )
 
     assert response.status_code == 403
+
+
+def test_platform_admin_can_revoke_client_access(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    signing_keypair: rsa.RSAPrivateKey,
+) -> None:
+    set_auth_mappings(
+        monkeypatch,
+        {
+            "user_admin": {
+                "email": "admin@sendwise.test",
+                "access_type": "platform_admin",
+                "status": "active",
+            }
+        },
+    )
+    client_record = build_client_record()
+    access_record = build_access_record(client_id=client_record.id, email=client_record.email)
+    _, access_repository, _ = install_test_dependencies(
+        client_records=[client_record],
+        access_records=[access_record],
+    )
+    token = make_token(signing_keypair, clerk_user_id="user_admin")
+
+    response = client.post(
+        f"/admin/clients/{client_record.id}/revoke-access",
+        headers=auth_header(token),
+    )
+
+    assert response.status_code == 200
+    assert response.json()["access"]["status"] == "suspended"
+    assert response.json()["access"]["invitation_status"] == "revoked"
+    updated_access = access_repository.get_by_client_id(client_record.id)
+    assert updated_access is not None
+    assert updated_access.status == "suspended"
+    assert updated_access.invitation_status == "revoked"
+
+
+def test_platform_admin_can_archive_client_and_access(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    signing_keypair: rsa.RSAPrivateKey,
+) -> None:
+    set_auth_mappings(
+        monkeypatch,
+        {
+            "user_admin": {
+                "email": "admin@sendwise.test",
+                "access_type": "platform_admin",
+                "status": "active",
+            }
+        },
+    )
+    client_record = build_client_record()
+    access_record = build_access_record(client_id=client_record.id, email=client_record.email)
+    client_repository, access_repository, _ = install_test_dependencies(
+        client_records=[client_record],
+        access_records=[access_record],
+    )
+    token = make_token(signing_keypair, clerk_user_id="user_admin")
+
+    response = client.post(
+        f"/admin/clients/{client_record.id}/archive",
+        headers=auth_header(token),
+    )
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "archived"
+    assert response.json()["access"]["status"] == "archived"
+    updated_client = client_repository.get_by_id(client_record.id)
+    updated_access = access_repository.get_by_client_id(client_record.id)
+    assert updated_client is not None
+    assert updated_client.status == "archived"
+    assert updated_access is not None
+    assert updated_access.status == "archived"
 
 
 def test_reinvite_access_endpoint_preserves_portal_slug(

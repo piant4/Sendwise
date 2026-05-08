@@ -5,6 +5,7 @@ import string
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Optional
+from urllib.parse import urlsplit
 
 import httpx
 from fastapi import Depends, HTTPException, status
@@ -55,32 +56,79 @@ class HttpClerkInvitationGateway(ClerkInvitationGateway):
                 detail="CLERK_SECRET_KEY is required for client invitations.",
             )
 
-        response = httpx.post(
-            f"{self._settings.clerk_api_base_url.rstrip('/')}/invitations",
-            headers={
-                "Authorization": f"Bearer {self._settings.clerk_secret_key}",
-                "Content-Type": "application/json",
-            },
-            json={
-                "email_address": email,
-                "redirect_url": redirect_url,
-                "notify": True,
-                "ignore_existing": True,
-            },
-            timeout=10.0,
-        )
-
-        if response.status_code >= 400:
-            detail = response.text.strip() or "Unknown Clerk invitation error."
+        try:
+            response = httpx.post(
+                f"{self._settings.clerk_api_base_url.rstrip('/')}/invitations",
+                headers={
+                    "Authorization": f"Bearer {self._settings.clerk_secret_key}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "email_address": email,
+                    "redirect_url": redirect_url,
+                    "notify": True,
+                    "ignore_existing": True,
+                },
+                timeout=10.0,
+            )
+        except httpx.RequestError as error:
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,
-                detail=f"Clerk invitation request failed: {detail}",
-            )
+                detail="Unable to reach Clerk while creating the client invitation.",
+            ) from error
+
+        if response.status_code >= 400:
+            self._raise_clerk_invitation_error(response)
 
         payload = response.json()
         return ClerkInvitationResult(
             id=str(payload["id"]),
             status=str(payload.get("status") or "pending"),
+        )
+
+    def _raise_clerk_invitation_error(self, response: httpx.Response) -> None:
+        try:
+            payload = response.json()
+        except ValueError:
+            payload = None
+
+        errors = payload.get("errors") if isinstance(payload, dict) else None
+        first_error = errors[0] if isinstance(errors, list) and errors else None
+        error_code = (
+            first_error.get("code") if isinstance(first_error, dict) else None
+        )
+        param_name = None
+
+        if isinstance(first_error, dict):
+            meta = first_error.get("meta")
+            if isinstance(meta, dict):
+                param_name = meta.get("param_name")
+
+        if error_code == "form_param_format_invalid" and param_name == "email_address":
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Client email must be a valid email address.",
+            )
+
+        if error_code == "form_param_format_invalid" and param_name == "redirect_url":
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="FRONTEND_URL produced an invalid client invite redirect URL.",
+            )
+
+        if response.status_code in {401, 403}:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail="Backend Clerk credentials are invalid for client invitations.",
+            )
+
+        detail = None
+        if isinstance(first_error, dict):
+            detail = first_error.get("long_message") or first_error.get("message")
+
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=detail or "Clerk invitation request failed.",
         )
 
 
@@ -204,6 +252,44 @@ class ClientAccessService:
     def get_access_by_client_id(self, client_id: str) -> Optional[ClientAccessRecord]:
         return self._repository.get_by_client_id(client_id)
 
+    def revoke_access(self, client_id: str) -> ClientAccessRecord:
+        existing_access = self._repository.get_by_client_id(client_id)
+
+        if existing_access is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Client access not found.",
+            )
+
+        if (
+            existing_access.status == "suspended"
+            and existing_access.invitation_status == "revoked"
+        ):
+            return existing_access
+
+        return self._repository.update_access(
+            access_id=existing_access.id,
+            status="suspended",
+            invitation_status="revoked",
+            accepted_at=existing_access.accepted_at,
+        )
+
+    def archive_access(self, client_id: str) -> Optional[ClientAccessRecord]:
+        existing_access = self._repository.get_by_client_id(client_id)
+
+        if existing_access is None:
+            return None
+
+        if existing_access.status == "archived":
+            return existing_access
+
+        return self._repository.update_access(
+            access_id=existing_access.id,
+            status="archived",
+            invitation_status=existing_access.invitation_status,
+            accepted_at=existing_access.accepted_at,
+        )
+
     def invite_client_access(
         self,
         *,
@@ -247,7 +333,23 @@ class ClientAccessService:
         return InviteClientAccessResult(client=client, access=access)
 
     def _build_invitation_redirect_url(self) -> str:
-        return f"{self._settings.frontend_url.rstrip('/')}/auth/redirect"
+        frontend_origin = self._settings.frontend_origin
+
+        if not frontend_origin:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="FRONTEND_URL must be an absolute URL for client invitations.",
+            )
+
+        parsed_url = urlsplit(frontend_origin)
+
+        if not parsed_url.scheme or not parsed_url.netloc:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="FRONTEND_URL must be an absolute URL for client invitations.",
+            )
+
+        return f"{frontend_origin}/auth/redirect"
 
     def _upsert_client_profile(
         self,
@@ -287,6 +389,8 @@ class ClientAccessService:
             personal_name=next_personal_name or existing.personal_name,
             company_name=next_company_name or existing.company_name,
             status=existing.status,
+            email_limit_per_campaign=existing.email_limit_per_campaign,
+            max_campaigns=existing.max_campaigns,
             monthly_email_limit=existing.monthly_email_limit,
             daily_email_limit=existing.daily_email_limit,
         )
@@ -321,6 +425,8 @@ class ClientAccessService:
                 required=True,
             ),
             status=resolved_access.client.status,
+            email_limit_per_campaign=resolved_access.client.email_limit_per_campaign,
+            max_campaigns=resolved_access.client.max_campaigns,
             monthly_email_limit=resolved_access.client.monthly_email_limit,
             daily_email_limit=resolved_access.client.daily_email_limit,
         )

@@ -27,6 +27,8 @@ export interface Client {
   company_name?: string | null;
   name: string;
   status: ClientStatus;
+  email_limit_per_campaign?: number | null;
+  max_campaigns?: number | null;
   monthly_email_limit?: number | null;
   daily_email_limit?: number | null;
   created_at: string;
@@ -76,6 +78,8 @@ export interface AdminClientInviteResponse {
 export interface AdminClientUpdateInput {
   personal_name?: string | null;
   company_name?: string | null;
+  email_limit_per_campaign?: number | null;
+  max_campaigns?: number | null;
   monthly_email_limit?: number | null;
   daily_email_limit?: number | null;
 }

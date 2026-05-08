@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Menu, X } from "lucide-react";
 import { BrandMark } from "../shared/BrandMark";
 import { MockModeBadge } from "../shared/MockModeBadge";
+import { SidebarAccountPanel } from "../shared/SidebarAccountPanel";
 import {
   Sheet,
   SheetClose,
@@ -86,6 +87,12 @@ export function MobileNav({ role, isMockMode }: MobileNavProps) {
               {role === "admin" ? "Operazioni" : "Dashboard"}
             </p>
             <MainNav role={role} onNavigate={() => setOpen(false)} />
+          </div>
+          <div className="mobile-nav-account">
+            <SidebarAccountPanel
+              isMockMode={isMockMode}
+              onAction={() => setOpen(false)}
+            />
           </div>
           {isMockMode ? <MockModeBadge /> : null}
         </div>

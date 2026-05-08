@@ -1,5 +1,6 @@
 import { BrandMark } from "../shared/BrandMark";
 import { MockModeBadge } from "../shared/MockModeBadge";
+import { SidebarAccountPanel } from "../shared/SidebarAccountPanel";
 import { MainNav, type AppRole } from "./MainNav";
 
 const ROLE_META: Record<
@@ -52,10 +53,7 @@ export function Sidebar({ role, isMockMode }: SidebarProps) {
         <MainNav role={role} />
       </div>
       <div className="sidebar-account">
-        <div className="sidebar-account__copy">
-          <span>Sessione protetta</span>
-          <span>Gestione account e sicurezza tramite Clerk.</span>
-        </div>
+        <SidebarAccountPanel isMockMode={isMockMode} />
         {isMockMode ? <MockModeBadge /> : null}
       </div>
     </div>

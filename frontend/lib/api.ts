@@ -1,5 +1,7 @@
 import { auth } from "@clerk/nextjs/server";
 import type {
+  AdminClientInviteInput,
+  AdminClientInviteResponse,
   AdminClientStatusCounts,
   AdminOverviewSummary,
   AdminRecentCampaign,
@@ -27,7 +29,7 @@ const DEFAULT_EMPTY_ADMIN_LIMITS = {
 
 const ACTIVE_CAMPAIGN_STATUSES = new Set<Campaign["status"]>(["ready", "running"]);
 const ADMIN_ROUTE = "/admin";
-const CLIENT_ROUTE = "/client";
+const CLIENT_PORTAL_ROUTE_PREFIX = "/c";
 
 export type AuthAccessType = "platform_admin" | "client";
 export type AuthUserStatus = "invited" | "active" | "suspended" | "archived";
@@ -35,6 +37,7 @@ export type AuthUserStatus = "invited" | "active" | "suspended" | "archived";
 export interface AuthMeResponse {
   access_type: AuthAccessType;
   client_id: string | null;
+  portal_slug: string | null;
   email: string | null;
   status: AuthUserStatus;
 }
@@ -141,6 +144,40 @@ async function apiGet<T>(path: string): Promise<T> {
   }
 }
 
+async function apiPost<TResponse, TPayload>(
+  path: string,
+  payload: TPayload,
+): Promise<TResponse> {
+  const requestUrl = `${getRequiredApiBaseUrl()}${path}`;
+  let response: Response;
+
+  try {
+    response = await fetch(requestUrl, {
+      method: "POST",
+      cache: "no-store",
+      headers: await getApiHeaders(),
+      body: JSON.stringify(payload),
+    });
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Unknown network error";
+    throw new Error(`API request failed for ${path}: ${message}`);
+  }
+
+  if (!response.ok) {
+    const details = await readErrorDetails(response);
+    throw new Error(
+      `API request failed for ${path}: ${response.status} ${details}`,
+    );
+  }
+
+  try {
+    return (await response.json()) as TResponse;
+  } catch {
+    throw new Error(`API request failed for ${path}: invalid JSON response`);
+  }
+}
+
 function assertBackendAuthRoutingEnabled(): void {
   if (!USE_MOCK_API) {
     return;
@@ -178,6 +215,15 @@ async function fetchClientBlockedSends(): Promise<BlockedSend[]> {
 async function fetchAuthMe(): Promise<AuthMeResponse> {
   assertBackendAuthRoutingEnabled();
   return apiGet<AuthMeResponse>("/auth/me");
+}
+
+async function postAdminClientInvite(
+  payload: AdminClientInviteInput,
+): Promise<AdminClientInviteResponse> {
+  return apiPost<AdminClientInviteResponse, AdminClientInviteInput>(
+    "/admin/clients",
+    payload,
+  );
 }
 
 function getClientStatusLabel(status: Client["status"]): string {
@@ -360,6 +406,18 @@ export function getAdminClients(): Promise<Client[]> {
     : fetchAdminClients();
 }
 
+export function createAdminClientInvite(
+  payload: AdminClientInviteInput,
+): Promise<AdminClientInviteResponse> {
+  if (USE_MOCK_API) {
+    throw new Error(
+      "Client invitations require NEXT_PUBLIC_USE_MOCK_API=false so the backend can create Clerk invites.",
+    );
+  }
+
+  return postAdminClientInvite(payload);
+}
+
 export function getAdminCampaigns(): Promise<Campaign[]> {
   return USE_MOCK_API
     ? mockApi.getAdminCampaigns()
@@ -408,5 +466,17 @@ export function getClientBlockedSends(): Promise<BlockedSend[]> {
 export async function getPostLoginRedirectPath(): Promise<string> {
   const authMe = await fetchAuthMe();
 
-  return authMe.access_type === "platform_admin" ? ADMIN_ROUTE : CLIENT_ROUTE;
+  if (authMe.access_type === "platform_admin") {
+    return ADMIN_ROUTE;
+  }
+
+  if (!authMe.portal_slug) {
+    throw new Error("Authenticated client is missing a portal slug.");
+  }
+
+  return `${CLIENT_PORTAL_ROUTE_PREFIX}/${authMe.portal_slug}`;
+}
+
+export function getAuthMe(): Promise<AuthMeResponse> {
+  return fetchAuthMe();
 }

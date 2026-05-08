@@ -8,20 +8,45 @@ WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'listmonk')\gexec
 
 CREATE TABLE IF NOT EXISTS clients (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    name TEXT NOT NULL,
-    status TEXT NOT NULL DEFAULT 'trial',
+    email TEXT NOT NULL UNIQUE,
+    personal_name TEXT,
+    company_name TEXT,
+    status TEXT NOT NULL DEFAULT 'active',
+    monthly_email_limit INTEGER,
+    daily_email_limit INTEGER,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE TABLE IF NOT EXISTS client_users (
+CREATE TABLE IF NOT EXISTS client_access (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    client_id UUID NOT NULL REFERENCES clients(id),
+    client_id UUID NOT NULL UNIQUE REFERENCES clients(id) ON DELETE CASCADE,
     email TEXT NOT NULL,
-    role TEXT NOT NULL DEFAULT 'client_user',
+    clerk_user_id TEXT UNIQUE,
+    clerk_invitation_id TEXT,
+    portal_slug TEXT NOT NULL UNIQUE,
+    status TEXT NOT NULL DEFAULT 'invited',
+    invitation_status TEXT,
+    invited_at TIMESTAMPTZ,
+    accepted_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT client_access_status_check CHECK (
+        status IN ('invited', 'active', 'suspended', 'archived')
+    ),
+    CONSTRAINT client_access_invitation_status_check CHECK (
+        invitation_status IS NULL
+        OR invitation_status IN ('pending', 'accepted', 'revoked', 'expired')
+    ),
+    CONSTRAINT client_access_portal_slug_check CHECK (
+        char_length(portal_slug) >= 32
+        AND portal_slug ~ '^[A-Za-z0-9]+$'
+    )
 );
+
+CREATE UNIQUE INDEX IF NOT EXISTS client_access_active_email_idx
+    ON client_access (lower(email))
+    WHERE status IN ('invited', 'active');
 
 CREATE TABLE IF NOT EXISTS campaigns (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

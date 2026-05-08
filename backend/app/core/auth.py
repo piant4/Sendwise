@@ -14,6 +14,10 @@ from app.repositories.auth_users import (
     AuthUserRepository,
     get_auth_user_repository,
 )
+from app.services.client_access import (
+    ClientAccessService,
+    get_client_access_service,
+)
 
 PLATFORM_ADMIN_ACCESS = "platform_admin"
 CLIENT_ACCESS = "client"
@@ -26,11 +30,8 @@ class AuthenticatedUser(BaseModel):
     email: Optional[str] = None
     access_type: Literal["platform_admin", "client"]
     client_id: Optional[str] = None
+    portal_slug: Optional[str] = None
     status: Literal["invited", "active", "suspended", "archived"]
-
-    @property
-    def role(self) -> str:
-        return self.access_type
 
 
 def _raise_unauthorized(detail: str) -> None:
@@ -100,19 +101,41 @@ def get_token_claims(
 
 def get_current_user(
     claims: dict[str, Any] = Depends(get_token_claims),
-    repository: AuthUserRepository = Depends(get_auth_user_repository),
+    auth_user_repository: AuthUserRepository = Depends(get_auth_user_repository),
+    client_access_service: ClientAccessService = Depends(get_client_access_service),
 ) -> AuthenticatedUser:
     clerk_user_id = claims.get("sub")
+    email = (
+        claims.get("email")
+        or claims.get("email_address")
+        or claims.get("primary_email_address")
+    )
 
     if not isinstance(clerk_user_id, str) or not clerk_user_id:
         _raise_unauthorized("Clerk token is missing a subject claim.")
 
-    mapped_user = repository.get_by_clerk_user_id(clerk_user_id)
+    mapped_user = auth_user_repository.get_by_clerk_user_id(clerk_user_id)
 
     if mapped_user is None:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Authenticated Clerk user is not mapped to a Sendwise user.",
+        client_access = client_access_service.resolve_client_access(
+            clerk_user_id,
+            email=email if isinstance(email, str) else None,
+        )
+
+        if client_access is None:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Authenticated Clerk user is not mapped to a Sendwise user.",
+            )
+
+        return AuthenticatedUser(
+            id=client_access.id,
+            clerk_user_id=clerk_user_id,
+            email=client_access.email or (email if isinstance(email, str) else None),
+            access_type=CLIENT_ACCESS,
+            client_id=client_access.client_id,
+            portal_slug=client_access.portal_slug,
+            status=client_access.status,
         )
 
     return AuthenticatedUser(
@@ -120,7 +143,8 @@ def get_current_user(
         clerk_user_id=clerk_user_id,
         email=_extract_email(claims, mapped_user),
         access_type=mapped_user.access_type,
-        client_id=mapped_user.client_id,
+        client_id=None,
+        portal_slug=None,
         status=mapped_user.status,
     )
 
@@ -152,7 +176,11 @@ def require_platform_admin(
 def require_client_scope(
     current_user: AuthenticatedUser = Depends(require_active_user),
 ) -> AuthenticatedUser:
-    if current_user.access_type != CLIENT_ACCESS or not current_user.client_id:
+    if (
+        current_user.access_type != CLIENT_ACCESS
+        or not current_user.client_id
+        or not current_user.portal_slug
+    ):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Client access is required for this endpoint.",

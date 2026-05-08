@@ -1,6 +1,7 @@
 import json
 import time
-from typing import Any
+from datetime import datetime, timezone
+from typing import Any, Optional
 
 import jwt
 import pytest
@@ -11,6 +12,15 @@ from app.core.auth import get_jwks_client
 from app.core.config import get_settings
 from app.main import app
 from app.repositories.auth_users import _build_auth_user_repository
+from app.repositories.client_access import ClientAccessRecord, ClientAccessRepository
+from app.repositories.clients import ClientRecord, ClientRepository
+from app.services.client_access import (
+    ClerkInvitationGateway,
+    ClerkInvitationResult,
+    ClientAccessService,
+    get_client_access_service,
+)
+from app.services.clients import ClientsService, get_clients_service
 
 TEST_ISSUER = "https://clerk.sendwise.test"
 TEST_JWKS_URL = f"{TEST_ISSUER}/.well-known/jwks.json"
@@ -29,12 +39,233 @@ class FakeJwksClient:
         return FakeSigningKey(self._public_key)
 
 
+class FakeClientRepository(ClientRepository):
+    def __init__(self, records: Optional[list[ClientRecord]] = None) -> None:
+        self._records = {record.id: record for record in records or []}
+        self._counter = len(self._records)
+
+    def list_clients(self) -> list[ClientRecord]:
+        return sorted(
+            self._records.values(),
+            key=lambda item: (item.created_at, item.id),
+            reverse=True,
+        )
+
+    def get_by_id(self, client_id: str) -> Optional[ClientRecord]:
+        return self._records.get(client_id)
+
+    def get_by_email(self, email: str) -> Optional[ClientRecord]:
+        normalized_email = email.lower()
+        return next(
+            (
+                record
+                for record in self._records.values()
+                if record.email.lower() == normalized_email
+            ),
+            None,
+        )
+
+    def create_client(
+        self,
+        *,
+        email: str,
+        personal_name: Optional[str],
+        company_name: Optional[str],
+        status: str,
+    ) -> ClientRecord:
+        self._counter += 1
+        timestamp = datetime.now(timezone.utc)
+        record = ClientRecord(
+            id=f"client_{self._counter}",
+            email=email,
+            personal_name=personal_name,
+            company_name=company_name,
+            status=status,
+            monthly_email_limit=None,
+            daily_email_limit=None,
+            created_at=timestamp,
+            updated_at=timestamp,
+        )
+        self._records[record.id] = record
+        return record
+
+    def update_client(
+        self,
+        *,
+        client_id: str,
+        email: str,
+        personal_name: Optional[str],
+        company_name: Optional[str],
+        status: Optional[str] = None,
+    ) -> ClientRecord:
+        existing = self._records[client_id]
+        updated = existing.model_copy(
+            update={
+                "email": email,
+                "personal_name": personal_name,
+                "company_name": company_name,
+                "status": status or existing.status,
+                "updated_at": datetime.now(timezone.utc),
+            }
+        )
+        self._records[client_id] = updated
+        return updated
+
+
+class FakeClientAccessRepository(ClientAccessRepository):
+    def __init__(self, records: Optional[list[ClientAccessRecord]] = None) -> None:
+        self._records = {record.id: record for record in records or []}
+        self._counter = len(self._records)
+
+    def get_by_clerk_user_id(self, clerk_user_id: str) -> Optional[ClientAccessRecord]:
+        return next(
+            (
+                record
+                for record in self._records.values()
+                if record.clerk_user_id == clerk_user_id
+            ),
+            None,
+        )
+
+    def get_by_client_id(self, client_id: str) -> Optional[ClientAccessRecord]:
+        return next(
+            (
+                record
+                for record in self._records.values()
+                if record.client_id == client_id
+            ),
+            None,
+        )
+
+    def get_by_email(self, email: str) -> Optional[ClientAccessRecord]:
+        normalized_email = email.lower()
+        return next(
+            (
+                record
+                for record in sorted(
+                    self._records.values(),
+                    key=lambda item: (item.created_at, item.id),
+                    reverse=True,
+                )
+                if record.email.lower() == normalized_email
+            ),
+            None,
+        )
+
+    def get_by_portal_slug(self, portal_slug: str) -> Optional[ClientAccessRecord]:
+        return next(
+            (
+                record
+                for record in self._records.values()
+                if record.portal_slug == portal_slug
+            ),
+            None,
+        )
+
+    def claim_invited_access(
+        self,
+        *,
+        clerk_user_id: str,
+        email: str,
+    ) -> Optional[ClientAccessRecord]:
+        existing = self.get_by_email(email)
+
+        if (
+            existing is None
+            or existing.clerk_user_id is not None
+            or existing.status != "invited"
+            or (existing.invitation_status or "pending") != "pending"
+        ):
+            return None
+
+        claimed = existing.model_copy(
+            update={
+                "clerk_user_id": clerk_user_id,
+                "status": "active",
+                "invitation_status": "accepted",
+                "accepted_at": datetime.now(timezone.utc),
+                "updated_at": datetime.now(timezone.utc),
+            }
+        )
+        self._records[claimed.id] = claimed
+        return claimed
+
+    def upsert_invited_access(
+        self,
+        *,
+        client_id: str,
+        email: str,
+        clerk_invitation_id: str,
+        portal_slug: str,
+        invited_at: datetime,
+    ) -> ClientAccessRecord:
+        existing = self.get_by_client_id(client_id)
+        timestamp = datetime.now(timezone.utc)
+
+        if existing is None:
+            self._counter += 1
+            record = ClientAccessRecord(
+                id=f"access_{self._counter}",
+                client_id=client_id,
+                email=email,
+                clerk_user_id=None,
+                clerk_invitation_id=clerk_invitation_id,
+                portal_slug=portal_slug,
+                status="invited",
+                invitation_status="pending",
+                invited_at=invited_at,
+                accepted_at=None,
+                created_at=timestamp,
+                updated_at=timestamp,
+            )
+        else:
+            record = existing.model_copy(
+                update={
+                    "email": email,
+                    "clerk_user_id": None,
+                    "clerk_invitation_id": clerk_invitation_id,
+                    "portal_slug": portal_slug,
+                    "status": "invited",
+                    "invitation_status": "pending",
+                    "invited_at": invited_at,
+                    "accepted_at": None,
+                    "updated_at": timestamp,
+                }
+            )
+
+        self._records[record.id] = record
+        return record
+
+
+class FakeClerkInvitationGateway(ClerkInvitationGateway):
+    def __init__(self) -> None:
+        self.calls: list[dict[str, str]] = []
+        self._counter = 0
+
+    def create_invitation(
+        self,
+        *,
+        email: str,
+        redirect_url: str,
+    ) -> ClerkInvitationResult:
+        self._counter += 1
+        self.calls.append({"email": email, "redirect_url": redirect_url})
+        return ClerkInvitationResult(id=f"inv_{self._counter}", status="pending")
+
+
 @pytest.fixture(autouse=True)
 def auth_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("CLERK_JWKS_URL", TEST_JWKS_URL)
     monkeypatch.setenv("CLERK_ISSUER", TEST_ISSUER)
+    monkeypatch.setenv("FRONTEND_URL", "http://localhost:3000")
     monkeypatch.delenv("CLERK_AUDIENCE", raising=False)
-    monkeypatch.setenv("AUTH_USER_MAPPINGS_JSON", "[]")
+    monkeypatch.setenv("AUTH_USER_MAPPINGS_JSON", "{}")
+    app.dependency_overrides.clear()
+    get_settings.cache_clear()
+    _build_auth_user_repository.cache_clear()
+    get_jwks_client.cache_clear()
+    yield
+    app.dependency_overrides.clear()
     get_settings.cache_clear()
     _build_auth_user_repository.cache_clear()
     get_jwks_client.cache_clear()
@@ -90,6 +321,80 @@ def auth_header(token: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
 
 
+def build_client_record(
+    *,
+    client_id: str = "client_demo",
+    email: str = "client@example.test",
+    personal_name: Optional[str] = "Mario",
+    company_name: Optional[str] = "Demo Studio",
+    status: str = "active",
+) -> ClientRecord:
+    timestamp = datetime(2026, 5, 8, 9, 0, tzinfo=timezone.utc)
+    return ClientRecord(
+        id=client_id,
+        email=email,
+        personal_name=personal_name,
+        company_name=company_name,
+        status=status,
+        monthly_email_limit=None,
+        daily_email_limit=None,
+        created_at=timestamp,
+        updated_at=timestamp,
+    )
+
+
+def build_access_record(
+    *,
+    access_id: str = "access_demo",
+    client_id: str = "client_demo",
+    email: str = "client@example.test",
+    clerk_user_id: Optional[str] = "user_client",
+    portal_slug: str = "a" * 32,
+    status: str = "active",
+    invitation_status: Optional[str] = "accepted",
+) -> ClientAccessRecord:
+    timestamp = datetime(2026, 5, 8, 9, 5, tzinfo=timezone.utc)
+    invited_at = None if invitation_status is None else timestamp
+    accepted_at = timestamp if invitation_status == "accepted" else None
+    return ClientAccessRecord(
+        id=access_id,
+        client_id=client_id,
+        email=email,
+        clerk_user_id=clerk_user_id,
+        clerk_invitation_id="inv_existing",
+        portal_slug=portal_slug,
+        status=status,
+        invitation_status=invitation_status,
+        invited_at=invited_at,
+        accepted_at=accepted_at,
+        created_at=timestamp,
+        updated_at=timestamp,
+    )
+
+
+def install_test_dependencies(
+    *,
+    client_records: Optional[list[ClientRecord]] = None,
+    access_records: Optional[list[ClientAccessRecord]] = None,
+    invitation_gateway: Optional[FakeClerkInvitationGateway] = None,
+) -> tuple[FakeClientRepository, FakeClientAccessRepository, FakeClerkInvitationGateway]:
+    client_repository = FakeClientRepository(client_records)
+    client_access_repository = FakeClientAccessRepository(access_records)
+    gateway = invitation_gateway or FakeClerkInvitationGateway()
+    settings = get_settings()
+    clients_service = ClientsService(client_repository)
+    client_access_service = ClientAccessService(
+        repository=client_access_repository,
+        client_repository=client_repository,
+        invitation_gateway=gateway,
+        settings=settings,
+    )
+
+    app.dependency_overrides[get_clients_service] = lambda: clients_service
+    app.dependency_overrides[get_client_access_service] = lambda: client_access_service
+    return client_repository, client_access_repository, gateway
+
+
 def test_health_is_public(client: TestClient) -> None:
     response = client.get("/health")
 
@@ -101,31 +406,13 @@ def test_health_is_public(client: TestClient) -> None:
     }
 
 
-def test_admin_endpoint_rejects_missing_token(client: TestClient) -> None:
-    response = client.get("/admin/clients")
+def test_auth_me_unauthenticated_returns_401(client: TestClient) -> None:
+    response = client.get("/auth/me")
 
     assert response.status_code == 401
 
 
-def test_client_endpoint_rejects_missing_token(client: TestClient) -> None:
-    response = client.get("/client/me")
-
-    assert response.status_code == 401
-
-
-def test_invalid_token_is_rejected(
-    client: TestClient,
-    signing_keypair: rsa.RSAPrivateKey,
-) -> None:
-    wrong_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
-    token = make_token(wrong_key, clerk_user_id="user_invalid")
-
-    response = client.get("/admin/clients", headers=auth_header(token))
-
-    assert response.status_code == 401
-
-
-def test_admin_mapping_can_access_admin_endpoints(
+def test_platform_admin_from_env_mapping_works(
     client: TestClient,
     monkeypatch: pytest.MonkeyPatch,
     signing_keypair: rsa.RSAPrivateKey,
@@ -141,120 +428,156 @@ def test_admin_mapping_can_access_admin_endpoints(
             }
         },
     )
+    install_test_dependencies()
     token = make_token(signing_keypair, clerk_user_id="user_admin", email="admin@sendwise.test")
 
-    response = client.get("/admin/clients", headers=auth_header(token))
+    auth_me_response = client.get("/auth/me", headers=auth_header(token))
+    admin_response = client.get("/admin/clients", headers=auth_header(token))
 
-    assert response.status_code == 200
-    data = response.json()
-    assert isinstance(data, list)
-    assert {"id", "name", "status", "created_at", "updated_at"} <= data[0].keys()
-
-
-def test_active_admin_can_read_auth_me(
-    client: TestClient,
-    monkeypatch: pytest.MonkeyPatch,
-    signing_keypair: rsa.RSAPrivateKey,
-) -> None:
-    set_auth_mappings(
-        monkeypatch,
-        {
-            "user_admin": {
-                "id": "user_admin",
-                "email": "admin@sendwise.test",
-                "access_type": "platform_admin",
-                "status": "active",
-            }
-        },
-    )
-    token = make_token(signing_keypair, clerk_user_id="user_admin", email="admin@sendwise.test")
-
-    response = client.get("/auth/me", headers=auth_header(token))
-
-    assert response.status_code == 200
-    assert response.json() == {
+    assert auth_me_response.status_code == 200
+    assert auth_me_response.json() == {
         "access_type": "platform_admin",
         "client_id": None,
+        "portal_slug": None,
         "email": "admin@sendwise.test",
         "status": "active",
     }
+    assert admin_response.status_code == 200
+    assert admin_response.json() == []
 
 
-def test_client_mapping_can_access_client_endpoints(
+def test_active_client_from_db_client_access_works(
     client: TestClient,
-    monkeypatch: pytest.MonkeyPatch,
     signing_keypair: rsa.RSAPrivateKey,
 ) -> None:
-    set_auth_mappings(
-        monkeypatch,
-        {
-            "user_client": {
-                "id": "user_client",
-                "email": "client@acme.test",
-                "access_type": "client",
-                "client_id": "client_acme",
-                "status": "active",
-            }
-        },
+    install_test_dependencies(
+        client_records=[build_client_record()],
+        access_records=[build_access_record()],
     )
-    token = make_token(signing_keypair, clerk_user_id="user_client", email="client@acme.test")
+    token = make_token(
+        signing_keypair,
+        clerk_user_id="user_client",
+        email="client@example.test",
+    )
 
-    response = client.get("/client/me", headers=auth_header(token))
+    auth_me_response = client.get("/auth/me", headers=auth_header(token))
+    client_me_response = client.get("/client/me", headers=auth_header(token))
 
-    assert response.status_code == 200
-    data = response.json()
-    assert {"client", "user"} <= data.keys()
-    assert data["client"]["id"] == "client_acme"
-    assert data["user"]["client_id"] == "client_acme"
-    assert data["user"]["role"] == "client"
+    assert auth_me_response.status_code == 200
+    assert auth_me_response.json() == {
+        "access_type": "client",
+        "client_id": "client_demo",
+        "portal_slug": "a" * 32,
+        "email": "client@example.test",
+        "status": "active",
+    }
+
+    assert client_me_response.status_code == 200
+    data = client_me_response.json()
+    assert data["client"]["id"] == "client_demo"
+    assert data["client"]["email"] == "client@example.test"
+    assert data["user"]["portal_slug"] == "a" * 32
+    assert data["user"]["status"] == "active"
+    assert "role" not in data["user"]
 
 
-def test_active_client_can_read_auth_me(
+def test_pending_invited_client_claims_access_on_first_valid_login(
     client: TestClient,
-    monkeypatch: pytest.MonkeyPatch,
     signing_keypair: rsa.RSAPrivateKey,
 ) -> None:
-    set_auth_mappings(
-        monkeypatch,
-        {
-            "user_client": {
-                "id": "user_client",
-                "email": "client@acme.test",
-                "access_type": "client",
-                "client_id": "client_acme",
-                "status": "active",
-            }
-        },
+    client_record = build_client_record()
+    access_record = build_access_record(
+        email=client_record.email,
+        clerk_user_id=None,
+        status="invited",
+        invitation_status="pending",
     )
-    token = make_token(signing_keypair, clerk_user_id="user_client", email="client@acme.test")
+    _, access_repository, _ = install_test_dependencies(
+        client_records=[client_record],
+        access_records=[access_record],
+    )
+    token = make_token(
+        signing_keypair,
+        clerk_user_id="user_claimed",
+        email=client_record.email,
+    )
 
     response = client.get("/auth/me", headers=auth_header(token))
 
     assert response.status_code == 200
     assert response.json() == {
         "access_type": "client",
-        "client_id": "client_acme",
-        "email": "client@acme.test",
+        "client_id": "client_demo",
+        "portal_slug": "a" * 32,
+        "email": "client@example.test",
         "status": "active",
     }
+    claimed_access = access_repository.get_by_client_id(client_record.id)
+    assert claimed_access is not None
+    assert claimed_access.clerk_user_id == "user_claimed"
+    assert claimed_access.status == "active"
+    assert claimed_access.invitation_status == "accepted"
 
 
-def test_client_role_cannot_access_admin_endpoints(
+def test_client_without_portal_slug_fails_closed(
     client: TestClient,
-    monkeypatch: pytest.MonkeyPatch,
     signing_keypair: rsa.RSAPrivateKey,
 ) -> None:
-    set_auth_mappings(
-        monkeypatch,
-        {
-            "user_client": {
-                "id": "user_client",
-                "email": "client@acme.test",
-                "access_type": "client",
-                "client_id": "client_acme",
-                "status": "active",
-            }
-        },
+    install_test_dependencies(
+        client_records=[build_client_record()],
+        access_records=[build_access_record(portal_slug="")],
+    )
+    token = make_token(signing_keypair, clerk_user_id="user_client")
+
+    response = client.get("/auth/me", headers=auth_header(token))
+
+    assert response.status_code == 403
+    assert "portal slug" in response.text
+
+
+def test_malformed_portal_slug_fails_closed(
+    client: TestClient,
+    signing_keypair: rsa.RSAPrivateKey,
+) -> None:
+    install_test_dependencies(
+        client_records=[build_client_record()],
+        access_records=[build_access_record(portal_slug="bad-slug!")],
+    )
+    token = make_token(signing_keypair, clerk_user_id="user_client")
+
+    response = client.get("/auth/me", headers=auth_header(token))
+
+    assert response.status_code == 403
+    assert "portal slug" in response.text
+
+
+@pytest.mark.parametrize("status_value", ["invited", "suspended", "archived"])
+def test_invited_suspended_archived_client_access_is_denied(
+    client: TestClient,
+    signing_keypair: rsa.RSAPrivateKey,
+    status_value: str,
+) -> None:
+    invitation_status = "pending" if status_value == "invited" else "accepted"
+    install_test_dependencies(
+        client_records=[build_client_record()],
+        access_records=[
+            build_access_record(status=status_value, invitation_status=invitation_status)
+        ],
+    )
+    token = make_token(signing_keypair, clerk_user_id="user_client")
+
+    response = client.get("/client/campaigns", headers=auth_header(token))
+
+    assert response.status_code == 403
+
+
+def test_client_cannot_access_admin_endpoint(
+    client: TestClient,
+    signing_keypair: rsa.RSAPrivateKey,
+) -> None:
+    install_test_dependencies(
+        client_records=[build_client_record()],
+        access_records=[build_access_record()],
     )
     token = make_token(signing_keypair, clerk_user_id="user_client")
 
@@ -263,7 +586,7 @@ def test_client_role_cannot_access_admin_endpoints(
     assert response.status_code == 403
 
 
-def test_platform_admin_cannot_access_client_endpoints(
+def test_platform_admin_can_access_admin_endpoint(
     client: TestClient,
     monkeypatch: pytest.MonkeyPatch,
     signing_keypair: rsa.RSAPrivateKey,
@@ -272,47 +595,89 @@ def test_platform_admin_cannot_access_client_endpoints(
         monkeypatch,
         {
             "user_admin": {
-                "id": "user_admin",
                 "email": "admin@sendwise.test",
                 "access_type": "platform_admin",
                 "status": "active",
             }
         },
     )
+    install_test_dependencies()
     token = make_token(signing_keypair, clerk_user_id="user_admin")
 
-    response = client.get("/client/me", headers=auth_header(token))
+    response = client.get("/admin/campaigns", headers=auth_header(token))
+
+    assert response.status_code == 200
+
+
+def test_platform_admin_can_call_invite_endpoint(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    signing_keypair: rsa.RSAPrivateKey,
+) -> None:
+    set_auth_mappings(
+        monkeypatch,
+        {
+            "user_admin": {
+                "email": "admin@sendwise.test",
+                "access_type": "platform_admin",
+                "status": "active",
+            }
+        },
+    )
+    _, access_repository, gateway = install_test_dependencies()
+    token = make_token(signing_keypair, clerk_user_id="user_admin")
+
+    response = client.post(
+        "/admin/clients",
+        headers=auth_header(token),
+        json={
+            "email": "Nuovo.Cliente@Example.Test",
+            "personal_name": "Giulia",
+            "company_name": "Studio Nord",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["client"]["email"] == "nuovo.cliente@example.test"
+    assert payload["client"]["company_name"] == "Studio Nord"
+    assert payload["access"]["status"] == "invited"
+    assert payload["access"]["invitation_status"] == "pending"
+    assert payload["access"]["clerk_invitation_id"] == "inv_1"
+    assert payload["access"]["portal_slug"]
+    assert len(payload["access"]["portal_slug"]) >= 32
+    assert payload["access"]["portal_slug"].isalnum()
+    assert gateway.calls == [
+        {
+            "email": "nuovo.cliente@example.test",
+            "redirect_url": "http://localhost:3000/auth/redirect",
+        }
+    ]
+    stored_access = access_repository.get_by_client_id(payload["client"]["id"])
+    assert stored_access is not None
+    assert stored_access.portal_slug == payload["access"]["portal_slug"]
+
+
+def test_client_cannot_call_invite_endpoint(
+    client: TestClient,
+    signing_keypair: rsa.RSAPrivateKey,
+) -> None:
+    install_test_dependencies(
+        client_records=[build_client_record()],
+        access_records=[build_access_record()],
+    )
+    token = make_token(signing_keypair, clerk_user_id="user_client")
+
+    response = client.post(
+        "/admin/clients",
+        headers=auth_header(token),
+        json={"email": "blocked@example.test"},
+    )
 
     assert response.status_code == 403
 
 
-@pytest.mark.parametrize("status_value", ["invited", "suspended", "archived"])
-def test_non_active_user_cannot_access_protected_endpoint(
-    client: TestClient,
-    monkeypatch: pytest.MonkeyPatch,
-    signing_keypair: rsa.RSAPrivateKey,
-    status_value: str,
-) -> None:
-    set_auth_mappings(
-        monkeypatch,
-        {
-            "user_client_status": {
-                "id": "user_client_status",
-                "email": "client@acme.test",
-                "access_type": "client",
-                "client_id": "client_acme",
-                "status": status_value,
-            }
-        },
-    )
-    token = make_token(signing_keypair, clerk_user_id="user_client_status")
-
-    response = client.get("/client/campaigns", headers=auth_header(token))
-
-    assert response.status_code == 403
-
-
-def test_client_mapping_without_client_id_fails_closed(
+def test_invite_endpoint_reuses_fixed_portal_slug_on_reinvite(
     client: TestClient,
     monkeypatch: pytest.MonkeyPatch,
     signing_keypair: rsa.RSAPrivateKey,
@@ -320,23 +685,52 @@ def test_client_mapping_without_client_id_fails_closed(
     set_auth_mappings(
         monkeypatch,
         {
-            "user_client_invalid": {
-                "id": "user_client_invalid",
-                "email": "client@acme.test",
-                "access_type": "client",
+            "user_admin": {
+                "email": "admin@sendwise.test",
+                "access_type": "platform_admin",
                 "status": "active",
             }
         },
     )
-    token = make_token(signing_keypair, clerk_user_id="user_client_invalid")
+    existing_client = build_client_record(email="client@example.test")
+    existing_access = build_access_record(
+        client_id=existing_client.id,
+        email=existing_client.email,
+        portal_slug="z" * 32,
+        clerk_user_id=None,
+        status="invited",
+        invitation_status="pending",
+    )
+    _, access_repository, gateway = install_test_dependencies(
+        client_records=[existing_client],
+        access_records=[existing_access],
+    )
+    token = make_token(signing_keypair, clerk_user_id="user_admin")
 
-    response = client.get("/client/usage", headers=auth_header(token))
+    first_response = client.post(
+        "/admin/clients",
+        headers=auth_header(token),
+        json={"email": "client@example.test"},
+    )
+    second_response = client.post(
+        "/admin/clients",
+        headers=auth_header(token),
+        json={"email": "client@example.test", "company_name": "Studio Rinominato"},
+    )
 
-    assert response.status_code == 500
-    assert "Invalid AUTH_USER_MAPPINGS_JSON backend configuration" in response.text
+    assert first_response.status_code == 200
+    assert second_response.status_code == 200
+    first_slug = first_response.json()["access"]["portal_slug"]
+    second_slug = second_response.json()["access"]["portal_slug"]
+    assert first_slug == "z" * 32
+    assert second_slug == first_slug
+    assert len(gateway.calls) == 2
+    updated_access = access_repository.get_by_client_id(existing_client.id)
+    assert updated_access is not None
+    assert updated_access.portal_slug == first_slug
 
 
-def test_unknown_access_type_fails_closed(
+def test_invite_endpoint_rejects_role_and_user_type_fields(
     client: TestClient,
     monkeypatch: pytest.MonkeyPatch,
     signing_keypair: rsa.RSAPrivateKey,
@@ -344,64 +738,36 @@ def test_unknown_access_type_fails_closed(
     set_auth_mappings(
         monkeypatch,
         {
-            "user_unknown_access": {
-                "id": "user_unknown_access",
-                "email": "client@acme.test",
-                "access_type": "client_viewer",
-                "client_id": "client_acme",
+            "user_admin": {
+                "email": "admin@sendwise.test",
+                "access_type": "platform_admin",
                 "status": "active",
             }
         },
     )
-    token = make_token(signing_keypair, clerk_user_id="user_unknown_access")
+    install_test_dependencies()
+    token = make_token(signing_keypair, clerk_user_id="user_admin")
 
-    response = client.get("/client/me", headers=auth_header(token))
-
-    assert response.status_code == 500
-    assert "Invalid AUTH_USER_MAPPINGS_JSON backend configuration" in response.text
-
-
-def test_old_unsupported_role_values_fail_closed(
-    client: TestClient,
-    monkeypatch: pytest.MonkeyPatch,
-    signing_keypair: rsa.RSAPrivateKey,
-) -> None:
-    set_auth_mappings(
-        monkeypatch,
-        {
-            "user_legacy_role": {
-                "id": "user_legacy_role",
-                "email": "client@acme.test",
-                "role": "client_viewer",
-                "client_id": "client_acme",
-                "status": "active",
-            }
+    response = client.post(
+        "/admin/clients",
+        headers=auth_header(token),
+        json={
+            "email": "client@example.test",
+            "role": "disallowed_role",
+            "user_type": "client",
         },
     )
-    token = make_token(signing_keypair, clerk_user_id="user_legacy_role")
 
-    response = client.get("/client/me", headers=auth_header(token))
-
-    assert response.status_code == 500
-    assert "Invalid AUTH_USER_MAPPINGS_JSON backend configuration" in response.text
+    assert response.status_code == 422
 
 
 def test_authorized_client_response_shapes_are_preserved(
     client: TestClient,
-    monkeypatch: pytest.MonkeyPatch,
     signing_keypair: rsa.RSAPrivateKey,
 ) -> None:
-    set_auth_mappings(
-        monkeypatch,
-        {
-            "user_client": {
-                "id": "user_client",
-                "email": "client@acme.test",
-                "access_type": "client",
-                "client_id": "client_acme",
-                "status": "active",
-            }
-        },
+    install_test_dependencies(
+        client_records=[build_client_record()],
+        access_records=[build_access_record()],
     )
     token = make_token(signing_keypair, clerk_user_id="user_client")
 

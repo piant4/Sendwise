@@ -25,10 +25,11 @@ export function AppShell({ children }: AppShellProps) {
   }
 
   const activeNavItem = getActiveNavItem(pathname);
+  const isClientDashboardPath = /^\/c\/[A-Za-z0-9]+$/.test(pathname);
   const title =
     pathname === "/admin"
       ? "Dashboard admin"
-      : pathname === "/client"
+      : pathname === "/client" || isClientDashboardPath
         ? "Dashboard cliente"
         : activeNavItem?.label ?? (role === "admin" ? "Admin" : "Cliente");
   const actions = pathname === "/admin" ? <AdminTopBarActions /> : undefined;

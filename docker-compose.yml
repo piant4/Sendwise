@@ -21,10 +21,18 @@ services:
       PROJECT_NAME: ${PROJECT_NAME:-email_ai_platform}
       ENVIRONMENT: ${ENVIRONMENT:-development}
       BACKEND_API_KEY: ${BACKEND_API_KEY:-change_me}
+      DATABASE_URL: ${DATABASE_URL:-}
+      POSTGRES_HOST: ${POSTGRES_HOST:-postgres}
+      POSTGRES_PORT: ${POSTGRES_PORT:-5432}
+      POSTGRES_DB: ${POSTGRES_DB:-email_ai}
+      POSTGRES_USER: ${POSTGRES_USER:-email_ai_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change_me}
       CLERK_ISSUER: ${CLERK_ISSUER:-https://your-clerk-instance.clerk.accounts.dev}
       CLERK_JWKS_URL: ${CLERK_JWKS_URL:-https://your-clerk-instance.clerk.accounts.dev/.well-known/jwks.json}
       CLERK_AUDIENCE: ${CLERK_AUDIENCE:-}
-      AUTH_USER_MAPPINGS_JSON: ${AUTH_USER_MAPPINGS_JSON:-{"user_clerk_admin_id":{"email":"admin@example.com","access_type":"platform_admin","status":"active","client_id":null},"user_clerk_client_id":{"email":"client@example.com","access_type":"client","status":"active","client_id":"client_demo"}}}
+      CLERK_SECRET_KEY: ${CLERK_SECRET_KEY:-sk_test_replace_me}
+      CLERK_API_BASE_URL: ${CLERK_API_BASE_URL:-https://api.clerk.com/v1}
+      AUTH_USER_MAPPINGS_JSON: ${AUTH_USER_MAPPINGS_JSON:-{"user_clerk_admin_id":{"email":"platform-admin@example.com","access_type":"platform_admin","status":"active"}}}
       EMAIL_SENDING_ENABLED: ${EMAIL_SENDING_ENABLED:-false}
       LISTMONK_URL: ${LISTMONK_URL:-http://listmonk:9000}
       FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}

@@ -30,26 +30,47 @@ export const ADMIN_NAV_ITEMS: NavItem[] = [
 ];
 
 export const CLIENT_NAV_ITEMS: NavItem[] = [
-  { href: "/client", label: "Panoramica", icon: LayoutGrid },
+  { href: "/auth/redirect", label: "Panoramica", icon: LayoutGrid },
   { href: "/client/campaigns", label: "Campagne", icon: Megaphone },
   { href: "/client/email-limits", label: "Limiti email", icon: Gauge },
   { href: "/client/blocked-sends", label: "Invii bloccati", icon: ShieldAlert },
 ];
 
 export function getNavigationRole(pathname: string): AppRole | null {
-  if (pathname.startsWith("/admin")) {
+  if (pathname === "/admin" || pathname.startsWith("/admin/")) {
     return "admin";
   }
 
-  if (pathname.startsWith("/client")) {
+  if (
+    pathname === "/client" ||
+    pathname.startsWith("/client/") ||
+    pathname === "/c" ||
+    pathname.startsWith("/c/")
+  ) {
     return "client";
   }
 
   return null;
 }
 
-export function getNavItems(role: AppRole): NavItem[] {
-  return role === "admin" ? ADMIN_NAV_ITEMS : CLIENT_NAV_ITEMS;
+function getClientDashboardHref(pathname: string): string {
+  const portalSlugMatch = pathname.match(/^\/c\/([A-Za-z0-9]+)(?:\/|$)/);
+
+  if (!portalSlugMatch) {
+    return "/auth/redirect";
+  }
+
+  return `/c/${portalSlugMatch[1]}`;
+}
+
+export function getNavItems(role: AppRole, pathname: string): NavItem[] {
+  if (role === "admin") {
+    return ADMIN_NAV_ITEMS;
+  }
+
+  return CLIENT_NAV_ITEMS.map((item, index) =>
+    index === 0 ? { ...item, href: getClientDashboardHref(pathname) } : item,
+  );
 }
 
 export function isNavItemActive(pathname: string, href: string) {
@@ -57,7 +78,7 @@ export function isNavItemActive(pathname: string, href: string) {
     return true;
   }
 
-  if (href === "/admin" || href === "/client") {
+  if (href === "/admin" || href === "/auth/redirect") {
     return false;
   }
 
@@ -72,8 +93,8 @@ export function getActiveNavItem(pathname: string) {
   }
 
   return (
-    getNavItems(role).find((item) => isNavItemActive(pathname, item.href)) ??
-    getNavItems(role)[0]
+    getNavItems(role, pathname).find((item) => isNavItemActive(pathname, item.href)) ??
+    getNavItems(role, pathname)[0]
   );
 }
 
@@ -85,7 +106,7 @@ interface MainNavProps {
 
 export function MainNav({ role, onNavigate, className }: MainNavProps) {
   const pathname = usePathname();
-  const navItems = getNavItems(role);
+  const navItems = getNavItems(role, pathname);
 
   if (navItems.length === 0) {
     return null;

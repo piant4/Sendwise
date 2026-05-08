@@ -16,6 +16,7 @@ def get_me(
     return AuthMeResponse(
         access_type=current_user.access_type,
         client_id=current_user.client_id,
+        portal_slug=current_user.portal_slug,
         email=current_user.email,
         status=current_user.status,
     )

@@ -4,6 +4,7 @@ const isPublicRoute = createRouteMatcher(["/login", "/login(.*)"]);
 
 const isProtectedRoute = createRouteMatcher([
   "/admin(.*)",
+  "/c(.*)",
   "/client(.*)",
   "/account(.*)",
 ]);

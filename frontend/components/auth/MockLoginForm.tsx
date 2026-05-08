@@ -12,7 +12,7 @@ export function MockLoginForm() {
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    router.push(role === "admin" ? "/admin" : "/client");
+    router.push(role === "admin" ? "/admin" : "/auth/redirect");
   }
 
   return (

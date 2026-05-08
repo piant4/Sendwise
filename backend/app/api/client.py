@@ -4,9 +4,10 @@ from app.api import auth as auth_api
 from app.core.auth import AuthenticatedUser, require_client
 from app.schemas.blocked_sends import BlockedSend
 from app.schemas.campaigns import Campaign
-from app.schemas.clients import Client, ClientContext, ClientUser
-from app.schemas.common import CampaignStatus, ClientStatus, SendDecision
+from app.schemas.clients import ClientContext, ClientUser
+from app.schemas.common import CampaignStatus, SendDecision
 from app.schemas.usage import ApiUsage
+from app.services.clients import ClientsService, build_client_schema, get_clients_service
 
 client_router = APIRouter(
     prefix="/client",
@@ -79,36 +80,20 @@ CLIENT_BLOCKED_SENDS: list[BlockedSend] = [
     )
 ]
 
-CLIENT_DIRECTORY: dict[str, Client] = {
-    MOCK_CLIENT_ID: Client(
-        id=MOCK_CLIENT_ID,
-        name="Acme Studio",
-        status=ClientStatus.active,
-        created_at=DEFAULT_CREATED_AT,
-        updated_at="2026-05-05T09:00:00Z",
-    )
-}
-
-
-def build_client_context(current_user: AuthenticatedUser) -> ClientContext:
-    client = CLIENT_DIRECTORY.get(current_user.client_id or "")
-
-    if client is None:
-        client = Client(
-            id=current_user.client_id or MOCK_CLIENT_ID,
-            name="Client scope",
-            status=ClientStatus.active,
-            created_at=DEFAULT_CREATED_AT,
-            updated_at=DEFAULT_UPDATED_AT,
-        )
-
+def build_client_context(
+    current_user: AuthenticatedUser,
+    clients_service: ClientsService,
+) -> ClientContext:
+    client_record = clients_service.get_client_by_id(current_user.client_id or "")
+    client = build_client_schema(client_record)
     return ClientContext(
         client=client,
         user=ClientUser(
-            id=current_user.id,
+            id=current_user.id or current_user.clerk_user_id,
             client_id=client.id,
             email=current_user.email or "unavailable@sendwise.invalid",
-            role=current_user.role,
+            portal_slug=current_user.portal_slug or "",
+            status=current_user.status,
             created_at=DEFAULT_CREATED_AT,
             updated_at=DEFAULT_UPDATED_AT,
         ),
@@ -116,18 +101,44 @@ def build_client_context(current_user: AuthenticatedUser) -> ClientContext:
 
 
 @client_router.get("/me", response_model=ClientContext)
-def get_me(current_user: AuthenticatedUser = Depends(require_client)) -> ClientContext:
-    return build_client_context(current_user)
+def get_me(
+    current_user: AuthenticatedUser = Depends(require_client),
+    clients_service: ClientsService = Depends(get_clients_service),
+) -> ClientContext:
+    return build_client_context(current_user, clients_service)
+
+
+def _clone_campaign_for_client(campaign: Campaign, client_id: str) -> Campaign:
+    return campaign.model_copy(update={"client_id": client_id})
+
+
+def _clone_usage_for_client(usage: ApiUsage, client_id: str) -> ApiUsage:
+    return usage.model_copy(update={"client_id": client_id})
+
+
+def _clone_blocked_send_for_client(
+    blocked_send: BlockedSend,
+    client_id: str,
+) -> BlockedSend:
+    return blocked_send.model_copy(update={"client_id": client_id})
 
 
 @client_router.get("/campaigns", response_model=list[Campaign])
 def list_campaigns(
     current_user: AuthenticatedUser = Depends(require_client),
 ) -> list[Campaign]:
-    return [
+    campaigns = [
         campaign
         for campaign in CLIENT_CAMPAIGNS
         if campaign.client_id == current_user.client_id
+    ]
+
+    if campaigns:
+        return campaigns
+
+    return [
+        _clone_campaign_for_client(campaign, current_user.client_id or MOCK_CLIENT_ID)
+        for campaign in CLIENT_CAMPAIGNS
     ]
 
 
@@ -147,17 +158,36 @@ def get_campaign_stats(
 
 @client_router.get("/usage", response_model=list[ApiUsage])
 def get_usage(current_user: AuthenticatedUser = Depends(require_client)) -> list[ApiUsage]:
-    return [usage for usage in CLIENT_USAGE if usage.client_id == current_user.client_id]
+    usage = [entry for entry in CLIENT_USAGE if entry.client_id == current_user.client_id]
+
+    if usage:
+        return usage
+
+    return [
+        _clone_usage_for_client(entry, current_user.client_id or MOCK_CLIENT_ID)
+        for entry in CLIENT_USAGE
+    ]
 
 
 @client_router.get("/blocked-sends", response_model=list[BlockedSend])
 def get_blocked_sends(
     current_user: AuthenticatedUser = Depends(require_client),
 ) -> list[BlockedSend]:
-    return [
+    blocked_sends = [
         blocked_send
         for blocked_send in CLIENT_BLOCKED_SENDS
         if blocked_send.client_id == current_user.client_id
+    ]
+
+    if blocked_sends:
+        return blocked_sends
+
+    return [
+        _clone_blocked_send_for_client(
+            blocked_send,
+            current_user.client_id or MOCK_CLIENT_ID,
+        )
+        for blocked_send in CLIENT_BLOCKED_SENDS
     ]
 
 

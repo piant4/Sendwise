@@ -1,9 +1,16 @@
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends
 
 from app.core.auth import AuthenticatedUser, require_platform_admin
 from app.schemas.campaigns import Campaign
-from app.schemas.clients import Client
-from app.schemas.common import CampaignStatus, ClientStatus
+from app.schemas.clients import (
+    AdminClientInviteRequest,
+    AdminClientInviteResponse,
+    Client,
+    ClientAccessSummary,
+)
+from app.schemas.common import CampaignStatus
+from app.services.client_access import ClientAccessService, get_client_access_service
+from app.services.clients import ClientsService, build_client_schema, get_clients_service
 
 router = APIRouter(
     prefix="/admin",
@@ -14,25 +21,6 @@ router = APIRouter(
 def stub_response(endpoint: str) -> dict[str, str]:
     return {"status": "stub", "endpoint": endpoint}
 
-
-# Milestone 0.5 stubs: stable mock payloads only. No auth, DB, service,
-# deliverability, or listmonk logic belongs in this router milestone.
-ADMIN_CLIENTS: list[Client] = [
-    Client(
-        id="client_acme",
-        name="Acme Studio",
-        status=ClientStatus.active,
-        created_at="2026-05-01T09:00:00Z",
-        updated_at="2026-05-05T09:00:00Z",
-    ),
-    Client(
-        id="client_nova",
-        name="Nova Retail",
-        status=ClientStatus.trial,
-        created_at="2026-05-02T10:30:00Z",
-        updated_at="2026-05-05T10:30:00Z",
-    ),
-]
 
 ADMIN_CAMPAIGNS: list[Campaign] = [
     Campaign(
@@ -59,15 +47,33 @@ ADMIN_CAMPAIGNS: list[Campaign] = [
 @router.get("/clients", response_model=list[Client])
 def list_clients(
     _current_user: AuthenticatedUser = Depends(require_platform_admin),
+    clients_service: ClientsService = Depends(get_clients_service),
+    client_access_service: ClientAccessService = Depends(get_client_access_service),
 ) -> list[Client]:
-    return ADMIN_CLIENTS
+    return [
+        build_client_schema(
+            client,
+            access=client_access_service.get_access_by_client_id(client.id),
+        )
+        for client in clients_service.list_clients()
+    ]
 
 
-@router.post("/clients", status_code=status.HTTP_202_ACCEPTED)
+@router.post("/clients", response_model=AdminClientInviteResponse)
 def create_client(
+    payload: AdminClientInviteRequest,
     _current_user: AuthenticatedUser = Depends(require_platform_admin),
-) -> dict[str, str]:
-    return stub_response("POST /admin/clients")
+    client_access_service: ClientAccessService = Depends(get_client_access_service),
+) -> AdminClientInviteResponse:
+    result = client_access_service.invite_client_access(
+        email=payload.email,
+        personal_name=payload.personal_name,
+        company_name=payload.company_name,
+    )
+    return AdminClientInviteResponse(
+        client=build_client_schema(result.client, access=result.access),
+        access=ClientAccessSummary.model_validate(result.access.model_dump()),
+    )
 
 
 @router.get("/clients/{client_id}")

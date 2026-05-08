@@ -7,7 +7,7 @@ from pydantic import BaseModel, ConfigDict, ValidationError, model_validator
 
 from app.core.config import Settings, get_settings
 
-AuthAccessType = Literal["platform_admin", "client"]
+AuthAccessType = Literal["platform_admin"]
 AuthStatus = Literal["invited", "active", "suspended", "archived"]
 
 
@@ -17,28 +17,21 @@ class AuthUserRecord(BaseModel):
     id: Optional[str] = None
     clerk_user_id: str
     email: Optional[str] = None
-    access_type: AuthAccessType
-    client_id: Optional[str] = None
+    access_type: AuthAccessType = "platform_admin"
     status: AuthStatus = "active"
 
     @model_validator(mode="after")
     def validate_client_scope(self) -> "AuthUserRecord":
-        if self.access_type == "client" and not self.client_id:
-            raise ValueError("Client access requires client_id in auth mapping.")
-
-        if self.access_type == "platform_admin" and self.client_id is not None:
-            raise ValueError("Platform admin access must not include client_id.")
+        if self.access_type != "platform_admin":
+            raise ValueError(
+                "AUTH_USER_MAPPINGS_JSON only supports platform_admin records in this milestone."
+            )
 
         return self
 
     @property
     def resolved_user_id(self) -> str:
         return self.id or self.clerk_user_id
-
-    @property
-    def role(self) -> str:
-        return self.access_type
-
 
 class AuthUserRepository:
     def __init__(self, records: dict[str, AuthUserRecord]) -> None:

@@ -22,17 +22,24 @@ export type SendDecision = "authorized" | "blocked" | "dry_run";
 
 export interface Client {
   id: string;
+  email: string;
+  personal_name?: string | null;
+  company_name?: string | null;
   name: string;
   status: ClientStatus;
+  monthly_email_limit?: number | null;
+  daily_email_limit?: number | null;
   created_at: string;
   updated_at: string;
+  access?: ClientAccessSummary | null;
 }
 
 export interface ClientUser {
   id: string;
   client_id: string;
   email: string;
-  role: string;
+  portal_slug: string;
+  status: "invited" | "active" | "suspended" | "archived";
   created_at: string;
   updated_at: string;
 }
@@ -40,6 +47,32 @@ export interface ClientUser {
 export interface ClientContext {
   client: Client;
   user: ClientUser;
+}
+
+export interface ClientAccessSummary {
+  id: string;
+  client_id: string;
+  email: string;
+  clerk_user_id?: string | null;
+  clerk_invitation_id?: string | null;
+  portal_slug: string;
+  status: "invited" | "active" | "suspended" | "archived";
+  invitation_status?: "pending" | "accepted" | "revoked" | "expired" | null;
+  invited_at?: string | null;
+  accepted_at?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AdminClientInviteInput {
+  email: string;
+  personal_name?: string;
+  company_name?: string;
+}
+
+export interface AdminClientInviteResponse {
+  client: Client;
+  access: ClientAccessSummary;
 }
 
 export interface CampaignStats {

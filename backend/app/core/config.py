@@ -1,6 +1,7 @@
 from functools import lru_cache
 from os import getenv
 from typing import List, Optional, Union
+from urllib.parse import quote
 
 from pydantic import BaseModel, Field
 
@@ -14,8 +15,22 @@ class Settings(BaseModel):
     clerk_jwks_url: str = Field(default_factory=lambda: getenv("CLERK_JWKS_URL", ""))
     clerk_issuer: str = Field(default_factory=lambda: getenv("CLERK_ISSUER", ""))
     clerk_audience_raw: str = Field(default_factory=lambda: getenv("CLERK_AUDIENCE", ""))
+    clerk_secret_key: str = Field(default_factory=lambda: getenv("CLERK_SECRET_KEY", ""))
+    clerk_api_base_url: str = Field(
+        default_factory=lambda: getenv("CLERK_API_BASE_URL", "https://api.clerk.com/v1")
+    )
     auth_user_mappings_json: str = Field(
         default_factory=lambda: getenv("AUTH_USER_MAPPINGS_JSON", "[]")
+    )
+    database_url: str = Field(default_factory=lambda: getenv("DATABASE_URL", ""))
+    postgres_host: str = Field(default_factory=lambda: getenv("POSTGRES_HOST", "postgres"))
+    postgres_port: int = Field(default_factory=lambda: int(getenv("POSTGRES_PORT", "5432")))
+    postgres_db: str = Field(default_factory=lambda: getenv("POSTGRES_DB", "email_ai"))
+    postgres_user: str = Field(
+        default_factory=lambda: getenv("POSTGRES_USER", "email_ai_user")
+    )
+    postgres_password: str = Field(
+        default_factory=lambda: getenv("POSTGRES_PASSWORD", "change_me")
     )
     email_sending_enabled_raw: str = Field(
         default_factory=lambda: getenv("EMAIL_SENDING_ENABLED", "false")
@@ -46,6 +61,19 @@ class Settings(BaseModel):
             return audiences[0]
 
         return audiences
+
+    @property
+    def postgres_dsn(self) -> str:
+        if self.database_url.strip():
+            return self.database_url.strip()
+
+        quoted_user = quote(self.postgres_user, safe="")
+        quoted_password = quote(self.postgres_password, safe="")
+        quoted_db = quote(self.postgres_db, safe="")
+        return (
+            f"postgresql://{quoted_user}:{quoted_password}"
+            f"@{self.postgres_host}:{self.postgres_port}/{quoted_db}"
+        )
 
 
 @lru_cache

@@ -40,9 +40,6 @@ export function AdminDashboardHeader({
         <div className="admin-hero__status-row">
           <StatusBadge label={environmentLabel} variant="neutral" />
           <StatusBadge label="Accesso interno" variant="success" />
-          <span className="admin-hero__helper">
-            Nessuna azione di scrittura attiva in questa milestone.
-          </span>
         </div>
       </div>
 

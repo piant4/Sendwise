@@ -6,11 +6,9 @@ export default function NotFound() {
     <main className="not-found-page">
       <section className="not-found-card">
         <BrandMark size="lg" />
-        <p className="not-found-card__eyebrow">Errore 404</p>
-        <h1 className="not-found-card__title">Questa pagina non esiste o non e disponibile.</h1>
+        <h1 className="not-found-card__title">Errore 404</h1>
         <p className="not-found-card__message">
-          Il percorso richiesto non corrisponde a una vista Sendwise valida
-          oppure non e accessibile con la sessione corrente.
+          Questa pagina non esiste o non e disponibile.
         </p>
         <div className="not-found-card__actions">
           <Link

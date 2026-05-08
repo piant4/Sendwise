@@ -642,8 +642,7 @@ export function LoginContent() {
               workspace.
             </h1>
             <p className="login-lead">
-              Spazio riservato per coordinare volumi, stato campagne e presidio
-              delle attivita essenziali Sendwise.
+              2026 © Sendwise. Tutti i diritti riservati. 
             </p>
           </div>
         </section>

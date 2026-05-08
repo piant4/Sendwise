@@ -1925,3 +1925,61 @@ Scope confirmation:
 - No DB migration was implemented.
 - No `client_access` persistence was implemented.
 - No Clerk invitation API, admin invite flow, onboarding endpoint, public signup, custom password form, custom 2FA, real listmonk, real sending, AI, n8n, Celery, Keycloak, Metabase, Postal, Rspamd, or Budibase was implemented.
+
+## Milestone 0.9E.2 Completion — Real Clerk Mapped Users Verification
+
+Date: 2026-05-08
+Branch: develop
+
+Verified state:
+- Secret-safety checks passed and no tracked or staged env-file changes were present.
+- `docker compose down`, `docker compose up -d --build`, and `docker compose ps` completed successfully.
+- Backend container runtime included Clerk issuer, JWKS, and auth-mapping env keys.
+- Frontend container runtime included Clerk publishable-key and backend URL env keys with `NEXT_PUBLIC_USE_MOCK_API=false`.
+- Signed-out runtime matched contract:
+- `GET /health` returned `200`
+- `GET /auth/me`, `GET /admin/clients`, and `GET /client/me` returned `401` without auth
+- signed-out `/admin`, `/client`, and `/account` redirected to `/login`
+- signed-out `/auth/redirect` returned safe unauthenticated behavior and routed back to `/login`
+- `/login` rendered the custom Sendwise login form with no rendered signup or social login surface.
+- Backend positive-path verification succeeded with real Clerk-created sessions for the mapped users:
+- admin session resolved `/auth/me` to `platform_admin`, `client_id: null`, `status: active`
+- admin session reached `/admin/clients` with `200`
+- admin session hit `/client/me` with `403`
+- client session resolved `/auth/me` to `client`, `client_id: client_demo`, `status: active`
+- client session reached `/client/me` with `200`
+- client session hit `/admin/clients` with `403`
+- Automated checks passed:
+- `PYTHONPATH=backend python3 -m pytest backend/tests`
+- `cd frontend && npm run lint`
+- `cd frontend && npm run build`
+- `cd frontend && NEXT_PUBLIC_USE_MOCK_API=false NEXT_PUBLIC_API_BASE_URL=http://localhost:8000 BACKEND_URL=http://backend:8000 npm run build`
+- `bash scripts/audit.sh`
+- `bash scripts/smoke_test.sh`
+- `docker compose config`
+- `git diff --check`
+- required boundary greps
+
+First divergence still blocking full browser completion:
+- Real Clerk bearer-auth runtime is working in FastAPI, but direct frontend page verification with a raw Clerk session cookie still resolves as signed out on the Clerk dev-instance frontend flow.
+- Protected frontend pages served the signed-out login shell even when tested with:
+- a real active Clerk session JWT created through the official Clerk backend SDK
+- a Clerk testing token
+
+Root cause summary:
+- Symptom: positive backend auth passes, but positive frontend protected-page verification remains signed out in the non-interactive verification path.
+- Expected contract: real mapped Clerk users should complete `/login` and then route through `/auth/redirect` to `/admin` or `/client`.
+- First divergence: the frontend Clerk browser session was not established from the available raw HTTP injection path, so `/admin`, `/client`, `/account`, and `/auth/redirect` still rendered as signed out.
+- Primary root cause: the remaining blocker is the Clerk dev-instance browser-session handshake, not the Sendwise backend auth mapping.
+- Category: Docker/VPS config
+- Minimal fix boundary: no verified Sendwise code fix identified in this run; completion requires a real browser-authenticated Clerk session or a Clerk-supported frontend testing helper.
+
+Known limits:
+- Real browser login through the visible `/login` form was not completed because no password or interactive verification channel was available in this environment.
+- Authenticated `/account` browser UI and sign-out return flow remain unverified for the same reason.
+- `frontend/components/auth/MockLoginForm.tsx` still contains dormant mock-label text outside the live route path and outside scope.
+
+Scope confirmation:
+- No DB migration was implemented.
+- No `client_access` persistence was implemented.
+- No Clerk invitation API, admin invite flow, onboarding endpoint, public signup, custom password form, custom 2FA, real listmonk, real sending, AI, n8n, Celery, Keycloak, Metabase, Postal, Rspamd, or Budibase was implemented.

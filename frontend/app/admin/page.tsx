@@ -1,3 +1,4 @@
+import { auth } from "@clerk/nextjs/server";
 import { AdminDashboard } from "../../components/dashboard/AdminDashboard";
 import { DashboardErrorState } from "../../components/dashboard/DashboardErrorState";
 import { getAdminOverviewSummary, USE_MOCK_API } from "../../lib/api";
@@ -5,7 +6,8 @@ import { getAdminOverviewSummary, USE_MOCK_API } from "../../lib/api";
 export const dynamic = "force-dynamic";
 
 export default async function AdminPage() {
-  const result = await getAdminOverviewSummary()
+  const { getToken } = await auth();
+  const result = await getAdminOverviewSummary(await getToken())
     .then((summary) => ({ summary }))
     .catch((error: unknown) => ({
       errorMessage:

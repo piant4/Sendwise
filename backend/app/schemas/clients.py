@@ -65,3 +65,12 @@ class AdminClientInviteRequest(BaseModel):
 class AdminClientInviteResponse(BaseModel):
     client: Client
     access: ClientAccessSummary
+
+
+class AdminClientUpdateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    personal_name: Optional[str] = None
+    company_name: Optional[str] = None
+    monthly_email_limit: Optional[int] = None
+    daily_email_limit: Optional[int] = None

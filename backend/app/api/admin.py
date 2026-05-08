@@ -5,6 +5,7 @@ from app.schemas.campaigns import Campaign
 from app.schemas.clients import (
     AdminClientInviteRequest,
     AdminClientInviteResponse,
+    AdminClientUpdateRequest,
     Client,
     ClientAccessSummary,
 )
@@ -80,16 +81,67 @@ def create_client(
 def get_client(
     client_id: str,
     _current_user: AuthenticatedUser = Depends(require_platform_admin),
-) -> dict[str, str]:
-    return stub_response(f"GET /admin/clients/{client_id}")
+    clients_service: ClientsService = Depends(get_clients_service),
+    client_access_service: ClientAccessService = Depends(get_client_access_service),
+) -> Client:
+    client = clients_service.get_client_by_id(client_id)
+    return build_client_schema(
+        client,
+        access=client_access_service.get_access_by_client_id(client.id),
+    )
 
 
 @router.patch("/clients/{client_id}")
 def update_client(
     client_id: str,
+    payload: AdminClientUpdateRequest,
     _current_user: AuthenticatedUser = Depends(require_platform_admin),
-) -> dict[str, str]:
-    return stub_response(f"PATCH /admin/clients/{client_id}")
+    clients_service: ClientsService = Depends(get_clients_service),
+    client_access_service: ClientAccessService = Depends(get_client_access_service),
+) -> Client:
+    existing_client = clients_service.get_client_by_id(client_id)
+    payload_values = payload.model_dump(exclude_unset=True)
+    updated_client = clients_service.update_client(
+        client_id=existing_client.id,
+        email=existing_client.email,
+        personal_name=payload_values.get("personal_name", existing_client.personal_name),
+        company_name=payload_values.get("company_name", existing_client.company_name),
+        status=existing_client.status,
+        monthly_email_limit=payload_values.get(
+            "monthly_email_limit",
+            existing_client.monthly_email_limit,
+        ),
+        daily_email_limit=payload_values.get(
+            "daily_email_limit",
+            existing_client.daily_email_limit,
+        ),
+    )
+    return build_client_schema(
+        updated_client,
+        access=client_access_service.get_access_by_client_id(updated_client.id),
+    )
+
+
+@router.post(
+    "/clients/{client_id}/invite-access",
+    response_model=AdminClientInviteResponse,
+)
+def reinvite_client_access(
+    client_id: str,
+    _current_user: AuthenticatedUser = Depends(require_platform_admin),
+    clients_service: ClientsService = Depends(get_clients_service),
+    client_access_service: ClientAccessService = Depends(get_client_access_service),
+) -> AdminClientInviteResponse:
+    client = clients_service.get_client_by_id(client_id)
+    result = client_access_service.invite_client_access(
+        email=client.email,
+        personal_name=client.personal_name,
+        company_name=client.company_name,
+    )
+    return AdminClientInviteResponse(
+        client=build_client_schema(result.client, access=result.access),
+        access=ClientAccessSummary.model_validate(result.access.model_dump()),
+    )
 
 
 @router.post("/clients/{client_id}/pause")

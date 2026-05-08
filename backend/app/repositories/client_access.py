@@ -53,6 +53,16 @@ class ClientAccessRepository:
     ) -> Optional[ClientAccessRecord]:
         raise NotImplementedError
 
+    def update_access(
+        self,
+        *,
+        access_id: str,
+        status: str,
+        invitation_status: Optional[str],
+        accepted_at: Optional[datetime],
+    ) -> ClientAccessRecord:
+        raise NotImplementedError
+
     def upsert_invited_access(
         self,
         *,
@@ -185,15 +195,14 @@ class PostgresClientAccessRepository(ClientAccessRepository):
             UPDATE client_access
             SET
                 clerk_user_id = %s,
-                status = 'active',
                 invitation_status = 'accepted',
                 accepted_at = COALESCE(accepted_at, NOW()),
                 updated_at = NOW()
             WHERE
                 lower(email) = lower(%s)
                 AND clerk_user_id IS NULL
-                AND status = 'invited'
-                AND COALESCE(invitation_status, 'pending') = 'pending'
+                AND status IN ('invited', 'active')
+                AND COALESCE(invitation_status, 'pending') IN ('pending', 'accepted')
             RETURNING
                 id::text AS id,
                 client_id::text AS client_id,
@@ -216,6 +225,48 @@ class PostgresClientAccessRepository(ClientAccessRepository):
             connection.commit()
 
         return _map_access_row(row)
+
+    def update_access(
+        self,
+        *,
+        access_id: str,
+        status: str,
+        invitation_status: Optional[str],
+        accepted_at: Optional[datetime],
+    ) -> ClientAccessRecord:
+        query = """
+            UPDATE client_access
+            SET
+                status = %s,
+                invitation_status = %s,
+                accepted_at = %s,
+                updated_at = NOW()
+            WHERE id::text = %s
+            RETURNING
+                id::text AS id,
+                client_id::text AS client_id,
+                email,
+                clerk_user_id,
+                clerk_invitation_id,
+                portal_slug,
+                status,
+                invitation_status,
+                invited_at,
+                accepted_at,
+                created_at,
+                updated_at
+        """
+
+        with postgres_connection(self._settings) as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    query,
+                    (status, invitation_status, accepted_at, access_id),
+                )
+                row = cursor.fetchone()
+            connection.commit()
+
+        return ClientAccessRecord.model_validate(row)
 
     def upsert_invited_access(
         self,

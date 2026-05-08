@@ -97,6 +97,8 @@ class FakeClientRepository(ClientRepository):
         personal_name: Optional[str],
         company_name: Optional[str],
         status: Optional[str] = None,
+        monthly_email_limit: Optional[int] = None,
+        daily_email_limit: Optional[int] = None,
     ) -> ClientRecord:
         existing = self._records[client_id]
         updated = existing.model_copy(
@@ -105,6 +107,8 @@ class FakeClientRepository(ClientRepository):
                 "personal_name": personal_name,
                 "company_name": company_name,
                 "status": status or existing.status,
+                "monthly_email_limit": monthly_email_limit,
+                "daily_email_limit": daily_email_limit,
                 "updated_at": datetime.now(timezone.utc),
             }
         )
@@ -173,15 +177,14 @@ class FakeClientAccessRepository(ClientAccessRepository):
         if (
             existing is None
             or existing.clerk_user_id is not None
-            or existing.status != "invited"
-            or (existing.invitation_status or "pending") != "pending"
+            or existing.status not in {"invited", "active"}
+            or (existing.invitation_status or "pending") not in {"pending", "accepted"}
         ):
             return None
 
         claimed = existing.model_copy(
             update={
                 "clerk_user_id": clerk_user_id,
-                "status": "active",
                 "invitation_status": "accepted",
                 "accepted_at": datetime.now(timezone.utc),
                 "updated_at": datetime.now(timezone.utc),
@@ -189,6 +192,26 @@ class FakeClientAccessRepository(ClientAccessRepository):
         )
         self._records[claimed.id] = claimed
         return claimed
+
+    def update_access(
+        self,
+        *,
+        access_id: str,
+        status: str,
+        invitation_status: Optional[str],
+        accepted_at: Optional[datetime],
+    ) -> ClientAccessRecord:
+        existing = self._records[access_id]
+        updated = existing.model_copy(
+            update={
+                "status": status,
+                "invitation_status": invitation_status,
+                "accepted_at": accepted_at,
+                "updated_at": datetime.now(timezone.utc),
+            }
+        )
+        self._records[access_id] = updated
+        return updated
 
     def upsert_invited_access(
         self,
@@ -300,9 +323,10 @@ def make_token(
     private_key: rsa.RSAPrivateKey,
     *,
     clerk_user_id: str,
-    email: str = "user@example.test",
+    email: Optional[str] = "user@example.test",
     issuer: str = TEST_ISSUER,
     expires_in_seconds: int = 300,
+    extra_claims: Optional[dict[str, Any]] = None,
 ) -> str:
     now = int(time.time())
     payload = {
@@ -311,8 +335,13 @@ def make_token(
         "iat": now,
         "nbf": now,
         "exp": now + expires_in_seconds,
-        "email": email,
     }
+
+    if email is not None:
+        payload["email"] = email
+
+    if extra_claims:
+        payload.update(extra_claims)
 
     return jwt.encode(payload, private_key, algorithm="RS256", headers={"kid": "test-key"})
 
@@ -328,6 +357,8 @@ def build_client_record(
     personal_name: Optional[str] = "Mario",
     company_name: Optional[str] = "Demo Studio",
     status: str = "active",
+    monthly_email_limit: Optional[int] = None,
+    daily_email_limit: Optional[int] = None,
 ) -> ClientRecord:
     timestamp = datetime(2026, 5, 8, 9, 0, tzinfo=timezone.utc)
     return ClientRecord(
@@ -336,8 +367,8 @@ def build_client_record(
         personal_name=personal_name,
         company_name=company_name,
         status=status,
-        monthly_email_limit=None,
-        daily_email_limit=None,
+        monthly_email_limit=monthly_email_limit,
+        daily_email_limit=daily_email_limit,
         created_at=timestamp,
         updated_at=timestamp,
     )
@@ -441,6 +472,8 @@ def test_platform_admin_from_env_mapping_works(
         "portal_slug": None,
         "email": "admin@sendwise.test",
         "status": "active",
+        "invitation_status": None,
+        "onboarding_required": False,
     }
     assert admin_response.status_code == 200
     assert admin_response.json() == []
@@ -470,6 +503,8 @@ def test_active_client_from_db_client_access_works(
         "portal_slug": "a" * 32,
         "email": "client@example.test",
         "status": "active",
+        "invitation_status": "accepted",
+        "onboarding_required": False,
     }
 
     assert client_me_response.status_code == 200
@@ -485,7 +520,10 @@ def test_pending_invited_client_claims_access_on_first_valid_login(
     client: TestClient,
     signing_keypair: rsa.RSAPrivateKey,
 ) -> None:
-    client_record = build_client_record()
+    client_record = build_client_record(
+        personal_name=None,
+        company_name=None,
+    )
     access_record = build_access_record(
         email=client_record.email,
         clerk_user_id=None,
@@ -503,6 +541,88 @@ def test_pending_invited_client_claims_access_on_first_valid_login(
     )
 
     response = client.get("/auth/me", headers=auth_header(token))
+    blocked_client_response = client.get("/client/me", headers=auth_header(token))
+
+    assert response.status_code == 200
+    assert blocked_client_response.status_code == 403
+    assert response.json() == {
+        "access_type": "client",
+        "client_id": "client_demo",
+        "portal_slug": "a" * 32,
+        "email": "client@example.test",
+        "status": "invited",
+        "invitation_status": "accepted",
+        "onboarding_required": True,
+    }
+    claimed_access = access_repository.get_by_client_id(client_record.id)
+    assert claimed_access is not None
+    assert claimed_access.clerk_user_id == "user_claimed"
+    assert claimed_access.status == "invited"
+    assert claimed_access.invitation_status == "accepted"
+
+
+def test_complete_onboarding_requires_personal_name_and_company_name(
+    client: TestClient,
+    signing_keypair: rsa.RSAPrivateKey,
+) -> None:
+    client_record = build_client_record(personal_name=None, company_name=None)
+    access_record = build_access_record(
+        client_id=client_record.id,
+        email=client_record.email,
+        clerk_user_id="user_client",
+        status="invited",
+        invitation_status="accepted",
+    )
+    install_test_dependencies(
+        client_records=[client_record],
+        access_records=[access_record],
+    )
+    token = make_token(
+        signing_keypair,
+        clerk_user_id="user_client",
+        email=client_record.email,
+    )
+
+    response = client.post(
+        "/auth/onboarding",
+        headers=auth_header(token),
+        json={"personal_name": "Mario"},
+    )
+
+    assert response.status_code == 422
+
+
+def test_complete_onboarding_activates_client_access(
+    client: TestClient,
+    signing_keypair: rsa.RSAPrivateKey,
+) -> None:
+    client_record = build_client_record(personal_name=None, company_name=None)
+    access_record = build_access_record(
+        client_id=client_record.id,
+        email=client_record.email,
+        clerk_user_id="user_client",
+        status="invited",
+        invitation_status="accepted",
+    )
+    client_repository, access_repository, _ = install_test_dependencies(
+        client_records=[client_record],
+        access_records=[access_record],
+    )
+    token = make_token(
+        signing_keypair,
+        clerk_user_id="user_client",
+        email=client_record.email,
+    )
+
+    response = client.post(
+        "/auth/onboarding",
+        headers=auth_header(token),
+        json={
+            "personal_name": "Mario Rossi",
+            "company_name": "Studio Rossi",
+        },
+    )
+    auth_me_response = client.get("/auth/me", headers=auth_header(token))
 
     assert response.status_code == 200
     assert response.json() == {
@@ -511,12 +631,68 @@ def test_pending_invited_client_claims_access_on_first_valid_login(
         "portal_slug": "a" * 32,
         "email": "client@example.test",
         "status": "active",
+        "invitation_status": "accepted",
+        "onboarding_required": False,
     }
-    claimed_access = access_repository.get_by_client_id(client_record.id)
-    assert claimed_access is not None
-    assert claimed_access.clerk_user_id == "user_claimed"
-    assert claimed_access.status == "active"
-    assert claimed_access.invitation_status == "accepted"
+    assert auth_me_response.status_code == 200
+    assert auth_me_response.json()["portal_slug"] == "a" * 32
+    updated_client = client_repository.get_by_id(client_record.id)
+    assert updated_client is not None
+    assert updated_client.personal_name == "Mario Rossi"
+    assert updated_client.company_name == "Studio Rossi"
+    updated_access = access_repository.get_by_client_id(client_record.id)
+    assert updated_access is not None
+    assert updated_access.status == "active"
+    assert updated_access.invitation_status == "accepted"
+
+
+def test_unknown_user_still_403(
+    client: TestClient,
+    signing_keypair: rsa.RSAPrivateKey,
+) -> None:
+    install_test_dependencies()
+    token = make_token(
+        signing_keypair,
+        clerk_user_id="user_unknown",
+        email="unknown@example.test",
+    )
+
+    response = client.get("/auth/me", headers=auth_header(token))
+
+    assert response.status_code == 403
+
+
+def test_auth_me_can_claim_client_from_nested_clerk_email_claim(
+    client: TestClient,
+    signing_keypair: rsa.RSAPrivateKey,
+) -> None:
+    client_record = build_client_record(personal_name=None, company_name=None)
+    access_record = build_access_record(
+        email=client_record.email,
+        clerk_user_id=None,
+        status="invited",
+        invitation_status="pending",
+    )
+    install_test_dependencies(
+        client_records=[client_record],
+        access_records=[access_record],
+    )
+    token = make_token(
+        signing_keypair,
+        clerk_user_id="user_nested_claim",
+        email=None,
+        extra_claims={
+            "primary_email_address": {
+                "email_address": client_record.email,
+            }
+        },
+    )
+
+    response = client.get("/auth/me", headers=auth_header(token))
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "invited"
+    assert response.json()["onboarding_required"] is True
 
 
 def test_client_without_portal_slug_fails_closed(
@@ -658,6 +834,44 @@ def test_platform_admin_can_call_invite_endpoint(
     assert stored_access.portal_slug == payload["access"]["portal_slug"]
 
 
+def test_platform_admin_can_create_invite_with_email_only(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    signing_keypair: rsa.RSAPrivateKey,
+) -> None:
+    set_auth_mappings(
+        monkeypatch,
+        {
+            "user_admin": {
+                "email": "admin@sendwise.test",
+                "access_type": "platform_admin",
+                "status": "active",
+            }
+        },
+    )
+    client_repository, access_repository, _ = install_test_dependencies()
+    token = make_token(signing_keypair, clerk_user_id="user_admin")
+
+    response = client.post(
+        "/admin/clients",
+        headers=auth_header(token),
+        json={"email": "solo.email@example.test"},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["client"]["email"] == "solo.email@example.test"
+    assert payload["client"]["personal_name"] is None
+    assert payload["client"]["company_name"] is None
+    created_client = client_repository.get_by_id(payload["client"]["id"])
+    created_access = access_repository.get_by_client_id(payload["client"]["id"])
+    assert created_client is not None
+    assert created_access is not None
+    assert created_access.email == "solo.email@example.test"
+    assert "password" not in created_client.model_dump()
+    assert "password" not in created_access.model_dump()
+
+
 def test_client_cannot_call_invite_endpoint(
     client: TestClient,
     signing_keypair: rsa.RSAPrivateKey,
@@ -720,6 +934,7 @@ def test_invite_endpoint_reuses_fixed_portal_slug_on_reinvite(
 
     assert first_response.status_code == 200
     assert second_response.status_code == 200
+    assert first_response.json()["client"]["company_name"] == existing_client.company_name
     first_slug = first_response.json()["access"]["portal_slug"]
     second_slug = second_response.json()["access"]["portal_slug"]
     assert first_slug == "z" * 32
@@ -728,6 +943,118 @@ def test_invite_endpoint_reuses_fixed_portal_slug_on_reinvite(
     updated_access = access_repository.get_by_client_id(existing_client.id)
     assert updated_access is not None
     assert updated_access.portal_slug == first_slug
+
+
+def test_admin_client_detail_and_limits_update_work(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    signing_keypair: rsa.RSAPrivateKey,
+) -> None:
+    set_auth_mappings(
+        monkeypatch,
+        {
+            "user_admin": {
+                "email": "admin@sendwise.test",
+                "access_type": "platform_admin",
+                "status": "active",
+            }
+        },
+    )
+    client_record = build_client_record(
+        monthly_email_limit=None,
+        daily_email_limit=None,
+    )
+    access_record = build_access_record(
+        client_id=client_record.id,
+        email=client_record.email,
+    )
+    client_repository, _, _ = install_test_dependencies(
+        client_records=[client_record],
+        access_records=[access_record],
+    )
+    token = make_token(signing_keypair, clerk_user_id="user_admin")
+
+    detail_response = client.get(
+        f"/admin/clients/{client_record.id}",
+        headers=auth_header(token),
+    )
+    update_response = client.patch(
+        f"/admin/clients/{client_record.id}",
+        headers=auth_header(token),
+        json={"monthly_email_limit": 1200, "daily_email_limit": 90},
+    )
+
+    assert detail_response.status_code == 200
+    assert detail_response.json()["access"]["portal_slug"] == "a" * 32
+    assert update_response.status_code == 200
+    assert update_response.json()["monthly_email_limit"] == 1200
+    assert update_response.json()["daily_email_limit"] == 90
+    updated_client = client_repository.get_by_id(client_record.id)
+    assert updated_client is not None
+    assert updated_client.monthly_email_limit == 1200
+    assert updated_client.daily_email_limit == 90
+
+
+def test_client_cannot_update_admin_client_limits(
+    client: TestClient,
+    signing_keypair: rsa.RSAPrivateKey,
+) -> None:
+    client_record = build_client_record()
+    install_test_dependencies(
+        client_records=[client_record],
+        access_records=[build_access_record(client_id=client_record.id)],
+    )
+    token = make_token(signing_keypair, clerk_user_id="user_client")
+
+    response = client.patch(
+        f"/admin/clients/{client_record.id}",
+        headers=auth_header(token),
+        json={"monthly_email_limit": 1},
+    )
+
+    assert response.status_code == 403
+
+
+def test_reinvite_access_endpoint_preserves_portal_slug(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    signing_keypair: rsa.RSAPrivateKey,
+) -> None:
+    set_auth_mappings(
+        monkeypatch,
+        {
+            "user_admin": {
+                "email": "admin@sendwise.test",
+                "access_type": "platform_admin",
+                "status": "active",
+            }
+        },
+    )
+    existing_client = build_client_record(email="client@example.test")
+    existing_access = build_access_record(
+        client_id=existing_client.id,
+        email=existing_client.email,
+        portal_slug="y" * 32,
+        clerk_user_id=None,
+        status="invited",
+        invitation_status="pending",
+    )
+    _, access_repository, _ = install_test_dependencies(
+        client_records=[existing_client],
+        access_records=[existing_access],
+    )
+    token = make_token(signing_keypair, clerk_user_id="user_admin")
+
+    response = client.post(
+        f"/admin/clients/{existing_client.id}/invite-access",
+        headers=auth_header(token),
+    )
+
+    assert response.status_code == 200
+    assert response.json()["access"]["portal_slug"] == "y" * 32
+    stored_access = access_repository.get_by_client_id(existing_client.id)
+    assert stored_access is not None
+    assert stored_access.portal_slug == "y" * 32
 
 
 def test_invite_endpoint_rejects_role_and_user_type_fields(

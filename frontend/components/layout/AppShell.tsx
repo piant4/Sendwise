@@ -29,10 +29,12 @@ export function AppShell({ children }: AppShellProps) {
   const title =
     pathname === "/admin"
       ? "Dashboard admin"
+      : pathname.startsWith("/admin/clients/")
+        ? "Cliente"
       : pathname === "/client" || isClientDashboardPath
         ? "Dashboard cliente"
         : activeNavItem?.label ?? (role === "admin" ? "Admin" : "Cliente");
-  const actions = pathname === "/admin" ? <AdminTopBarActions /> : undefined;
+  const actions = role === "admin" ? <AdminTopBarActions /> : undefined;
   const showUtilityButtons = false;
 
   return (

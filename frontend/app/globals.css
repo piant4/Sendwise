@@ -334,6 +334,7 @@ a {
   flex-wrap: wrap;
   gap: 8px;
   justify-content: flex-end;
+  position: relative;
 }
 
 .admin-topbar-action[data-slot="button"] {
@@ -823,6 +824,210 @@ a {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.admin-clients-control-panel,
+.admin-clients-stats,
+.admin-clients-records,
+.admin-clients-table,
+.admin-clients-cell,
+.admin-client-detail,
+.admin-client-detail__grid,
+.admin-client-detail__facts,
+.admin-client-detail__limits-form {
+  display: grid;
+}
+
+.admin-clients-control-panel,
+.admin-client-detail {
+  gap: 20px;
+  margin: 0 auto;
+  max-width: 1180px;
+}
+
+.admin-clients-hero {
+  background:
+    linear-gradient(140deg, rgba(255, 255, 255, 0.96), rgba(238, 244, 242, 0.94)),
+    radial-gradient(circle at top right, rgba(159, 216, 203, 0.22), transparent 18rem);
+  border: 1px solid rgba(202, 207, 214, 0.72);
+  border-radius: 28px;
+  box-shadow: 0 22px 58px rgba(45, 51, 25, 0.08);
+  padding: 28px;
+}
+
+.admin-clients-hero__title {
+  color: var(--sw-olive);
+  font-size: clamp(2rem, 4vw, 2.8rem);
+  letter-spacing: -0.05em;
+  margin: 10px 0 0;
+}
+
+.admin-clients-hero__description {
+  color: var(--sw-text-muted);
+  font-size: 0.96rem;
+  line-height: 1.7;
+  margin: 14px 0 0;
+  max-width: 48rem;
+}
+
+.admin-clients-stats {
+  gap: 14px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.admin-clients-stat-card {
+  background: rgba(255, 255, 255, 0.88);
+  border: 1px solid rgba(202, 207, 214, 0.72);
+  border-radius: 22px;
+  box-shadow: 0 16px 42px rgba(45, 51, 25, 0.05);
+  display: grid;
+  gap: 10px;
+  padding: 20px;
+}
+
+.admin-clients-stat-card span {
+  color: var(--sw-text-faint);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.admin-clients-stat-card strong {
+  color: var(--sw-olive);
+  font-size: 2rem;
+  letter-spacing: -0.05em;
+}
+
+.admin-clients-table-shell {
+  margin-top: 20px;
+  overflow: hidden;
+}
+
+.admin-clients-records {
+  gap: 10px;
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+}
+
+.admin-clients-table {
+  align-items: stretch;
+  gap: 14px;
+  grid-template-columns:
+    minmax(220px, 1.6fr)
+    minmax(140px, 0.9fr)
+    minmax(140px, 0.9fr)
+    minmax(170px, 1fr)
+    minmax(150px, 0.9fr)
+    minmax(170px, 1fr);
+}
+
+.admin-clients-table--header {
+  color: var(--sw-text-faint);
+  font-size: 0.76rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  padding: 0 14px;
+  text-transform: uppercase;
+}
+
+.admin-clients-table--row {
+  align-items: start;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.99), rgba(238, 244, 242, 0.9));
+  border: 1px solid rgba(202, 207, 214, 0.72);
+  border-radius: 18px;
+  box-shadow: 0 14px 32px rgba(45, 51, 25, 0.05);
+  color: inherit;
+  padding: 16px 14px;
+  text-decoration: none;
+  transition:
+    transform 0.15s ease,
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.admin-clients-table--row:hover {
+  border-color: rgba(81, 118, 100, 0.28);
+  box-shadow: 0 18px 34px rgba(45, 51, 25, 0.08);
+  transform: translateY(-1px);
+}
+
+.admin-clients-cell {
+  gap: 4px;
+  min-width: 0;
+}
+
+.admin-clients-cell strong {
+  color: var(--sw-olive);
+  font-size: 0.92rem;
+}
+
+.admin-clients-cell span {
+  color: var(--sw-text-muted);
+  font-size: 0.8rem;
+  line-height: 1.5;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.admin-clients-cell--primary strong {
+  font-size: 0.98rem;
+}
+
+.admin-client-detail__grid {
+  gap: 20px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.admin-client-detail__facts {
+  gap: 16px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin: 20px 0 0;
+}
+
+.admin-client-detail__facts div {
+  background: rgba(242, 244, 240, 0.75);
+  border: 1px solid rgba(202, 207, 214, 0.62);
+  border-radius: 16px;
+  padding: 14px;
+}
+
+.admin-client-detail__facts dt {
+  color: var(--sw-text-faint);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.admin-client-detail__facts dd {
+  color: var(--sw-olive);
+  font-size: 0.92rem;
+  font-weight: 600;
+  line-height: 1.6;
+  margin: 8px 0 0;
+}
+
+.admin-client-detail__limits-form {
+  gap: 14px;
+  margin-top: 20px;
+}
+
+.admin-client-detail__placeholder {
+  background: linear-gradient(180deg, rgba(242, 244, 240, 0.86), rgba(255, 255, 255, 0.92));
+  border: 1px dashed rgba(81, 118, 100, 0.24);
+  border-radius: 18px;
+  color: var(--sw-text-muted);
+  display: grid;
+  gap: 8px;
+  margin-top: 20px;
+  padding: 18px;
+}
+
+.admin-client-detail__placeholder strong {
+  color: var(--sw-olive);
+  font-size: 0.94rem;
 }
 
 .admin-dashboard,
@@ -1890,6 +2095,33 @@ p {
   box-shadow: 0 0 0 4px rgba(214, 229, 227, 0.88);
 }
 
+.login-password-shell {
+  position: relative;
+}
+
+.login-input--password {
+  padding-right: 52px;
+}
+
+.login-password-toggle {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  color: #748071;
+  cursor: pointer;
+  display: inline-flex;
+  height: 100%;
+  justify-content: center;
+  position: absolute;
+  right: 0;
+  top: 0;
+  width: 48px;
+}
+
+.login-password-toggle:hover {
+  color: var(--sw-olive);
+}
+
 .login-select {
   background-image:
     linear-gradient(45deg, transparent 50%, #7b8374 50%),
@@ -2205,6 +2437,305 @@ p {
   color: var(--sw-text-muted);
 }
 
+.top-notice {
+  align-items: center;
+  backdrop-filter: blur(18px);
+  border: 1px solid transparent;
+  border-radius: 16px;
+  box-shadow: 0 18px 40px rgba(45, 51, 25, 0.14);
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  left: 50%;
+  max-width: min(560px, calc(100vw - 32px));
+  padding: 12px 16px;
+  position: fixed;
+  top: 18px;
+  transform: translateX(-50%);
+  z-index: 80;
+}
+
+.top-notice--success {
+  background: rgba(230, 239, 233, 0.96);
+  border-color: rgba(81, 118, 100, 0.18);
+  color: var(--sw-primary);
+}
+
+.top-notice--error {
+  background: rgba(244, 225, 223, 0.96);
+  border-color: rgba(166, 70, 63, 0.2);
+  color: var(--sw-danger);
+}
+
+.top-notice__dismiss,
+.invite-modal__close {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  color: currentColor;
+  cursor: pointer;
+  display: inline-flex;
+  justify-content: center;
+  padding: 0;
+}
+
+.top-notice__dismiss {
+  border-radius: 999px;
+  height: 24px;
+  width: 24px;
+}
+
+.modal-backdrop {
+  align-items: center;
+  background: rgba(45, 51, 25, 0.28);
+  backdrop-filter: blur(10px);
+  display: flex;
+  inset: 0;
+  justify-content: center;
+  padding: 24px;
+  position: fixed;
+  z-index: 70;
+}
+
+.invite-modal,
+.access-state-card,
+.onboarding-card,
+.invite-modal__header,
+.invite-modal__form,
+.invite-modal__field,
+.invite-modal__actions,
+.invite-modal__input-shell,
+.access-state-card__copy,
+.access-state-card__actions,
+.onboarding-card__header,
+.onboarding-form,
+.onboarding-form__field,
+.onboarding-form__input-shell {
+  display: grid;
+}
+
+.invite-modal {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(238, 244, 242, 0.95));
+  border: 1px solid rgba(202, 207, 214, 0.8);
+  border-radius: 24px;
+  box-shadow: 0 28px 80px rgba(45, 51, 25, 0.18);
+  max-width: 520px;
+  padding: 24px;
+  width: min(100%, 520px);
+}
+
+.invite-modal__header {
+  align-items: start;
+  gap: 12px;
+  grid-template-columns: 1fr auto;
+}
+
+.invite-modal__eyebrow,
+.access-state-card__eyebrow,
+.onboarding-card__eyebrow {
+  color: var(--sw-text-faint);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  margin: 0;
+  text-transform: uppercase;
+}
+
+.invite-modal__title,
+.access-state-card__title,
+.onboarding-card__title {
+  color: var(--sw-olive);
+  letter-spacing: -0.04em;
+  margin: 10px 0 0;
+}
+
+.invite-modal__title {
+  font-size: 1.55rem;
+}
+
+.invite-modal__message,
+.access-state-card__message,
+.onboarding-card__message {
+  color: var(--sw-text-muted);
+  line-height: 1.7;
+}
+
+.invite-modal__message {
+  margin: 14px 0 0;
+}
+
+.invite-modal__form,
+.onboarding-form {
+  gap: 14px;
+  margin-top: 18px;
+}
+
+.invite-modal__field,
+.onboarding-form__field {
+  gap: 8px;
+}
+
+.invite-modal__field span,
+.onboarding-form__field span {
+  color: var(--sw-olive);
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.invite-modal__input-shell,
+.onboarding-form__input-shell {
+  align-items: center;
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid var(--sw-border);
+  border-radius: 14px;
+  grid-template-columns: auto 1fr;
+  min-height: 48px;
+  padding: 0 14px;
+}
+
+.invite-modal__input-shell svg,
+.onboarding-form__input-shell svg {
+  color: #748071;
+  height: 16px;
+  width: 16px;
+}
+
+.invite-modal__input,
+.onboarding-form__input {
+  background: transparent;
+  border: 0;
+  color: var(--sw-olive);
+  font: inherit;
+  min-width: 0;
+  outline: none;
+  padding: 0 0 0 12px;
+}
+
+.invite-modal__actions,
+.access-state-card__actions {
+  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.invite-modal__button,
+.access-state-card__button,
+.onboarding-form__submit {
+  align-items: center;
+  border-radius: 14px;
+  cursor: pointer;
+  display: inline-flex;
+  font: inherit;
+  font-weight: 700;
+  justify-content: center;
+  min-height: 48px;
+  padding: 0 18px;
+  text-decoration: none;
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease,
+    color 0.15s ease;
+}
+
+.invite-modal__button--primary,
+.access-state-card__button--primary,
+.onboarding-form__submit {
+  background: var(--sw-primary);
+  border: 1px solid var(--sw-primary);
+  color: #fff;
+}
+
+.invite-modal__button--secondary,
+.access-state-card__button--secondary {
+  background: rgba(255, 255, 255, 0.96);
+  border: 1px solid var(--sw-border);
+  color: var(--sw-olive);
+}
+
+.access-state-page,
+.onboarding-page {
+  align-items: center;
+  display: flex;
+  justify-content: center;
+  min-height: 100vh;
+  padding: 24px;
+}
+
+.access-state-card,
+.onboarding-card {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(238, 244, 242, 0.94));
+  border: 1px solid rgba(202, 207, 214, 0.78);
+  border-radius: 28px;
+  box-shadow: 0 28px 76px rgba(45, 51, 25, 0.12);
+  gap: 18px;
+  max-width: 560px;
+  padding: 28px;
+  width: min(100%, 560px);
+}
+
+.access-state-card__title,
+.onboarding-card__title {
+  font-size: clamp(1.85rem, 4vw, 2.3rem);
+}
+
+.access-state-card__details {
+  background: rgba(242, 244, 240, 0.82);
+  border: 1px dashed rgba(202, 207, 214, 0.82);
+  border-radius: 16px;
+  color: var(--sw-text-muted);
+  padding: 14px 16px;
+}
+
+.access-state-card__details summary {
+  color: var(--sw-olive);
+  cursor: pointer;
+  font-size: 0.84rem;
+  font-weight: 700;
+}
+
+.access-state-card__details p {
+  margin: 12px 0 0;
+}
+
+.onboarding-card__identity {
+  background: rgba(242, 244, 240, 0.8);
+  border: 1px solid rgba(202, 207, 214, 0.66);
+  border-radius: 16px;
+  display: grid;
+  gap: 4px;
+  padding: 14px;
+}
+
+.onboarding-card__identity span {
+  color: var(--sw-text-faint);
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.onboarding-card__identity strong {
+  color: var(--sw-olive);
+  font-size: 0.96rem;
+}
+
+.onboarding-form__note {
+  color: var(--sw-text-muted);
+  font-size: 0.84rem;
+  line-height: 1.6;
+  margin: 0;
+}
+
+.onboarding-form__error {
+  background: rgba(244, 225, 223, 0.92);
+  border: 1px solid rgba(166, 70, 63, 0.2);
+  border-radius: 14px;
+  color: var(--sw-danger);
+  margin: 0;
+  padding: 12px 14px;
+}
+
 @media (max-width: 860px) {
   .app-shell {
     display: block;
@@ -2254,6 +2785,31 @@ p {
   .client-hero,
   .client-dashboard__content {
     grid-template-columns: 1fr;
+  }
+
+  .admin-clients-stats,
+  .admin-client-detail__grid,
+  .admin-client-detail__facts,
+  .admin-clients-table,
+  .invite-modal__actions,
+  .access-state-card__actions {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-clients-table--header {
+    display: none;
+  }
+
+  .admin-clients-table--row {
+    gap: 12px;
+  }
+
+  .admin-clients-hero,
+  .admin-clients-card,
+  .invite-modal,
+  .access-state-card,
+  .onboarding-card {
+    padding: 20px;
   }
 
   .admin-rail,

@@ -2,7 +2,7 @@
 
 import { useClerk, useSignIn } from "@clerk/nextjs";
 import { isClerkAPIResponseError } from "@clerk/nextjs/errors";
-import { ShieldCheck } from "lucide-react";
+import { Eye, EyeOff, ShieldCheck } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { ChangeEvent, FormEvent, useState } from "react";
 import { BrandMark } from "../../components/shared/BrandMark";
@@ -298,6 +298,7 @@ export function LoginContent() {
   const { fetchStatus, signIn } = useSignIn();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [verificationCode, setVerificationCode] = useState("");
   const [flowStep, setFlowStep] = useState<FlowStep>("credentials");
   const [selectedFactorKey, setSelectedFactorKey] = useState("");
@@ -692,18 +693,36 @@ export function LoginContent() {
                   <label className="login-field__label" htmlFor="login-password">
                     Password
                   </label>
-                  <input
-                    id="login-password"
-                    name="password"
-                    type="password"
-                    autoComplete="current-password"
-                    className="login-input"
-                    disabled={isSubmitting}
-                    onChange={(event) => setPassword(event.target.value)}
-                    placeholder="Inserisci la password"
-                    required
-                    value={password}
-                  />
+                  <div className="login-password-shell">
+                    <input
+                      id="login-password"
+                      name="password"
+                      type={showPassword ? "text" : "password"}
+                      autoComplete="current-password"
+                      className="login-input login-input--password"
+                      disabled={isSubmitting}
+                      onChange={(event) => setPassword(event.target.value)}
+                      placeholder="Inserisci la password"
+                      required
+                      value={password}
+                    />
+                    <button
+                      type="button"
+                      className="login-password-toggle"
+                      aria-label={
+                        showPassword ? "Nascondi password" : "Mostra password"
+                      }
+                      aria-pressed={showPassword}
+                      disabled={isSubmitting}
+                      onClick={() => setShowPassword((currentValue) => !currentValue)}
+                    >
+                      {showPassword ? (
+                        <EyeOff aria-hidden="true" />
+                      ) : (
+                        <Eye aria-hidden="true" />
+                      )}
+                    </button>
+                  </div>
                 </div>
               </>
             ) : null}

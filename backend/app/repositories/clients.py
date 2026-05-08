@@ -82,6 +82,8 @@ class ClientRepository:
         personal_name: Optional[str],
         company_name: Optional[str],
         status: Optional[str] = None,
+        monthly_email_limit: Optional[int] = None,
+        daily_email_limit: Optional[int] = None,
     ) -> ClientRecord:
         raise NotImplementedError
 
@@ -203,6 +205,8 @@ class PostgresClientRepository(ClientRepository):
         personal_name: Optional[str],
         company_name: Optional[str],
         status: Optional[str] = None,
+        monthly_email_limit: Optional[int] = None,
+        daily_email_limit: Optional[int] = None,
     ) -> ClientRecord:
         query = """
             UPDATE clients
@@ -211,6 +215,8 @@ class PostgresClientRepository(ClientRepository):
                 personal_name = %s,
                 company_name = %s,
                 status = COALESCE(%s, status),
+                monthly_email_limit = %s,
+                daily_email_limit = %s,
                 updated_at = NOW()
             WHERE id::text = %s
             RETURNING
@@ -229,7 +235,15 @@ class PostgresClientRepository(ClientRepository):
             with connection.cursor() as cursor:
                 cursor.execute(
                     query,
-                    (email, personal_name, company_name, status, client_id),
+                    (
+                        email,
+                        personal_name,
+                        company_name,
+                        status,
+                        monthly_email_limit,
+                        daily_email_limit,
+                        client_id,
+                    ),
                 )
                 row = cursor.fetchone()
             connection.commit()

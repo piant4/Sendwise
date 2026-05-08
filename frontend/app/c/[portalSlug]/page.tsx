@@ -1,3 +1,4 @@
+import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 import { ClientDashboard } from "../../../components/dashboard/ClientDashboard";
 import { DashboardErrorState } from "../../../components/dashboard/DashboardErrorState";
@@ -14,25 +15,31 @@ interface ClientPortalPageProps {
 export default async function ClientPortalPage({
   params,
 }: ClientPortalPageProps) {
+  const { getToken } = await auth();
   const { portalSlug } = await params;
+  const accessToken = await getToken();
 
   let authMe;
 
   try {
-    authMe = await getAuthMe();
+    authMe = await getAuthMe(accessToken);
   } catch {
     redirect("/login");
   }
 
-  if (
-    authMe.access_type !== "client" ||
-    !authMe.portal_slug ||
-    authMe.portal_slug !== portalSlug
-  ) {
+  if (authMe.access_type !== "client") {
     redirect("/login");
   }
 
-  const result = await getClientOverviewSummary()
+  if (authMe.status === "invited" || authMe.onboarding_required) {
+    redirect("/onboarding");
+  }
+
+  if (!authMe.portal_slug || authMe.portal_slug !== portalSlug) {
+    redirect("/auth/redirect");
+  }
+
+  const result = await getClientOverviewSummary(accessToken)
     .then((summary) => ({ summary }))
     .catch((error: unknown) => ({
       errorMessage:

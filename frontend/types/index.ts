@@ -66,13 +66,23 @@ export interface ClientAccessSummary {
 
 export interface AdminClientInviteInput {
   email: string;
-  personal_name?: string;
-  company_name?: string;
 }
 
 export interface AdminClientInviteResponse {
   client: Client;
   access: ClientAccessSummary;
+}
+
+export interface AdminClientUpdateInput {
+  personal_name?: string | null;
+  company_name?: string | null;
+  monthly_email_limit?: number | null;
+  daily_email_limit?: number | null;
+}
+
+export interface CompleteClientOnboardingInput {
+  personal_name: string;
+  company_name: string;
 }
 
 export interface CampaignStats {

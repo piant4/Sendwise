@@ -1,155 +1,214 @@
-import { revalidatePath } from "next/cache";
+import { auth } from "@clerk/nextjs/server";
+import Link from "next/link";
 import { redirect } from "next/navigation";
+import { getAdminClients, isApiError } from "../../../lib/api";
 import type { Client } from "../../../types";
-import {
-  createAdminClientInvite,
-  getAdminClients,
-} from "../../../lib/api";
 
-interface AdminClientsPageProps {
-  searchParams: Promise<{
-    error?: string;
-    invited?: string;
-  }>;
+export const dynamic = "force-dynamic";
+
+function formatDateLabel(value?: string | null): string {
+  if (!value) {
+    return "-";
+  }
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  return new Intl.DateTimeFormat("it-IT", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(date);
 }
 
-function getClientLabel(client: Client): string {
+function truncatePortalSlug(portalSlug?: string | null): string {
+  if (!portalSlug) {
+    return "non disponibile";
+  }
+
+  if (portalSlug.length <= 18) {
+    return portalSlug;
+  }
+
+  return `${portalSlug.slice(0, 8)}...${portalSlug.slice(-6)}`;
+}
+
+function getClientDisplayName(client: Client): string {
   return client.company_name || client.personal_name || client.name || client.email;
 }
 
-async function inviteClientAction(formData: FormData) {
-  "use server";
-
-  try {
-    await createAdminClientInvite({
-      email: String(formData.get("email") || ""),
-      personal_name: String(formData.get("personal_name") || "").trim() || undefined,
-      company_name: String(formData.get("company_name") || "").trim() || undefined,
-    });
-  } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "Invito non riuscito.";
-    redirect(`/admin/clients?error=${encodeURIComponent(message)}`);
-  }
-
-  revalidatePath("/admin/clients");
-  redirect("/admin/clients?invited=1");
+function buildClientStats(clients: Client[]) {
+  return {
+    total: clients.length,
+    invitedPending: clients.filter(
+      (client) =>
+        client.access?.status === "invited" ||
+        client.access?.invitation_status === "pending",
+    ).length,
+    active: clients.filter((client) => client.access?.status === "active").length,
+    blocked: clients.filter((client) =>
+      ["suspended", "archived"].includes(client.access?.status ?? ""),
+    ).length,
+  };
 }
 
-export default async function AdminClientsPage({
-  searchParams,
-}: AdminClientsPageProps) {
-  const { error, invited } = await searchParams;
-  const clientsResult = await getAdminClients()
-    .then((clients) => ({ clients }))
-    .catch((loadError: unknown) => ({
+export default async function AdminClientsPage() {
+  const { getToken } = await auth();
+  let result:
+    | { clients: Client[] }
+    | {
+        errorMessage: string;
+      };
+
+  try {
+    result = { clients: await getAdminClients(await getToken()) };
+  } catch (error) {
+    if (isApiError(error) && [401, 403].includes(error.status ?? 0)) {
+      redirect("/auth/redirect");
+    }
+
+    result = {
       errorMessage:
-        loadError instanceof Error
-          ? loadError.message
-          : "Impossibile caricare i clienti dal backend.",
-    }));
+        error instanceof Error
+          ? error.message
+          : "Impossibile caricare il pannello clienti.",
+    };
+  }
+  const stats = "clients" in result ? buildClientStats(result.clients) : null;
 
   return (
     <main className="shell">
-      <section className="admin-clients-page">
-        <article className="admin-clients-card">
-          <div className="admin-clients-card__intro">
-            <div>
-              <p className="admin-surface__eyebrow">Admin</p>
-              <h1 className="admin-clients-card__title">Clienti</h1>
-              <p className="admin-clients-card__description">
-                Crea il profilo cliente e invia o reinvia l&apos;invito Clerk
-                senza esporre ruoli o registrazione pubblica.
-              </p>
-            </div>
+      <section className="admin-clients-control-panel">
+        <header className="admin-clients-hero">
+          <div>
+            <p className="admin-surface__eyebrow">Admin</p>
+            <h1 className="admin-clients-hero__title">Clienti</h1>
+            <p className="admin-clients-hero__description">
+              Gestisci inviti, onboarding, limiti email e stato di accesso dei
+              clienti da un unico pannello operativo.
+            </p>
           </div>
+        </header>
 
-          {invited ? (
-            <p className="admin-clients-feedback admin-clients-feedback--success">
-              Invito inviato correttamente.
-            </p>
-          ) : null}
-
-          {error ? (
+        {"errorMessage" in result ? (
+          <section className="admin-clients-card">
             <p className="admin-clients-feedback admin-clients-feedback--error">
-              {decodeURIComponent(error)}
+              {result.errorMessage}
             </p>
-          ) : null}
-
-          <form action={inviteClientAction} className="admin-clients-form">
-            <label className="admin-clients-form__field">
-              <span>Email cliente</span>
-              <input
-                className="admin-clients-form__input"
-                type="email"
-                name="email"
-                autoComplete="email"
-                required
-                placeholder="cliente@studio.it"
-              />
-            </label>
-            <label className="admin-clients-form__field">
-              <span>Nome persona</span>
-              <input
-                className="admin-clients-form__input"
-                type="text"
-                name="personal_name"
-                autoComplete="name"
-                placeholder="Giulia Rossi"
-              />
-            </label>
-            <label className="admin-clients-form__field">
-              <span>Azienda o studio</span>
-              <input
-                className="admin-clients-form__input"
-                type="text"
-                name="company_name"
-                autoComplete="organization"
-                placeholder="Studio Nord"
-              />
-            </label>
-            <button type="submit" className="admin-clients-form__submit">
-              Invia invito
-            </button>
-          </form>
-        </article>
-
-        <article className="admin-clients-card">
-          <div className="admin-clients-card__intro">
-            <div>
-              <p className="admin-surface__eyebrow">Elenco</p>
-              <h2 className="admin-clients-card__title">Clienti registrati</h2>
-              <p className="admin-clients-card__description">
-                Vista minima dei profili cliente salvati nel backend business.
-              </p>
-            </div>
-          </div>
-
-          {"errorMessage" in clientsResult ? (
-            <p className="admin-clients-feedback admin-clients-feedback--error">
-              {clientsResult.errorMessage}
-            </p>
-          ) : clientsResult.clients.length === 0 ? (
-            <p className="admin-clients-empty">
-              Nessun cliente registrato ancora.
-            </p>
-          ) : (
-            <ul className="admin-clients-list">
-              {clientsResult.clients.map((client) => (
-                <li key={client.id} className="admin-clients-list__item">
-                  <div>
-                    <strong>{getClientLabel(client)}</strong>
-                    <span>{client.email}</span>
-                  </div>
-                  <div>
-                    <strong>{client.status}</strong>
-                    <span>{client.access?.portal_slug ?? "invito non creato"}</span>
-                  </div>
-                </li>
+          </section>
+        ) : (
+          <>
+            <section className="admin-clients-stats">
+              {[
+                {
+                  label: "Totale clienti",
+                  value: stats?.total ?? 0,
+                },
+                {
+                  label: "Invitati o pending",
+                  value: stats?.invitedPending ?? 0,
+                },
+                {
+                  label: "Attivi",
+                  value: stats?.active ?? 0,
+                },
+                {
+                  label: "Sospesi o archiviati",
+                  value: stats?.blocked ?? 0,
+                },
+              ].map((stat) => (
+                <article key={stat.label} className="admin-clients-stat-card">
+                  <span>{stat.label}</span>
+                  <strong>{stat.value}</strong>
+                </article>
               ))}
-            </ul>
-          )}
-        </article>
+            </section>
+            <section className="admin-clients-card">
+              <div className="admin-clients-card__intro">
+                <div>
+                  <p className="admin-surface__eyebrow">Controllo clienti</p>
+                  <h2 className="admin-clients-card__title">Elenco accessi</h2>
+                  <p className="admin-clients-card__description">
+                    Ogni riga mostra lo stato reale dell&apos;invito, il portale
+                    associato e i limiti configurati.
+                  </p>
+                </div>
+              </div>
+
+              {result.clients.length === 0 ? (
+                <p className="admin-clients-empty">
+                  Nessun cliente registrato ancora.
+                </p>
+              ) : (
+                <div className="admin-clients-table-shell">
+                  <div className="admin-clients-table admin-clients-table--header">
+                    <span>Cliente</span>
+                    <span>Stato accesso</span>
+                    <span>Invito</span>
+                    <span>Portal slug</span>
+                    <span>Limiti email</span>
+                    <span>Date</span>
+                  </div>
+
+                  <ul className="admin-clients-records">
+                    {result.clients.map((client) => (
+                      <li key={client.id}>
+                        <Link
+                          href={`/admin/clients/${client.id}`}
+                          className="admin-clients-table admin-clients-table--row"
+                        >
+                          <div className="admin-clients-cell admin-clients-cell--primary">
+                            <strong>{getClientDisplayName(client)}</strong>
+                            <span>{client.email}</span>
+                            <span>
+                              {client.personal_name || "Nome non ancora completato"}
+                            </span>
+                          </div>
+
+                          <div className="admin-clients-cell">
+                            <strong>{client.access?.status ?? "senza accesso"}</strong>
+                            <span>Profilo: {client.status}</span>
+                          </div>
+
+                          <div className="admin-clients-cell">
+                            <strong>
+                              {client.access?.invitation_status ?? "non inviato"}
+                            </strong>
+                            <span>
+                              Accettato: {formatDateLabel(client.access?.accepted_at)}
+                            </span>
+                          </div>
+
+                          <div className="admin-clients-cell">
+                            <strong>{truncatePortalSlug(client.access?.portal_slug)}</strong>
+                            <span>{client.access?.portal_slug ?? "-"}</span>
+                          </div>
+
+                          <div className="admin-clients-cell">
+                            <strong>
+                              {client.monthly_email_limit ?? "-"} /{" "}
+                              {client.daily_email_limit ?? "-"}
+                            </strong>
+                            <span>Mensile / giornaliero</span>
+                          </div>
+
+                          <div className="admin-clients-cell">
+                            <strong>
+                              Invitato: {formatDateLabel(client.access?.invited_at)}
+                            </strong>
+                            <span>Creato: {formatDateLabel(client.created_at)}</span>
+                          </div>
+                        </Link>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </section>
+          </>
+        )}
       </section>
     </main>
   );

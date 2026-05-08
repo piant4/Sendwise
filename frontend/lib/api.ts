@@ -1,7 +1,6 @@
-import { auth } from "@clerk/nextjs/server";
 import type {
-  AdminClientInviteInput,
   AdminClientInviteResponse,
+  AdminClientUpdateInput,
   AdminClientStatusCounts,
   AdminOverviewSummary,
   AdminRecentCampaign,
@@ -11,6 +10,7 @@ import type {
   Client,
   ClientContext,
   ClientOverviewSummary,
+  CompleteClientOnboardingInput,
 } from "../types";
 import * as mockApi from "./mock-api";
 
@@ -40,6 +40,52 @@ export interface AuthMeResponse {
   portal_slug: string | null;
   email: string | null;
   status: AuthUserStatus;
+  invitation_status:
+    | "pending"
+    | "accepted"
+    | "revoked"
+    | "expired"
+    | null;
+  onboarding_required: boolean;
+}
+
+interface ApiErrorOptions {
+  path: string;
+  detail: string;
+  status?: number | null;
+  isNetworkError?: boolean;
+}
+
+interface ApiRequestOptions<TPayload> {
+  method?: "GET" | "POST" | "PATCH";
+  payload?: TPayload;
+  accessToken?: string | null;
+}
+
+export class ApiError extends Error {
+  readonly path: string;
+  readonly detail: string;
+  readonly status: number | null;
+  readonly isNetworkError: boolean;
+
+  constructor({
+    path,
+    detail,
+    status = null,
+    isNetworkError = false,
+  }: ApiErrorOptions) {
+    const statusPrefix = typeof status === "number" ? `${status} ` : "";
+    super(`API request failed for ${path}: ${statusPrefix}${detail}`.trim());
+    this.name = "ApiError";
+    this.path = path;
+    this.detail = detail;
+    this.status = status;
+    this.isNetworkError = isNetworkError;
+  }
+}
+
+export function isApiError(error: unknown): error is ApiError {
+  return error instanceof ApiError;
 }
 
 function formatDateTimeLabel(value: string): string {
@@ -64,9 +110,12 @@ function getRequiredApiBaseUrl(): string {
     typeof window === "undefined" ? INTERNAL_API_BASE_URL : API_BASE_URL;
 
   if (!candidateApiBaseUrl) {
-    throw new Error(
-      "NEXT_PUBLIC_API_BASE_URL is required in the browser and BACKEND_URL is required for server-side container requests when NEXT_PUBLIC_USE_MOCK_API=false.",
-    );
+    throw new ApiError({
+      path: "config",
+      status: 500,
+      detail:
+        "NEXT_PUBLIC_API_BASE_URL is required in the browser and BACKEND_URL is required for server-side container requests when NEXT_PUBLIC_USE_MOCK_API=false.",
+    });
   }
 
   return candidateApiBaseUrl.replace(/\/$/, "");
@@ -93,7 +142,9 @@ async function readErrorDetails(response: Response): Promise<string> {
   return text.trim() || response.statusText || "Unknown error";
 }
 
-async function getApiHeaders(): Promise<HeadersInit> {
+async function getApiHeaders(
+  accessToken?: string | null,
+): Promise<HeadersInit> {
   const headers: HeadersInit = {
     "Content-Type": "application/json",
   };
@@ -102,80 +153,95 @@ async function getApiHeaders(): Promise<HeadersInit> {
     return headers;
   }
 
-  const { getToken } = await auth();
-  const token = await getToken();
-
-  if (!token) {
-    throw new Error("Missing Clerk session token for protected backend request.");
+  if (!accessToken || !accessToken.trim()) {
+    throw new ApiError({
+      path: "auth",
+      status: 401,
+      detail: "Missing Clerk session token for protected backend request.",
+    });
   }
 
   return {
     ...headers,
-    Authorization: `Bearer ${token}`,
+    Authorization: `Bearer ${accessToken.trim()}`,
   };
 }
 
-async function apiGet<T>(path: string): Promise<T> {
-  const requestUrl = `${getRequiredApiBaseUrl()}${path}`;
-  let response: Response;
-
-  try {
-    response = await fetch(requestUrl, {
-      cache: "no-store",
-      headers: await getApiHeaders(),
-    });
-  } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "Unknown network error";
-    throw new Error(`API request failed for ${path}: ${message}`);
-  }
-
-  if (!response.ok) {
-    const details = await readErrorDetails(response);
-    throw new Error(
-      `API request failed for ${path}: ${response.status} ${details}`,
-    );
-  }
-
-  try {
-    return (await response.json()) as T;
-  } catch {
-    throw new Error(`API request failed for ${path}: invalid JSON response`);
-  }
-}
-
-async function apiPost<TResponse, TPayload>(
+async function apiRequest<TResponse, TPayload = undefined>(
   path: string,
-  payload: TPayload,
+  options?: ApiRequestOptions<TPayload>,
 ): Promise<TResponse> {
   const requestUrl = `${getRequiredApiBaseUrl()}${path}`;
   let response: Response;
 
   try {
     response = await fetch(requestUrl, {
-      method: "POST",
+      method: options?.method ?? "GET",
       cache: "no-store",
-      headers: await getApiHeaders(),
-      body: JSON.stringify(payload),
+      headers: await getApiHeaders(options?.accessToken),
+      body:
+        options?.payload === undefined
+          ? undefined
+          : JSON.stringify(options.payload),
     });
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Unknown network error";
-    throw new Error(`API request failed for ${path}: ${message}`);
+    throw new ApiError({
+      path,
+      detail: message,
+      isNetworkError: true,
+    });
   }
 
   if (!response.ok) {
     const details = await readErrorDetails(response);
-    throw new Error(
-      `API request failed for ${path}: ${response.status} ${details}`,
-    );
+    throw new ApiError({
+      path,
+      status: response.status,
+      detail: details,
+    });
   }
 
   try {
     return (await response.json()) as TResponse;
   } catch {
-    throw new Error(`API request failed for ${path}: invalid JSON response`);
+    throw new ApiError({
+      path,
+      detail: "invalid JSON response",
+    });
   }
+}
+
+async function apiGet<TResponse>(
+  path: string,
+  accessToken?: string | null,
+): Promise<TResponse> {
+  return apiRequest<TResponse>(path, { method: "GET", accessToken });
+}
+
+async function apiPost<TResponse, TPayload>(
+  path: string,
+  payload: TPayload,
+  accessToken?: string | null,
+): Promise<TResponse> {
+  return apiRequest<TResponse, TPayload>(path, {
+    method: "POST",
+    payload,
+    accessToken,
+  });
+}
+
+async function apiPatch<TResponse, TPayload>(
+  path: string,
+  payload: TPayload,
+  accessToken?: string | null,
+): Promise<TResponse> {
+  return apiRequest<TResponse, TPayload>(path, {
+    method: "PATCH",
+    payload,
+    accessToken,
+  });
 }
 
 function assertBackendAuthRoutingEnabled(): void {
@@ -183,46 +249,83 @@ function assertBackendAuthRoutingEnabled(): void {
     return;
   }
 
-  throw new Error(
-    "Post-login routing requires NEXT_PUBLIC_USE_MOCK_API=false so the frontend can resolve access through the backend.",
-  );
+  throw new ApiError({
+    path: "auth-routing",
+    status: 500,
+    detail:
+      "Post-login routing requires NEXT_PUBLIC_USE_MOCK_API=false so the frontend can resolve access through the backend.",
+  });
 }
 
-async function fetchAdminClients(): Promise<Client[]> {
-  return apiGet<Client[]>("/admin/clients");
+async function fetchAdminClients(accessToken?: string | null): Promise<Client[]> {
+  return apiGet<Client[]>("/admin/clients", accessToken);
 }
 
-async function fetchAdminCampaigns(): Promise<Campaign[]> {
-  return apiGet<Campaign[]>("/admin/campaigns");
+async function fetchAdminClient(
+  clientId: string,
+  accessToken?: string | null,
+): Promise<Client> {
+  return apiGet<Client>(`/admin/clients/${clientId}`, accessToken);
 }
 
-async function fetchClientMe(): Promise<ClientContext> {
-  return apiGet<ClientContext>("/client/me");
+async function fetchAdminCampaigns(accessToken?: string | null): Promise<Campaign[]> {
+  return apiGet<Campaign[]>("/admin/campaigns", accessToken);
 }
 
-async function fetchClientCampaigns(): Promise<Campaign[]> {
-  return apiGet<Campaign[]>("/client/campaigns");
+async function fetchClientMe(accessToken?: string | null): Promise<ClientContext> {
+  return apiGet<ClientContext>("/client/me", accessToken);
 }
 
-async function fetchClientUsage(): Promise<ApiUsage[]> {
-  return apiGet<ApiUsage[]>("/client/usage");
+async function fetchClientCampaigns(accessToken?: string | null): Promise<Campaign[]> {
+  return apiGet<Campaign[]>("/client/campaigns", accessToken);
 }
 
-async function fetchClientBlockedSends(): Promise<BlockedSend[]> {
-  return apiGet<BlockedSend[]>("/client/blocked-sends");
+async function fetchClientUsage(accessToken?: string | null): Promise<ApiUsage[]> {
+  return apiGet<ApiUsage[]>("/client/usage", accessToken);
 }
 
-async function fetchAuthMe(): Promise<AuthMeResponse> {
+async function fetchClientBlockedSends(
+  accessToken?: string | null,
+): Promise<BlockedSend[]> {
+  return apiGet<BlockedSend[]>("/client/blocked-sends", accessToken);
+}
+
+async function fetchAuthMe(accessToken?: string | null): Promise<AuthMeResponse> {
   assertBackendAuthRoutingEnabled();
-  return apiGet<AuthMeResponse>("/auth/me");
+  return apiGet<AuthMeResponse>("/auth/me", accessToken);
 }
 
 async function postAdminClientInvite(
-  payload: AdminClientInviteInput,
+  email: string,
+  accessToken?: string | null,
 ): Promise<AdminClientInviteResponse> {
-  return apiPost<AdminClientInviteResponse, AdminClientInviteInput>(
+  return apiPost<AdminClientInviteResponse, { email: string }>(
     "/admin/clients",
+    { email },
+    accessToken,
+  );
+}
+
+async function patchAdminClient(
+  clientId: string,
+  payload: AdminClientUpdateInput,
+  accessToken?: string | null,
+): Promise<Client> {
+  return apiPatch<Client, AdminClientUpdateInput>(
+    `/admin/clients/${clientId}`,
     payload,
+    accessToken,
+  );
+}
+
+async function postClientOnboarding(
+  payload: CompleteClientOnboardingInput,
+  accessToken?: string | null,
+): Promise<AuthMeResponse> {
+  return apiPost<AuthMeResponse, CompleteClientOnboardingInput>(
+    "/auth/onboarding",
+    payload,
+    accessToken,
   );
 }
 
@@ -390,93 +493,164 @@ function buildClientOverviewSummary(
   };
 }
 
-export function getAdminOverviewSummary(): Promise<AdminOverviewSummary> {
+export function getAdminOverviewSummary(
+  accessToken?: string | null,
+): Promise<AdminOverviewSummary> {
   if (USE_MOCK_API) {
     return mockApi.getAdminOverviewSummary();
   }
 
-  return Promise.all([fetchAdminClients(), fetchAdminCampaigns()]).then(
+  return Promise.all([
+    fetchAdminClients(accessToken),
+    fetchAdminCampaigns(accessToken),
+  ]).then(
     ([clients, campaigns]) => buildAdminOverviewSummary(clients, campaigns),
   );
 }
 
-export function getAdminClients(): Promise<Client[]> {
-  return USE_MOCK_API
-    ? mockApi.getAdminClients()
-    : fetchAdminClients();
+export function getAdminClients(accessToken?: string | null): Promise<Client[]> {
+  return USE_MOCK_API ? mockApi.getAdminClients() : fetchAdminClients(accessToken);
 }
 
 export function createAdminClientInvite(
-  payload: AdminClientInviteInput,
+  email: string,
+  accessToken?: string | null,
 ): Promise<AdminClientInviteResponse> {
   if (USE_MOCK_API) {
-    throw new Error(
-      "Client invitations require NEXT_PUBLIC_USE_MOCK_API=false so the backend can create Clerk invites.",
-    );
+    throw new ApiError({
+      path: "/admin/clients",
+      status: 500,
+      detail:
+        "Client invitations require NEXT_PUBLIC_USE_MOCK_API=false so the backend can create Clerk invites.",
+    });
   }
 
-  return postAdminClientInvite(payload);
+  return postAdminClientInvite(email, accessToken);
 }
 
-export function getAdminCampaigns(): Promise<Campaign[]> {
+export async function getAdminClient(
+  clientId: string,
+  accessToken?: string | null,
+): Promise<Client> {
+  if (USE_MOCK_API) {
+    const clients = await mockApi.getAdminClients();
+    const client = clients.find((item) => item.id === clientId);
+
+    if (!client) {
+      throw new ApiError({
+        path: `/admin/clients/${clientId}`,
+        status: 404,
+        detail: "Client not found.",
+      });
+    }
+
+    return client;
+  }
+
+  return fetchAdminClient(clientId, accessToken);
+}
+
+export function updateAdminClientLimits(
+  clientId: string,
+  payload: AdminClientUpdateInput,
+  accessToken?: string | null,
+): Promise<Client> {
+  if (USE_MOCK_API) {
+    throw new ApiError({
+      path: `/admin/clients/${clientId}`,
+      status: 500,
+      detail:
+        "Client updates require NEXT_PUBLIC_USE_MOCK_API=false so the backend can persist admin changes.",
+    });
+  }
+
+  return patchAdminClient(clientId, payload, accessToken);
+}
+
+export function getAdminCampaigns(
+  accessToken?: string | null,
+): Promise<Campaign[]> {
   return USE_MOCK_API
     ? mockApi.getAdminCampaigns()
-    : fetchAdminCampaigns();
+    : fetchAdminCampaigns(accessToken);
 }
 
-export function getClientMe(): Promise<ClientContext> {
-  return USE_MOCK_API
-    ? mockApi.getClientMe()
-    : fetchClientMe();
+export function getClientMe(accessToken?: string | null): Promise<ClientContext> {
+  return USE_MOCK_API ? mockApi.getClientMe() : fetchClientMe(accessToken);
 }
 
-export function getClientOverviewSummary(): Promise<ClientOverviewSummary> {
+export function getClientOverviewSummary(
+  accessToken?: string | null,
+): Promise<ClientOverviewSummary> {
   if (USE_MOCK_API) {
     return mockApi.getClientOverviewSummary();
   }
 
   return Promise.all([
-    fetchClientMe(),
-    fetchClientCampaigns(),
-    fetchClientUsage(),
-    fetchClientBlockedSends(),
+    fetchClientMe(accessToken),
+    fetchClientCampaigns(accessToken),
+    fetchClientUsage(accessToken),
+    fetchClientBlockedSends(accessToken),
   ]).then(([clientContext, campaigns, usage, blockedSends]) =>
     buildClientOverviewSummary(clientContext, campaigns, usage, blockedSends),
   );
 }
 
-export function getClientCampaigns(): Promise<Campaign[]> {
+export function getClientCampaigns(
+  accessToken?: string | null,
+): Promise<Campaign[]> {
   return USE_MOCK_API
     ? mockApi.getClientCampaigns()
-    : fetchClientCampaigns();
+    : fetchClientCampaigns(accessToken);
 }
 
-export function getClientUsage(): Promise<ApiUsage[]> {
+export function getClientUsage(
+  accessToken?: string | null,
+): Promise<ApiUsage[]> {
   return USE_MOCK_API
     ? mockApi.getClientUsage()
-    : fetchClientUsage();
+    : fetchClientUsage(accessToken);
 }
 
-export function getClientBlockedSends(): Promise<BlockedSend[]> {
+export function getClientBlockedSends(
+  accessToken?: string | null,
+): Promise<BlockedSend[]> {
   return USE_MOCK_API
     ? mockApi.getClientBlockedSends()
-    : fetchClientBlockedSends();
+    : fetchClientBlockedSends(accessToken);
 }
 
-export async function getPostLoginRedirectPath(): Promise<string> {
-  const authMe = await fetchAuthMe();
+export async function getPostLoginRedirectPath(
+  accessToken?: string | null,
+): Promise<string> {
+  const authMe = await fetchAuthMe(accessToken);
 
   if (authMe.access_type === "platform_admin") {
     return ADMIN_ROUTE;
   }
 
+  if (authMe.status === "invited" || authMe.onboarding_required) {
+    return "/onboarding";
+  }
+
   if (!authMe.portal_slug) {
-    throw new Error("Authenticated client is missing a portal slug.");
+    throw new ApiError({
+      path: "/auth/me",
+      status: 403,
+      detail: "Authenticated client is missing a portal slug.",
+    });
   }
 
   return `${CLIENT_PORTAL_ROUTE_PREFIX}/${authMe.portal_slug}`;
 }
 
-export function getAuthMe(): Promise<AuthMeResponse> {
-  return fetchAuthMe();
+export function getAuthMe(accessToken?: string | null): Promise<AuthMeResponse> {
+  return fetchAuthMe(accessToken);
+}
+
+export function completeClientOnboarding(
+  payload: CompleteClientOnboardingInput,
+  accessToken?: string | null,
+): Promise<AuthMeResponse> {
+  return postClientOnboarding(payload, accessToken);
 }

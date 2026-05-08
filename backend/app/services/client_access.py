@@ -17,6 +17,7 @@ from app.repositories.client_access import (
     get_client_access_repository,
 )
 from app.repositories.clients import ClientRecord, ClientRepository, get_client_repository
+from app.services.clients import is_client_profile_complete, normalize_profile_value
 
 PORTAL_SLUG_ALPHABET = string.ascii_lowercase + string.digits
 PORTAL_SLUG_LENGTH = 32
@@ -89,6 +90,13 @@ class InviteClientAccessResult:
     access: ClientAccessRecord
 
 
+@dataclass
+class ResolvedClientAccess:
+    client: ClientRecord
+    access: ClientAccessRecord
+    onboarding_required: bool
+
+
 def normalize_email(email: str) -> str:
     normalized_email = email.strip().lower()
 
@@ -128,18 +136,27 @@ class ClientAccessService:
     def resolve_client_access(
         self,
         clerk_user_id: str,
-        email: Optional[str] = None,
-    ) -> Optional[ClientAccessRecord]:
+        emails: Optional[list[str]] = None,
+    ) -> Optional[ResolvedClientAccess]:
         record = self._repository.get_by_clerk_user_id(clerk_user_id)
 
-        if record is None and email:
-            record = self._repository.claim_invited_access(
-                clerk_user_id=clerk_user_id,
-                email=email,
-            )
+        if record is None:
+            for email in self._normalize_email_candidates(emails):
+                record = self._repository.claim_invited_access(
+                    clerk_user_id=clerk_user_id,
+                    email=email,
+                )
+                if record is not None:
+                    break
 
         if record is None:
             return None
+
+        if record.status in {"suspended", "archived"}:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Client access is not available for this Sendwise account.",
+            )
 
         if not is_valid_portal_slug(record.portal_slug):
             raise HTTPException(
@@ -147,7 +164,42 @@ class ClientAccessService:
                 detail="Client access is missing a valid portal slug.",
             )
 
-        return record
+        client = self._client_repository.get_by_id(record.client_id)
+
+        if client is None:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Client profile is missing for this Sendwise account.",
+            )
+
+        onboarding_required = not is_client_profile_complete(client)
+        invitation_status = record.invitation_status or "pending"
+
+        if onboarding_required and record.status != "invited":
+            record = self._repository.update_access(
+                access_id=record.id,
+                status="invited",
+                invitation_status=invitation_status,
+                accepted_at=record.accepted_at,
+            )
+
+        if (
+            not onboarding_required
+            and record.status == "invited"
+            and invitation_status == "accepted"
+        ):
+            record = self._repository.update_access(
+                access_id=record.id,
+                status="active",
+                invitation_status="accepted",
+                accepted_at=record.accepted_at or datetime.now(timezone.utc),
+            )
+
+        return ResolvedClientAccess(
+            client=client,
+            access=record,
+            onboarding_required=onboarding_required,
+        )
 
     def get_access_by_client_id(self, client_id: str) -> Optional[ClientAccessRecord]:
         return self._repository.get_by_client_id(client_id)
@@ -209,17 +261,105 @@ class ClientAccessService:
         if existing is None:
             return self._client_repository.create_client(
                 email=email,
-                personal_name=personal_name,
-                company_name=company_name,
+                personal_name=normalize_profile_value(
+                    personal_name,
+                    field_label="personal_name",
+                ),
+                company_name=normalize_profile_value(
+                    company_name,
+                    field_label="company_name",
+                ),
                 status="active",
             )
+
+        next_personal_name = normalize_profile_value(
+            personal_name,
+            field_label="personal_name",
+        )
+        next_company_name = normalize_profile_value(
+            company_name,
+            field_label="company_name",
+        )
 
         return self._client_repository.update_client(
             client_id=existing.id,
             email=email,
-            personal_name=personal_name,
-            company_name=company_name,
+            personal_name=next_personal_name or existing.personal_name,
+            company_name=next_company_name or existing.company_name,
+            status=existing.status,
+            monthly_email_limit=existing.monthly_email_limit,
+            daily_email_limit=existing.daily_email_limit,
         )
+
+    def complete_onboarding(
+        self,
+        *,
+        clerk_user_id: str,
+        emails: list[str],
+        personal_name: str,
+        company_name: str,
+    ) -> ResolvedClientAccess:
+        resolved_access = self.resolve_client_access(clerk_user_id, emails=emails)
+
+        if resolved_access is None:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Authenticated Clerk user is not mapped to a Sendwise invite.",
+            )
+
+        updated_client = self._client_repository.update_client(
+            client_id=resolved_access.client.id,
+            email=resolved_access.client.email,
+            personal_name=normalize_profile_value(
+                personal_name,
+                field_label="personal_name",
+                required=True,
+            ),
+            company_name=normalize_profile_value(
+                company_name,
+                field_label="company_name",
+                required=True,
+            ),
+            status=resolved_access.client.status,
+            monthly_email_limit=resolved_access.client.monthly_email_limit,
+            daily_email_limit=resolved_access.client.daily_email_limit,
+        )
+        updated_access = resolved_access.access
+
+        if updated_access.status != "active":
+            updated_access = self._repository.update_access(
+                access_id=updated_access.id,
+                status="active",
+                invitation_status="accepted",
+                accepted_at=updated_access.accepted_at or datetime.now(timezone.utc),
+            )
+
+        return ResolvedClientAccess(
+            client=updated_client,
+            access=updated_access,
+            onboarding_required=False,
+        )
+
+    def _normalize_email_candidates(
+        self,
+        emails: Optional[list[str]],
+    ) -> list[str]:
+        if not emails:
+            return []
+
+        seen: set[str] = set()
+        normalized_emails: list[str] = []
+
+        for email in emails:
+            normalized_email = normalize_email(email)
+
+            if normalized_email in seen:
+                continue
+
+            seen.add(normalized_email)
+            normalized_emails.append(normalized_email)
+
+        return normalized_emails
 
     def _resolve_portal_slug(self, existing_access: Optional[ClientAccessRecord]) -> str:
         if existing_access is not None:

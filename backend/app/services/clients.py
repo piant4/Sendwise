@@ -19,6 +19,63 @@ def _build_client_name(client: ClientRecord) -> str:
     return client.email
 
 
+def normalize_profile_value(
+    value: Optional[str],
+    *,
+    field_label: str,
+    required: bool = False,
+) -> Optional[str]:
+    if value is None:
+        if required:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"{field_label} is required.",
+            )
+        return None
+
+    normalized_value = value.strip()
+
+    if not normalized_value:
+        if required:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"{field_label} is required.",
+            )
+        return None
+
+    return normalized_value
+
+
+def is_client_profile_complete(client: ClientRecord) -> bool:
+    return bool(
+        normalize_profile_value(
+            client.personal_name,
+            field_label="personal_name",
+        )
+        and normalize_profile_value(
+            client.company_name,
+            field_label="company_name",
+        )
+    )
+
+
+def validate_email_limit(
+    value: Optional[int],
+    *,
+    field_label: str,
+) -> Optional[int]:
+    if value is None:
+        return None
+
+    if value < 0:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"{field_label} must be greater than or equal to zero.",
+        )
+
+    return value
+
+
 def build_client_schema(
     client: ClientRecord,
     *,
@@ -85,6 +142,68 @@ class ClientsService:
             email=email,
             personal_name=personal_name,
             company_name=company_name,
+        )
+
+    def update_client(
+        self,
+        *,
+        client_id: str,
+        email: str,
+        personal_name: Optional[str],
+        company_name: Optional[str],
+        status: Optional[str] = None,
+        monthly_email_limit: Optional[int] = None,
+        daily_email_limit: Optional[int] = None,
+    ) -> ClientRecord:
+        return self._repository.update_client(
+            client_id=client_id,
+            email=email,
+            personal_name=normalize_profile_value(
+                personal_name,
+                field_label="personal_name",
+            ),
+            company_name=normalize_profile_value(
+                company_name,
+                field_label="company_name",
+            ),
+            status=status,
+            monthly_email_limit=validate_email_limit(
+                monthly_email_limit,
+                field_label="monthly_email_limit",
+            ),
+            daily_email_limit=validate_email_limit(
+                daily_email_limit,
+                field_label="daily_email_limit",
+            ),
+        )
+
+    def complete_onboarding_profile(
+        self,
+        *,
+        client_id: str,
+        personal_name: str,
+        company_name: str,
+    ) -> ClientRecord:
+        existing = self.get_client_by_id(client_id)
+        normalized_personal_name = normalize_profile_value(
+            personal_name,
+            field_label="personal_name",
+            required=True,
+        )
+        normalized_company_name = normalize_profile_value(
+            company_name,
+            field_label="company_name",
+            required=True,
+        )
+
+        return self.update_client(
+            client_id=existing.id,
+            email=existing.email,
+            personal_name=normalized_personal_name,
+            company_name=normalized_company_name,
+            status=existing.status,
+            monthly_email_limit=existing.monthly_email_limit,
+            daily_email_limit=existing.daily_email_limit,
         )
 
 

@@ -1,10 +1,64 @@
-import Link from "next/link";
 import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
-import { getPostLoginRedirectPath } from "../../../lib/api";
+import {
+  ApiError,
+  getPostLoginRedirectPath,
+  isApiError,
+} from "../../../lib/api";
+import { AccessStateCard } from "../../../components/shared/AccessStateCard";
+
+function sanitizeAccessErrorDetail(error: ApiError): string {
+  if (
+    error.detail.includes("Authenticated Clerk user is not mapped to a Sendwise user.")
+  ) {
+    return "L'account autenticato non e ancora associato a un accesso Sendwise valido.";
+  }
+
+  if (error.detail.includes("Missing Clerk session token")) {
+    return "Sessione Clerk non disponibile per la verifica dell'accesso.";
+  }
+
+  return error.detail;
+}
+
+function buildAccessErrorContent(error: unknown) {
+  if (isApiError(error)) {
+    if (error.isNetworkError) {
+      return {
+        title: "Verifica accesso non disponibile",
+        message:
+          "Non e stato possibile raggiungere il backend Sendwise per completare la verifica dell'accesso.",
+        detail: sanitizeAccessErrorDetail(error),
+      };
+    }
+
+    if (error.status === 401 || error.status === 403) {
+      return {
+        title: "Accesso non disponibile",
+        message:
+          "L'account potrebbe non essere ancora stato associato a Sendwise oppure l'invito non e stato completato.",
+        detail: sanitizeAccessErrorDetail(error),
+      };
+    }
+
+    return {
+      title: "Verifica accesso non disponibile",
+      message:
+        "Non e stato possibile completare la verifica dell'accesso. Riprova tra poco o contatta il team Sendwise.",
+      detail: sanitizeAccessErrorDetail(error),
+    };
+  }
+
+  return {
+    title: "Verifica accesso non disponibile",
+    message:
+      "Non e stato possibile completare la verifica dell'accesso. Riprova tra poco o contatta il team Sendwise.",
+    detail: error instanceof Error ? error.message : null,
+  };
+}
 
 export default async function AuthRedirectPage() {
-  const { userId } = await auth();
+  const { getToken, userId } = await auth();
 
   if (!userId) {
     redirect("/login");
@@ -13,30 +67,18 @@ export default async function AuthRedirectPage() {
   let destinationPath: string;
 
   try {
-    destinationPath = await getPostLoginRedirectPath();
+    destinationPath = await getPostLoginRedirectPath(await getToken());
   } catch (error) {
-    const message =
-      error instanceof Error
-        ? error.message
-        : "Impossibile determinare l'accesso Sendwise.";
+    const content = buildAccessErrorContent(error);
 
     return (
-      <main className="app-page">
-        <section className="card stack-md">
-          <div className="stack-xs">
-            <p className="eyebrow">Accesso</p>
-            <h1>Reindirizzamento non disponibile</h1>
-            <p className="text-muted">
-              Sendwise non e riuscito a verificare il tuo tipo di accesso dal
-              backend.
-            </p>
-          </div>
-          <p className="text-muted">{message}</p>
-          <Link className="button button-primary" href="/login">
-            Torna al login
-          </Link>
-        </section>
-      </main>
+      <AccessStateCard
+        eyebrow="Accesso"
+        title={content.title}
+        message={content.message}
+        detail={content.detail}
+        retryHref="/auth/redirect"
+      />
     );
   }
 

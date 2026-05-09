@@ -51,6 +51,7 @@ export function AdminTopBarActions() {
   const [toast, setToast] = useState<ToastState>(null);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setMounted(true);
   }, []);
 

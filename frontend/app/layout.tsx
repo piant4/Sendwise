@@ -21,6 +21,8 @@ export default function RootLayout({
           signInFallbackRedirectUrl="/auth/redirect"
           signInForceRedirectUrl="/auth/redirect"
           signInUrl="/login"
+          signUpForceRedirectUrl="/auth/redirect"
+          signUpFallbackRedirectUrl="/auth/redirect"
         >
           <AppShell>{children}</AppShell>
         </ClerkProvider>

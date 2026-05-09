@@ -16,23 +16,6 @@ import {
 } from "../ui/sheet";
 import { MainNav, type AppRole } from "./MainNav";
 
-const ROLE_META: Record<
-  AppRole,
-  {
-    workspaceName: string;
-    workspaceType: string;
-  }
-> = {
-  admin: {
-    workspaceName: "Sendwise Org",
-    workspaceType: "Ambiente admin",
-  },
-  client: {
-    workspaceName: "Acme Studio",
-    workspaceType: "Workspace cliente",
-  },
-};
-
 interface MobileNavProps {
   role: AppRole;
   isMockMode: boolean;
@@ -40,7 +23,6 @@ interface MobileNavProps {
 
 export function MobileNav({ role, isMockMode }: MobileNavProps) {
   const [open, setOpen] = useState(false);
-  const meta = ROLE_META[role];
 
   return (
     <Sheet open={open} onOpenChange={setOpen}>
@@ -77,11 +59,6 @@ export function MobileNav({ role, isMockMode }: MobileNavProps) {
           </SheetDescription>
         </SheetHeader>
         <div className="mobile-nav-content">
-          <div className="mobile-nav-workspace" aria-label="Contesto area corrente">
-            <span className="mobile-nav-workspace__eyebrow">Workspace</span>
-            <strong>{meta.workspaceName}</strong>
-            <span>{meta.workspaceType}</span>
-          </div>
           <div className="sidebar-section">
             <p className="sidebar-label">
               {role === "admin" ? "Operazioni" : "Dashboard"}

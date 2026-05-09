@@ -1,3 +1,4 @@
+import { SignUp } from "@clerk/nextjs";
 import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 import {
@@ -61,10 +62,45 @@ function buildAccessErrorContent(error: unknown) {
   };
 }
 
-export default async function AuthRedirectPage() {
+interface AuthRedirectPageProps {
+  searchParams: Promise<{
+    __clerk_ticket?: string;
+  }>;
+}
+
+export default async function AuthRedirectPage({
+  searchParams,
+}: AuthRedirectPageProps) {
   const { getToken, userId } = await auth();
+  const { __clerk_ticket: clerkTicket } = await searchParams;
 
   if (!userId) {
+    if (clerkTicket) {
+      return (
+        <main className="login-page">
+          <section className="login-card">
+            <div className="login-card__header">
+              <h1 className="login-card__title">Completa il tuo invito</h1>
+              <p className="login-card__description">
+                Configura l&apos;accesso Clerk richiesto dall&apos;invito, poi ti
+                porteremo automaticamente nell&apos;onboarding Sendwise.
+              </p>
+            </div>
+
+            <SignUp
+              path="/auth/redirect"
+              routing="path"
+              signInUrl="/login"
+              forceRedirectUrl="/auth/redirect"
+              fallbackRedirectUrl="/auth/redirect"
+              signInForceRedirectUrl="/auth/redirect"
+              signInFallbackRedirectUrl="/auth/redirect"
+            />
+          </section>
+        </main>
+      );
+    }
+
     redirect("/login");
   }
 

@@ -1,7 +1,8 @@
 import { auth } from "@clerk/nextjs/server";
 import { AdminDashboard } from "../../components/dashboard/AdminDashboard";
 import { DashboardErrorState } from "../../components/dashboard/DashboardErrorState";
-import { getAdminOverviewSummary, USE_MOCK_API } from "../../lib/api";
+import { getAdminOverviewSummary, isApiError, USE_MOCK_API } from "../../lib/api";
+import { redirect } from "next/navigation";
 
 export const dynamic = "force-dynamic";
 
@@ -9,10 +10,16 @@ export default async function AdminPage() {
   const { getToken } = await auth();
   const result = await getAdminOverviewSummary(await getToken())
     .then((summary) => ({ summary }))
-    .catch((error: unknown) => ({
-      errorMessage:
-        error instanceof Error ? error.message : "Unknown dashboard error",
-    }));
+    .catch((error: unknown) => {
+      if (isApiError(error) && [401, 403].includes(error.status ?? 0)) {
+        redirect("/auth/redirect");
+      }
+
+      return {
+        errorMessage:
+          error instanceof Error ? error.message : "Unknown dashboard error",
+      };
+    });
 
   if ("errorMessage" in result) {
     return (

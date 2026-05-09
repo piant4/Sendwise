@@ -6,6 +6,19 @@ interface AdminRecentCampaignsCardProps {
   summary: AdminOverviewSummary;
 }
 
+function formatDateTimeLabel(value: string): string {
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  return new Intl.DateTimeFormat("it-IT", {
+    dateStyle: "short",
+    timeStyle: "short",
+  }).format(date);
+}
+
 function getCampaignStatusLabel(status: CampaignStatus): string {
   switch (status) {
     case "ready":
@@ -71,9 +84,11 @@ export function AdminRecentCampaignsCard({
                   variant={getCampaignStatusVariant(campaign.status)}
                 />
               </div>
-              <p className="admin-row__support">{campaign.subject}</p>
+              <p className="admin-row__support">
+                {campaign.subject || "Oggetto non ancora disponibile nel record corrente."}
+              </p>
               <div className="admin-row__footer">
-                <span>Aggiornata {campaign.updatedAtLabel}</span>
+                <span>Aggiornata {formatDateTimeLabel(campaign.updatedAt)}</span>
                 <button
                   type="button"
                   className="admin-inline-button"

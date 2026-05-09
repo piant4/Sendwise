@@ -1,15 +1,16 @@
 from fastapi import APIRouter, Depends
 
 from app.core.auth import AuthenticatedUser, require_platform_admin
-from app.schemas.campaigns import Campaign
 from app.schemas.clients import (
+    AdminCampaignSummary,
     AdminClientInviteRequest,
     AdminClientInviteResponse,
     AdminClientUpdateRequest,
+    AdminEmailLimitsResponse,
+    AdminOverviewSummary,
     Client,
     ClientAccessSummary,
 )
-from app.schemas.common import CampaignStatus
 from app.services.client_access import ClientAccessService, get_client_access_service
 from app.services.clients import ClientsService, build_client_schema, get_clients_service
 
@@ -21,28 +22,6 @@ router = APIRouter(
 
 def stub_response(endpoint: str) -> dict[str, str]:
     return {"status": "stub", "endpoint": endpoint}
-
-
-ADMIN_CAMPAIGNS: list[Campaign] = [
-    Campaign(
-        id="campaign_acme_welcome",
-        client_id="client_acme",
-        name="Welcome Series",
-        status=CampaignStatus.ready,
-        subject="Welcome to Alice",
-        created_at="2026-05-03T08:00:00Z",
-        updated_at="2026-05-05T08:00:00Z",
-    ),
-    Campaign(
-        id="campaign_nova_launch",
-        client_id="client_nova",
-        name="Spring Launch",
-        status=CampaignStatus.draft,
-        subject="Spring preview",
-        created_at="2026-05-04T11:00:00Z",
-        updated_at="2026-05-05T11:00:00Z",
-    ),
-]
 
 
 @router.get("/clients", response_model=list[Client])
@@ -197,11 +176,34 @@ def list_client_blocked_sends(
     return stub_response(f"GET /admin/clients/{client_id}/blocked-sends")
 
 
-@router.get("/campaigns", response_model=list[Campaign])
+@router.get("/overview", response_model=AdminOverviewSummary)
+def get_overview(
+    _current_user: AuthenticatedUser = Depends(require_platform_admin),
+    clients_service: ClientsService = Depends(get_clients_service),
+    client_access_service: ClientAccessService = Depends(get_client_access_service),
+) -> AdminOverviewSummary:
+    return clients_service.get_admin_overview(
+        client_access_service=client_access_service,
+    )
+
+
+@router.get("/campaigns", response_model=list[AdminCampaignSummary])
 def list_campaigns(
     _current_user: AuthenticatedUser = Depends(require_platform_admin),
-) -> list[Campaign]:
-    return ADMIN_CAMPAIGNS
+    clients_service: ClientsService = Depends(get_clients_service),
+) -> list[AdminCampaignSummary]:
+    return clients_service.list_admin_campaigns()
+
+
+@router.get("/email-limits", response_model=AdminEmailLimitsResponse)
+def list_email_limits(
+    _current_user: AuthenticatedUser = Depends(require_platform_admin),
+    clients_service: ClientsService = Depends(get_clients_service),
+    client_access_service: ClientAccessService = Depends(get_client_access_service),
+) -> AdminEmailLimitsResponse:
+    return clients_service.get_admin_email_limits(
+        client_access_service=client_access_service,
+    )
 
 
 @router.get("/campaigns/{campaign_id}")

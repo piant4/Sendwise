@@ -1,12 +1,37 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import Depends, HTTPException, status
 
 from app.repositories.client_access import ClientAccessRecord
-from app.repositories.clients import ClientRecord, ClientRepository, get_client_repository
-from app.schemas.clients import Client, ClientAccessSummary
+from app.repositories.clients import (
+    AdminBlockedSendRecord,
+    AdminCampaignRecord,
+    ClientRecord,
+    ClientRepository,
+    get_client_repository,
+)
+from app.schemas.clients import (
+    AdminCampaignStatusCounts,
+    AdminCampaignSummary,
+    AdminClientStatusCounts,
+    AdminEmailLimitOverview,
+    AdminEmailLimitRow,
+    AdminEmailLimitsResponse,
+    AdminEmailLimitsSummary,
+    AdminOverviewSummary,
+    AdminRecentBlockedSend,
+    AdminRecentCampaign,
+    Client,
+    ClientAccessSummary,
+)
+from app.schemas.common import CampaignStatus
+
+ACTIVE_CAMPAIGN_STATUSES = {CampaignStatus.ready.value, CampaignStatus.running.value}
+RECENT_ADMIN_CAMPAIGNS_LIMIT = 4
+RECENT_ADMIN_BLOCKED_SENDS_LIMIT = 4
 
 
 def _build_client_name(client: ClientRecord) -> str:
@@ -90,6 +115,31 @@ def build_client_schema(
         created_at=client.created_at,
         updated_at=client.updated_at,
         access=access_summary,
+    )
+
+
+def build_admin_email_limit_row(
+    client: ClientRecord,
+    *,
+    access: Optional[ClientAccessRecord] = None,
+) -> AdminEmailLimitRow:
+    return AdminEmailLimitRow(
+        client_id=client.id,
+        client_name=_build_client_name(client),
+        client_email=client.email,
+        client_status=client.status,
+        access_status=access.status if access else None,
+        invitation_status=access.invitation_status if access else None,
+        email_limit_per_campaign=client.email_limit_per_campaign,
+        max_campaigns=client.max_campaigns,
+        updated_at=client.updated_at,
+    )
+
+
+def has_any_email_limit_configured(client: ClientRecord) -> bool:
+    return (
+        client.email_limit_per_campaign is not None
+        or client.max_campaigns is not None
     )
 
 
@@ -213,6 +263,167 @@ class ClientsService:
             max_campaigns=existing.max_campaigns,
             monthly_email_limit=existing.monthly_email_limit,
             daily_email_limit=existing.daily_email_limit,
+        )
+
+    def list_admin_campaigns(self) -> list[AdminCampaignSummary]:
+        return [
+            AdminCampaignSummary(
+                id=campaign.id,
+                client_id=campaign.client_id,
+                client_name=campaign.client_name,
+                client_email=campaign.client_email,
+                name=campaign.name,
+                status=campaign.status,
+                subject=campaign.subject,
+                created_at=campaign.created_at,
+                updated_at=campaign.updated_at,
+                blocked_sends_count=campaign.blocked_sends_count,
+            )
+            for campaign in self._repository.list_admin_campaigns()
+        ]
+
+    def get_admin_overview(
+        self,
+        *,
+        client_access_service,
+        now: Optional[datetime] = None,
+    ) -> AdminOverviewSummary:
+        current_time = now or datetime.now(timezone.utc)
+        clients = self.list_clients()
+        campaigns = self._repository.list_admin_campaigns()
+
+        client_status_counts = AdminClientStatusCounts()
+        for client in clients:
+            if client.status in client_status_counts.model_fields:
+                setattr(
+                    client_status_counts,
+                    client.status,
+                    getattr(client_status_counts, client.status) + 1,
+                )
+
+        campaign_status_counts = AdminCampaignStatusCounts()
+        active_campaigns = 0
+        for campaign in campaigns:
+            if campaign.status in ACTIVE_CAMPAIGN_STATUSES:
+                campaign_status_counts.active += 1
+                active_campaigns += 1
+                continue
+
+            if campaign.status == CampaignStatus.paused.value:
+                campaign_status_counts.paused += 1
+                continue
+
+            if campaign.status == CampaignStatus.blocked.value:
+                campaign_status_counts.blocked += 1
+                continue
+
+            if campaign.status == CampaignStatus.draft.value:
+                campaign_status_counts.draft += 1
+                continue
+
+            if campaign.status == CampaignStatus.completed.value:
+                campaign_status_counts.completed += 1
+                continue
+
+            if campaign.status == CampaignStatus.failed.value:
+                campaign_status_counts.failed += 1
+
+        configured_clients = sum(
+            1 for client in clients if has_any_email_limit_configured(client)
+        )
+        email_limit_overview = AdminEmailLimitOverview(
+            configured_clients=configured_clients,
+            unconfigured_clients=max(len(clients) - configured_clients, 0),
+            total_email_limit_per_campaign=sum(
+                client.email_limit_per_campaign or 0 for client in clients
+            ),
+            total_max_campaigns=sum(client.max_campaigns or 0 for client in clients),
+        )
+
+        recent_campaigns = [
+            self._build_recent_campaign_summary(campaign)
+            for campaign in campaigns[:RECENT_ADMIN_CAMPAIGNS_LIMIT]
+        ]
+        recent_blocked_sends = [
+            self._build_recent_blocked_send_summary(blocked_send)
+            for blocked_send in self._repository.list_recent_admin_blocked_sends(
+                limit=RECENT_ADMIN_BLOCKED_SENDS_LIMIT,
+            )
+        ]
+        start_of_day = current_time.astimezone(timezone.utc).replace(
+            hour=0,
+            minute=0,
+            second=0,
+            microsecond=0,
+        )
+
+        return AdminOverviewSummary(
+            total_clients=len(clients),
+            active_campaigns=active_campaigns,
+            blocked_sends_today=self._repository.count_admin_blocked_sends_since(
+                start_of_day
+            ),
+            monthly_ai_calls_used=0,
+            campaign_status_counts=campaign_status_counts,
+            client_status_counts=client_status_counts,
+            email_limit_overview=email_limit_overview,
+            recent_campaigns=recent_campaigns,
+            recent_blocked_sends=recent_blocked_sends,
+        )
+
+    def get_admin_email_limits(
+        self,
+        *,
+        client_access_service,
+    ) -> AdminEmailLimitsResponse:
+        clients = self.list_clients()
+        rows = [
+            build_admin_email_limit_row(
+                client,
+                access=client_access_service.get_access_by_client_id(client.id),
+            )
+            for client in clients
+        ]
+        configured_clients = sum(
+            1 for client in clients if has_any_email_limit_configured(client)
+        )
+        return AdminEmailLimitsResponse(
+            summary=AdminEmailLimitsSummary(
+                total_clients=len(rows),
+                configured_clients=configured_clients,
+                unconfigured_clients=max(len(rows) - configured_clients, 0),
+            ),
+            rows=rows,
+        )
+
+    def _build_recent_campaign_summary(
+        self,
+        campaign: AdminCampaignRecord,
+    ) -> AdminRecentCampaign:
+        return AdminRecentCampaign(
+            id=campaign.id,
+            client_id=campaign.client_id,
+            client_name=campaign.client_name,
+            campaign_name=campaign.name,
+            subject=campaign.subject,
+            status=campaign.status,
+            created_at=campaign.created_at,
+            updated_at=campaign.updated_at,
+        )
+
+    def _build_recent_blocked_send_summary(
+        self,
+        blocked_send: AdminBlockedSendRecord,
+    ) -> AdminRecentBlockedSend:
+        return AdminRecentBlockedSend(
+            id=blocked_send.id,
+            client_id=blocked_send.client_id,
+            client_name=blocked_send.client_name,
+            campaign_id=blocked_send.campaign_id,
+            campaign_name=blocked_send.campaign_name,
+            reason=blocked_send.reason,
+            decision=blocked_send.decision,
+            created_at=blocked_send.created_at,
         )
 
 

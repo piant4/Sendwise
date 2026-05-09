@@ -6,6 +6,19 @@ interface AdminBlockedSendsCardProps {
   summary: AdminOverviewSummary;
 }
 
+function formatDateTimeLabel(value: string): string {
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  return new Intl.DateTimeFormat("it-IT", {
+    dateStyle: "short",
+    timeStyle: "short",
+  }).format(date);
+}
+
 export function AdminBlockedSendsCard({
   summary,
 }: AdminBlockedSendsCardProps) {
@@ -29,7 +42,7 @@ export function AdminBlockedSendsCard({
                   </span>
                 </div>
                 <span className="admin-row__timestamp">
-                  {blockedSend.createdAtLabel}
+                  {formatDateTimeLabel(blockedSend.createdAt)}
                 </span>
               </div>
               <p className="admin-row__support">{blockedSend.reason}</p>

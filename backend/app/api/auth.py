@@ -2,10 +2,20 @@ from fastapi import APIRouter, Depends
 
 from app.core.auth import (
     AuthenticatedUser,
+    get_current_user,
     require_auth_me_user,
     require_client_onboarding_user,
 )
-from app.schemas.auth import AuthMeResponse, CompleteClientOnboardingRequest
+from app.schemas.auth import (
+    AuthMeResponse,
+    CompleteClientOnboardingRequest,
+    DeleteAccountRequest,
+    DeleteAccountResponse,
+)
+from app.services.auth import (
+    AccountDeletionService,
+    get_account_deletion_service,
+)
 from app.services.client_access import ClientAccessService, get_client_access_service
 
 router = APIRouter(
@@ -48,4 +58,22 @@ def complete_client_onboarding(
         status=resolved_access.access.status,
         invitation_status=resolved_access.access.invitation_status,
         onboarding_required=resolved_access.onboarding_required,
+    )
+
+
+@router.post("/delete-account", response_model=DeleteAccountResponse)
+def delete_current_account(
+    payload: DeleteAccountRequest,
+    current_user: AuthenticatedUser = Depends(get_current_user),
+    account_deletion_service: AccountDeletionService = Depends(
+        get_account_deletion_service
+    ),
+) -> DeleteAccountResponse:
+    result = account_deletion_service.delete_current_account(
+        current_user=current_user,
+        confirmation_text=payload.confirmation_text,
+    )
+    return DeleteAccountResponse(
+        deleted=True,
+        redirect_to=result.redirect_to,
     )

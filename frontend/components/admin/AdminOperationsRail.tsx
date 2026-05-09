@@ -58,14 +58,16 @@ export function AdminOperationsRail({
 
   const limitRows = [
     {
-      label: "Mensile",
-      value: summary.emailLimitOverview.monthlySent,
-      limit: summary.emailLimitOverview.monthlyLimit,
+      label: "Clienti configurati",
+      value: summary.emailLimitOverview.configuredClients,
+      limit: summary.totalClients,
     },
     {
-      label: "Giornaliero",
-      value: summary.emailLimitOverview.dailySent,
-      limit: summary.emailLimitOverview.dailyLimit,
+      label: "Campagne massime aggregate",
+      value: summary.emailLimitOverview.totalMaxCampaigns,
+      limit:
+        summary.emailLimitOverview.totalMaxCampaigns +
+        summary.emailLimitOverview.unconfiguredClients,
     },
   ];
 
@@ -87,7 +89,7 @@ export function AdminOperationsRail({
 
       <AdminSurface
         title="Capacita email"
-        description="Saturazione mostrata solo per i limiti disponibili."
+        description="Sintesi dei limiti attivi secondo il modello per campagna."
       >
         <div className="admin-progress-stack">
           {limitRows.map((row) => (
@@ -97,7 +99,7 @@ export function AdminOperationsRail({
                 <strong>
                   {row.limit > 0
                     ? `${row.value.toLocaleString()} / ${row.limit.toLocaleString()}`
-                    : "Non disponibile"}
+                    : row.value.toLocaleString()}
                 </strong>
               </div>
               <div className="admin-progress">
@@ -108,6 +110,11 @@ export function AdminOperationsRail({
               </div>
             </div>
           ))}
+        </div>
+        <div className="admin-empty-state">
+          {summary.emailLimitOverview.totalEmailLimitPerCampaign > 0
+            ? `${summary.emailLimitOverview.totalEmailLimitPerCampaign.toLocaleString()} email per campagna aggregate configurate.`
+            : "Nessun limite email per campagna configurato nel dataset corrente."}
         </div>
       </AdminSurface>
 

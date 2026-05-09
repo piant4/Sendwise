@@ -140,6 +140,8 @@ export interface AdminCampaignStatusCounts {
   paused: number;
   blocked: number;
   draft: number;
+  completed: number;
+  failed: number;
 }
 
 export interface AdminClientStatusCounts {
@@ -151,27 +153,32 @@ export interface AdminClientStatusCounts {
 }
 
 export interface AdminEmailLimitOverview {
-  monthlyLimit: number;
-  monthlySent: number;
-  dailyLimit: number;
-  dailySent: number;
+  configuredClients: number;
+  unconfiguredClients: number;
+  totalEmailLimitPerCampaign: number;
+  totalMaxCampaigns: number;
 }
 
 export interface AdminRecentCampaign {
   id: string;
+  clientId: string;
   clientName: string;
   campaignName: string;
-  subject: string;
+  subject?: string | null;
   status: CampaignStatus;
-  updatedAtLabel: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface AdminRecentBlockedSend {
   id: string;
+  clientId: string;
   clientName: string;
   campaignName: string;
+  campaignId?: string | null;
   reason: string;
-  createdAtLabel: string;
+  decision: SendDecision;
+  createdAt: string;
 }
 
 export interface AdminSystemStatus {
@@ -192,6 +199,42 @@ export interface AdminOverviewSummary {
   recentCampaigns: AdminRecentCampaign[];
   recentBlockedSends: AdminRecentBlockedSend[];
   systemStatus: AdminSystemStatus;
+}
+
+export interface AdminCampaignSummary {
+  id: string;
+  clientId: string;
+  clientName: string;
+  clientEmail: string;
+  name: string;
+  status: CampaignStatus;
+  subject?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  blockedSendsCount: number;
+}
+
+export interface AdminEmailLimitRow {
+  clientId: string;
+  clientName: string;
+  clientEmail: string;
+  clientStatus: ClientStatus;
+  accessStatus?: ClientAccessSummary["status"] | null;
+  invitationStatus?: ClientAccessSummary["invitation_status"] | null;
+  emailLimitPerCampaign?: number | null;
+  maxCampaigns?: number | null;
+  updatedAt: string;
+}
+
+export interface AdminEmailLimitsSummary {
+  totalClients: number;
+  configuredClients: number;
+  unconfiguredClients: number;
+}
+
+export interface AdminEmailLimitsResponse {
+  summary: AdminEmailLimitsSummary;
+  rows: AdminEmailLimitRow[];
 }
 
 export interface ClientOverviewSummary {

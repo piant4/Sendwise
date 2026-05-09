@@ -10,7 +10,7 @@ export function AdminDashboardHeader({
   summary,
   isMockMode,
 }: AdminDashboardHeaderProps) {
-  const environmentLabel = isMockMode ? "Ambiente locale" : "API frontend";
+  const environmentLabel = isMockMode ? "Mock locale" : "Backend business";
   const summaryItems = [
     {
       label: "Clienti attivi",

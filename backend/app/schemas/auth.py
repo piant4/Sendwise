@@ -17,3 +17,14 @@ class CompleteClientOnboardingRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     personal_name: str
+
+
+class DeleteAccountRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    confirmation_text: str
+
+
+class DeleteAccountResponse(BaseModel):
+    deleted: bool
+    redirect_to: str

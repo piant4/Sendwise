@@ -1,143 +1,199 @@
 "use client";
 
 import Link from "next/link";
-import { useUser } from "@clerk/nextjs";
-import {
-  ArrowRight,
-  KeyRound,
-  LogOut,
-  Mail,
-  ShieldCheck,
-  UserRound,
-} from "lucide-react";
+import { useState } from "react";
+import { useSessionList, useUser } from "@clerk/nextjs";
+import { ArrowLeft, ArrowUpRight, LogOut } from "lucide-react";
+import type { AuthMeResponse } from "@/lib/api";
+import { AccountDeleteSection } from "./AccountDeleteSection";
+import { AccountSettingsSheet, type AccountSettingsSheetMode } from "./AccountSettingsSheet";
 import { ClerkSignOutButton } from "./ClerkSignOutButton";
 
-function getAccountLabel(fullName: string | null | undefined, email: string) {
-  if (fullName && fullName.trim().length > 0) {
-    return fullName.trim();
-  }
-
-  return email || "Account";
-}
-
-function getAccountInitials(fullName: string | null | undefined, email: string) {
-  const source =
-    fullName && fullName.trim().length > 0 ? fullName : email || "Account";
-  const parts = source
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean);
-
-  if (parts.length >= 2) {
-    return `${parts[0][0] ?? ""}${parts[1][0] ?? ""}`.toUpperCase();
-  }
-
-  return source.slice(0, 2).toUpperCase();
-}
-
 interface AccountOverviewPanelProps {
-  accountContextLabel: string;
+  authState: AuthMeResponse | null;
+  backHref: string;
+}
+
+interface SettingsRowProps {
+  actionLabel: string;
+  description: string;
+  disabled?: boolean;
+  label: string;
+  onAction?: () => void;
+  value: string;
+}
+
+function SettingsRow({
+  actionLabel,
+  description,
+  disabled = false,
+  label,
+  onAction,
+  value,
+}: SettingsRowProps) {
+  return (
+    <div className="settings-row">
+      <div className="settings-row__content">
+        <span className="settings-row__label">{label}</span>
+        <strong className="settings-row__value">{value}</strong>
+        <p className="settings-row__description">{description}</p>
+      </div>
+
+      <button
+        type="button"
+        className="settings-row__action"
+        disabled={disabled}
+        onClick={onAction}
+      >
+        {actionLabel}
+        <ArrowUpRight aria-hidden="true" />
+      </button>
+    </div>
+  );
 }
 
 export function AccountOverviewPanel({
-  accountContextLabel,
+  authState,
+  backHref,
 }: AccountOverviewPanelProps) {
   const { isLoaded, isSignedIn, user } = useUser();
+  const { isLoaded: sessionsLoaded, sessions } = useSessionList();
+  const [activeSheet, setActiveSheet] = useState<AccountSettingsSheetMode | null>(
+    null,
+  );
 
+  const managementDisabled = !isLoaded || !isSignedIn;
   const email = user?.primaryEmailAddress?.emailAddress ?? "Nessuna email";
-  const label = getAccountLabel(user?.fullName, email);
-  const initials = getAccountInitials(user?.fullName, email);
-  const securityHint = isLoaded && isSignedIn
-    ? "Password, MFA e sessioni restano gestite in modo sicuro da Clerk."
-    : "Caricamento delle impostazioni protette in corso.";
+  const fullName = user?.fullName?.trim() || "Nome non impostato";
+  const passwordState = isLoaded && isSignedIn
+    ? user.passwordEnabled
+      ? "Configurata"
+      : "Da impostare"
+    : "Caricamento";
+  const mfaState = isLoaded && isSignedIn
+    ? user.twoFactorEnabled
+      ? "Attiva"
+      : "Disattiva"
+    : "Caricamento";
+  const sessionsState = sessionsLoaded
+    ? `${sessions.length} session${sessions.length === 1 ? "e" : "i"} disponibile${sessions.length === 1 ? "" : "i"} su questo dispositivo`
+    : "Caricamento sessioni";
+  const backLabel =
+    authState?.access_type === "platform_admin"
+      ? "Torna alla dashboard admin"
+      : "Torna alla dashboard";
 
   return (
-    <div className="account-stack">
-      <section className="account-surface">
-        <div className="account-surface__header">
-          <span className="account-surface__badge">Centro account</span>
-          <div className="account-surface__copy">
-            <h2>Impostazioni essenziali</h2>
-            <p>
-              Gestisci il tuo accesso Sendwise con una UI piu pulita. Le operazioni
-              sensibili continuano a essere eseguite tramite Clerk.
-            </p>
+    <>
+      <section className="settings-shell" aria-label="Impostazioni account">
+        <header className="settings-header">
+          <Link href={backHref} className="settings-back">
+            <ArrowLeft aria-hidden="true" />
+            {backLabel}
+          </Link>
+
+          <div className="settings-header__copy">
+            <h1>Impostazioni</h1>
           </div>
-        </div>
+        </header>
 
-        <div className="account-actions-grid">
-          <article className="account-action-card account-action-card--identity">
-            <div className="account-action-card__icon" aria-hidden="true">
-              <UserRound />
+        <div className="settings-sections">
+          <section className="settings-section" aria-labelledby="settings-profile">
+            <div className="settings-section__header">
+              <h2 id="settings-profile">Profilo</h2>
             </div>
-            <div className="account-action-card__body">
-              <span className="account-action-card__eyebrow">Profilo</span>
-              <h3>{isLoaded && isSignedIn ? label : "Caricamento account"}</h3>
-              <p>{email}</p>
+
+            <div className="settings-section__body">
+              <SettingsRow
+                actionLabel="Modifica"
+                description="Aggiorna il nome salvato in Clerk senza uscire da Sendwise."
+                disabled={managementDisabled}
+                label="Nome"
+                onAction={() => {
+                  setActiveSheet("name");
+                }}
+                value={fullName}
+              />
+              <SettingsRow
+                actionLabel="Gestisci"
+                description="Controlla email principale e identita direttamente dentro il pannello account."
+                disabled={managementDisabled}
+                label="Email"
+                onAction={() => {
+                  setActiveSheet("email");
+                }}
+                value={email}
+              />
             </div>
-            <div className="account-identity">
-              <div className="account-identity__avatar" aria-hidden="true">
-                {initials}
+          </section>
+
+          <section className="settings-section" aria-labelledby="settings-security">
+            <div className="settings-section__header">
+              <h2 id="settings-security">Sicurezza</h2>
+            </div>
+
+            <div className="settings-section__body">
+              <SettingsRow
+                actionLabel="Apri"
+                description="Aggiorna la password nel pannello sicurezza contenuto qui dentro."
+                disabled={managementDisabled}
+                label="Password"
+                onAction={() => {
+                  setActiveSheet("password");
+                }}
+                value={passwordState}
+              />
+              <SettingsRow
+                actionLabel="Apri"
+                description="Gestisci autenticazione a due fattori e codici di recupero."
+                disabled={managementDisabled}
+                label="MFA"
+                onAction={() => {
+                  setActiveSheet("mfa");
+                }}
+                value={mfaState}
+              />
+              <SettingsRow
+                actionLabel="Apri"
+                description="Verifica sessioni attive e dispositivi recenti disponibili in Clerk."
+                disabled={managementDisabled}
+                label="Sessioni e dispositivi"
+                onAction={() => {
+                  setActiveSheet("sessions");
+                }}
+                value={sessionsState}
+              />
+            </div>
+          </section>
+
+          <section className="settings-section settings-section--account" aria-labelledby="settings-account">
+            <div className="settings-section__header">
+              <h2 id="settings-account">Account</h2>
+            </div>
+
+            <div className="settings-section__body">
+              <div className="settings-row">
+                <div className="settings-row__content">
+                  <span className="settings-row__label">Sessione</span>
+                  <strong className="settings-row__value">Esci da Sendwise</strong>
+                  <p className="settings-row__description">
+                    Chiudi la sessione corrente e torna all&apos;accesso pubblico.
+                  </p>
+                </div>
+
+                <ClerkSignOutButton className="settings-row__action settings-row__action--danger">
+                  <LogOut aria-hidden="true" />
+                  Esci
+                </ClerkSignOutButton>
               </div>
-              <div className="account-identity__meta">
-                <span>Contesto</span>
-                <strong>{accountContextLabel}</strong>
-              </div>
-            </div>
-          </article>
 
-          <article className="account-action-card">
-            <div className="account-action-card__icon" aria-hidden="true">
-              <Mail />
+              <AccountDeleteSection authState={authState} />
             </div>
-            <div className="account-action-card__body">
-              <span className="account-action-card__eyebrow">Email e accesso</span>
-              <h3>Gestisci profilo ed email</h3>
-              <p>
-                Aggiorna i dati principali e i metodi di accesso collegati al tuo
-                account.
-              </p>
-            </div>
-            <Link href="/account/account" className="account-primary-action">
-              Gestisci email
-              <ArrowRight aria-hidden="true" />
-            </Link>
-          </article>
-
-          <article className="account-action-card">
-            <div className="account-action-card__icon" aria-hidden="true">
-              <ShieldCheck />
-            </div>
-            <div className="account-action-card__body">
-              <span className="account-action-card__eyebrow">Sicurezza</span>
-              <h3>Password, MFA e dispositivi</h3>
-              <p>{securityHint}</p>
-            </div>
-            <Link href="/account/security" className="account-primary-action">
-              Sicurezza account
-              <ArrowRight aria-hidden="true" />
-            </Link>
-          </article>
-
-          <article className="account-action-card">
-            <div className="account-action-card__icon" aria-hidden="true">
-              <KeyRound />
-            </div>
-            <div className="account-action-card__body">
-              <span className="account-action-card__eyebrow">Sessione</span>
-              <h3>Esci in modo sicuro</h3>
-              <p>
-                Chiudi la sessione corrente e torna alla schermata di accesso
-                Sendwise.
-              </p>
-            </div>
-            <ClerkSignOutButton className="account-primary-action account-primary-action--danger">
-              <LogOut aria-hidden="true" />
-              Esci
-            </ClerkSignOutButton>
-          </article>
+          </section>
         </div>
       </section>
-    </div>
+
+      <AccountSettingsSheet mode={activeSheet} onOpenChange={setActiveSheet} />
+    </>
   );
 }

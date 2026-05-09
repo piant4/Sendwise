@@ -9,10 +9,12 @@ function formatPercentage(value: number): string {
 }
 
 export function AdminKpiGrid({ summary }: AdminKpiGridProps) {
-  const monthlyLimit = summary.emailLimitOverview.monthlyLimit;
-  const monthlySent = summary.emailLimitOverview.monthlySent;
-  const monthlyUsage =
-    monthlyLimit > 0 ? Math.min((monthlySent / monthlyLimit) * 100, 100) : 0;
+  const configuredClients = summary.emailLimitOverview.configuredClients;
+  const totalClients = summary.totalClients;
+  const configuredCoverage =
+    totalClients > 0
+      ? Math.min((configuredClients / totalClients) * 100, 100)
+      : 0;
 
   const cards = [
     {
@@ -37,17 +39,11 @@ export function AdminKpiGrid({ summary }: AdminKpiGridProps) {
       note: "Le decisioni di invio restano presidiate dal backend.",
     },
     {
-      title: "Limite email mensile",
-      value:
-        monthlyLimit > 0
-          ? `${formatPercentage(monthlyUsage)}`
-          : "Non connesso",
+      title: "Limiti email configurati",
+      value: `${formatPercentage(configuredCoverage)}`,
       tone: "limits",
-      detail:
-        monthlyLimit > 0
-          ? `${monthlySent.toLocaleString()} / ${monthlyLimit.toLocaleString()}`
-          : "Capienza non ancora esposta dal boundary corrente",
-      note: "Uso aggregato mostrato solo se disponibile.",
+      detail: `${configuredClients.toLocaleString()} / ${totalClients.toLocaleString()} clienti con limiti attivi`,
+      note: `${summary.emailLimitOverview.totalMaxCampaigns.toLocaleString()} campagne massime aggregate disponibili.`,
     },
   ];
 

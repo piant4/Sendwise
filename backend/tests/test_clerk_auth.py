@@ -1,5 +1,6 @@
 import json
 import time
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Optional
 
@@ -14,6 +15,7 @@ from app.main import app
 from app.repositories.auth_users import _build_auth_user_repository
 from app.repositories.client_access import ClientAccessRecord, ClientAccessRepository
 from app.repositories.clients import ClientRecord, ClientRepository
+from app.services.auth import AccountDeletionService, ClerkUserDeletionGateway, get_account_deletion_service
 from app.services.client_access import (
     ClerkInvitationGateway,
     ClerkInvitationResult,
@@ -39,10 +41,45 @@ class FakeJwksClient:
         return FakeSigningKey(self._public_key)
 
 
+@dataclass
+class FakeAdminCampaignRecord:
+    id: str
+    client_id: str
+    client_name: str
+    client_email: str
+    name: str
+    status: str
+    subject: Optional[str]
+    created_at: datetime
+    updated_at: datetime
+    blocked_sends_count: int = 0
+
+
+@dataclass
+class FakeAdminBlockedSendRecord:
+    id: str
+    client_id: str
+    client_name: str
+    campaign_id: Optional[str]
+    campaign_name: str
+    reason: str
+    decision: str
+    created_at: datetime
+
+
 class FakeClientRepository(ClientRepository):
-    def __init__(self, records: Optional[list[ClientRecord]] = None) -> None:
+    def __init__(
+        self,
+        records: Optional[list[ClientRecord]] = None,
+        *,
+        admin_campaign_records: Optional[list[FakeAdminCampaignRecord]] = None,
+        admin_blocked_send_records: Optional[list[FakeAdminBlockedSendRecord]] = None,
+    ) -> None:
         self._records = {record.id: record for record in records or []}
+        self._admin_campaign_records = admin_campaign_records or []
+        self._admin_blocked_send_records = admin_blocked_send_records or []
         self._counter = len(self._records)
+        self.deleted_client_ids: list[str] = []
 
     def list_clients(self) -> list[ClientRecord]:
         return sorted(
@@ -116,6 +153,40 @@ class FakeClientRepository(ClientRepository):
         )
         self._records[client_id] = updated
         return updated
+
+    def list_admin_campaigns(self) -> list[FakeAdminCampaignRecord]:
+        return sorted(
+            self._admin_campaign_records,
+            key=lambda item: (item.updated_at, item.id),
+            reverse=True,
+        )
+
+    def list_recent_admin_blocked_sends(
+        self,
+        *,
+        limit: int,
+    ) -> list[FakeAdminBlockedSendRecord]:
+        return sorted(
+            self._admin_blocked_send_records,
+            key=lambda item: (item.created_at, item.id),
+            reverse=True,
+        )[:limit]
+
+    def count_admin_blocked_sends_since(self, started_at: datetime) -> int:
+        return sum(
+            1
+            for record in self._admin_blocked_send_records
+            if record.created_at >= started_at
+        )
+
+    def delete_client_account(self, client_id: str) -> bool:
+        existing = self._records.pop(client_id, None)
+
+        if existing is None:
+            return False
+
+        self.deleted_client_ids.append(client_id)
+        return True
 
 
 class FakeClientAccessRepository(ClientAccessRepository):
@@ -261,6 +332,15 @@ class FakeClientAccessRepository(ClientAccessRepository):
         self._records[record.id] = record
         return record
 
+    def delete_by_client_id(self, client_id: str) -> bool:
+        existing = self.get_by_client_id(client_id)
+
+        if existing is None:
+            return False
+
+        del self._records[existing.id]
+        return True
+
 
 class FakeClerkInvitationGateway(ClerkInvitationGateway):
     def __init__(self) -> None:
@@ -276,6 +356,14 @@ class FakeClerkInvitationGateway(ClerkInvitationGateway):
         self._counter += 1
         self.calls.append({"email": email, "redirect_url": redirect_url})
         return ClerkInvitationResult(id=f"inv_{self._counter}", status="pending")
+
+
+class FakeClerkUserDeletionGateway(ClerkUserDeletionGateway):
+    def __init__(self) -> None:
+        self.deleted_user_ids: list[str] = []
+
+    def delete_user(self, clerk_user_id: str) -> None:
+        self.deleted_user_ids.append(clerk_user_id)
 
 
 @pytest.fixture(autouse=True)
@@ -407,15 +495,80 @@ def build_access_record(
     )
 
 
+def build_admin_campaign_record(
+    *,
+    campaign_id: str,
+    client_id: str,
+    client_name: str,
+    client_email: str,
+    name: str,
+    status: str,
+    subject: Optional[str],
+    created_at: Optional[datetime] = None,
+    updated_at: Optional[datetime] = None,
+    blocked_sends_count: int = 0,
+) -> FakeAdminCampaignRecord:
+    created = created_at or datetime(2026, 5, 8, 9, 0, tzinfo=timezone.utc)
+    updated = updated_at or created
+    return FakeAdminCampaignRecord(
+        id=campaign_id,
+        client_id=client_id,
+        client_name=client_name,
+        client_email=client_email,
+        name=name,
+        status=status,
+        subject=subject,
+        created_at=created,
+        updated_at=updated,
+        blocked_sends_count=blocked_sends_count,
+    )
+
+
+def build_admin_blocked_send_record(
+    *,
+    blocked_send_id: str,
+    client_id: str,
+    client_name: str,
+    campaign_id: Optional[str],
+    campaign_name: str,
+    reason: str,
+    decision: str = "blocked",
+    created_at: Optional[datetime] = None,
+) -> FakeAdminBlockedSendRecord:
+    return FakeAdminBlockedSendRecord(
+        id=blocked_send_id,
+        client_id=client_id,
+        client_name=client_name,
+        campaign_id=campaign_id,
+        campaign_name=campaign_name,
+        reason=reason,
+        decision=decision,
+        created_at=created_at or datetime.now(timezone.utc),
+    )
+
+
 def install_test_dependencies(
     *,
     client_records: Optional[list[ClientRecord]] = None,
     access_records: Optional[list[ClientAccessRecord]] = None,
+    admin_campaign_records: Optional[list[FakeAdminCampaignRecord]] = None,
+    admin_blocked_send_records: Optional[list[FakeAdminBlockedSendRecord]] = None,
     invitation_gateway: Optional[FakeClerkInvitationGateway] = None,
-) -> tuple[FakeClientRepository, FakeClientAccessRepository, FakeClerkInvitationGateway]:
-    client_repository = FakeClientRepository(client_records)
+    deletion_gateway: Optional[FakeClerkUserDeletionGateway] = None,
+) -> tuple[
+    FakeClientRepository,
+    FakeClientAccessRepository,
+    FakeClerkInvitationGateway,
+    FakeClerkUserDeletionGateway,
+]:
+    client_repository = FakeClientRepository(
+        client_records,
+        admin_campaign_records=admin_campaign_records,
+        admin_blocked_send_records=admin_blocked_send_records,
+    )
     client_access_repository = FakeClientAccessRepository(access_records)
     gateway = invitation_gateway or FakeClerkInvitationGateway()
+    clerk_user_deletion_gateway = deletion_gateway or FakeClerkUserDeletionGateway()
     settings = get_settings()
     clients_service = ClientsService(client_repository)
     client_access_service = ClientAccessService(
@@ -424,10 +577,23 @@ def install_test_dependencies(
         invitation_gateway=gateway,
         settings=settings,
     )
+    account_deletion_service = AccountDeletionService(
+        client_repository=client_repository,
+        client_access_repository=client_access_repository,
+        clerk_user_gateway=clerk_user_deletion_gateway,
+    )
 
     app.dependency_overrides[get_clients_service] = lambda: clients_service
     app.dependency_overrides[get_client_access_service] = lambda: client_access_service
-    return client_repository, client_access_repository, gateway
+    app.dependency_overrides[get_account_deletion_service] = (
+        lambda: account_deletion_service
+    )
+    return (
+        client_repository,
+        client_access_repository,
+        gateway,
+        clerk_user_deletion_gateway,
+    )
 
 
 def test_health_is_public(client: TestClient) -> None:
@@ -533,7 +699,7 @@ def test_pending_invited_client_claims_access_on_first_valid_login(
         status="invited",
         invitation_status="pending",
     )
-    _, access_repository, _ = install_test_dependencies(
+    _, access_repository, _, _ = install_test_dependencies(
         client_records=[client_record],
         access_records=[access_record],
     )
@@ -607,7 +773,7 @@ def test_complete_onboarding_activates_client_access(
         status="invited",
         invitation_status="accepted",
     )
-    client_repository, access_repository, _ = install_test_dependencies(
+    client_repository, access_repository, _, _ = install_test_dependencies(
         client_records=[client_record],
         access_records=[access_record],
     )
@@ -818,6 +984,190 @@ def test_platform_admin_can_access_admin_endpoint(
     assert response.status_code == 200
 
 
+def test_platform_admin_receives_backend_owned_overview_payload(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    signing_keypair: rsa.RSAPrivateKey,
+) -> None:
+    set_auth_mappings(
+        monkeypatch,
+        {
+            "user_admin": {
+                "email": "admin@sendwise.test",
+                "access_type": "platform_admin",
+                "status": "active",
+            }
+        },
+    )
+    first_client = build_client_record(
+        client_id="client_alpha",
+        email="alpha@example.test",
+        personal_name="Alpha",
+        status="active",
+        email_limit_per_campaign=2000,
+        max_campaigns=4,
+    )
+    second_client = build_client_record(
+        client_id="client_beta",
+        email="beta@example.test",
+        personal_name="Beta",
+        status="trial",
+    )
+    install_test_dependencies(
+        client_records=[first_client, second_client],
+        access_records=[
+            build_access_record(client_id=first_client.id, email=first_client.email),
+            build_access_record(
+                access_id="access_beta",
+                client_id=second_client.id,
+                email=second_client.email,
+                clerk_user_id=None,
+                status="invited",
+                invitation_status="pending",
+            ),
+        ],
+        admin_campaign_records=[
+            build_admin_campaign_record(
+                campaign_id="campaign_alpha_ready",
+                client_id=first_client.id,
+                client_name="Alpha",
+                client_email=first_client.email,
+                name="Alpha Ready",
+                status="ready",
+                subject="Alpha launch",
+                updated_at=datetime(2026, 5, 9, 10, 0, tzinfo=timezone.utc),
+            ),
+            build_admin_campaign_record(
+                campaign_id="campaign_beta_paused",
+                client_id=second_client.id,
+                client_name="Beta",
+                client_email=second_client.email,
+                name="Beta Paused",
+                status="paused",
+                subject=None,
+                updated_at=datetime(2026, 5, 8, 10, 0, tzinfo=timezone.utc),
+                blocked_sends_count=1,
+            ),
+        ],
+        admin_blocked_send_records=[
+            build_admin_blocked_send_record(
+                blocked_send_id="blocked_today",
+                client_id=second_client.id,
+                client_name="Beta",
+                campaign_id="campaign_beta_paused",
+                campaign_name="Beta Paused",
+                reason="Guard prevented send.",
+                created_at=datetime.now(timezone.utc),
+            )
+        ],
+    )
+    token = make_token(signing_keypair, clerk_user_id="user_admin")
+
+    response = client.get("/admin/overview", headers=auth_header(token))
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["total_clients"] == 2
+    assert payload["active_campaigns"] == 1
+    assert payload["blocked_sends_today"] == 1
+    assert payload["client_status_counts"] == {
+        "trial": 1,
+        "active": 1,
+        "paused": 0,
+        "blocked": 0,
+        "archived": 0,
+    }
+    assert payload["campaign_status_counts"] == {
+        "active": 1,
+        "paused": 1,
+        "blocked": 0,
+        "draft": 0,
+        "completed": 0,
+        "failed": 0,
+    }
+    assert payload["email_limit_overview"] == {
+        "configured_clients": 1,
+        "unconfigured_clients": 1,
+        "total_email_limit_per_campaign": 2000,
+        "total_max_campaigns": 4,
+    }
+    assert payload["recent_campaigns"][0]["client_name"] == "Alpha"
+    assert payload["recent_blocked_sends"][0]["campaign_name"] == "Beta Paused"
+    assert payload["system_status"] == {
+        "api": "ok",
+        "mock_data": "disabled",
+        "sending": "disabled",
+        "mailpit": "dev_only",
+    }
+
+
+def test_platform_admin_campaigns_are_loaded_from_cross_client_backend_data(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    signing_keypair: rsa.RSAPrivateKey,
+) -> None:
+    set_auth_mappings(
+        monkeypatch,
+        {
+            "user_admin": {
+                "email": "admin@sendwise.test",
+                "access_type": "platform_admin",
+                "status": "active",
+            }
+        },
+    )
+    first_client = build_client_record(
+        client_id="client_alpha",
+        email="alpha@example.test",
+        personal_name="Alpha",
+    )
+    second_client = build_client_record(
+        client_id="client_beta",
+        email="beta@example.test",
+        personal_name="Beta",
+    )
+    install_test_dependencies(
+        client_records=[first_client, second_client],
+        admin_campaign_records=[
+            build_admin_campaign_record(
+                campaign_id="campaign_beta_running",
+                client_id=second_client.id,
+                client_name="Beta",
+                client_email=second_client.email,
+                name="Beta Running",
+                status="running",
+                subject="Operational send",
+                updated_at=datetime(2026, 5, 9, 12, 0, tzinfo=timezone.utc),
+                blocked_sends_count=2,
+            ),
+            build_admin_campaign_record(
+                campaign_id="campaign_alpha_draft",
+                client_id=first_client.id,
+                client_name="Alpha",
+                client_email=first_client.email,
+                name="Alpha Draft",
+                status="draft",
+                subject=None,
+                updated_at=datetime(2026, 5, 8, 12, 0, tzinfo=timezone.utc),
+            ),
+        ],
+    )
+    token = make_token(signing_keypair, clerk_user_id="user_admin")
+
+    response = client.get("/admin/campaigns", headers=auth_header(token))
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert [item["id"] for item in payload] == [
+        "campaign_beta_running",
+        "campaign_alpha_draft",
+    ]
+    assert payload[0]["client_name"] == "Beta"
+    assert payload[0]["client_email"] == "beta@example.test"
+    assert payload[0]["blocked_sends_count"] == 2
+    assert payload[1]["subject"] is None
+
+
 def test_platform_admin_can_call_invite_endpoint(
     client: TestClient,
     monkeypatch: pytest.MonkeyPatch,
@@ -833,7 +1183,7 @@ def test_platform_admin_can_call_invite_endpoint(
             }
         },
     )
-    _, access_repository, gateway = install_test_dependencies()
+    _, access_repository, gateway, _ = install_test_dependencies()
     token = make_token(signing_keypair, clerk_user_id="user_admin")
 
     response = client.post(
@@ -898,7 +1248,7 @@ def test_platform_admin_can_create_invite_with_email_only(
             }
         },
     )
-    client_repository, access_repository, _ = install_test_dependencies()
+    client_repository, access_repository, _, _ = install_test_dependencies()
     token = make_token(signing_keypair, clerk_user_id="user_admin")
 
     response = client.post(
@@ -994,7 +1344,7 @@ def test_invite_endpoint_reuses_fixed_portal_slug_on_reinvite(
         status="invited",
         invitation_status="pending",
     )
-    _, access_repository, gateway = install_test_dependencies(
+    _, access_repository, gateway, _ = install_test_dependencies(
         client_records=[existing_client],
         access_records=[existing_access],
     )
@@ -1046,7 +1396,7 @@ def test_admin_client_detail_and_limits_update_work(
         client_id=client_record.id,
         email=client_record.email,
     )
-    client_repository, _, _ = install_test_dependencies(
+    client_repository, _, _, _ = install_test_dependencies(
         client_records=[client_record],
         access_records=[access_record],
     )
@@ -1073,6 +1423,90 @@ def test_admin_client_detail_and_limits_update_work(
     assert updated_client is not None
     assert updated_client.email_limit_per_campaign == 1200
     assert updated_client.max_campaigns == 9
+
+
+def test_platform_admin_email_limits_are_cross_client_and_persist_updates(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    signing_keypair: rsa.RSAPrivateKey,
+) -> None:
+    set_auth_mappings(
+        monkeypatch,
+        {
+            "user_admin": {
+                "email": "admin@sendwise.test",
+                "access_type": "platform_admin",
+                "status": "active",
+            }
+        },
+    )
+    first_client = build_client_record(
+        client_id="client_alpha",
+        email="alpha@example.test",
+        personal_name="Alpha",
+        email_limit_per_campaign=1500,
+        max_campaigns=3,
+    )
+    second_client = build_client_record(
+        client_id="client_beta",
+        email="beta@example.test",
+        personal_name="Beta",
+    )
+    install_test_dependencies(
+        client_records=[first_client, second_client],
+        access_records=[
+            build_access_record(client_id=first_client.id, email=first_client.email),
+            build_access_record(
+                access_id="access_beta",
+                client_id=second_client.id,
+                email=second_client.email,
+                clerk_user_id=None,
+                status="invited",
+                invitation_status="pending",
+            ),
+        ],
+    )
+    token = make_token(signing_keypair, clerk_user_id="user_admin")
+
+    list_before_response = client.get("/admin/email-limits", headers=auth_header(token))
+    update_response = client.patch(
+        f"/admin/clients/{second_client.id}",
+        headers=auth_header(token),
+        json={"email_limit_per_campaign": 4200, "max_campaigns": 7},
+    )
+    list_after_response = client.get("/admin/email-limits", headers=auth_header(token))
+
+    assert list_before_response.status_code == 200
+    before_payload = list_before_response.json()
+    assert before_payload["summary"] == {
+        "total_clients": 2,
+        "configured_clients": 1,
+        "unconfigured_clients": 1,
+    }
+    alpha_before = next(
+        row for row in before_payload["rows"] if row["client_id"] == first_client.id
+    )
+    beta_before = next(
+        row for row in before_payload["rows"] if row["client_id"] == second_client.id
+    )
+    assert alpha_before["email_limit_per_campaign"] == 1500
+    assert beta_before["email_limit_per_campaign"] is None
+
+    assert update_response.status_code == 200
+    assert list_after_response.status_code == 200
+    after_payload = list_after_response.json()
+    beta_row = next(
+        row for row in after_payload["rows"] if row["client_id"] == second_client.id
+    )
+    assert beta_row["client_name"] == "Beta"
+    assert beta_row["access_status"] == "invited"
+    assert beta_row["email_limit_per_campaign"] == 4200
+    assert beta_row["max_campaigns"] == 7
+    assert after_payload["summary"] == {
+        "total_clients": 2,
+        "configured_clients": 2,
+        "unconfigured_clients": 0,
+    }
 
 
 def test_platform_admin_update_rejects_company_name_field(
@@ -1126,6 +1560,40 @@ def test_client_cannot_update_admin_client_limits(
     assert response.status_code == 403
 
 
+def test_platform_admin_limit_update_rejects_negative_values(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    signing_keypair: rsa.RSAPrivateKey,
+) -> None:
+    set_auth_mappings(
+        monkeypatch,
+        {
+            "user_admin": {
+                "email": "admin@sendwise.test",
+                "access_type": "platform_admin",
+                "status": "active",
+            }
+        },
+    )
+    client_record = build_client_record()
+    install_test_dependencies(
+        client_records=[client_record],
+        access_records=[build_access_record(client_id=client_record.id)],
+    )
+    token = make_token(signing_keypair, clerk_user_id="user_admin")
+
+    response = client.patch(
+        f"/admin/clients/{client_record.id}",
+        headers=auth_header(token),
+        json={"email_limit_per_campaign": -1, "max_campaigns": -2},
+    )
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == (
+        "email_limit_per_campaign must be greater than or equal to zero."
+    )
+
+
 def test_platform_admin_can_revoke_client_access(
     client: TestClient,
     monkeypatch: pytest.MonkeyPatch,
@@ -1143,7 +1611,7 @@ def test_platform_admin_can_revoke_client_access(
     )
     client_record = build_client_record()
     access_record = build_access_record(client_id=client_record.id, email=client_record.email)
-    _, access_repository, _ = install_test_dependencies(
+    _, access_repository, _, _ = install_test_dependencies(
         client_records=[client_record],
         access_records=[access_record],
     )
@@ -1180,7 +1648,7 @@ def test_platform_admin_can_archive_client_and_access(
     )
     client_record = build_client_record()
     access_record = build_access_record(client_id=client_record.id, email=client_record.email)
-    client_repository, access_repository, _ = install_test_dependencies(
+    client_repository, access_repository, _, _ = install_test_dependencies(
         client_records=[client_record],
         access_records=[access_record],
     )
@@ -1226,7 +1694,7 @@ def test_reinvite_access_endpoint_preserves_portal_slug(
         status="invited",
         invitation_status="pending",
     )
-    _, access_repository, _ = install_test_dependencies(
+    _, access_repository, _, _ = install_test_dependencies(
         client_records=[existing_client],
         access_records=[existing_access],
     )
@@ -1242,6 +1710,97 @@ def test_reinvite_access_endpoint_preserves_portal_slug(
     stored_access = access_repository.get_by_client_id(existing_client.id)
     assert stored_access is not None
     assert stored_access.portal_slug == "y" * 32
+
+
+def test_client_delete_account_requires_strong_confirmation(
+    client: TestClient,
+    signing_keypair: rsa.RSAPrivateKey,
+) -> None:
+    client_record = build_client_record()
+    access_record = build_access_record(client_id=client_record.id, email=client_record.email)
+    client_repository, access_repository, _, deletion_gateway = install_test_dependencies(
+        client_records=[client_record],
+        access_records=[access_record],
+    )
+    token = make_token(
+        signing_keypair,
+        clerk_user_id="user_client",
+        email=client_record.email,
+    )
+
+    response = client.post(
+        "/auth/delete-account",
+        headers=auth_header(token),
+        json={"confirmation_text": "annulla"},
+    )
+
+    assert response.status_code == 422
+    assert client_repository.get_by_id(client_record.id) is not None
+    assert access_repository.get_by_client_id(client_record.id) is not None
+    assert deletion_gateway.deleted_user_ids == []
+
+
+def test_active_client_can_delete_account_permanently(
+    client: TestClient,
+    signing_keypair: rsa.RSAPrivateKey,
+) -> None:
+    client_record = build_client_record()
+    access_record = build_access_record(client_id=client_record.id, email=client_record.email)
+    client_repository, access_repository, _, deletion_gateway = install_test_dependencies(
+        client_records=[client_record],
+        access_records=[access_record],
+    )
+    token = make_token(
+        signing_keypair,
+        clerk_user_id="user_client",
+        email=client_record.email,
+    )
+
+    delete_response = client.post(
+        "/auth/delete-account",
+        headers=auth_header(token),
+        json={"confirmation_text": "ELIMINA"},
+    )
+    auth_me_response = client.get("/auth/me", headers=auth_header(token))
+
+    assert delete_response.status_code == 200
+    assert delete_response.json() == {
+        "deleted": True,
+        "redirect_to": "/",
+    }
+    assert deletion_gateway.deleted_user_ids == ["user_client"]
+    assert client_repository.get_by_id(client_record.id) is None
+    assert access_repository.get_by_client_id(client_record.id) is None
+    assert client_repository.deleted_client_ids == [client_record.id]
+    assert auth_me_response.status_code == 403
+
+
+def test_platform_admin_cannot_self_delete_from_account_endpoint(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    signing_keypair: rsa.RSAPrivateKey,
+) -> None:
+    set_auth_mappings(
+        monkeypatch,
+        {
+            "user_admin": {
+                "email": "admin@sendwise.test",
+                "access_type": "platform_admin",
+                "status": "active",
+            }
+        },
+    )
+    _, _, _, deletion_gateway = install_test_dependencies()
+    token = make_token(signing_keypair, clerk_user_id="user_admin")
+
+    response = client.post(
+        "/auth/delete-account",
+        headers=auth_header(token),
+        json={"confirmation_text": "ELIMINA"},
+    )
+
+    assert response.status_code == 403
+    assert deletion_gateway.deleted_user_ids == []
 
 
 def test_invite_endpoint_rejects_role_and_user_type_fields(

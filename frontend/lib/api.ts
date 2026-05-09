@@ -1,9 +1,9 @@
 import type {
+  AdminCampaignSummary,
   AdminClientInviteResponse,
   AdminClientUpdateInput,
-  AdminClientStatusCounts,
+  AdminEmailLimitsResponse,
   AdminOverviewSummary,
-  AdminRecentCampaign,
   ApiUsage,
   BlockedSend,
   Campaign,
@@ -21,10 +21,10 @@ const INTERNAL_API_BASE_URL =
   process.env.BACKEND_URL?.trim() || API_BASE_URL;
 
 const DEFAULT_EMPTY_ADMIN_LIMITS = {
-  monthlyLimit: 0,
-  monthlySent: 0,
-  dailyLimit: 0,
-  dailySent: 0,
+  configuredClients: 0,
+  unconfiguredClients: 0,
+  totalEmailLimitPerCampaign: 0,
+  totalMaxCampaigns: 0,
 } as const;
 
 const ACTIVE_CAMPAIGN_STATUSES = new Set<Campaign["status"]>(["ready", "running"]);
@@ -49,6 +49,11 @@ export interface AuthMeResponse {
   onboarding_required: boolean;
 }
 
+export interface DeleteAccountResponse {
+  deleted: boolean;
+  redirect_to: string;
+}
+
 interface ApiErrorOptions {
   path: string;
   detail: string;
@@ -60,6 +65,100 @@ interface ApiRequestOptions<TPayload> {
   method?: "GET" | "POST" | "PATCH";
   payload?: TPayload;
   accessToken?: string | null;
+}
+
+interface AdminCampaignApiItem {
+  id: string;
+  client_id: string;
+  client_name: string;
+  client_email: string;
+  name: string;
+  status: Campaign["status"];
+  subject?: string | null;
+  created_at: string;
+  updated_at: string;
+  blocked_sends_count: number;
+}
+
+interface AdminOverviewApiResponse {
+  total_clients: number;
+  active_campaigns: number;
+  blocked_sends_today: number;
+  monthly_ai_calls_used: number;
+  campaign_status_counts: {
+    active: number;
+    paused: number;
+    blocked: number;
+    draft: number;
+    completed: number;
+    failed: number;
+  };
+  client_status_counts: {
+    trial: number;
+    active: number;
+    paused: number;
+    blocked: number;
+    archived: number;
+  };
+  email_limit_overview?: {
+    configured_clients: number;
+    unconfigured_clients: number;
+    total_email_limit_per_campaign: number;
+    total_max_campaigns: number;
+  } | null;
+  recent_campaigns: {
+    id: string;
+    client_id: string;
+    client_name: string;
+    campaign_name: string;
+    subject?: string | null;
+    status: Campaign["status"];
+    created_at: string;
+    updated_at: string;
+  }[];
+  recent_blocked_sends: {
+    id: string;
+    client_id: string;
+    client_name: string;
+    campaign_id?: string | null;
+    campaign_name: string;
+    reason: string;
+    decision: BlockedSend["decision"];
+    created_at: string;
+  }[];
+  system_status: {
+    api: "ok" | "warning";
+    mock_data: "disabled";
+    sending: "disabled";
+    mailpit: "dev_only";
+  };
+}
+
+interface AdminEmailLimitsApiResponse {
+  summary: {
+    total_clients: number;
+    configured_clients: number;
+    unconfigured_clients: number;
+  };
+  rows: {
+    client_id: string;
+    client_name: string;
+    client_email: string;
+    client_status: Client["status"];
+    access_status?: Client["access"] extends infer T
+      ? T extends { status?: infer Status }
+        ? Status
+        : never
+      : never;
+    invitation_status?: Client["access"] extends infer T
+      ? T extends { invitation_status?: infer InvitationStatus }
+        ? InvitationStatus
+        : never
+      : never;
+    email_limit_per_campaign?: number | null;
+    max_campaigns?: number | null;
+    updated_at: string;
+  }[];
 }
 
 export class ApiError extends Error {
@@ -268,8 +367,22 @@ async function fetchAdminClient(
   return apiGet<Client>(`/admin/clients/${clientId}`, accessToken);
 }
 
-async function fetchAdminCampaigns(accessToken?: string | null): Promise<Campaign[]> {
-  return apiGet<Campaign[]>("/admin/campaigns", accessToken);
+async function fetchAdminOverview(
+  accessToken?: string | null,
+): Promise<AdminOverviewApiResponse> {
+  return apiGet<AdminOverviewApiResponse>("/admin/overview", accessToken);
+}
+
+async function fetchAdminCampaigns(
+  accessToken?: string | null,
+): Promise<AdminCampaignApiItem[]> {
+  return apiGet<AdminCampaignApiItem[]>("/admin/campaigns", accessToken);
+}
+
+async function fetchAdminEmailLimits(
+  accessToken?: string | null,
+): Promise<AdminEmailLimitsApiResponse> {
+  return apiGet<AdminEmailLimitsApiResponse>("/admin/email-limits", accessToken);
 }
 
 async function fetchClientMe(accessToken?: string | null): Promise<ClientContext> {
@@ -351,6 +464,17 @@ async function postClientOnboarding(
   );
 }
 
+async function postDeleteCurrentAccount(
+  confirmationText: string,
+  accessToken?: string | null,
+): Promise<DeleteAccountResponse> {
+  return apiPost<DeleteAccountResponse, { confirmation_text: string }>(
+    "/auth/delete-account",
+    { confirmation_text: confirmationText },
+    accessToken,
+  );
+}
+
 function getClientStatusLabel(status: Client["status"]): string {
   switch (status) {
     case "active":
@@ -368,83 +492,117 @@ function getClientStatusLabel(status: Client["status"]): string {
   }
 }
 
-function buildAdminOverviewSummary(
-  clients: Client[],
-  campaigns: Campaign[],
+function assertAdminBackendEnabled(path: string): void {
+  if (!USE_MOCK_API) {
+    return;
+  }
+
+  throw new ApiError({
+    path,
+    status: 500,
+    detail:
+      "Admin overview pages require NEXT_PUBLIC_USE_MOCK_API=false so the backend remains the source of truth.",
+  });
+}
+
+function mapAdminOverviewSummary(
+  payload: AdminOverviewApiResponse,
 ): AdminOverviewSummary {
-  const clientStatusCounts: AdminClientStatusCounts = {
-    trial: 0,
-    active: 0,
-    paused: 0,
-    blocked: 0,
-    archived: 0,
-  };
-  const campaignStatusCounts = {
-    active: 0,
-    paused: 0,
-    blocked: 0,
-    draft: 0,
-  };
-  const clientNames = new Map(clients.map((client) => [client.id, client.name]));
-
-  for (const client of clients) {
-    clientStatusCounts[client.status] += 1;
-  }
-
-  for (const campaign of campaigns) {
-    if (isActiveCampaignStatus(campaign.status)) {
-      campaignStatusCounts.active += 1;
-      continue;
-    }
-
-    if (campaign.status === "paused") {
-      campaignStatusCounts.paused += 1;
-      continue;
-    }
-
-    if (campaign.status === "blocked") {
-      campaignStatusCounts.blocked += 1;
-      continue;
-    }
-
-    if (campaign.status === "draft") {
-      campaignStatusCounts.draft += 1;
-    }
-  }
-
-  const recentCampaigns: AdminRecentCampaign[] = [...campaigns]
-    .sort(
-      (left, right) =>
-        new Date(right.updated_at).getTime() - new Date(left.updated_at).getTime(),
-    )
-    .slice(0, 4)
-    .map((campaign) => ({
-      id: campaign.id,
-      clientName: clientNames.get(campaign.client_id) ?? "Cliente non disponibile",
-      campaignName: campaign.name,
-      subject: campaign.subject,
-      status: campaign.status,
-      updatedAtLabel: formatDateTimeLabel(campaign.updated_at),
-    }));
-
   return {
-    totalClients: clients.length,
-    activeCampaigns: campaigns.filter((campaign) =>
-      isActiveCampaignStatus(campaign.status),
-    ).length,
-    blockedSendsToday: 0,
-    monthlyAiCallsUsed: 0,
-    campaignStatusCounts,
-    clientStatusCounts,
-    emailLimitOverview: DEFAULT_EMPTY_ADMIN_LIMITS,
-    recentCampaigns,
-    recentBlockedSends: [],
-    systemStatus: {
-      api: "ok",
-      mockData: "disabled",
-      sending: "disabled",
-      mailpit: "dev_only",
+    totalClients: payload.total_clients,
+    activeCampaigns: payload.active_campaigns,
+    blockedSendsToday: payload.blocked_sends_today,
+    monthlyAiCallsUsed: payload.monthly_ai_calls_used,
+    campaignStatusCounts: {
+      active: payload.campaign_status_counts.active,
+      paused: payload.campaign_status_counts.paused,
+      blocked: payload.campaign_status_counts.blocked,
+      draft: payload.campaign_status_counts.draft,
+      completed: payload.campaign_status_counts.completed,
+      failed: payload.campaign_status_counts.failed,
     },
+    clientStatusCounts: {
+      trial: payload.client_status_counts.trial,
+      active: payload.client_status_counts.active,
+      paused: payload.client_status_counts.paused,
+      blocked: payload.client_status_counts.blocked,
+      archived: payload.client_status_counts.archived,
+    },
+    emailLimitOverview: payload.email_limit_overview
+      ? {
+          configuredClients: payload.email_limit_overview.configured_clients,
+          unconfiguredClients: payload.email_limit_overview.unconfigured_clients,
+          totalEmailLimitPerCampaign:
+            payload.email_limit_overview.total_email_limit_per_campaign,
+          totalMaxCampaigns: payload.email_limit_overview.total_max_campaigns,
+        }
+      : DEFAULT_EMPTY_ADMIN_LIMITS,
+    recentCampaigns: payload.recent_campaigns.map((campaign) => ({
+      id: campaign.id,
+      clientId: campaign.client_id,
+      clientName: campaign.client_name,
+      campaignName: campaign.campaign_name,
+      subject: campaign.subject ?? null,
+      status: campaign.status,
+      createdAt: campaign.created_at,
+      updatedAt: campaign.updated_at,
+    })),
+    recentBlockedSends: payload.recent_blocked_sends.map((blockedSend) => ({
+      id: blockedSend.id,
+      clientId: blockedSend.client_id,
+      clientName: blockedSend.client_name,
+      campaignId: blockedSend.campaign_id ?? null,
+      campaignName: blockedSend.campaign_name,
+      reason: blockedSend.reason,
+      decision: blockedSend.decision,
+      createdAt: blockedSend.created_at,
+    })),
+    systemStatus: {
+      api: payload.system_status.api,
+      mockData: payload.system_status.mock_data,
+      sending: payload.system_status.sending,
+      mailpit: payload.system_status.mailpit,
+    },
+  };
+}
+
+function mapAdminCampaignSummary(
+  payload: AdminCampaignApiItem,
+): AdminCampaignSummary {
+  return {
+    id: payload.id,
+    clientId: payload.client_id,
+    clientName: payload.client_name,
+    clientEmail: payload.client_email,
+    name: payload.name,
+    status: payload.status,
+    subject: payload.subject ?? null,
+    createdAt: payload.created_at,
+    updatedAt: payload.updated_at,
+    blockedSendsCount: payload.blocked_sends_count,
+  };
+}
+
+function mapAdminEmailLimitsResponse(
+  payload: AdminEmailLimitsApiResponse,
+): AdminEmailLimitsResponse {
+  return {
+    summary: {
+      totalClients: payload.summary.total_clients,
+      configuredClients: payload.summary.configured_clients,
+      unconfiguredClients: payload.summary.unconfigured_clients,
+    },
+    rows: payload.rows.map((row) => ({
+      clientId: row.client_id,
+      clientName: row.client_name,
+      clientEmail: row.client_email,
+      clientStatus: row.client_status,
+      accessStatus: row.access_status ?? null,
+      invitationStatus: row.invitation_status ?? null,
+      emailLimitPerCampaign: row.email_limit_per_campaign ?? null,
+      maxCampaigns: row.max_campaigns ?? null,
+      updatedAt: row.updated_at,
+    })),
   };
 }
 
@@ -518,16 +676,8 @@ function buildClientOverviewSummary(
 export function getAdminOverviewSummary(
   accessToken?: string | null,
 ): Promise<AdminOverviewSummary> {
-  if (USE_MOCK_API) {
-    return mockApi.getAdminOverviewSummary();
-  }
-
-  return Promise.all([
-    fetchAdminClients(accessToken),
-    fetchAdminCampaigns(accessToken),
-  ]).then(
-    ([clients, campaigns]) => buildAdminOverviewSummary(clients, campaigns),
-  );
+  assertAdminBackendEnabled("/admin/overview");
+  return fetchAdminOverview(accessToken).then(mapAdminOverviewSummary);
 }
 
 export function getAdminClients(accessToken?: string | null): Promise<Client[]> {
@@ -623,10 +773,18 @@ export function archiveAdminClient(
 
 export function getAdminCampaigns(
   accessToken?: string | null,
-): Promise<Campaign[]> {
-  return USE_MOCK_API
-    ? mockApi.getAdminCampaigns()
-    : fetchAdminCampaigns(accessToken);
+): Promise<AdminCampaignSummary[]> {
+  assertAdminBackendEnabled("/admin/campaigns");
+  return fetchAdminCampaigns(accessToken).then((campaigns) =>
+    campaigns.map(mapAdminCampaignSummary),
+  );
+}
+
+export function getAdminEmailLimits(
+  accessToken?: string | null,
+): Promise<AdminEmailLimitsResponse> {
+  assertAdminBackendEnabled("/admin/email-limits");
+  return fetchAdminEmailLimits(accessToken).then(mapAdminEmailLimitsResponse);
 }
 
 export function getClientMe(accessToken?: string | null): Promise<ClientContext> {
@@ -707,4 +865,11 @@ export function completeClientOnboarding(
   accessToken?: string | null,
 ): Promise<AuthMeResponse> {
   return postClientOnboarding(payload, accessToken);
+}
+
+export function deleteCurrentAccount(
+  confirmationText: string,
+  accessToken?: string | null,
+): Promise<DeleteAccountResponse> {
+  return postDeleteCurrentAccount(confirmationText, accessToken);
 }

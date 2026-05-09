@@ -63,6 +63,9 @@ class ClientAccessRepository:
     ) -> ClientAccessRecord:
         raise NotImplementedError
 
+    def delete_by_client_id(self, client_id: str) -> bool:
+        raise NotImplementedError
+
     def upsert_invited_access(
         self,
         *,
@@ -267,6 +270,21 @@ class PostgresClientAccessRepository(ClientAccessRepository):
             connection.commit()
 
         return ClientAccessRecord.model_validate(row)
+
+    def delete_by_client_id(self, client_id: str) -> bool:
+        query = """
+            DELETE FROM client_access
+            WHERE client_id::text = %s
+            RETURNING id::text AS id
+        """
+
+        with postgres_connection(self._settings) as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(query, (client_id,))
+                row = cursor.fetchone()
+            connection.commit()
+
+        return row is not None
 
     def upsert_invited_access(
         self,

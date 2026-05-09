@@ -10,9 +10,6 @@ from app.schemas.clients import Client, ClientAccessSummary
 
 
 def _build_client_name(client: ClientRecord) -> str:
-    if client.company_name:
-        return client.company_name
-
     if client.personal_name:
         return client.personal_name
 
@@ -52,10 +49,6 @@ def is_client_profile_complete(client: ClientRecord) -> bool:
             client.personal_name,
             field_label="personal_name",
         )
-        and normalize_profile_value(
-            client.company_name,
-            field_label="company_name",
-        )
     )
 
 
@@ -88,7 +81,6 @@ def build_client_schema(
         id=client.id,
         email=client.email,
         personal_name=client.personal_name,
-        company_name=client.company_name,
         name=_build_client_name(client),
         status=client.status,
         email_limit_per_campaign=client.email_limit_per_campaign,
@@ -127,7 +119,6 @@ class ClientsService:
         *,
         email: str,
         personal_name: Optional[str],
-        company_name: Optional[str],
     ) -> ClientRecord:
         existing = self._repository.get_by_email(email)
 
@@ -135,7 +126,6 @@ class ClientsService:
             return self._repository.create_client(
                 email=email,
                 personal_name=personal_name,
-                company_name=company_name,
                 status="active",
             )
 
@@ -143,7 +133,6 @@ class ClientsService:
             client_id=existing.id,
             email=email,
             personal_name=personal_name,
-            company_name=company_name,
             status=existing.status,
             email_limit_per_campaign=existing.email_limit_per_campaign,
             max_campaigns=existing.max_campaigns,
@@ -157,7 +146,6 @@ class ClientsService:
         client_id: str,
         email: str,
         personal_name: Optional[str],
-        company_name: Optional[str],
         status: Optional[str] = None,
         email_limit_per_campaign: Optional[int] = None,
         max_campaigns: Optional[int] = None,
@@ -170,10 +158,6 @@ class ClientsService:
             personal_name=normalize_profile_value(
                 personal_name,
                 field_label="personal_name",
-            ),
-            company_name=normalize_profile_value(
-                company_name,
-                field_label="company_name",
             ),
             status=status,
             email_limit_per_campaign=validate_non_negative_int(
@@ -199,7 +183,6 @@ class ClientsService:
         *,
         client_id: str,
         personal_name: str,
-        company_name: str,
     ) -> ClientRecord:
         existing = self.get_client_by_id(client_id)
         normalized_personal_name = normalize_profile_value(
@@ -207,17 +190,11 @@ class ClientsService:
             field_label="personal_name",
             required=True,
         )
-        normalized_company_name = normalize_profile_value(
-            company_name,
-            field_label="company_name",
-            required=True,
-        )
 
         return self.update_client(
             client_id=existing.id,
             email=existing.email,
             personal_name=normalized_personal_name,
-            company_name=normalized_company_name,
             status=existing.status,
             email_limit_per_campaign=existing.email_limit_per_campaign,
             max_campaigns=existing.max_campaigns,
@@ -231,7 +208,6 @@ class ClientsService:
             client_id=existing.id,
             email=existing.email,
             personal_name=existing.personal_name,
-            company_name=existing.company_name,
             status="archived",
             email_limit_per_campaign=existing.email_limit_per_campaign,
             max_campaigns=existing.max_campaigns,

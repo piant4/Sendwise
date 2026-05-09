@@ -24,7 +24,6 @@ export interface Client {
   id: string;
   email: string;
   personal_name?: string | null;
-  company_name?: string | null;
   name: string;
   status: ClientStatus;
   email_limit_per_campaign?: number | null;
@@ -77,7 +76,6 @@ export interface AdminClientInviteResponse {
 
 export interface AdminClientUpdateInput {
   personal_name?: string | null;
-  company_name?: string | null;
   email_limit_per_campaign?: number | null;
   max_campaigns?: number | null;
   monthly_email_limit?: number | null;
@@ -86,7 +84,6 @@ export interface AdminClientUpdateInput {
 
 export interface CompleteClientOnboardingInput {
   personal_name: string;
-  company_name: string;
 }
 
 export interface CampaignStats {

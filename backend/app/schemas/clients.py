@@ -29,7 +29,6 @@ class Client(BaseModel):
     id: str
     email: str
     personal_name: Optional[str] = None
-    company_name: Optional[str] = None
     name: str
     status: ClientStatus
     email_limit_per_campaign: Optional[int] = None
@@ -61,7 +60,6 @@ class AdminClientInviteRequest(BaseModel):
 
     email: str
     personal_name: Optional[str] = None
-    company_name: Optional[str] = None
 
 
 class AdminClientInviteResponse(BaseModel):
@@ -73,7 +71,6 @@ class AdminClientUpdateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     personal_name: Optional[str] = None
-    company_name: Optional[str] = None
     email_limit_per_campaign: Optional[int] = None
     max_campaigns: Optional[int] = None
     monthly_email_limit: Optional[int] = None

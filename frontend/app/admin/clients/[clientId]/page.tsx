@@ -152,7 +152,7 @@ export default async function AdminClientDetailPage({
           <div>
             <p className="admin-surface__eyebrow">Cliente</p>
             <h1 className="admin-clients-hero__title">
-              {client.company_name || client.personal_name || client.email}
+              {client.personal_name || client.name || client.email}
             </h1>
             <p className="admin-clients-hero__description">
               Profilo cliente, stato accesso e limiti di invio configurati nel
@@ -190,10 +190,6 @@ export default async function AdminClientDetailPage({
               <div>
                 <dt>Nome persona</dt>
                 <dd>{client.personal_name || "Da completare in onboarding"}</dd>
-              </div>
-              <div>
-                <dt>Azienda o studio</dt>
-                <dd>{client.company_name || "Da completare in onboarding"}</dd>
               </div>
               <div>
                 <dt>Stato profilo</dt>

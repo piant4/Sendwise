@@ -682,7 +682,7 @@ export function LoginContent() {
                     className="login-input"
                     disabled={isSubmitting}
                     onChange={(event) => setEmail(event.target.value)}
-                    placeholder="nome@azienda.it"
+                    placeholder="nome@example.com"
                     required
                     value={email}
                   />

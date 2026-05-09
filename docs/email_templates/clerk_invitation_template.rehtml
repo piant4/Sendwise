@@ -1,0 +1,69 @@
+<re-html>
+  <re-head>
+    <re-title>Invito ad accedere a Sendwise</re-title>
+    <re-preheader>Completa l'accesso al tuo portale Sendwise.</re-preheader>
+  </re-head>
+  <re-body style="margin: 0; background-color: #080B12; color: #F8FAFC; font-family: Arial, Helvetica, sans-serif;">
+    <re-main style="margin: 0 auto; width: 100%; max-width: 560px; padding: 28px 20px 24px;">
+      <re-header style="padding: 4px 0 18px; text-align: center;">
+        <re-block style="padding: 0 0 10px;">
+          {{> app_logo}}
+        </re-block>
+        <re-text style="margin: 0; color: #94A3B8; font-size: 13px; line-height: 20px; font-weight: 600; letter-spacing: 0.02em;">
+          {{app.name}}
+        </re-text>
+      </re-header>
+
+      <re-block style="background-color: #0D111A; border: 1px solid #263244; border-radius: 14px; padding: 30px 28px;">
+        <re-text style="margin: 0 0 14px; color: #94A3B8; font-size: 11px; line-height: 16px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase;">
+          Accesso cliente
+        </re-text>
+
+        <re-heading style="margin: 0 0 14px; color: #F8FAFC; font-size: 30px; line-height: 36px; font-weight: 700;">
+          Sei stato invitato su Sendwise
+        </re-heading>
+
+        <re-text style="margin: 0 0 10px; color: #CBD5E1; font-size: 16px; line-height: 26px;">
+          Un amministratore ti ha invitato ad accedere al tuo portale privato Sendwise.
+        </re-text>
+
+        <re-text style="margin: 0; color: #CBD5E1; font-size: 16px; line-height: 26px;">
+          Accetta l'invito per creare il tuo accesso e completare l'onboarding.
+        </re-text>
+
+        <re-block style="padding: 24px 0 22px;">
+          <re-button href="{{action_url}}" style="background-color: #F8FAFC; color: #070A0F; border-radius: 10px; display: inline-block; font-size: 15px; font-weight: 700; line-height: 15px; padding: 14px 18px; text-decoration: none;">
+            Accetta invito
+          </re-button>
+        </re-block>
+
+        <re-block style="background-color: #111827; border: 1px solid #1F2937; border-radius: 12px; padding: 14px 16px; margin: 0 0 18px;">
+          <re-text style="margin: 0; color: #CBD5E1; font-size: 14px; line-height: 22px;">
+            Questo invito scade tra {{invitation.expires_in_days}} giorni.
+          </re-text>
+        </re-block>
+
+        <re-text style="margin: 0 0 8px; color: #94A3B8; font-size: 13px; line-height: 22px;">
+          Se il pulsante non funziona, usa questo link:
+        </re-text>
+
+        <re-text style="margin: 0 0 18px; color: #CBD5E1; font-size: 13px; line-height: 22px; word-break: break-word;">
+          <a href="{{action_url}}" style="color: #CBD5E1; text-decoration: underline;">{{action_url}}</a>
+        </re-text>
+
+        <re-divider style="border-color: #1F2937; margin: 0 0 18px;" />
+
+        <re-text style="margin: 0; color: #64748B; font-size: 13px; line-height: 22px;">
+          Se non aspettavi questo invito, puoi ignorare questa email.
+        </re-text>
+      </re-block>
+
+      <re-block style="padding: 18px 4px 0;">
+        <re-divider style="border-color: #1F2937; margin: 0 0 16px;" />
+        <re-text style="margin: 0; color: #64748B; font-size: 12px; line-height: 20px; text-align: center;">
+          (c) {{current_year}} {{app.name}}. Notifica di accesso riservata.
+        </re-text>
+      </re-block>
+    </re-main>
+  </re-body>
+</re-html>

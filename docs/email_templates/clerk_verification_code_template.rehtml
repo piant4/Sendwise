@@ -1,0 +1,55 @@
+<re-html>
+  <re-head>
+    <re-title>Il tuo codice di verifica Sendwise</re-title>
+    <re-preheader>Usa questo codice per continuare su Sendwise.</re-preheader>
+  </re-head>
+  <re-body style="margin: 0; background-color: #080B12; color: #F8FAFC; font-family: Arial, Helvetica, sans-serif;">
+    <re-main style="margin: 0 auto; width: 100%; max-width: 560px; padding: 28px 20px 24px;">
+      <re-header style="padding: 4px 0 18px; text-align: center;">
+        <re-block style="padding: 0 0 10px;">
+          {{> app_logo}}
+        </re-block>
+        <re-text style="margin: 0; color: #94A3B8; font-size: 13px; line-height: 20px; font-weight: 600; letter-spacing: 0.02em;">
+          {{app.name}}
+        </re-text>
+      </re-header>
+
+      <re-block style="background-color: #0D111A; border: 1px solid #263244; border-radius: 14px; padding: 30px 28px;">
+        <re-text style="margin: 0 0 14px; color: #94A3B8; font-size: 11px; line-height: 16px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase;">
+          Verifica account
+        </re-text>
+
+        <re-heading style="margin: 0 0 14px; color: #F8FAFC; font-size: 30px; line-height: 36px; font-weight: 700;">
+          Codice di verifica
+        </re-heading>
+
+        <re-text style="margin: 0 0 20px; color: #CBD5E1; font-size: 16px; line-height: 26px;">
+          Inserisci questo codice per continuare su Sendwise.
+        </re-text>
+
+        <re-block style="background-color: #111827; border: 1px solid #263244; border-radius: 12px; padding: 18px 16px; margin: 0 0 18px; text-align: center;">
+          <re-text style="margin: 0; color: #F8FAFC; font-size: 34px; line-height: 38px; font-weight: 700; letter-spacing: 0.24em;">
+            {{code}}
+          </re-text>
+        </re-block>
+
+        <re-text style="margin: 0 0 18px; color: #94A3B8; font-size: 14px; line-height: 22px;">
+          Non condividere questo codice con nessuno.
+        </re-text>
+
+        <re-divider style="border-color: #1F2937; margin: 0 0 18px;" />
+
+        <re-text style="margin: 0; color: #64748B; font-size: 13px; line-height: 22px;">
+          Se non hai richiesto tu questo accesso, puoi ignorare questa email.
+        </re-text>
+      </re-block>
+
+      <re-block style="padding: 18px 4px 0;">
+        <re-divider style="border-color: #1F2937; margin: 0 0 16px;" />
+        <re-text style="margin: 0; color: #64748B; font-size: 12px; line-height: 20px; text-align: center;">
+          (c) {{current_year}} {{app.name}}. Notifica di sicurezza.
+        </re-text>
+      </re-block>
+    </re-main>
+  </re-body>
+</re-html>

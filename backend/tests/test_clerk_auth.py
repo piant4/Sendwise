@@ -70,7 +70,6 @@ class FakeClientRepository(ClientRepository):
         *,
         email: str,
         personal_name: Optional[str],
-        company_name: Optional[str],
         status: str,
     ) -> ClientRecord:
         self._counter += 1
@@ -79,7 +78,6 @@ class FakeClientRepository(ClientRepository):
             id=f"client_{self._counter}",
             email=email,
             personal_name=personal_name,
-            company_name=company_name,
             status=status,
             email_limit_per_campaign=None,
             max_campaigns=None,
@@ -97,7 +95,6 @@ class FakeClientRepository(ClientRepository):
         client_id: str,
         email: str,
         personal_name: Optional[str],
-        company_name: Optional[str],
         status: Optional[str] = None,
         email_limit_per_campaign: Optional[int] = None,
         max_campaigns: Optional[int] = None,
@@ -109,7 +106,6 @@ class FakeClientRepository(ClientRepository):
             update={
                 "email": email,
                 "personal_name": personal_name,
-                "company_name": company_name,
                 "status": status or existing.status,
                 "email_limit_per_campaign": email_limit_per_campaign,
                 "max_campaigns": max_campaigns,
@@ -361,7 +357,6 @@ def build_client_record(
     client_id: str = "client_demo",
     email: str = "client@example.test",
     personal_name: Optional[str] = "Mario",
-    company_name: Optional[str] = "Demo Studio",
     status: str = "active",
     email_limit_per_campaign: Optional[int] = None,
     max_campaigns: Optional[int] = None,
@@ -373,7 +368,6 @@ def build_client_record(
         id=client_id,
         email=email,
         personal_name=personal_name,
-        company_name=company_name,
         status=status,
         email_limit_per_campaign=email_limit_per_campaign,
         max_campaigns=max_campaigns,
@@ -532,7 +526,6 @@ def test_pending_invited_client_claims_access_on_first_valid_login(
 ) -> None:
     client_record = build_client_record(
         personal_name=None,
-        company_name=None,
     )
     access_record = build_access_record(
         email=client_record.email,
@@ -571,11 +564,11 @@ def test_pending_invited_client_claims_access_on_first_valid_login(
     assert claimed_access.invitation_status == "accepted"
 
 
-def test_complete_onboarding_requires_personal_name_and_company_name(
+def test_complete_onboarding_requires_personal_name_only(
     client: TestClient,
     signing_keypair: rsa.RSAPrivateKey,
 ) -> None:
-    client_record = build_client_record(personal_name=None, company_name=None)
+    client_record = build_client_record(personal_name=None)
     access_record = build_access_record(
         client_id=client_record.id,
         email=client_record.email,
@@ -596,7 +589,7 @@ def test_complete_onboarding_requires_personal_name_and_company_name(
     response = client.post(
         "/auth/onboarding",
         headers=auth_header(token),
-        json={"personal_name": "Mario"},
+        json={},
     )
 
     assert response.status_code == 422
@@ -606,7 +599,7 @@ def test_complete_onboarding_activates_client_access(
     client: TestClient,
     signing_keypair: rsa.RSAPrivateKey,
 ) -> None:
-    client_record = build_client_record(personal_name=None, company_name=None)
+    client_record = build_client_record(personal_name=None)
     access_record = build_access_record(
         client_id=client_record.id,
         email=client_record.email,
@@ -627,10 +620,7 @@ def test_complete_onboarding_activates_client_access(
     response = client.post(
         "/auth/onboarding",
         headers=auth_header(token),
-        json={
-            "personal_name": "Mario Rossi",
-            "company_name": "Studio Rossi",
-        },
+        json={"personal_name": "Mario Rossi"},
     )
     auth_me_response = client.get("/auth/me", headers=auth_header(token))
 
@@ -649,11 +639,44 @@ def test_complete_onboarding_activates_client_access(
     updated_client = client_repository.get_by_id(client_record.id)
     assert updated_client is not None
     assert updated_client.personal_name == "Mario Rossi"
-    assert updated_client.company_name == "Studio Rossi"
     updated_access = access_repository.get_by_client_id(client_record.id)
     assert updated_access is not None
     assert updated_access.status == "active"
     assert updated_access.invitation_status == "accepted"
+
+
+def test_complete_onboarding_rejects_company_name_field(
+    client: TestClient,
+    signing_keypair: rsa.RSAPrivateKey,
+) -> None:
+    client_record = build_client_record(personal_name=None)
+    access_record = build_access_record(
+        client_id=client_record.id,
+        email=client_record.email,
+        clerk_user_id="user_client",
+        status="invited",
+        invitation_status="accepted",
+    )
+    install_test_dependencies(
+        client_records=[client_record],
+        access_records=[access_record],
+    )
+    token = make_token(
+        signing_keypair,
+        clerk_user_id="user_client",
+        email=client_record.email,
+    )
+
+    response = client.post(
+        "/auth/onboarding",
+        headers=auth_header(token),
+        json={
+            "personal_name": "Mario Rossi",
+            "company_name": "Rejected Name",
+        },
+    )
+
+    assert response.status_code == 422
 
 
 def test_unknown_user_still_403(
@@ -676,7 +699,7 @@ def test_auth_me_can_claim_client_from_nested_clerk_email_claim(
     client: TestClient,
     signing_keypair: rsa.RSAPrivateKey,
 ) -> None:
-    client_record = build_client_record(personal_name=None, company_name=None)
+    client_record = build_client_record(personal_name=None)
     access_record = build_access_record(
         email=client_record.email,
         clerk_user_id=None,
@@ -819,14 +842,14 @@ def test_platform_admin_can_call_invite_endpoint(
         json={
             "email": "Nuovo.Cliente@Example.Test",
             "personal_name": "Giulia",
-            "company_name": "Studio Nord",
         },
     )
 
     assert response.status_code == 200
     payload = response.json()
     assert payload["client"]["email"] == "nuovo.cliente@example.test"
-    assert payload["client"]["company_name"] == "Studio Nord"
+    assert payload["client"]["personal_name"] == "Giulia"
+    assert "company_name" not in payload["client"]
     assert payload["access"]["status"] == "invited"
     assert payload["access"]["invitation_status"] == "pending"
     assert payload["access"]["clerk_invitation_id"] == "inv_1"
@@ -888,7 +911,7 @@ def test_platform_admin_can_create_invite_with_email_only(
     payload = response.json()
     assert payload["client"]["email"] == "solo.email@example.test"
     assert payload["client"]["personal_name"] is None
-    assert payload["client"]["company_name"] is None
+    assert "company_name" not in payload["client"]
     created_client = client_repository.get_by_id(payload["client"]["id"])
     created_access = access_repository.get_by_client_id(payload["client"]["id"])
     assert created_client is not None
@@ -896,6 +919,36 @@ def test_platform_admin_can_create_invite_with_email_only(
     assert created_access.email == "solo.email@example.test"
     assert "password" not in created_client.model_dump()
     assert "password" not in created_access.model_dump()
+
+
+def test_platform_admin_invite_rejects_company_name_field(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    signing_keypair: rsa.RSAPrivateKey,
+) -> None:
+    set_auth_mappings(
+        monkeypatch,
+        {
+            "user_admin": {
+                "email": "admin@sendwise.test",
+                "access_type": "platform_admin",
+                "status": "active",
+            }
+        },
+    )
+    install_test_dependencies()
+    token = make_token(signing_keypair, clerk_user_id="user_admin")
+
+    response = client.post(
+        "/admin/clients",
+        headers=auth_header(token),
+        json={
+            "email": "nuovo.cliente@example.test",
+            "company_name": "Rejected Name",
+        },
+    )
+
+    assert response.status_code == 422
 
 
 def test_client_cannot_call_invite_endpoint(
@@ -955,12 +1008,11 @@ def test_invite_endpoint_reuses_fixed_portal_slug_on_reinvite(
     second_response = client.post(
         "/admin/clients",
         headers=auth_header(token),
-        json={"email": "client@example.test", "company_name": "Studio Rinominato"},
+        json={"email": "client@example.test"},
     )
 
     assert first_response.status_code == 200
     assert second_response.status_code == 200
-    assert first_response.json()["client"]["company_name"] == existing_client.company_name
     first_slug = first_response.json()["access"]["portal_slug"]
     second_slug = second_response.json()["access"]["portal_slug"]
     assert first_slug == "z" * 32
@@ -1012,13 +1064,46 @@ def test_admin_client_detail_and_limits_update_work(
 
     assert detail_response.status_code == 200
     assert detail_response.json()["access"]["portal_slug"] == "a" * 32
+    assert "company_name" not in detail_response.json()
     assert update_response.status_code == 200
     assert update_response.json()["email_limit_per_campaign"] == 1200
     assert update_response.json()["max_campaigns"] == 9
+    assert "company_name" not in update_response.json()
     updated_client = client_repository.get_by_id(client_record.id)
     assert updated_client is not None
     assert updated_client.email_limit_per_campaign == 1200
     assert updated_client.max_campaigns == 9
+
+
+def test_platform_admin_update_rejects_company_name_field(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    signing_keypair: rsa.RSAPrivateKey,
+) -> None:
+    set_auth_mappings(
+        monkeypatch,
+        {
+            "user_admin": {
+                "email": "admin@sendwise.test",
+                "access_type": "platform_admin",
+                "status": "active",
+            }
+        },
+    )
+    client_record = build_client_record()
+    install_test_dependencies(
+        client_records=[client_record],
+        access_records=[build_access_record(client_id=client_record.id)],
+    )
+    token = make_token(signing_keypair, clerk_user_id="user_admin")
+
+    response = client.patch(
+        f"/admin/clients/{client_record.id}",
+        headers=auth_header(token),
+        json={"company_name": "Rejected Name"},
+    )
+
+    assert response.status_code == 422
 
 
 def test_client_cannot_update_admin_client_limits(

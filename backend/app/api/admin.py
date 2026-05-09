@@ -29,7 +29,7 @@ ADMIN_CAMPAIGNS: list[Campaign] = [
         client_id="client_acme",
         name="Welcome Series",
         status=CampaignStatus.ready,
-        subject="Welcome to Acme Studio",
+        subject="Welcome to Alice",
         created_at="2026-05-03T08:00:00Z",
         updated_at="2026-05-05T08:00:00Z",
     ),
@@ -69,7 +69,6 @@ def create_client(
     result = client_access_service.invite_client_access(
         email=payload.email,
         personal_name=payload.personal_name,
-        company_name=payload.company_name,
     )
     return AdminClientInviteResponse(
         client=build_client_schema(result.client, access=result.access),
@@ -105,7 +104,6 @@ def update_client(
         client_id=existing_client.id,
         email=existing_client.email,
         personal_name=payload_values.get("personal_name", existing_client.personal_name),
-        company_name=payload_values.get("company_name", existing_client.company_name),
         status=existing_client.status,
         email_limit_per_campaign=payload_values.get(
             "email_limit_per_campaign",
@@ -144,7 +142,6 @@ def reinvite_client_access(
     result = client_access_service.invite_client_access(
         email=client.email,
         personal_name=client.personal_name,
-        company_name=client.company_name,
     )
     return AdminClientInviteResponse(
         client=build_client_schema(result.client, access=result.access),

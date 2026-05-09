@@ -1,7 +1,7 @@
 "use client";
 
 import { useAuth } from "@clerk/nextjs";
-import { Building2, UserRound } from "lucide-react";
+import { UserRound } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { type FormEvent, useState } from "react";
 import {
@@ -21,7 +21,7 @@ function getSafeOnboardingErrorMessage(error: unknown): string {
     }
 
     if (error.status === 422) {
-      return "Inserisci nome e azienda prima di continuare.";
+      return "Inserisci il tuo nome e cognome prima di continuare.";
     }
 
     if (error.status && error.status >= 500) {
@@ -38,7 +38,6 @@ export function ClientOnboardingForm({
   const router = useRouter();
   const { getToken } = useAuth();
   const [personalName, setPersonalName] = useState("");
-  const [companyName, setCompanyName] = useState("");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -53,7 +52,6 @@ export function ClientOnboardingForm({
       await completeClientOnboarding(
         {
           personal_name: personalName,
-          company_name: companyName,
         },
         token,
       );
@@ -99,24 +97,6 @@ export function ClientOnboardingForm({
                 placeholder="Mario Rossi"
                 required
                 value={personalName}
-              />
-            </div>
-          </label>
-
-          <label className="onboarding-form__field" htmlFor="onboarding-company-name">
-            <span>Azienda o studio</span>
-            <div className="onboarding-form__input-shell">
-              <Building2 aria-hidden="true" />
-              <input
-                id="onboarding-company-name"
-                type="text"
-                autoComplete="organization"
-                className="onboarding-form__input"
-                disabled={isSubmitting}
-                onChange={(event) => setCompanyName(event.target.value)}
-                placeholder="Studio Rossi"
-                required
-                value={companyName}
               />
             </div>
           </label>

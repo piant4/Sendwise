@@ -14,7 +14,6 @@ class ClientRecord(BaseModel):
     id: str
     email: str
     personal_name: Optional[str] = None
-    company_name: Optional[str] = None
     status: str
     email_limit_per_campaign: Optional[int] = None
     max_campaigns: Optional[int] = None
@@ -71,7 +70,6 @@ class ClientRepository:
         *,
         email: str,
         personal_name: Optional[str],
-        company_name: Optional[str],
         status: str,
     ) -> ClientRecord:
         raise NotImplementedError
@@ -82,7 +80,6 @@ class ClientRepository:
         client_id: str,
         email: str,
         personal_name: Optional[str],
-        company_name: Optional[str],
         status: Optional[str] = None,
         email_limit_per_campaign: Optional[int] = None,
         max_campaigns: Optional[int] = None,
@@ -102,7 +99,6 @@ class PostgresClientRepository(ClientRepository):
                 id::text AS id,
                 email,
                 personal_name,
-                company_name,
                 status,
                 email_limit_per_campaign,
                 max_campaigns,
@@ -127,7 +123,6 @@ class PostgresClientRepository(ClientRepository):
                 id::text AS id,
                 email,
                 personal_name,
-                company_name,
                 status,
                 email_limit_per_campaign,
                 max_campaigns,
@@ -152,7 +147,6 @@ class PostgresClientRepository(ClientRepository):
                 id::text AS id,
                 email,
                 personal_name,
-                company_name,
                 status,
                 email_limit_per_campaign,
                 max_campaigns,
@@ -176,22 +170,19 @@ class PostgresClientRepository(ClientRepository):
         *,
         email: str,
         personal_name: Optional[str],
-        company_name: Optional[str],
         status: str,
     ) -> ClientRecord:
         query = """
             INSERT INTO clients (
                 email,
                 personal_name,
-                company_name,
                 status
             )
-            VALUES (%s, %s, %s, %s)
+            VALUES (%s, %s, %s)
             RETURNING
                 id::text AS id,
                 email,
                 personal_name,
-                company_name,
                 status,
                 email_limit_per_campaign,
                 max_campaigns,
@@ -203,7 +194,7 @@ class PostgresClientRepository(ClientRepository):
 
         with postgres_connection(self._settings) as connection:
             with connection.cursor() as cursor:
-                cursor.execute(query, (email, personal_name, company_name, status))
+                cursor.execute(query, (email, personal_name, status))
                 row = cursor.fetchone()
             connection.commit()
 
@@ -215,7 +206,6 @@ class PostgresClientRepository(ClientRepository):
         client_id: str,
         email: str,
         personal_name: Optional[str],
-        company_name: Optional[str],
         status: Optional[str] = None,
         email_limit_per_campaign: Optional[int] = None,
         max_campaigns: Optional[int] = None,
@@ -227,7 +217,6 @@ class PostgresClientRepository(ClientRepository):
             SET
                 email = %s,
                 personal_name = %s,
-                company_name = %s,
                 status = COALESCE(%s, status),
                 email_limit_per_campaign = %s,
                 max_campaigns = %s,
@@ -239,7 +228,6 @@ class PostgresClientRepository(ClientRepository):
                 id::text AS id,
                 email,
                 personal_name,
-                company_name,
                 status,
                 email_limit_per_campaign,
                 max_campaigns,
@@ -256,7 +244,6 @@ class PostgresClientRepository(ClientRepository):
                     (
                         email,
                         personal_name,
-                        company_name,
                         status,
                         email_limit_per_campaign,
                         max_campaigns,

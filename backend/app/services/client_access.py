@@ -295,13 +295,11 @@ class ClientAccessService:
         *,
         email: str,
         personal_name: Optional[str],
-        company_name: Optional[str],
     ) -> InviteClientAccessResult:
         normalized_email = normalize_email(email)
         client = self._upsert_client_profile(
             email=normalized_email,
             personal_name=personal_name,
-            company_name=company_name,
         )
         existing_access = self._repository.get_by_client_id(client.id)
         conflicting_access = self._repository.get_by_email(normalized_email)
@@ -356,7 +354,6 @@ class ClientAccessService:
         *,
         email: str,
         personal_name: Optional[str],
-        company_name: Optional[str],
     ) -> ClientRecord:
         existing = self._client_repository.get_by_email(email)
 
@@ -367,10 +364,6 @@ class ClientAccessService:
                     personal_name,
                     field_label="personal_name",
                 ),
-                company_name=normalize_profile_value(
-                    company_name,
-                    field_label="company_name",
-                ),
                 status="active",
             )
 
@@ -378,16 +371,10 @@ class ClientAccessService:
             personal_name,
             field_label="personal_name",
         )
-        next_company_name = normalize_profile_value(
-            company_name,
-            field_label="company_name",
-        )
-
         return self._client_repository.update_client(
             client_id=existing.id,
             email=email,
             personal_name=next_personal_name or existing.personal_name,
-            company_name=next_company_name or existing.company_name,
             status=existing.status,
             email_limit_per_campaign=existing.email_limit_per_campaign,
             max_campaigns=existing.max_campaigns,
@@ -401,7 +388,6 @@ class ClientAccessService:
         clerk_user_id: str,
         emails: list[str],
         personal_name: str,
-        company_name: str,
     ) -> ResolvedClientAccess:
         resolved_access = self.resolve_client_access(clerk_user_id, emails=emails)
 
@@ -417,11 +403,6 @@ class ClientAccessService:
             personal_name=normalize_profile_value(
                 personal_name,
                 field_label="personal_name",
-                required=True,
-            ),
-            company_name=normalize_profile_value(
-                company_name,
-                field_label="company_name",
                 required=True,
             ),
             status=resolved_access.client.status,

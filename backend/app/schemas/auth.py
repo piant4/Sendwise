@@ -17,4 +17,3 @@ class CompleteClientOnboardingRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     personal_name: str
-    company_name: str

@@ -39,7 +39,6 @@ def complete_client_onboarding(
         clerk_user_id=current_user.clerk_user_id,
         emails=[current_user.email] if current_user.email else [],
         personal_name=payload.personal_name,
-        company_name=payload.company_name,
     )
     return AuthMeResponse(
         access_type="client",

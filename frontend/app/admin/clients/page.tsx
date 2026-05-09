@@ -37,7 +37,7 @@ function truncatePortalSlug(portalSlug?: string | null): string {
 }
 
 function getClientDisplayName(client: Client): string {
-  return client.company_name || client.personal_name || client.name || client.email;
+  return client.personal_name || client.name || client.email;
 }
 
 function getAccessStatusLabel(status?: string | null): string {

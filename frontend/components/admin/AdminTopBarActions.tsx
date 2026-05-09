@@ -125,7 +125,7 @@ export function AdminTopBarActions() {
                       className="invite-modal__input"
                       disabled={isSubmitting}
                       onChange={(event) => setEmail(event.target.value)}
-                      placeholder="cliente@studio.it"
+                      placeholder="cliente@example.com"
                       required
                       value={email}
                     />

@@ -10,7 +10,6 @@ CREATE TABLE IF NOT EXISTS clients (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     email TEXT NOT NULL UNIQUE,
     personal_name TEXT,
-    company_name TEXT,
     status TEXT NOT NULL DEFAULT 'active',
     email_limit_per_campaign INTEGER,
     max_campaigns INTEGER,

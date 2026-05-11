@@ -17,6 +17,7 @@ from app.repositories.clients import (
     get_client_repository,
 )
 from app.schemas.clients import (
+    AdminBlockedSendItem,
     AdminCampaignStatusCounts,
     AdminCampaignSummary,
     AdminClientNearLimit,
@@ -439,12 +440,7 @@ class ClientsService:
                 configured_limits_count=configured_limits_count,
                 unconfigured_limits_count=max(len(clients) - configured_limits_count, 0),
             ),
-            system=AdminSystemStatus(
-                api_status="ok",
-                db_status="ok",
-                email_sending_enabled=self._settings.email_sending_enabled,
-                generated_at=current_time,
-            ),
+            system=self.get_admin_system_status(now=current_time),
         )
 
     def get_admin_email_limits(
@@ -470,6 +466,47 @@ class ClientsService:
                 unconfigured_clients=max(len(rows) - configured_clients, 0),
             ),
             rows=rows,
+        )
+
+    def get_admin_blocked_sends(
+        self,
+        *,
+        limit: Optional[int] = None,
+    ) -> list[AdminBlockedSendItem]:
+        return [
+            AdminBlockedSendItem(
+                id=blocked_send.id,
+                client_id=blocked_send.client_id,
+                client_name=blocked_send.client_name,
+                client_email=blocked_send.client_email,
+                campaign_id=blocked_send.campaign_id,
+                campaign_name=blocked_send.campaign_name,
+                reason=blocked_send.reason,
+                decision=blocked_send.decision,
+                created_at=blocked_send.created_at,
+            )
+            for blocked_send in self._repository.list_admin_blocked_sends(limit=limit)
+        ]
+
+    def get_admin_system_status(
+        self,
+        *,
+        now: Optional[datetime] = None,
+    ) -> AdminSystemStatus:
+        current_time = now or datetime.now(timezone.utc)
+        auth_provider_configured = bool(
+            self._settings.clerk_issuer.strip() and self._settings.clerk_jwks_url.strip()
+        )
+        return AdminSystemStatus(
+            api_status="ok",
+            db_status="ok" if self._repository.is_database_available() else "degraded",
+            email_sending_enabled=self._settings.email_sending_enabled,
+            environment=self._settings.environment.strip() or "unknown",
+            auth_provider_configured=auth_provider_configured,
+            clerk_management_api_configured=bool(self._settings.clerk_secret_key.strip()),
+            frontend_origin_configured=bool(self._settings.frontend_origin),
+            delivery_engine_configured=bool(self._settings.listmonk_url.strip()),
+            generated_at=current_time,
         )
 
     def _build_recent_campaign_summary(

@@ -137,6 +137,11 @@ const adminOverviewSummary: AdminOverviewSummary = {
     apiStatus: "ok",
     dbStatus: "ok",
     emailSendingEnabled: false,
+    environment: "development",
+    authProviderConfigured: true,
+    clerkManagementApiConfigured: false,
+    frontendOriginConfigured: true,
+    deliveryEngineConfigured: true,
     generatedAt: "2026-05-05T12:15:00Z",
   },
 };

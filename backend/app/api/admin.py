@@ -2,12 +2,14 @@ from fastapi import APIRouter, Depends
 
 from app.core.auth import AuthenticatedUser, require_platform_admin
 from app.schemas.clients import (
+    AdminBlockedSendItem,
     AdminCampaignSummary,
     AdminClientInviteRequest,
     AdminClientInviteResponse,
     AdminClientUpdateRequest,
     AdminEmailLimitsResponse,
     AdminOverviewSummary,
+    AdminSystemStatus,
     Client,
     ClientAccessSummary,
 )
@@ -230,11 +232,20 @@ def resume_campaign(
     return stub_response(f"POST /admin/campaigns/{campaign_id}/resume")
 
 
-@router.get("/blocked-sends")
+@router.get("/blocked-sends", response_model=list[AdminBlockedSendItem])
 def list_blocked_sends(
     _current_user: AuthenticatedUser = Depends(require_platform_admin),
-) -> dict[str, str]:
-    return stub_response("GET /admin/blocked-sends")
+    clients_service: ClientsService = Depends(get_clients_service),
+) -> list[AdminBlockedSendItem]:
+    return clients_service.get_admin_blocked_sends()
+
+
+@router.get("/system", response_model=AdminSystemStatus)
+def get_system_status(
+    _current_user: AuthenticatedUser = Depends(require_platform_admin),
+    clients_service: ClientsService = Depends(get_clients_service),
+) -> AdminSystemStatus:
+    return clients_service.get_admin_system_status()
 
 
 @router.get("/api-usage")

@@ -1,9 +1,11 @@
 import type {
+  AdminBlockedSendItem,
   AdminCampaignSummary,
   AdminClientInviteResponse,
   AdminClientUpdateInput,
   AdminEmailLimitsResponse,
   AdminOverviewSummary,
+  AdminSystemStatus,
   ApiUsage,
   BlockedSend,
   Campaign,
@@ -71,6 +73,18 @@ interface AdminCampaignApiItem {
   created_at: string;
   updated_at: string;
   blocked_sends_count: number;
+}
+
+interface AdminBlockedSendApiItem {
+  id: string;
+  client_id: string;
+  client_name: string;
+  client_email: string;
+  campaign_id?: string | null;
+  campaign_name?: string | null;
+  reason: string;
+  decision: BlockedSend["decision"];
+  created_at: string;
 }
 
 interface AdminOverviewApiResponse {
@@ -158,8 +172,13 @@ interface AdminOverviewApiResponse {
   };
   system: {
     api_status: "ok";
-    db_status: "ok";
+    db_status: "ok" | "degraded";
     email_sending_enabled: boolean;
+    environment: string;
+    auth_provider_configured: boolean;
+    clerk_management_api_configured: boolean;
+    frontend_origin_configured: boolean;
+    delivery_engine_configured: boolean;
     generated_at: string;
   };
 }
@@ -409,10 +428,22 @@ async function fetchAdminCampaigns(
   return apiGet<AdminCampaignApiItem[]>("/admin/campaigns", accessToken);
 }
 
+async function fetchAdminBlockedSends(
+  accessToken?: string | null,
+): Promise<AdminBlockedSendApiItem[]> {
+  return apiGet<AdminBlockedSendApiItem[]>("/admin/blocked-sends", accessToken);
+}
+
 async function fetchAdminEmailLimits(
   accessToken?: string | null,
 ): Promise<AdminEmailLimitsApiResponse> {
   return apiGet<AdminEmailLimitsApiResponse>("/admin/email-limits", accessToken);
+}
+
+async function fetchAdminSystemStatus(
+  accessToken?: string | null,
+): Promise<AdminOverviewApiResponse["system"]> {
+  return apiGet<AdminOverviewApiResponse["system"]>("/admin/system", accessToken);
 }
 
 async function fetchClientMe(accessToken?: string | null): Promise<ClientContext> {
@@ -625,8 +656,29 @@ function mapAdminOverviewSummary(
       apiStatus: payload.system.api_status,
       dbStatus: payload.system.db_status,
       emailSendingEnabled: payload.system.email_sending_enabled,
+      environment: payload.system.environment,
+      authProviderConfigured: payload.system.auth_provider_configured,
+      clerkManagementApiConfigured: payload.system.clerk_management_api_configured,
+      frontendOriginConfigured: payload.system.frontend_origin_configured,
+      deliveryEngineConfigured: payload.system.delivery_engine_configured,
       generatedAt: payload.system.generated_at,
     },
+  };
+}
+
+function mapAdminBlockedSendItem(
+  payload: AdminBlockedSendApiItem,
+): AdminBlockedSendItem {
+  return {
+    id: payload.id,
+    clientId: payload.client_id,
+    clientName: payload.client_name,
+    clientEmail: payload.client_email,
+    campaignId: payload.campaign_id ?? null,
+    campaignName: payload.campaign_name ?? null,
+    reason: payload.reason,
+    decision: payload.decision,
+    createdAt: payload.created_at,
   };
 }
 
@@ -667,6 +719,22 @@ function mapAdminEmailLimitsResponse(
       maxCampaigns: row.max_campaigns ?? null,
       updatedAt: row.updated_at,
     })),
+  };
+}
+
+function mapAdminSystemStatus(
+  payload: AdminOverviewApiResponse["system"],
+): AdminSystemStatus {
+  return {
+    apiStatus: payload.api_status,
+    dbStatus: payload.db_status,
+    emailSendingEnabled: payload.email_sending_enabled,
+    environment: payload.environment,
+    authProviderConfigured: payload.auth_provider_configured,
+    clerkManagementApiConfigured: payload.clerk_management_api_configured,
+    frontendOriginConfigured: payload.frontend_origin_configured,
+    deliveryEngineConfigured: payload.delivery_engine_configured,
+    generatedAt: payload.generated_at,
   };
 }
 
@@ -844,11 +912,27 @@ export function getAdminCampaigns(
   );
 }
 
+export function getAdminBlockedSends(
+  accessToken?: string | null,
+): Promise<AdminBlockedSendItem[]> {
+  assertAdminBackendEnabled("/admin/blocked-sends");
+  return fetchAdminBlockedSends(accessToken).then((items) =>
+    items.map(mapAdminBlockedSendItem),
+  );
+}
+
 export function getAdminEmailLimits(
   accessToken?: string | null,
 ): Promise<AdminEmailLimitsResponse> {
   assertAdminBackendEnabled("/admin/email-limits");
   return fetchAdminEmailLimits(accessToken).then(mapAdminEmailLimitsResponse);
+}
+
+export function getAdminSystemStatus(
+  accessToken?: string | null,
+): Promise<AdminSystemStatus> {
+  assertAdminBackendEnabled("/admin/system");
+  return fetchAdminSystemStatus(accessToken).then(mapAdminSystemStatus);
 }
 
 export function getClientMe(accessToken?: string | null): Promise<ClientContext> {

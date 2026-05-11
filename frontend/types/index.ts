@@ -177,10 +177,27 @@ export interface AdminCriticalEvent {
   createdAt: string;
 }
 
+export interface AdminBlockedSendItem {
+  id: string;
+  clientId: string;
+  clientName: string;
+  clientEmail: string;
+  campaignName?: string | null;
+  campaignId?: string | null;
+  reason: string;
+  decision: SendDecision;
+  createdAt: string;
+}
+
 export interface AdminSystemStatus {
   apiStatus: "ok";
-  dbStatus: "ok";
+  dbStatus: "ok" | "degraded";
   emailSendingEnabled: boolean;
+  environment: string;
+  authProviderConfigured: boolean;
+  clerkManagementApiConfigured: boolean;
+  frontendOriginConfigured: boolean;
+  deliveryEngineConfigured: boolean;
   generatedAt: string;
 }
 

@@ -1,3 +1,5 @@
+import { AdminBlockedSendsList } from "./AdminBlockedSendsList";
+import { AdminProgressBar } from "./AdminProgressBar";
 import type { AdminOverviewSummary } from "../../types";
 import { AdminSurface } from "./AdminSurface";
 
@@ -5,23 +7,25 @@ interface AdminBlockedSendsCardProps {
   summary: AdminOverviewSummary;
 }
 
-function formatDateTimeLabel(value: string): string {
-  const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) {
-    return value;
-  }
-
-  return new Intl.DateTimeFormat("it-IT", {
-    dateStyle: "short",
-    timeStyle: "short",
-  }).format(date);
-}
-
 export function AdminBlockedSendsCard({
   summary,
 }: AdminBlockedSendsCardProps) {
   const recentCriticalEvents = summary.blocks.recentCriticalEvents;
+  const blockedRatio =
+    summary.campaigns.totalCampaigns > 0
+      ? summary.blocks.blockedSendsToday / summary.campaigns.totalCampaigns
+      : 0;
+  const blockedItems = recentCriticalEvents.map((event) => ({
+    id: event.id,
+    clientId: event.clientId,
+    clientName: event.clientName,
+    clientEmail: event.clientEmail,
+    campaignId: event.campaignId ?? null,
+    campaignName: event.campaignName ?? null,
+    reason: event.reason,
+    decision: event.decision,
+    createdAt: event.createdAt,
+  }));
 
   return (
     <AdminSurface
@@ -33,31 +37,18 @@ export function AdminBlockedSendsCard({
         </span>
       }
     >
-      {recentCriticalEvents.length > 0 ? (
-        <div className="admin-list">
-          {recentCriticalEvents.map((event) => (
-            <article key={event.id} className="admin-row admin-row--alert">
-              <div className="admin-row__header">
-                <div className="admin-row__copy">
-                  <strong className="admin-row__title">
-                    {event.campaignName || "Campagna non disponibile"}
-                  </strong>
-                  <span className="admin-row__meta">
-                    {event.clientName} · {event.clientEmail}
-                  </span>
-                </div>
-                <span className="admin-row__timestamp">
-                  {formatDateTimeLabel(event.createdAt)}
-                </span>
-              </div>
-              <p className="admin-row__support">{event.reason}</p>
-              <div className="admin-row__footer">
-                <span>Decisione: {event.decision}</span>
-                <span>Tipo: blocked_send</span>
-              </div>
-            </article>
-          ))}
-        </div>
+      <div className="admin-progress-stack">
+        <AdminProgressBar
+          label="Blocchi oggi"
+          valueLabel={summary.blocks.blockedSendsToday.toLocaleString()}
+          ratio={Math.min(blockedRatio, 1)}
+          helper="Indicatore rapportato al numero corrente di campagne registrate."
+          tone="danger"
+        />
+      </div>
+
+      {blockedItems.length > 0 ? (
+        <AdminBlockedSendsList items={blockedItems} />
       ) : (
         <div className="admin-empty-state">
           Nessun evento critico recente trovato nei dati correnti.

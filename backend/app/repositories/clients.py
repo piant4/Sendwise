@@ -137,6 +137,13 @@ class ClientRepository:
     ) -> list[AdminBlockedSendRecord]:
         raise NotImplementedError
 
+    def list_admin_blocked_sends(
+        self,
+        *,
+        limit: Optional[int] = None,
+    ) -> list[AdminBlockedSendRecord]:
+        raise NotImplementedError
+
     def count_admin_blocked_sends_since(self, started_at: datetime) -> int:
         raise NotImplementedError
 
@@ -152,6 +159,9 @@ class ClientRepository:
         raise NotImplementedError
 
     def list_admin_campaign_email_volumes(self) -> list[AdminCampaignEmailVolumeRecord]:
+        raise NotImplementedError
+
+    def is_database_available(self) -> bool:
         raise NotImplementedError
 
     def delete_client_account(self, client_id: str) -> bool:
@@ -366,6 +376,13 @@ class PostgresClientRepository(ClientRepository):
         *,
         limit: int,
     ) -> list[AdminBlockedSendRecord]:
+        return self.list_admin_blocked_sends(limit=limit)
+
+    def list_admin_blocked_sends(
+        self,
+        *,
+        limit: Optional[int] = None,
+    ) -> list[AdminBlockedSendRecord]:
         query = """
             SELECT
                 blocked_sends.id::text AS id,
@@ -383,12 +400,15 @@ class PostgresClientRepository(ClientRepository):
             LEFT JOIN campaigns
                 ON campaigns.id = blocked_sends.campaign_id
             ORDER BY blocked_sends.created_at DESC, blocked_sends.id DESC
-            LIMIT %s
         """
+        parameters: tuple[Any, ...] = ()
+        if limit is not None:
+            query = f"{query}\n            LIMIT %s"
+            parameters = (limit,)
 
         with postgres_connection(self._settings) as connection:
             with connection.cursor() as cursor:
-                cursor.execute(query, (limit,))
+                cursor.execute(query, parameters)
                 rows = cursor.fetchall()
 
         return [AdminBlockedSendRecord.model_validate(row) for row in rows]
@@ -480,6 +500,19 @@ class PostgresClientRepository(ClientRepository):
                 rows = cursor.fetchall()
 
         return [AdminCampaignEmailVolumeRecord.model_validate(row) for row in rows]
+
+    def is_database_available(self) -> bool:
+        query = "SELECT 1 AS ok"
+
+        try:
+            with postgres_connection(self._settings) as connection:
+                with connection.cursor() as cursor:
+                    cursor.execute(query)
+                    cursor.fetchone()
+        except Exception:
+            return False
+
+        return True
 
     def delete_client_account(self, client_id: str) -> bool:
         delete_queries = (

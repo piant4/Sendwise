@@ -89,11 +89,13 @@ class FakeClientRepository(ClientRepository):
         admin_campaign_records: Optional[list[FakeAdminCampaignRecord]] = None,
         admin_blocked_send_records: Optional[list[FakeAdminBlockedSendRecord]] = None,
         admin_email_log_records: Optional[list[FakeAdminEmailLogRecord]] = None,
+        database_available: bool = True,
     ) -> None:
         self._records = {record.id: record for record in records or []}
         self._admin_campaign_records = admin_campaign_records or []
         self._admin_blocked_send_records = admin_blocked_send_records or []
         self._admin_email_log_records = admin_email_log_records or []
+        self._database_available = database_available
         self._counter = len(self._records)
         self.deleted_client_ids: list[str] = []
 
@@ -182,11 +184,22 @@ class FakeClientRepository(ClientRepository):
         *,
         limit: int,
     ) -> list[FakeAdminBlockedSendRecord]:
-        return sorted(
+        return self.list_admin_blocked_sends(limit=limit)
+
+    def list_admin_blocked_sends(
+        self,
+        *,
+        limit: Optional[int] = None,
+    ) -> list[FakeAdminBlockedSendRecord]:
+        rows = sorted(
             self._admin_blocked_send_records,
             key=lambda item: (item.created_at, item.id),
             reverse=True,
-        )[:limit]
+        )
+        if limit is None:
+            return rows
+
+        return rows[:limit]
 
     def count_admin_blocked_sends_since(self, started_at: datetime) -> int:
         return sum(
@@ -266,6 +279,9 @@ class FakeClientRepository(ClientRepository):
             reverse=True,
         )
         return rows
+
+    def is_database_available(self) -> bool:
+        return self._database_available
 
     def delete_client_account(self, client_id: str) -> bool:
         existing = self._records.pop(client_id, None)
@@ -659,6 +675,7 @@ def install_test_dependencies(
     admin_campaign_records: Optional[list[FakeAdminCampaignRecord]] = None,
     admin_blocked_send_records: Optional[list[FakeAdminBlockedSendRecord]] = None,
     admin_email_log_records: Optional[list[FakeAdminEmailLogRecord]] = None,
+    database_available: bool = True,
     invitation_gateway: Optional[FakeClerkInvitationGateway] = None,
     deletion_gateway: Optional[FakeClerkUserDeletionGateway] = None,
 ) -> tuple[
@@ -672,6 +689,7 @@ def install_test_dependencies(
         admin_campaign_records=admin_campaign_records,
         admin_blocked_send_records=admin_blocked_send_records,
         admin_email_log_records=admin_email_log_records,
+        database_available=database_available,
     )
     client_access_repository = FakeClientAccessRepository(access_records)
     gateway = invitation_gateway or FakeClerkInvitationGateway()
@@ -1253,6 +1271,11 @@ def test_platform_admin_receives_backend_owned_overview_payload(
         payload["system"]["email_sending_enabled"]
         == get_settings().email_sending_enabled
     )
+    assert payload["system"]["environment"] == get_settings().environment
+    assert payload["system"]["auth_provider_configured"] is True
+    assert payload["system"]["frontend_origin_configured"] is True
+    assert payload["system"]["delivery_engine_configured"] is True
+    assert payload["system"]["clerk_management_api_configured"] is False
 
 
 def test_platform_admin_overview_reports_clients_near_limit_from_real_usage(
@@ -1346,6 +1369,137 @@ def test_platform_admin_overview_reports_clients_near_limit_from_real_usage(
     assert near_limit_clients[0]["campaigns_in_use"] == 4
     assert near_limit_clients[0]["max_campaigns"] == 5
     assert near_limit_clients[0]["highest_usage_campaign_volume"] == 450
+
+
+def test_platform_admin_can_list_cross_client_blocked_sends(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    signing_keypair: rsa.RSAPrivateKey,
+) -> None:
+    set_auth_mappings(
+        monkeypatch,
+        {
+            "user_admin": {
+                "email": "admin@sendwise.test",
+                "access_type": "platform_admin",
+                "status": "active",
+            }
+        },
+    )
+    first_client = build_client_record(
+        client_id="client_alpha",
+        email="alpha@example.test",
+        personal_name="Alpha",
+    )
+    second_client = build_client_record(
+        client_id="client_beta",
+        email="beta@example.test",
+        personal_name="Beta",
+    )
+    install_test_dependencies(
+        client_records=[first_client, second_client],
+        admin_blocked_send_records=[
+            build_admin_blocked_send_record(
+                blocked_send_id="blocked_newest",
+                client_id=second_client.id,
+                client_name="Beta",
+                client_email=second_client.email,
+                campaign_id="campaign_beta",
+                campaign_name="Beta Recovery",
+                reason="Campaign is paused.",
+                created_at=datetime(2026, 5, 10, 12, 15, tzinfo=timezone.utc),
+            ),
+            build_admin_blocked_send_record(
+                blocked_send_id="blocked_older",
+                client_id=first_client.id,
+                client_name="Alpha",
+                client_email=first_client.email,
+                campaign_id=None,
+                campaign_name="Campagna non disponibile",
+                reason="Client is blocked.",
+                created_at=datetime(2026, 5, 9, 8, 0, tzinfo=timezone.utc),
+            ),
+        ],
+    )
+    token = make_token(signing_keypair, clerk_user_id="user_admin")
+
+    response = client.get("/admin/blocked-sends", headers=auth_header(token))
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert [item["id"] for item in payload] == ["blocked_newest", "blocked_older"]
+    assert payload[0]["client_name"] == "Beta"
+    assert payload[0]["campaign_name"] == "Beta Recovery"
+    assert payload[0]["reason"] == "Campaign is paused."
+    assert payload[0]["decision"] == "blocked"
+    assert payload[1]["campaign_id"] is None
+
+
+def test_platform_admin_can_read_safe_system_status_without_secret_values(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    signing_keypair: rsa.RSAPrivateKey,
+) -> None:
+    set_auth_mappings(
+        monkeypatch,
+        {
+            "user_admin": {
+                "email": "admin@sendwise.test",
+                "access_type": "platform_admin",
+                "status": "active",
+            }
+        },
+    )
+    monkeypatch.setenv("ENVIRONMENT", "staging")
+    monkeypatch.setenv("EMAIL_SENDING_ENABLED", "true")
+    monkeypatch.setenv("CLERK_SECRET_KEY", "super-secret-clerk-value")
+    get_settings.cache_clear()
+    install_test_dependencies()
+    token = make_token(signing_keypair, clerk_user_id="user_admin")
+
+    response = client.get("/admin/system", headers=auth_header(token))
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["api_status"] == "ok"
+    assert payload["db_status"] == "ok"
+    assert payload["email_sending_enabled"] is True
+    assert payload["environment"] == "staging"
+    assert payload["auth_provider_configured"] is True
+    assert payload["clerk_management_api_configured"] is True
+    assert payload["frontend_origin_configured"] is True
+    assert payload["delivery_engine_configured"] is True
+    assert "generated_at" in payload
+    assert "super-secret-clerk-value" not in response.text
+    assert "CLERK_SECRET_KEY" not in response.text
+    assert "DATABASE_URL" not in response.text
+    assert "POSTGRES_PASSWORD" not in response.text
+
+
+def test_platform_admin_system_status_reports_database_issue_without_leaking_config(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    signing_keypair: rsa.RSAPrivateKey,
+) -> None:
+    set_auth_mappings(
+        monkeypatch,
+        {
+            "user_admin": {
+                "email": "admin@sendwise.test",
+                "access_type": "platform_admin",
+                "status": "active",
+            }
+        },
+    )
+    install_test_dependencies(database_available=False)
+    token = make_token(signing_keypair, clerk_user_id="user_admin")
+
+    response = client.get("/admin/system", headers=auth_header(token))
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["db_status"] == "degraded"
+    assert "postgresql://" not in response.text
 
 
 def test_platform_admin_campaigns_are_loaded_from_cross_client_backend_data(

@@ -1,3 +1,4 @@
+import { AdminProgressBar } from "./AdminProgressBar";
 import { StatusBadge } from "../ui/StatusBadge";
 import type { AdminOverviewSummary, CampaignStatus } from "../../types";
 import { AdminSurface } from "./AdminSurface";
@@ -59,6 +60,28 @@ export function AdminRecentCampaignsCard({
   summary,
 }: AdminRecentCampaignsCardProps) {
   const recentCampaigns = summary.campaigns.recentCampaigns;
+  const statusDistribution = [
+    {
+      label: "Ready / running",
+      count: summary.campaigns.statusCounts.active,
+      tone: "success" as const,
+    },
+    {
+      label: "In pausa",
+      count: summary.campaigns.statusCounts.paused,
+      tone: "warning" as const,
+    },
+    {
+      label: "Bloccate",
+      count: summary.campaigns.statusCounts.blocked,
+      tone: "danger" as const,
+    },
+    {
+      label: "Bozze",
+      count: summary.campaigns.statusCounts.draft,
+      tone: "default" as const,
+    },
+  ];
 
   return (
     <AdminSurface
@@ -70,6 +93,22 @@ export function AdminRecentCampaignsCard({
         </span>
       }
     >
+      <div className="admin-progress-stack">
+        {statusDistribution.map((item) => (
+          <AdminProgressBar
+            key={item.label}
+            label={item.label}
+            valueLabel={item.count.toLocaleString()}
+            ratio={
+              summary.campaigns.totalCampaigns > 0
+                ? item.count / summary.campaigns.totalCampaigns
+                : 0
+            }
+            tone={item.tone}
+          />
+        ))}
+      </div>
+
       {recentCampaigns.length > 0 ? (
         <div className="admin-list">
           {recentCampaigns.map((campaign) => (
@@ -80,7 +119,7 @@ export function AdminRecentCampaignsCard({
                     {campaign.campaignName}
                   </strong>
                   <span className="admin-row__meta">
-                    {campaign.clientName} · {campaign.clientEmail}
+                    {campaign.clientName} | {campaign.clientEmail}
                   </span>
                 </div>
                 <StatusBadge

@@ -1,6 +1,7 @@
 "use client";
 
 import { UserProfile } from "@clerk/nextjs";
+import { useEffect, useRef } from "react";
 import {
   KeyRound,
   Mail,
@@ -34,6 +35,7 @@ const SHEET_COPY = {
     description: "Aggiorna nome e cognome direttamente in Clerk senza uscire da Sendwise.",
     eyebrow: "Profilo",
     kind: "custom" as const,
+    shortcuts: ["name", "email"] as const,
     title: "Modifica nome",
     Icon: UserRound,
   },
@@ -41,8 +43,10 @@ const SHEET_COPY = {
     clerkPage: "account" as const,
     description: "Gestisci email principale e identita mantenendo Clerk come fonte di verita.",
     eyebrow: "Profilo",
+    focusTerms: ["email addresses", "email address", "indirizzi email", "indirizzo email"],
+    helper: "La scheda sotto resta dentro /account e mette al centro la gestione email di Clerk.",
     kind: "clerk" as const,
-    startPath: "/account",
+    shortcuts: ["name", "email"] as const,
     title: "Gestisci email",
     Icon: Mail,
   },
@@ -50,8 +54,10 @@ const SHEET_COPY = {
     clerkPage: "security" as const,
     description: "Aggiorna la password nel pannello sicurezza contenuto qui dentro.",
     eyebrow: "Sicurezza",
+    focusTerms: ["password"],
+    helper: "La scheda sicurezza viene aperta qui dentro e focalizza il blocco password.",
     kind: "clerk" as const,
-    startPath: "/security",
+    shortcuts: ["password", "mfa", "sessions"] as const,
     title: "Password",
     Icon: KeyRound,
   },
@@ -59,8 +65,18 @@ const SHEET_COPY = {
     clerkPage: "security" as const,
     description: "Configura MFA e codici di recupero senza lasciare /account.",
     eyebrow: "Sicurezza",
+    focusTerms: [
+      "two-step verification",
+      "two-factor",
+      "mfa",
+      "authenticator",
+      "backup codes",
+      "recovery codes",
+      "codici di recupero",
+    ],
+    helper: "La scheda sicurezza resta contenuta e porta l'attenzione sulla configurazione MFA.",
     kind: "clerk" as const,
-    startPath: "/security",
+    shortcuts: ["password", "mfa", "sessions"] as const,
     title: "Autenticazione a due fattori",
     Icon: ShieldCheck,
   },
@@ -68,12 +84,54 @@ const SHEET_COPY = {
     clerkPage: "security" as const,
     description: "Controlla sessioni e dispositivi recenti nel pannello sicurezza di Clerk.",
     eyebrow: "Sicurezza",
+    focusTerms: ["active devices", "devices", "sessions", "sessioni", "dispositivi"],
+    helper: "La scheda sicurezza resta dentro Sendwise e centra l'area sessioni e dispositivi.",
     kind: "clerk" as const,
-    startPath: "/security",
+    shortcuts: ["password", "mfa", "sessions"] as const,
     title: "Sessioni e dispositivi",
     Icon: Smartphone,
   },
 };
+
+function getShortcutLabel(mode: AccountSettingsSheetMode): string {
+  switch (mode) {
+    case "name":
+      return "Nome";
+    case "email":
+      return "Email";
+    case "password":
+      return "Password";
+    case "mfa":
+      return "MFA";
+    case "sessions":
+      return "Sessioni";
+    default:
+      return mode;
+  }
+}
+
+function normalizeText(value: string): string {
+  return value
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function findClerkFocusTarget(root: HTMLElement, focusTerms: string[]): HTMLElement | null {
+  const terms = focusTerms.map(normalizeText);
+  const elements = Array.from(
+    root.querySelectorAll<HTMLElement>("button, a, h1, h2, h3, h4, h5, p, span"),
+  );
+
+  return (
+    elements.find((element) => {
+      const text = normalizeText(element.textContent ?? "");
+      return text && terms.some((term) => text.includes(term));
+    }) ?? null
+  );
+}
 
 export function AccountSettingsSheet({
   mode,
@@ -81,6 +139,60 @@ export function AccountSettingsSheet({
 }: AccountSettingsSheetProps) {
   const isOpen = mode !== null;
   const copy = mode ? SHEET_COPY[mode] : null;
+  const clerkContainerRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!isOpen || !copy || copy.kind !== "clerk" || !clerkContainerRef.current) {
+      return undefined;
+    }
+
+    const root = clerkContainerRef.current;
+    let animationFrame = 0;
+    let observer: MutationObserver | null = null;
+
+    const focusTarget = () => {
+      const target = findClerkFocusTarget(root, copy.focusTerms);
+
+      if (!target) {
+        return false;
+      }
+
+      target.scrollIntoView({ behavior: "smooth", block: "center" });
+
+      if (
+        target instanceof HTMLButtonElement ||
+        target instanceof HTMLAnchorElement ||
+        target instanceof HTMLInputElement
+      ) {
+        target.focus({ preventScroll: true });
+      }
+
+      target.classList.add("account-sheet__spotlight");
+      window.setTimeout(() => {
+        target.classList.remove("account-sheet__spotlight");
+      }, 1800);
+      return true;
+    };
+
+    const scheduleFocus = () => {
+      animationFrame = window.requestAnimationFrame(() => {
+        if (focusTarget() && observer) {
+          observer.disconnect();
+        }
+      });
+    };
+
+    scheduleFocus();
+    observer = new MutationObserver(() => {
+      scheduleFocus();
+    });
+    observer.observe(root, { childList: true, subtree: true });
+
+    return () => {
+      window.cancelAnimationFrame(animationFrame);
+      observer?.disconnect();
+    };
+  }, [copy, isOpen]);
 
   return (
     <Sheet
@@ -109,6 +221,21 @@ export function AccountSettingsSheet({
                   </SheetDescription>
                 </div>
               </div>
+              <div className="account-sheet__shortcut-row" aria-label="Azioni account">
+                {copy.shortcuts.map((shortcut) => (
+                  <button
+                    key={shortcut}
+                    type="button"
+                    className="account-sheet__shortcut"
+                    data-active={mode === shortcut}
+                    onClick={() => {
+                      onOpenChange(shortcut);
+                    }}
+                  >
+                    {getShortcutLabel(shortcut)}
+                  </button>
+                ))}
+              </div>
             </SheetHeader>
 
             <div className="account-sheet__body">
@@ -119,18 +246,20 @@ export function AccountSettingsSheet({
                   }}
                 />
               ) : (
-                <UserProfile
-                  key={mode}
-                  routing="hash"
-                  fallback={
-                    <div className="account-sheet__loading">
-                      Caricamento impostazioni protette...
-                    </div>
-                  }
-                  __experimental_startPath={copy.startPath}
-                >
-                  <UserProfile.Page label={copy.clerkPage} />
-                </UserProfile>
+                <div className="account-sheet__clerk-shell" ref={clerkContainerRef}>
+                  <p className="account-sheet__helper">{copy.helper}</p>
+                  <UserProfile
+                    key={mode}
+                    routing="hash"
+                    fallback={
+                      <div className="account-sheet__loading">
+                        Caricamento impostazioni protette...
+                      </div>
+                    }
+                  >
+                    <UserProfile.Page label={copy.clerkPage} />
+                  </UserProfile>
+                </div>
               )}
             </div>
           </div>

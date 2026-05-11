@@ -1,22 +1,11 @@
+import { AdminProgressBar } from "./AdminProgressBar";
+import { AdminSystemHealthPanel } from "./AdminSystemHealthPanel";
 import { StatusBadge } from "../ui/StatusBadge";
 import type { AdminClientNearLimit, AdminOverviewSummary } from "../../types";
 import { AdminSurface } from "./AdminSurface";
 
 interface AdminOperationsRailProps {
   summary: AdminOverviewSummary;
-}
-
-function formatDateTimeLabel(value: string): string {
-  const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) {
-    return value;
-  }
-
-  return new Intl.DateTimeFormat("it-IT", {
-    dateStyle: "short",
-    timeStyle: "short",
-  }).format(date);
 }
 
 function formatPercent(value: number): string {
@@ -39,6 +28,8 @@ function getLimitFactorLabel(limit: AdminClientNearLimit["limitingFactor"]): str
 export function AdminOperationsRail({
   summary,
 }: AdminOperationsRailProps) {
+  const topClientVolume = summary.sending.topClientsByVolume[0]?.emailsSent ?? 0;
+
   return (
     <div className="admin-rail">
       <AdminSurface
@@ -62,23 +53,32 @@ export function AdminOperationsRail({
                 <p className="admin-row__support">
                   {getLimitFactorLabel(client.limitingFactor)}
                 </p>
-                <div className="admin-metric-list">
-                  <div className="admin-metric-item">
-                    <span>Campagne in uso</span>
-                    <strong>
-                      {client.maxCampaigns
+                <div className="admin-progress-stack">
+                  <AdminProgressBar
+                    label="Campagne in uso"
+                    valueLabel={
+                      client.maxCampaigns
                         ? `${client.campaignsInUse.toLocaleString()} / ${client.maxCampaigns.toLocaleString()}`
-                        : client.campaignsInUse.toLocaleString()}
-                    </strong>
-                  </div>
-                  <div className="admin-metric-item">
-                    <span>Campagna con piu invii</span>
-                    <strong>
-                      {client.highestUsageCampaignName
-                        ? `${client.highestUsageCampaignName} · ${client.highestUsageCampaignVolume.toLocaleString()}`
-                        : "Nessun invio registrato"}
-                    </strong>
-                  </div>
+                        : client.campaignsInUse.toLocaleString()
+                    }
+                    ratio={client.maxCampaignsRatio ?? 0}
+                    tone="warning"
+                  />
+                  <AdminProgressBar
+                    label="Volume campagna leader"
+                    valueLabel={
+                      client.emailLimitPerCampaign
+                        ? `${client.highestUsageCampaignVolume.toLocaleString()} / ${client.emailLimitPerCampaign.toLocaleString()}`
+                        : client.highestUsageCampaignVolume.toLocaleString()
+                    }
+                    ratio={client.emailLimitRatio ?? 0}
+                    helper={
+                      client.highestUsageCampaignName
+                        ? client.highestUsageCampaignName
+                        : "Nessun invio registrato"
+                    }
+                    tone="danger"
+                  />
                 </div>
               </article>
             ))}
@@ -110,7 +110,17 @@ export function AdminOperationsRail({
                     {client.emailsSent.toLocaleString()}
                   </strong>
                 </div>
-                <p className="admin-row__support">Email inviate nel mese corrente</p>
+                <div className="admin-progress-stack">
+                  <AdminProgressBar
+                    label="Peso sul leader"
+                    valueLabel={
+                      topClientVolume > 0
+                        ? formatPercent(client.emailsSent / topClientVolume)
+                        : "0%"
+                    }
+                    ratio={topClientVolume > 0 ? client.emailsSent / topClientVolume : 0}
+                  />
+                </div>
               </article>
             ))}
           </div>
@@ -123,28 +133,9 @@ export function AdminOperationsRail({
 
       <AdminSurface
         title="Stato sistema"
-        description="Check minimi esposti dal backend per capire se il sistema e operativo."
+        description="Check backend reali e flag di configurazione esposti in forma sicura."
       >
-        <div className="admin-system-list">
-          <div className="admin-system-item">
-            <span>Backend</span>
-            <StatusBadge label="OK" variant="success" />
-          </div>
-          <div className="admin-system-item">
-            <span>Database</span>
-            <StatusBadge label="OK" variant="success" />
-          </div>
-          <div className="admin-system-item">
-            <span>Invio email</span>
-            <StatusBadge
-              label={summary.system.emailSendingEnabled ? "Abilitato" : "Disabilitato"}
-              variant={summary.system.emailSendingEnabled ? "warning" : "neutral"}
-            />
-          </div>
-        </div>
-        <div className="admin-empty-state admin-system-note">
-          Ultimo aggiornamento: {formatDateTimeLabel(summary.system.generatedAt)}
-        </div>
+        <AdminSystemHealthPanel status={summary.system} />
       </AdminSurface>
     </div>
   );

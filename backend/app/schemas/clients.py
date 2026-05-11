@@ -119,10 +119,27 @@ class AdminCriticalEvent(BaseModel):
     created_at: datetime
 
 
+class AdminBlockedSendItem(BaseModel):
+    id: str
+    client_id: str
+    client_name: str
+    client_email: str
+    campaign_id: Optional[str] = None
+    campaign_name: Optional[str] = None
+    reason: str
+    decision: SendDecision
+    created_at: datetime
+
+
 class AdminSystemStatus(BaseModel):
     api_status: Literal["ok"] = "ok"
-    db_status: Literal["ok"] = "ok"
+    db_status: Literal["ok", "degraded"] = "ok"
     email_sending_enabled: bool
+    environment: str
+    auth_provider_configured: bool
+    clerk_management_api_configured: bool
+    frontend_origin_configured: bool
+    delivery_engine_configured: bool
     generated_at: datetime
 
 

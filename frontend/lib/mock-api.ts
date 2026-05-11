@@ -147,61 +147,101 @@ const adminOverviewSummary: AdminOverviewSummary = {
 };
 
 const clientOverviewSummary: ClientOverviewSummary = {
-  activeCampaigns: 1,
-  monthlyEmailLimit: 1000,
-  monthlyEmailsSent: 120,
-  blockedSendsThisMonth: 1,
-  campaignSummaries: [
-    {
-      id: "campaign_acme_welcome",
-      name: "Serie benvenuto",
-      status: "running",
-      sent: 120,
-      limit: 400,
-      lastActivityLabel: "Oggi, 09:20",
-    },
-    {
-      id: "campaign_acme_reactivation",
-      name: "Bozza riattivazione",
-      status: "draft",
-      sent: 0,
-      limit: 250,
-      lastActivityLabel: "Ieri, 14:00",
-    },
-    {
-      id: "campaign_acme_warmup",
-      name: "Controllo warmup dominio",
-      status: "blocked",
-      sent: 0,
-      limit: 100,
-      lastActivityLabel: "Ieri, 12:10",
-    },
-  ],
-  limitOverview: {
-    monthlyEmailLimit: 1000,
-    monthlyEmailsSent: 120,
+  client: {
+    id: CLIENT_ACME,
+    name: "Alice Acme",
+    email: "acme@example.test",
+    portalSlug: "mockclientportalslug00000000000001",
+    clientStatus: "active",
+    accessStatus: "active",
+    invitationStatus: "accepted",
   },
-  deliveryOverview: {
-    sent: 120,
-    opened: 74,
-    spam: 3,
-    bounced: 5,
-    blocked: 1,
-  },
-  readableBlockedSends: [
-    {
-      id: "blocked_acme_001",
-      campaignName: "Bozza riattivazione",
-      reason: "campaign_draft",
-      readableReason:
-        "La campagna e ancora in bozza e non puo essere valutata per l'invio.",
-      createdAtLabel: "Ieri, 12:10",
+  campaigns: {
+    totalCampaigns: 2,
+    activeCampaigns: 1,
+    runningCampaigns: 1,
+    statusCounts: {
+      draft: 1,
+      ready: 0,
+      running: 1,
+      paused: 0,
+      blocked: 0,
+      completed: 0,
+      failed: 0,
     },
-  ],
-  accountStatus: {
-    status: "active",
-    label: "Account attivo",
-    note: "I dati mock mostrano l'account come attivo. L'autorizzazione di invio resta controllata dal backend.",
+    recentCampaigns: [
+      {
+        id: "campaign_acme_welcome",
+        client_id: CLIENT_ACME,
+        name: "Serie benvenuto",
+        status: "running",
+        subject: "Benvenuto in Sendwise",
+        created_at: "2026-05-03T08:00:00Z",
+        updated_at: "2026-05-05T09:20:00Z",
+      },
+      {
+        id: "campaign_acme_reactivation",
+        client_id: CLIENT_ACME,
+        name: "Bozza riattivazione",
+        status: "draft",
+        subject: "Ti aspettiamo ancora",
+        created_at: "2026-05-04T14:00:00Z",
+        updated_at: "2026-05-04T14:00:00Z",
+      },
+    ],
+  },
+  usage: {
+    hasData: true,
+    totalRecords: 2,
+    currentPeriodStartedAt: "2026-05-01T00:00:00Z",
+    currentPeriodTotals: [
+      {
+        usageType: "api_requests",
+        totalQuantity: 42,
+      },
+      {
+        usageType: "dry_run_sends",
+        totalQuantity: 3,
+      },
+    ],
+    recentUsage: [
+      {
+        id: "usage_acme_api",
+        client_id: CLIENT_ACME,
+        usage_type: "api_requests",
+        quantity: 42,
+        metadata: { period: "2026-05" },
+        created_at: "2026-05-05T12:00:00Z",
+      },
+      {
+        id: "usage_acme_dry_runs",
+        client_id: CLIENT_ACME,
+        usage_type: "dry_run_sends",
+        quantity: 3,
+        metadata: { period: "2026-05" },
+        created_at: "2026-05-05T12:05:00Z",
+      },
+    ],
+  },
+  blockedSends: {
+    currentPeriodStartedAt: "2026-05-01T00:00:00Z",
+    currentPeriodCount: 1,
+    recentBlockedSends: [
+      {
+        id: "blocked_acme_001",
+        client_id: CLIENT_ACME,
+        campaign_id: "campaign_acme_reactivation",
+        campaign_name: "Bozza riattivazione",
+        contact_id: "contact_acme_001",
+        reason: "La campagna e ancora in bozza e non puo essere inviata.",
+        decision: "blocked",
+        created_at: "2026-05-05T12:10:00Z",
+      },
+    ],
+  },
+  limits: {
+    emailLimitPerCampaign: 1000,
+    maxCampaigns: 4,
   },
 };
 
@@ -301,6 +341,7 @@ const clientBlockedSends: BlockedSend[] = [
     id: "blocked_acme_001",
     client_id: CLIENT_ACME,
     campaign_id: "campaign_acme_reactivation",
+    campaign_name: "Reactivation Draft",
     contact_id: "contact_acme_001",
     reason: "Milestone 0.5 fake blocked send for UI contract testing.",
     decision: "blocked",

@@ -54,7 +54,7 @@ export default async function ClientPortalPage({
     return (
       <DashboardErrorState
         title="Dashboard cliente"
-        description="Vista cliente letta dal boundary API frontend."
+        description="Vista cliente letta dal backend applicativo."
         errorMessage={result.errorMessage}
       />
     );

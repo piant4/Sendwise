@@ -2,7 +2,7 @@ import { StatusBadge } from "../ui/StatusBadge";
 import type { ClientOverviewSummary } from "../../types";
 import { ClientSurface } from "./ClientSurface";
 import {
-  formatLimitValue,
+  formatDateTimeLabel,
   getCampaignStatusLabel,
   getCampaignStatusVariant,
 } from "./clientStatus";
@@ -17,22 +17,22 @@ export function ClientRecentCampaignsCard({
   return (
     <ClientSurface
       title="Campagne recenti"
-      description="Righe compatte per stato, ultima attivita e volume inviato."
+      description="Righe backend-owned per stato, ultimo aggiornamento e soggetto."
       aside={
         <span className="client-surface__eyebrow">
-          {summary.campaignSummaries.length.toLocaleString()} elementi
+          {summary.campaigns.recentCampaigns.length.toLocaleString()} elementi
         </span>
       }
     >
-      {summary.campaignSummaries.length > 0 ? (
+      {summary.campaigns.recentCampaigns.length > 0 ? (
         <div className="client-list">
-          {summary.campaignSummaries.map((campaign) => (
+          {summary.campaigns.recentCampaigns.map((campaign) => (
             <article key={campaign.id} className="client-row">
               <div className="client-row__header">
                 <div className="client-row__copy">
                   <strong className="client-row__title">{campaign.name}</strong>
                   <span className="client-row__meta">
-                    Ultima attivita {campaign.lastActivityLabel}
+                    Ultimo aggiornamento {formatDateTimeLabel(campaign.updated_at)}
                   </span>
                 </div>
                 <StatusBadge
@@ -41,15 +41,17 @@ export function ClientRecentCampaignsCard({
                 />
               </div>
               <div className="client-row__footer">
-                <span>{campaign.sent.toLocaleString()} email inviate</span>
-                <span>Capienza campagna {formatLimitValue(campaign.limit)}</span>
+                <span>
+                  {campaign.subject?.trim() ? campaign.subject : "Oggetto non disponibile"}
+                </span>
+                <span>Creata {formatDateTimeLabel(campaign.created_at)}</span>
               </div>
             </article>
           ))}
         </div>
       ) : (
         <div className="client-empty-state">
-          Nessuna campagna recente disponibile nel riepilogo corrente.
+          Nessuna campagna disponibile per questo cliente.
         </div>
       )}
     </ClientSurface>

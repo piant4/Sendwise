@@ -21,8 +21,6 @@ export const USE_MOCK_API = process.env.NEXT_PUBLIC_USE_MOCK_API !== "false";
 export const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL?.trim() ?? "";
 const INTERNAL_API_BASE_URL =
   process.env.BACKEND_URL?.trim() || API_BASE_URL;
-
-const ACTIVE_CAMPAIGN_STATUSES = new Set<Campaign["status"]>(["ready", "running"]);
 const ADMIN_ROUTE = "/admin";
 const CLIENT_PORTAL_ROUTE_PREFIX = "/c";
 
@@ -210,6 +208,52 @@ interface AdminEmailLimitsApiResponse {
   }[];
 }
 
+interface ClientOverviewApiResponse {
+  client: {
+    id: string;
+    name: string;
+    email: string;
+    portal_slug: string;
+    client_status: Client["status"];
+    access_status: NonNullable<Client["access"]>["status"];
+    invitation_status: NonNullable<Client["access"]>["invitation_status"];
+  };
+  campaigns: {
+    total_campaigns: number;
+    active_campaigns: number;
+    running_campaigns: number;
+    status_counts: {
+      draft: number;
+      ready: number;
+      running: number;
+      paused: number;
+      blocked: number;
+      completed: number;
+      failed: number;
+    };
+    recent_campaigns: Campaign[];
+  };
+  usage: {
+    has_data: boolean;
+    total_records: number;
+    current_period_started_at: string;
+    current_period_totals: {
+      usage_type: string;
+      total_quantity: number;
+    }[];
+    recent_usage: ApiUsage[];
+  };
+  blocked_sends: {
+    current_period_started_at: string;
+    current_period_count: number;
+    recent_blocked_sends: BlockedSend[];
+  };
+  limits: {
+    email_limit_per_campaign?: number | null;
+    max_campaigns?: number | null;
+  };
+}
+
 export class ApiError extends Error {
   readonly path: string;
   readonly detail: string;
@@ -234,23 +278,6 @@ export class ApiError extends Error {
 
 export function isApiError(error: unknown): error is ApiError {
   return error instanceof ApiError;
-}
-
-function formatDateTimeLabel(value: string): string {
-  const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) {
-    return value;
-  }
-
-  return new Intl.DateTimeFormat("it-IT", {
-    dateStyle: "short",
-    timeStyle: "short",
-  }).format(date);
-}
-
-function isActiveCampaignStatus(status: Campaign["status"]): boolean {
-  return ACTIVE_CAMPAIGN_STATUSES.has(status);
 }
 
 function getRequiredApiBaseUrl(): string {
@@ -450,6 +477,12 @@ async function fetchClientMe(accessToken?: string | null): Promise<ClientContext
   return apiGet<ClientContext>("/client/me", accessToken);
 }
 
+async function fetchClientOverview(
+  accessToken?: string | null,
+): Promise<ClientOverviewApiResponse> {
+  return apiGet<ClientOverviewApiResponse>("/client/overview", accessToken);
+}
+
 async function fetchClientCampaigns(accessToken?: string | null): Promise<Campaign[]> {
   return apiGet<Campaign[]>("/client/campaigns", accessToken);
 }
@@ -534,23 +567,6 @@ async function postDeleteCurrentAccount(
     { confirmation_text: confirmationText },
     accessToken,
   );
-}
-
-function getClientStatusLabel(status: Client["status"]): string {
-  switch (status) {
-    case "active":
-      return "Account attivo";
-    case "trial":
-      return "Account in prova";
-    case "paused":
-      return "Account in pausa";
-    case "blocked":
-      return "Account bloccato";
-    case "archived":
-      return "Account archiviato";
-    default:
-      return "Stato account";
-  }
 }
 
 function assertAdminBackendEnabled(path: string): void {
@@ -738,69 +754,52 @@ function mapAdminSystemStatus(
   };
 }
 
-function buildClientOverviewSummary(
-  clientContext: ClientContext,
-  campaigns: Campaign[],
-  usage: ApiUsage[],
-  blockedSends: BlockedSend[],
+function mapClientOverviewSummary(
+  payload: ClientOverviewApiResponse,
 ): ClientOverviewSummary {
-  const campaignNames = new Map(
-    campaigns.map((campaign) => [campaign.id, campaign.name]),
-  );
-
-  const deliveryOverview = campaigns.reduce(
-    (totals, campaign) => ({
-      sent: totals.sent + (campaign.stats?.sent ?? 0),
-      opened: totals.opened + (campaign.stats?.opened ?? 0),
-      spam: totals.spam,
-      bounced: totals.bounced + (campaign.stats?.bounced ?? 0),
-      blocked: totals.blocked,
-    }),
-    {
-      sent: 0,
-      opened: 0,
-      spam: 0,
-      bounced: 0,
-      blocked: blockedSends.length,
-    },
-  );
-  const usageRecordForEmails = usage.find((entry) => entry.usage_type === "emails_sent");
-  const monthlyEmailsSent = usageRecordForEmails?.quantity ?? deliveryOverview.sent;
-  const monthlyEmailLimit = 0;
-
   return {
-    activeCampaigns: campaigns.filter((campaign) =>
-      isActiveCampaignStatus(campaign.status),
-    ).length,
-    monthlyEmailLimit,
-    monthlyEmailsSent,
-    blockedSendsThisMonth: blockedSends.length,
-    campaignSummaries: campaigns.map((campaign) => ({
-      id: campaign.id,
-      name: campaign.name,
-      status: campaign.status,
-      sent: campaign.stats?.sent ?? 0,
-      limit: 0,
-      lastActivityLabel: formatDateTimeLabel(campaign.updated_at),
-    })),
-    limitOverview: {
-      monthlyEmailLimit,
-      monthlyEmailsSent,
+    client: {
+      id: payload.client.id,
+      name: payload.client.name,
+      email: payload.client.email,
+      portalSlug: payload.client.portal_slug,
+      clientStatus: payload.client.client_status,
+      accessStatus: payload.client.access_status,
+      invitationStatus: payload.client.invitation_status ?? null,
     },
-    deliveryOverview,
-    readableBlockedSends: blockedSends.map((blockedSend) => ({
-      id: blockedSend.id,
-      campaignName:
-        (blockedSend.campaign_id && campaignNames.get(blockedSend.campaign_id)) ||
-        "Campagna non disponibile",
-      reason: blockedSend.reason,
-      readableReason: blockedSend.reason,
-      createdAtLabel: formatDateTimeLabel(blockedSend.created_at),
-    })),
-    accountStatus: {
-      status: clientContext.client.status,
-      label: getClientStatusLabel(clientContext.client.status),
-      note: "I dati arrivano dagli endpoint client correnti. Le autorizzazioni e i controlli di invio restano nel backend.",
+    campaigns: {
+      totalCampaigns: payload.campaigns.total_campaigns,
+      activeCampaigns: payload.campaigns.active_campaigns,
+      runningCampaigns: payload.campaigns.running_campaigns,
+      statusCounts: {
+        draft: payload.campaigns.status_counts.draft,
+        ready: payload.campaigns.status_counts.ready,
+        running: payload.campaigns.status_counts.running,
+        paused: payload.campaigns.status_counts.paused,
+        blocked: payload.campaigns.status_counts.blocked,
+        completed: payload.campaigns.status_counts.completed,
+        failed: payload.campaigns.status_counts.failed,
+      },
+      recentCampaigns: payload.campaigns.recent_campaigns,
+    },
+    usage: {
+      hasData: payload.usage.has_data,
+      totalRecords: payload.usage.total_records,
+      currentPeriodStartedAt: payload.usage.current_period_started_at,
+      currentPeriodTotals: payload.usage.current_period_totals.map((entry) => ({
+        usageType: entry.usage_type,
+        totalQuantity: entry.total_quantity,
+      })),
+      recentUsage: payload.usage.recent_usage,
+    },
+    blockedSends: {
+      currentPeriodStartedAt: payload.blocked_sends.current_period_started_at,
+      currentPeriodCount: payload.blocked_sends.current_period_count,
+      recentBlockedSends: payload.blocked_sends.recent_blocked_sends,
+    },
+    limits: {
+      emailLimitPerCampaign: payload.limits.email_limit_per_campaign ?? null,
+      maxCampaigns: payload.limits.max_campaigns ?? null,
     },
   };
 }
@@ -946,14 +945,7 @@ export function getClientOverviewSummary(
     return mockApi.getClientOverviewSummary();
   }
 
-  return Promise.all([
-    fetchClientMe(accessToken),
-    fetchClientCampaigns(accessToken),
-    fetchClientUsage(accessToken),
-    fetchClientBlockedSends(accessToken),
-  ]).then(([clientContext, campaigns, usage, blockedSends]) =>
-    buildClientOverviewSummary(clientContext, campaigns, usage, blockedSends),
-  );
+  return fetchClientOverview(accessToken).then(mapClientOverviewSummary);
 }
 
 export function getClientCampaigns(

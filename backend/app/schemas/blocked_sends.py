@@ -11,6 +11,7 @@ class BlockedSend(BaseModel):
     id: str
     client_id: str
     campaign_id: Optional[str] = None
+    campaign_name: Optional[str] = None
     contact_id: Optional[str] = None
     reason: str
     decision: SendDecision

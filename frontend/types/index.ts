@@ -101,7 +101,7 @@ export interface Campaign {
   client_id: string;
   name: string;
   status: CampaignStatus;
-  subject: string;
+  subject?: string | null;
   stats?: CampaignStats | null;
   created_at: string;
   updated_at: string;
@@ -129,6 +129,7 @@ export interface BlockedSend {
   id: string;
   client_id: string;
   campaign_id?: string | null;
+  campaign_name?: string | null;
   contact_id?: string | null;
   reason: string;
   decision: SendDecision;
@@ -304,51 +305,61 @@ export interface AdminEmailLimitsResponse {
 }
 
 export interface ClientOverviewSummary {
-  activeCampaigns: number;
-  monthlyEmailLimit: number;
-  monthlyEmailsSent: number;
-  blockedSendsThisMonth: number;
-  campaignSummaries: ClientCampaignSummary[];
-  limitOverview: ClientLimitOverview;
-  deliveryOverview: ClientDeliveryOverview;
-  readableBlockedSends: ClientReadableBlockedSend[];
-  accountStatus: ClientAccountStatus;
+  client: ClientOverviewIdentity;
+  campaigns: ClientOverviewCampaigns;
+  usage: ClientOverviewUsage;
+  blockedSends: ClientOverviewBlockedSends;
+  limits: ClientOverviewLimits;
 }
 
-export type ClientCampaignSummaryStatus = CampaignStatus;
-
-export interface ClientCampaignSummary {
+export interface ClientOverviewIdentity {
   id: string;
   name: string;
-  status: ClientCampaignSummaryStatus;
-  sent: number;
-  limit: number;
-  lastActivityLabel: string;
+  email: string;
+  portalSlug: string;
+  clientStatus: ClientStatus;
+  accessStatus: ClientAccessSummary["status"];
+  invitationStatus?: ClientAccessSummary["invitation_status"] | null;
 }
 
-export interface ClientLimitOverview {
-  monthlyEmailLimit: number;
-  monthlyEmailsSent: number;
-}
-
-export interface ClientDeliveryOverview {
-  sent: number;
-  opened: number;
-  spam: number;
-  bounced: number;
+export interface ClientCampaignStatusCounts {
+  draft: number;
+  ready: number;
+  running: number;
+  paused: number;
   blocked: number;
+  completed: number;
+  failed: number;
 }
 
-export interface ClientReadableBlockedSend {
-  id: string;
-  campaignName: string;
-  reason: string;
-  readableReason: string;
-  createdAtLabel: string;
+export interface ClientOverviewCampaigns {
+  totalCampaigns: number;
+  activeCampaigns: number;
+  runningCampaigns: number;
+  statusCounts: ClientCampaignStatusCounts;
+  recentCampaigns: Campaign[];
 }
 
-export interface ClientAccountStatus {
-  status: ClientStatus;
-  label: string;
-  note: string;
+export interface ClientUsageSummaryItem {
+  usageType: string;
+  totalQuantity: number;
+}
+
+export interface ClientOverviewUsage {
+  hasData: boolean;
+  totalRecords: number;
+  currentPeriodStartedAt: string;
+  currentPeriodTotals: ClientUsageSummaryItem[];
+  recentUsage: ApiUsage[];
+}
+
+export interface ClientOverviewBlockedSends {
+  currentPeriodStartedAt: string;
+  currentPeriodCount: number;
+  recentBlockedSends: BlockedSend[];
+}
+
+export interface ClientOverviewLimits {
+  emailLimitPerCampaign?: number | null;
+  maxCampaigns?: number | null;
 }

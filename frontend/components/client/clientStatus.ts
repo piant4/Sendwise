@@ -4,7 +4,7 @@ import type {
 } from "../../types";
 
 export function getClientAccountVariant(
-  status: ClientOverviewSummary["accountStatus"]["status"],
+  status: ClientOverviewSummary["client"]["clientStatus"],
 ) {
   switch (status) {
     case "active":
@@ -17,6 +17,42 @@ export function getClientAccountVariant(
       return "danger" as const;
     default:
       return "neutral" as const;
+  }
+}
+
+export function getClientStatusLabel(
+  status: ClientOverviewSummary["client"]["clientStatus"],
+): string {
+  switch (status) {
+    case "active":
+      return "Account attivo";
+    case "trial":
+      return "Account in prova";
+    case "paused":
+      return "Account in pausa";
+    case "blocked":
+      return "Account bloccato";
+    case "archived":
+      return "Account archiviato";
+    default:
+      return "Stato account";
+  }
+}
+
+export function getClientAccessStatusLabel(
+  status: ClientOverviewSummary["client"]["accessStatus"],
+): string {
+  switch (status) {
+    case "active":
+      return "Accesso attivo";
+    case "invited":
+      return "Invito aperto";
+    case "suspended":
+      return "Accesso sospeso";
+    case "archived":
+      return "Accesso archiviato";
+    default:
+      return "Accesso cliente";
   }
 }
 
@@ -59,4 +95,23 @@ export function getCampaignStatusVariant(status: CampaignStatus) {
 
 export function formatLimitValue(value: number): string {
   return value > 0 ? value.toLocaleString() : "In definizione";
+}
+
+export function formatOptionalLimit(value?: number | null): string {
+  return typeof value === "number" && value > 0
+    ? value.toLocaleString()
+    : "Non configurato";
+}
+
+export function formatDateTimeLabel(value: string): string {
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  return new Intl.DateTimeFormat("it-IT", {
+    dateStyle: "short",
+    timeStyle: "short",
+  }).format(date);
 }

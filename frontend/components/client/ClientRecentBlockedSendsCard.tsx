@@ -1,5 +1,6 @@
 import type { ClientOverviewSummary } from "../../types";
 import { ClientSurface } from "./ClientSurface";
+import { formatDateTimeLabel } from "./clientStatus";
 
 interface ClientRecentBlockedSendsCardProps {
   summary: ClientOverviewSummary;
@@ -11,29 +12,33 @@ export function ClientRecentBlockedSendsCard({
   return (
     <ClientSurface
       title="Blocchi recenti"
-      description="Eventuali stop leggibili lato cliente, senza controlli operativi interni."
+      description="Eventuali stop registrati per questo cliente nel periodo corrente."
     >
-      {summary.readableBlockedSends.length > 0 ? (
+      {summary.blockedSends.recentBlockedSends.length > 0 ? (
         <div className="client-list">
-          {summary.readableBlockedSends.map((blockedSend) => (
+          {summary.blockedSends.recentBlockedSends.map((blockedSend) => (
             <article key={blockedSend.id} className="client-row client-row--alert">
               <div className="client-row__header">
                 <div className="client-row__copy">
                   <strong className="client-row__title">
-                    {blockedSend.campaignName}
+                    {blockedSend.campaign_name?.trim()
+                      ? blockedSend.campaign_name
+                      : "Campagna non disponibile"}
                   </strong>
                   <span className="client-row__meta">
-                    {blockedSend.createdAtLabel}
+                    {formatDateTimeLabel(blockedSend.created_at)}
                   </span>
                 </div>
               </div>
-              <p className="client-row__support">{blockedSend.readableReason}</p>
+              <p className="client-row__support">
+                {blockedSend.reason} · decisione {blockedSend.decision}
+              </p>
             </article>
           ))}
         </div>
       ) : (
         <div className="client-empty-state">
-          Nessun blocco recente disponibile nella lettura corrente.
+          Nessun blocco registrato per questo cliente nel periodo corrente.
         </div>
       )}
     </ClientSurface>

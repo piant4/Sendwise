@@ -12,8 +12,11 @@ from app.repositories.clients import (
     AdminCampaignEmailVolumeRecord,
     AdminCampaignRecord,
     AdminTopClientVolumeRecord,
+    ClientBlockedSendRecord,
+    ClientCampaignRecord,
     ClientRecord,
     ClientRepository,
+    ClientUsageRecord,
     get_client_repository,
 )
 from app.schemas.clients import (
@@ -36,9 +39,22 @@ from app.schemas.clients import (
     AdminSystemStatus,
     AdminTopClientByVolume,
     Client,
+    ClientCampaignStatusCounts,
     ClientAccessSummary,
+    ClientContext,
+    ClientOverviewBlockedSends,
+    ClientOverviewCampaigns,
+    ClientOverviewIdentity,
+    ClientOverviewLimits,
+    ClientOverviewSummary,
+    ClientOverviewUsage,
+    ClientUsageSummaryItem,
+    ClientUser,
 )
+from app.schemas.blocked_sends import BlockedSend
+from app.schemas.campaigns import Campaign
 from app.schemas.common import CampaignStatus
+from app.schemas.usage import ApiUsage
 
 ACTIVE_CAMPAIGN_STATUSES = {CampaignStatus.ready.value, CampaignStatus.running.value}
 RUNNING_CAMPAIGN_STATUSES = {CampaignStatus.running.value}
@@ -54,6 +70,9 @@ RECENT_ADMIN_CAMPAIGNS_LIMIT = 5
 RECENT_ADMIN_BLOCKED_SENDS_LIMIT = 5
 TOP_CLIENTS_LIMIT = 5
 CLIENTS_NEAR_LIMIT_LIMIT = 5
+RECENT_CAMPAIGNS_LIMIT = 5
+RECENT_USAGE_LIMIT = 5
+RECENT_BLOCKED_SENDS_LIMIT = 5
 
 
 def _build_client_name(client: ClientRecord) -> str:
@@ -292,6 +311,186 @@ class ClientsService:
             daily_email_limit=existing.daily_email_limit,
         )
 
+    def get_client_context(
+        self,
+        *,
+        client_id: str,
+        portal_slug: str,
+        client_access_service,
+    ) -> ClientContext:
+        client, access = self._require_active_client_access(
+            client_id=client_id,
+            portal_slug=portal_slug,
+            client_access_service=client_access_service,
+        )
+        return ClientContext(
+            client=build_client_schema(client, access=access),
+            user=ClientUser(
+                id=access.id,
+                client_id=client.id,
+                email=access.email,
+                portal_slug=access.portal_slug,
+                status=access.status,
+                created_at=access.created_at,
+                updated_at=access.updated_at,
+            ),
+        )
+
+    def get_client_overview(
+        self,
+        *,
+        client_id: str,
+        portal_slug: str,
+        client_access_service,
+        now: Optional[datetime] = None,
+    ) -> ClientOverviewSummary:
+        client, access = self._require_active_client_access(
+            client_id=client_id,
+            portal_slug=portal_slug,
+            client_access_service=client_access_service,
+        )
+        current_time = now or datetime.now(timezone.utc)
+        current_period_started_at = current_time.astimezone(timezone.utc).replace(
+            day=1,
+            hour=0,
+            minute=0,
+            second=0,
+            microsecond=0,
+        )
+        campaigns = self._repository.list_client_campaigns(client_id)
+        usage = self._repository.list_client_usage(client_id)
+        blocked_sends = self._repository.list_client_blocked_sends(client_id)
+
+        status_counts = ClientCampaignStatusCounts()
+        active_campaigns = 0
+        running_campaigns = 0
+
+        for campaign in campaigns:
+            if campaign.status in status_counts.model_fields:
+                setattr(
+                    status_counts,
+                    campaign.status,
+                    getattr(status_counts, campaign.status) + 1,
+                )
+
+            if campaign.status in ACTIVE_CAMPAIGN_STATUSES:
+                active_campaigns += 1
+
+            if campaign.status in RUNNING_CAMPAIGN_STATUSES:
+                running_campaigns += 1
+
+        usage_totals: dict[str, int] = {}
+        for entry in usage:
+            if entry.created_at < current_period_started_at:
+                continue
+
+            usage_totals[entry.usage_type] = usage_totals.get(entry.usage_type, 0) + entry.quantity
+
+        return ClientOverviewSummary(
+            client=ClientOverviewIdentity(
+                id=client.id,
+                name=_build_client_name(client),
+                email=client.email,
+                portal_slug=access.portal_slug,
+                client_status=client.status,
+                access_status=access.status,
+                invitation_status=access.invitation_status,
+            ),
+            campaigns=ClientOverviewCampaigns(
+                total_campaigns=len(campaigns),
+                active_campaigns=active_campaigns,
+                running_campaigns=running_campaigns,
+                status_counts=status_counts,
+                recent_campaigns=[
+                    self._build_client_campaign(campaign)
+                    for campaign in campaigns[:RECENT_CAMPAIGNS_LIMIT]
+                ],
+            ),
+            usage=ClientOverviewUsage(
+                has_data=bool(usage),
+                total_records=len(usage),
+                current_period_started_at=current_period_started_at,
+                current_period_totals=[
+                    ClientUsageSummaryItem(
+                        usage_type=usage_type,
+                        total_quantity=usage_totals[usage_type],
+                    )
+                    for usage_type in sorted(usage_totals)
+                ],
+                recent_usage=[
+                    self._build_client_usage(entry)
+                    for entry in usage[:RECENT_USAGE_LIMIT]
+                ],
+            ),
+            blocked_sends=ClientOverviewBlockedSends(
+                current_period_started_at=current_period_started_at,
+                current_period_count=sum(
+                    1
+                    for blocked_send in blocked_sends
+                    if blocked_send.created_at >= current_period_started_at
+                ),
+                recent_blocked_sends=[
+                    self._build_client_blocked_send(blocked_send)
+                    for blocked_send in blocked_sends[:RECENT_BLOCKED_SENDS_LIMIT]
+                ],
+            ),
+            limits=ClientOverviewLimits(
+                email_limit_per_campaign=client.email_limit_per_campaign,
+                max_campaigns=client.max_campaigns,
+            ),
+        )
+
+    def list_client_campaigns(
+        self,
+        *,
+        client_id: str,
+        portal_slug: str,
+        client_access_service,
+    ) -> list[Campaign]:
+        self._require_active_client_access(
+            client_id=client_id,
+            portal_slug=portal_slug,
+            client_access_service=client_access_service,
+        )
+        return [
+            self._build_client_campaign(campaign)
+            for campaign in self._repository.list_client_campaigns(client_id)
+        ]
+
+    def list_client_usage(
+        self,
+        *,
+        client_id: str,
+        portal_slug: str,
+        client_access_service,
+    ) -> list[ApiUsage]:
+        self._require_active_client_access(
+            client_id=client_id,
+            portal_slug=portal_slug,
+            client_access_service=client_access_service,
+        )
+        return [
+            self._build_client_usage(entry)
+            for entry in self._repository.list_client_usage(client_id)
+        ]
+
+    def list_client_blocked_sends(
+        self,
+        *,
+        client_id: str,
+        portal_slug: str,
+        client_access_service,
+    ) -> list[BlockedSend]:
+        self._require_active_client_access(
+            client_id=client_id,
+            portal_slug=portal_slug,
+            client_access_service=client_access_service,
+        )
+        return [
+            self._build_client_blocked_send(blocked_send)
+            for blocked_send in self._repository.list_client_blocked_sends(client_id)
+        ]
+
     def list_admin_campaigns(self) -> list[AdminCampaignSummary]:
         return [
             AdminCampaignSummary(
@@ -507,6 +706,66 @@ class ClientsService:
             frontend_origin_configured=bool(self._settings.frontend_origin),
             delivery_engine_configured=bool(self._settings.listmonk_url.strip()),
             generated_at=current_time,
+        )
+
+    def _require_active_client_access(
+        self,
+        *,
+        client_id: str,
+        portal_slug: str,
+        client_access_service,
+    ):
+        client = self.get_client_by_id(client_id)
+        access = client_access_service.get_access_by_client_id(client_id)
+
+        if access is None or access.status != "active":
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Client access is not available for this Sendwise account.",
+            )
+
+        if access.portal_slug != portal_slug:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Authenticated client scope does not match the requested portal.",
+            )
+
+        return client, access
+
+    def _build_client_campaign(self, campaign: ClientCampaignRecord) -> Campaign:
+        return Campaign(
+            id=campaign.id,
+            client_id=campaign.client_id,
+            name=campaign.name,
+            status=campaign.status,
+            subject=campaign.subject,
+            created_at=campaign.created_at,
+            updated_at=campaign.updated_at,
+        )
+
+    def _build_client_usage(self, entry: ClientUsageRecord) -> ApiUsage:
+        return ApiUsage(
+            id=entry.id,
+            client_id=entry.client_id,
+            usage_type=entry.usage_type,
+            quantity=entry.quantity,
+            metadata=entry.metadata,
+            created_at=entry.created_at,
+        )
+
+    def _build_client_blocked_send(
+        self,
+        blocked_send: ClientBlockedSendRecord,
+    ) -> BlockedSend:
+        return BlockedSend(
+            id=blocked_send.id,
+            client_id=blocked_send.client_id,
+            campaign_id=blocked_send.campaign_id,
+            campaign_name=blocked_send.campaign_name,
+            contact_id=blocked_send.contact_id,
+            reason=blocked_send.reason,
+            decision=blocked_send.decision,
+            created_at=blocked_send.created_at,
         )
 
     def _build_recent_campaign_summary(

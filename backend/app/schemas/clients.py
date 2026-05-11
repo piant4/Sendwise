@@ -4,6 +4,9 @@ from typing import Literal, Optional
 from pydantic import BaseModel, ConfigDict
 
 from app.schemas.common import CampaignStatus, ClientStatus, SendDecision
+from app.schemas.usage import ApiUsage
+from app.schemas.campaigns import Campaign
+from app.schemas.blocked_sends import BlockedSend
 
 
 ClientAccessStatus = Literal["invited", "active", "suspended", "archived"]
@@ -53,6 +56,66 @@ class ClientUser(BaseModel):
 class ClientContext(BaseModel):
     client: Client
     user: ClientUser
+
+
+class ClientOverviewIdentity(BaseModel):
+    id: str
+    name: str
+    email: str
+    portal_slug: str
+    client_status: ClientStatus
+    access_status: ClientAccessStatus
+    invitation_status: Optional[InvitationStatus] = None
+
+
+class ClientCampaignStatusCounts(BaseModel):
+    draft: int = 0
+    ready: int = 0
+    running: int = 0
+    paused: int = 0
+    blocked: int = 0
+    completed: int = 0
+    failed: int = 0
+
+
+class ClientUsageSummaryItem(BaseModel):
+    usage_type: str
+    total_quantity: int
+
+
+class ClientOverviewCampaigns(BaseModel):
+    total_campaigns: int
+    active_campaigns: int
+    running_campaigns: int
+    status_counts: ClientCampaignStatusCounts
+    recent_campaigns: list[Campaign]
+
+
+class ClientOverviewUsage(BaseModel):
+    has_data: bool
+    total_records: int
+    current_period_started_at: datetime
+    current_period_totals: list[ClientUsageSummaryItem]
+    recent_usage: list[ApiUsage]
+
+
+class ClientOverviewBlockedSends(BaseModel):
+    current_period_started_at: datetime
+    current_period_count: int
+    recent_blocked_sends: list[BlockedSend]
+
+
+class ClientOverviewLimits(BaseModel):
+    email_limit_per_campaign: Optional[int] = None
+    max_campaigns: Optional[int] = None
+
+
+class ClientOverviewSummary(BaseModel):
+    client: ClientOverviewIdentity
+    campaigns: ClientOverviewCampaigns
+    usage: ClientOverviewUsage
+    blocked_sends: ClientOverviewBlockedSends
+    limits: ClientOverviewLimits
 
 
 class AdminClientInviteRequest(BaseModel):

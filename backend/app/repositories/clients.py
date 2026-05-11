@@ -36,6 +36,36 @@ class AdminCampaignRecord(BaseModel):
     blocked_sends_count: int = 0
 
 
+class ClientCampaignRecord(BaseModel):
+    id: str
+    client_id: str
+    name: str
+    status: str
+    subject: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class ClientUsageRecord(BaseModel):
+    id: str
+    client_id: str
+    usage_type: str
+    quantity: int
+    metadata: dict[str, Any]
+    created_at: datetime
+
+
+class ClientBlockedSendRecord(BaseModel):
+    id: str
+    client_id: str
+    campaign_id: Optional[str] = None
+    campaign_name: Optional[str] = None
+    contact_id: Optional[str] = None
+    reason: str
+    decision: str
+    created_at: datetime
+
+
 class AdminBlockedSendRecord(BaseModel):
     id: str
     client_id: str
@@ -128,6 +158,15 @@ class ClientRepository:
         raise NotImplementedError
 
     def list_admin_campaigns(self) -> list[AdminCampaignRecord]:
+        raise NotImplementedError
+
+    def list_client_campaigns(self, client_id: str) -> list[ClientCampaignRecord]:
+        raise NotImplementedError
+
+    def list_client_usage(self, client_id: str) -> list[ClientUsageRecord]:
+        raise NotImplementedError
+
+    def list_client_blocked_sends(self, client_id: str) -> list[ClientBlockedSendRecord]:
         raise NotImplementedError
 
     def list_recent_admin_blocked_sends(
@@ -370,6 +409,74 @@ class PostgresClientRepository(ClientRepository):
                 rows = cursor.fetchall()
 
         return [AdminCampaignRecord.model_validate(row) for row in rows]
+
+    def list_client_campaigns(self, client_id: str) -> list[ClientCampaignRecord]:
+        query = """
+            SELECT
+                id::text AS id,
+                client_id::text AS client_id,
+                name,
+                status,
+                subject,
+                created_at,
+                updated_at
+            FROM campaigns
+            WHERE client_id::text = %s
+            ORDER BY updated_at DESC, id DESC
+        """
+
+        with postgres_connection(self._settings) as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(query, (client_id,))
+                rows = cursor.fetchall()
+
+        return [ClientCampaignRecord.model_validate(row) for row in rows]
+
+    def list_client_usage(self, client_id: str) -> list[ClientUsageRecord]:
+        query = """
+            SELECT
+                id::text AS id,
+                client_id::text AS client_id,
+                usage_type,
+                quantity,
+                metadata,
+                created_at
+            FROM api_usage
+            WHERE client_id::text = %s
+            ORDER BY created_at DESC, id DESC
+        """
+
+        with postgres_connection(self._settings) as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(query, (client_id,))
+                rows = cursor.fetchall()
+
+        return [ClientUsageRecord.model_validate(row) for row in rows]
+
+    def list_client_blocked_sends(self, client_id: str) -> list[ClientBlockedSendRecord]:
+        query = """
+            SELECT
+                blocked_sends.id::text AS id,
+                blocked_sends.client_id::text AS client_id,
+                blocked_sends.campaign_id::text AS campaign_id,
+                campaigns.name AS campaign_name,
+                blocked_sends.contact_id::text AS contact_id,
+                blocked_sends.reason,
+                blocked_sends.decision,
+                blocked_sends.created_at
+            FROM blocked_sends
+            LEFT JOIN campaigns
+                ON campaigns.id = blocked_sends.campaign_id
+            WHERE blocked_sends.client_id::text = %s
+            ORDER BY blocked_sends.created_at DESC, blocked_sends.id DESC
+        """
+
+        with postgres_connection(self._settings) as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(query, (client_id,))
+                rows = cursor.fetchall()
+
+        return [ClientBlockedSendRecord.model_validate(row) for row in rows]
 
     def list_recent_admin_blocked_sends(
         self,

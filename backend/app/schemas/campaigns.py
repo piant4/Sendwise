@@ -12,7 +12,7 @@ class Campaign(BaseModel):
     client_id: str
     name: str
     status: CampaignStatus
-    subject: str
+    subject: Optional[str] = None
     stats: Optional[CampaignStats] = None
     created_at: datetime
     updated_at: datetime

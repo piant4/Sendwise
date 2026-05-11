@@ -81,6 +81,39 @@ class FakeAdminEmailLogRecord:
     created_at: datetime
 
 
+@dataclass
+class FakeClientCampaignRecord:
+    id: str
+    client_id: str
+    name: str
+    status: str
+    subject: Optional[str]
+    created_at: datetime
+    updated_at: datetime
+
+
+@dataclass
+class FakeClientUsageRecord:
+    id: str
+    client_id: str
+    usage_type: str
+    quantity: int
+    metadata: dict[str, Any]
+    created_at: datetime
+
+
+@dataclass
+class FakeClientBlockedSendRecord:
+    id: str
+    client_id: str
+    campaign_id: Optional[str]
+    campaign_name: Optional[str]
+    contact_id: Optional[str]
+    reason: str
+    decision: str
+    created_at: datetime
+
+
 class FakeClientRepository(ClientRepository):
     def __init__(
         self,
@@ -89,12 +122,18 @@ class FakeClientRepository(ClientRepository):
         admin_campaign_records: Optional[list[FakeAdminCampaignRecord]] = None,
         admin_blocked_send_records: Optional[list[FakeAdminBlockedSendRecord]] = None,
         admin_email_log_records: Optional[list[FakeAdminEmailLogRecord]] = None,
+        client_campaign_records: Optional[list[FakeClientCampaignRecord]] = None,
+        client_usage_records: Optional[list[FakeClientUsageRecord]] = None,
+        client_blocked_send_records: Optional[list[FakeClientBlockedSendRecord]] = None,
         database_available: bool = True,
     ) -> None:
         self._records = {record.id: record for record in records or []}
         self._admin_campaign_records = admin_campaign_records or []
         self._admin_blocked_send_records = admin_blocked_send_records or []
         self._admin_email_log_records = admin_email_log_records or []
+        self._client_campaign_records = client_campaign_records or []
+        self._client_usage_records = client_usage_records or []
+        self._client_blocked_send_records = client_blocked_send_records or []
         self._database_available = database_available
         self._counter = len(self._records)
         self.deleted_client_ids: list[str] = []
@@ -279,6 +318,40 @@ class FakeClientRepository(ClientRepository):
             reverse=True,
         )
         return rows
+
+    def list_client_campaigns(self, client_id: str) -> list[FakeClientCampaignRecord]:
+        return sorted(
+            (
+                record
+                for record in self._client_campaign_records
+                if record.client_id == client_id
+            ),
+            key=lambda item: (item.updated_at, item.id),
+            reverse=True,
+        )
+
+    def list_client_usage(self, client_id: str) -> list[FakeClientUsageRecord]:
+        return sorted(
+            (
+                record for record in self._client_usage_records if record.client_id == client_id
+            ),
+            key=lambda item: (item.created_at, item.id),
+            reverse=True,
+        )
+
+    def list_client_blocked_sends(
+        self,
+        client_id: str,
+    ) -> list[FakeClientBlockedSendRecord]:
+        return sorted(
+            (
+                record
+                for record in self._client_blocked_send_records
+                if record.client_id == client_id
+            ),
+            key=lambda item: (item.created_at, item.id),
+            reverse=True,
+        )
 
     def is_database_available(self) -> bool:
         return self._database_available
@@ -668,6 +741,71 @@ def build_admin_email_log_record(
     )
 
 
+def build_client_campaign_record(
+    *,
+    campaign_id: str,
+    client_id: str,
+    name: str,
+    status: str,
+    subject: Optional[str],
+    created_at: Optional[datetime] = None,
+    updated_at: Optional[datetime] = None,
+) -> FakeClientCampaignRecord:
+    created = created_at or datetime(2026, 5, 8, 9, 0, tzinfo=timezone.utc)
+    updated = updated_at or created
+    return FakeClientCampaignRecord(
+        id=campaign_id,
+        client_id=client_id,
+        name=name,
+        status=status,
+        subject=subject,
+        created_at=created,
+        updated_at=updated,
+    )
+
+
+def build_client_usage_record(
+    *,
+    usage_id: str,
+    client_id: str,
+    usage_type: str,
+    quantity: int,
+    metadata: Optional[dict[str, Any]] = None,
+    created_at: Optional[datetime] = None,
+) -> FakeClientUsageRecord:
+    return FakeClientUsageRecord(
+        id=usage_id,
+        client_id=client_id,
+        usage_type=usage_type,
+        quantity=quantity,
+        metadata=metadata or {},
+        created_at=created_at or datetime(2026, 5, 8, 9, 0, tzinfo=timezone.utc),
+    )
+
+
+def build_client_blocked_send_record(
+    *,
+    blocked_send_id: str,
+    client_id: str,
+    campaign_id: Optional[str],
+    campaign_name: Optional[str],
+    contact_id: Optional[str] = None,
+    reason: str,
+    decision: str = "blocked",
+    created_at: Optional[datetime] = None,
+) -> FakeClientBlockedSendRecord:
+    return FakeClientBlockedSendRecord(
+        id=blocked_send_id,
+        client_id=client_id,
+        campaign_id=campaign_id,
+        campaign_name=campaign_name,
+        contact_id=contact_id,
+        reason=reason,
+        decision=decision,
+        created_at=created_at or datetime(2026, 5, 8, 9, 0, tzinfo=timezone.utc),
+    )
+
+
 def install_test_dependencies(
     *,
     client_records: Optional[list[ClientRecord]] = None,
@@ -675,6 +813,9 @@ def install_test_dependencies(
     admin_campaign_records: Optional[list[FakeAdminCampaignRecord]] = None,
     admin_blocked_send_records: Optional[list[FakeAdminBlockedSendRecord]] = None,
     admin_email_log_records: Optional[list[FakeAdminEmailLogRecord]] = None,
+    client_campaign_records: Optional[list[FakeClientCampaignRecord]] = None,
+    client_usage_records: Optional[list[FakeClientUsageRecord]] = None,
+    client_blocked_send_records: Optional[list[FakeClientBlockedSendRecord]] = None,
     database_available: bool = True,
     invitation_gateway: Optional[FakeClerkInvitationGateway] = None,
     deletion_gateway: Optional[FakeClerkUserDeletionGateway] = None,
@@ -689,6 +830,9 @@ def install_test_dependencies(
         admin_campaign_records=admin_campaign_records,
         admin_blocked_send_records=admin_blocked_send_records,
         admin_email_log_records=admin_email_log_records,
+        client_campaign_records=client_campaign_records,
+        client_usage_records=client_usage_records,
+        client_blocked_send_records=client_blocked_send_records,
         database_available=database_available,
     )
     client_access_repository = FakeClientAccessRepository(access_records)
@@ -2235,25 +2379,163 @@ def test_invite_endpoint_rejects_role_and_user_type_fields(
     assert response.status_code == 422
 
 
-def test_authorized_client_response_shapes_are_preserved(
+def test_client_dashboard_endpoints_are_backend_owned_and_client_scoped(
     client: TestClient,
     signing_keypair: rsa.RSAPrivateKey,
 ) -> None:
+    client_record = build_client_record(
+        client_id="client_alpha",
+        email="alpha@example.test",
+        personal_name="Alpha",
+        email_limit_per_campaign=1500,
+        max_campaigns=4,
+    )
     install_test_dependencies(
-        client_records=[build_client_record()],
-        access_records=[build_access_record()],
+        client_records=[
+            client_record,
+            build_client_record(
+                client_id="client_beta",
+                email="beta@example.test",
+                personal_name="Beta",
+            ),
+        ],
+        access_records=[
+            build_access_record(
+                client_id=client_record.id,
+                email=client_record.email,
+                portal_slug="a" * 32,
+            ),
+            build_access_record(
+                access_id="access_beta",
+                client_id="client_beta",
+                email="beta@example.test",
+                clerk_user_id="user_beta",
+                portal_slug="b" * 32,
+            ),
+        ],
+        client_campaign_records=[
+            build_client_campaign_record(
+                campaign_id="campaign_alpha_running",
+                client_id=client_record.id,
+                name="Alpha Running",
+                status="running",
+                subject="Alpha Subject",
+                updated_at=datetime(2026, 5, 9, 10, 0, tzinfo=timezone.utc),
+            ),
+            build_client_campaign_record(
+                campaign_id="campaign_alpha_draft",
+                client_id=client_record.id,
+                name="Alpha Draft",
+                status="draft",
+                subject="Draft Subject",
+                updated_at=datetime(2026, 5, 8, 10, 0, tzinfo=timezone.utc),
+            ),
+            build_client_campaign_record(
+                campaign_id="campaign_beta_only",
+                client_id="client_beta",
+                name="Beta Only",
+                status="ready",
+                subject="Beta Subject",
+                updated_at=datetime(2026, 5, 10, 10, 0, tzinfo=timezone.utc),
+            ),
+        ],
+        client_usage_records=[
+            build_client_usage_record(
+                usage_id="usage_alpha_api",
+                client_id=client_record.id,
+                usage_type="api_requests",
+                quantity=42,
+                metadata={"period": "2026-05"},
+                created_at=datetime(2026, 5, 10, 9, 0, tzinfo=timezone.utc),
+            ),
+            build_client_usage_record(
+                usage_id="usage_alpha_dry_run",
+                client_id=client_record.id,
+                usage_type="dry_run_sends",
+                quantity=3,
+                metadata={"period": "2026-05"},
+                created_at=datetime(2026, 5, 9, 9, 0, tzinfo=timezone.utc),
+            ),
+            build_client_usage_record(
+                usage_id="usage_beta_only",
+                client_id="client_beta",
+                usage_type="api_requests",
+                quantity=99,
+                metadata={"period": "2026-05"},
+                created_at=datetime(2026, 5, 8, 9, 0, tzinfo=timezone.utc),
+            ),
+        ],
+        client_blocked_send_records=[
+            build_client_blocked_send_record(
+                blocked_send_id="blocked_alpha_recent",
+                client_id=client_record.id,
+                campaign_id="campaign_alpha_draft",
+                campaign_name="Alpha Draft",
+                reason="Campaign is still draft.",
+                created_at=datetime(2026, 5, 10, 11, 0, tzinfo=timezone.utc),
+            ),
+            build_client_blocked_send_record(
+                blocked_send_id="blocked_beta_only",
+                client_id="client_beta",
+                campaign_id="campaign_beta_only",
+                campaign_name="Beta Only",
+                reason="Other client blocked send.",
+                created_at=datetime(2026, 5, 8, 11, 0, tzinfo=timezone.utc),
+            ),
+        ],
     )
     token = make_token(signing_keypair, clerk_user_id="user_client")
 
+    overview_response = client.get("/client/overview", headers=auth_header(token))
     campaigns_response = client.get("/client/campaigns", headers=auth_header(token))
     usage_response = client.get("/client/usage", headers=auth_header(token))
     blocked_sends_response = client.get(
         "/client/blocked-sends", headers=auth_header(token)
     )
 
+    assert overview_response.status_code == 200
+    overview = overview_response.json()
+    assert overview["client"] == {
+        "id": client_record.id,
+        "name": "Alpha",
+        "email": "alpha@example.test",
+        "portal_slug": "a" * 32,
+        "client_status": "active",
+        "access_status": "active",
+        "invitation_status": "accepted",
+    }
+    assert overview["limits"] == {
+        "email_limit_per_campaign": 1500,
+        "max_campaigns": 4,
+    }
+    assert overview["campaigns"]["total_campaigns"] == 2
+    assert overview["campaigns"]["active_campaigns"] == 1
+    assert overview["campaigns"]["running_campaigns"] == 1
+    assert overview["campaigns"]["status_counts"]["running"] == 1
+    assert overview["campaigns"]["status_counts"]["draft"] == 1
+    assert [campaign["id"] for campaign in overview["campaigns"]["recent_campaigns"]] == [
+        "campaign_alpha_running",
+        "campaign_alpha_draft",
+    ]
+    assert overview["usage"]["has_data"] is True
+    assert overview["usage"]["total_records"] == 2
+    assert overview["usage"]["current_period_totals"] == [
+        {"usage_type": "api_requests", "total_quantity": 42},
+        {"usage_type": "dry_run_sends", "total_quantity": 3},
+    ]
+    assert [entry["id"] for entry in overview["usage"]["recent_usage"]] == [
+        "usage_alpha_api",
+        "usage_alpha_dry_run",
+    ]
+    assert overview["blocked_sends"]["current_period_count"] == 1
+    assert overview["blocked_sends"]["recent_blocked_sends"][0]["campaign_name"] == "Alpha Draft"
+
     assert campaigns_response.status_code == 200
     campaigns = campaigns_response.json()
-    assert campaigns
+    assert [campaign["id"] for campaign in campaigns] == [
+        "campaign_alpha_running",
+        "campaign_alpha_draft",
+    ]
     assert {
         "id",
         "client_id",
@@ -2266,10 +2548,21 @@ def test_authorized_client_response_shapes_are_preserved(
 
     assert usage_response.status_code == 200
     usage = usage_response.json()
-    assert usage
+    assert [entry["id"] for entry in usage] == [
+        "usage_alpha_api",
+        "usage_alpha_dry_run",
+    ]
     assert {"id", "client_id", "usage_type", "quantity", "metadata", "created_at"} <= usage[0].keys()
 
     assert blocked_sends_response.status_code == 200
     blocked_sends = blocked_sends_response.json()
-    assert blocked_sends
-    assert {"id", "client_id", "reason", "decision", "created_at"} <= blocked_sends[0].keys()
+    assert [entry["id"] for entry in blocked_sends] == ["blocked_alpha_recent"]
+    assert {
+        "id",
+        "client_id",
+        "campaign_id",
+        "campaign_name",
+        "reason",
+        "decision",
+        "created_at",
+    } <= blocked_sends[0].keys()

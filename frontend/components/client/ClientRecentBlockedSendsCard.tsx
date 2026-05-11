@@ -1,6 +1,11 @@
+import { StatusBadge } from "../ui/StatusBadge";
 import type { ClientOverviewSummary } from "../../types";
 import { ClientSurface } from "./ClientSurface";
-import { formatDateTimeLabel } from "./clientStatus";
+import {
+  formatDateTimeLabel,
+  getSendDecisionLabel,
+  getSendDecisionVariant,
+} from "./clientStatus";
 
 interface ClientRecentBlockedSendsCardProps {
   summary: ClientOverviewSummary;
@@ -12,7 +17,12 @@ export function ClientRecentBlockedSendsCard({
   return (
     <ClientSurface
       title="Blocchi recenti"
-      description="Eventuali stop registrati per questo cliente nel periodo corrente."
+      description="Gli ultimi stop registrati dal sistema per questo workspace, con motivazione e decisione applicata."
+      aside={
+        <span className="client-surface__eyebrow">
+          {summary.blockedSends.recentBlockedSends.length.toLocaleString()} elementi
+        </span>
+      }
     >
       {summary.blockedSends.recentBlockedSends.length > 0 ? (
         <div className="client-list">
@@ -29,10 +39,12 @@ export function ClientRecentBlockedSendsCard({
                     {formatDateTimeLabel(blockedSend.created_at)}
                   </span>
                 </div>
+                <StatusBadge
+                  label={getSendDecisionLabel(blockedSend.decision)}
+                  variant={getSendDecisionVariant(blockedSend.decision)}
+                />
               </div>
-              <p className="client-row__support">
-                {blockedSend.reason} · decisione {blockedSend.decision}
-              </p>
+              <p className="client-row__support">{blockedSend.reason}</p>
             </article>
           ))}
         </div>

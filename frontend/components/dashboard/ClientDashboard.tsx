@@ -14,14 +14,15 @@ export function ClientDashboard({ summary }: ClientDashboardProps) {
     <main className="shell">
       <section className="client-dashboard">
         <ClientDashboardHeader summary={summary} />
-        <ClientKpiGrid summary={summary} />
-
         <div className="client-dashboard__content">
-          <ClientRecentCampaignsCard summary={summary} />
-          <ClientRecentBlockedSendsCard summary={summary} />
+          <div className="client-dashboard__content-wide">
+            <ClientKpiGrid summary={summary} />
+          </div>
           <div className="client-dashboard__content-wide">
             <ClientDeliveryCard summary={summary} />
           </div>
+          <ClientRecentCampaignsCard summary={summary} />
+          <ClientRecentBlockedSendsCard summary={summary} />
         </div>
       </section>
     </main>

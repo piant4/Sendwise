@@ -17,7 +17,7 @@ export function ClientRecentCampaignsCard({
   return (
     <ClientSurface
       title="Campagne recenti"
-      description="Righe backend-owned per stato, ultimo aggiornamento e soggetto."
+      description="Le ultime campagne aggiornate, con stato reale, soggetto e date operative."
       aside={
         <span className="client-surface__eyebrow">
           {summary.campaigns.recentCampaigns.length.toLocaleString()} elementi
@@ -51,7 +51,7 @@ export function ClientRecentCampaignsCard({
         </div>
       ) : (
         <div className="client-empty-state">
-          Nessuna campagna disponibile per questo cliente.
+          Nessuna campagna disponibile per questo cliente in questo momento.
         </div>
       )}
     </ClientSurface>

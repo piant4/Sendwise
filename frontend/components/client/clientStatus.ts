@@ -1,6 +1,7 @@
 import type {
   CampaignStatus,
   ClientOverviewSummary,
+  SendDecision,
 } from "../../types";
 
 export function getClientAccountVariant(
@@ -88,6 +89,32 @@ export function getCampaignStatusVariant(status: CampaignStatus) {
     case "blocked":
     case "failed":
       return "danger" as const;
+    default:
+      return "neutral" as const;
+  }
+}
+
+export function getSendDecisionLabel(decision: SendDecision): string {
+  switch (decision) {
+    case "blocked":
+      return "Bloccato";
+    case "authorized":
+      return "Autorizzato";
+    case "dry_run":
+      return "Dry run";
+    default:
+      return "Decisione";
+  }
+}
+
+export function getSendDecisionVariant(decision: SendDecision) {
+  switch (decision) {
+    case "blocked":
+      return "danger" as const;
+    case "authorized":
+      return "success" as const;
+    case "dry_run":
+      return "warning" as const;
     default:
       return "neutral" as const;
   }

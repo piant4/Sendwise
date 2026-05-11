@@ -20,6 +20,12 @@ export interface NavItem {
   icon: LucideIcon;
 }
 
+interface ClientNavDefinition {
+  suffix: "" | "/campaigns" | "/email-limits" | "/blocked-sends";
+  label: string;
+  icon: LucideIcon;
+}
+
 export const ADMIN_NAV_ITEMS: NavItem[] = [
   { href: "/admin", label: "Panoramica", icon: LayoutGrid },
   { href: "/admin/clients", label: "Clienti", icon: Users },
@@ -29,11 +35,11 @@ export const ADMIN_NAV_ITEMS: NavItem[] = [
   { href: "/admin/system", label: "Sistema", icon: ServerCog },
 ];
 
-export const CLIENT_NAV_ITEMS: NavItem[] = [
-  { href: "/auth/redirect", label: "Panoramica", icon: LayoutGrid },
-  { href: "/client/campaigns", label: "Campagne", icon: Megaphone },
-  { href: "/client/email-limits", label: "Limiti email", icon: Gauge },
-  { href: "/client/blocked-sends", label: "Invii bloccati", icon: ShieldAlert },
+export const CLIENT_NAV_ITEMS: ClientNavDefinition[] = [
+  { suffix: "", label: "Panoramica", icon: LayoutGrid },
+  { suffix: "/campaigns", label: "Campagne", icon: Megaphone },
+  { suffix: "/email-limits", label: "Limiti email", icon: Gauge },
+  { suffix: "/blocked-sends", label: "Invii bloccati", icon: ShieldAlert },
 ];
 
 export function getNavigationRole(pathname: string): AppRole | null {
@@ -53,11 +59,11 @@ export function getNavigationRole(pathname: string): AppRole | null {
   return null;
 }
 
-function getClientDashboardHref(pathname: string): string {
+function getClientPortalBaseHref(pathname: string): string | null {
   const portalSlugMatch = pathname.match(/^\/c\/([A-Za-z0-9]+)(?:\/|$)/);
 
   if (!portalSlugMatch) {
-    return "/auth/redirect";
+    return null;
   }
 
   return `/c/${portalSlugMatch[1]}`;
@@ -68,9 +74,19 @@ export function getNavItems(role: AppRole, pathname: string): NavItem[] {
     return ADMIN_NAV_ITEMS;
   }
 
-  return CLIENT_NAV_ITEMS.map((item, index) =>
-    index === 0 ? { ...item, href: getClientDashboardHref(pathname) } : item,
-  );
+  const baseHref = getClientPortalBaseHref(pathname);
+
+  return CLIENT_NAV_ITEMS.map((item) => ({
+    href: baseHref
+      ? item.suffix
+        ? `${baseHref}${item.suffix}`
+        : baseHref
+      : item.suffix
+        ? `/client${item.suffix}`
+        : "/auth/redirect",
+    label: item.label,
+    icon: item.icon,
+  }));
 }
 
 export function isNavItemActive(pathname: string, href: string) {
@@ -78,7 +94,11 @@ export function isNavItemActive(pathname: string, href: string) {
     return true;
   }
 
-  if (href === "/admin" || href === "/auth/redirect") {
+  if (
+    href === "/admin" ||
+    href === "/auth/redirect" ||
+    /^\/c\/[A-Za-z0-9]+$/.test(href)
+  ) {
     return false;
   }
 

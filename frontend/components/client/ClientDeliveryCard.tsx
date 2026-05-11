@@ -13,26 +13,45 @@ interface ClientDeliveryCardProps {
 export function ClientDeliveryCard({ summary }: ClientDeliveryCardProps) {
   const usageTotals = summary.usage.currentPeriodTotals;
   const recentUsage = summary.usage.recentUsage;
+  const maxCampaigns = summary.limits.maxCampaigns ?? null;
+  const campaignsInUseLabel =
+    typeof maxCampaigns === "number" && maxCampaigns > 0
+      ? `${summary.campaigns.totalCampaigns.toLocaleString()} / ${maxCampaigns.toLocaleString()}`
+      : summary.campaigns.totalCampaigns.toLocaleString();
 
   return (
     <div className="client-rail">
       <ClientSurface
-        title="Stato account"
-        description="Stato backend dell'account e limiti attivi del workspace cliente."
+        title="Capacita e limiti"
+        description="Stato account, limiti attivi e spazio campagne oggi disponibile nel workspace cliente."
       >
-        <div className="client-account-card">
-          <strong>{getClientStatusLabel(summary.client.clientStatus)}</strong>
-          <p>
-            Limite email per campagna {formatOptionalLimit(summary.limits.emailLimitPerCampaign)}
-            {" · "}
-            max campagne {formatOptionalLimit(summary.limits.maxCampaigns)}
-          </p>
+        <div className="client-fact-grid">
+          <article className="client-fact-card">
+            <span>Stato account</span>
+            <strong>{getClientStatusLabel(summary.client.clientStatus)}</strong>
+            <p>Lo stato operativo del workspace e governato dal backend.</p>
+          </article>
+          <article className="client-fact-card">
+            <span>email_limit_per_campaign</span>
+            <strong>{formatOptionalLimit(summary.limits.emailLimitPerCampaign)}</strong>
+            <p>Limite per singola campagna, quando configurato.</p>
+          </article>
+          <article className="client-fact-card">
+            <span>max_campaigns</span>
+            <strong>{formatOptionalLimit(summary.limits.maxCampaigns)}</strong>
+            <p>Massimo numero di campagne disponibili per il cliente.</p>
+          </article>
+          <article className="client-fact-card">
+            <span>Campagne oggi visibili</span>
+            <strong>{campaignsInUseLabel}</strong>
+            <p>Confronto diretto tra campagne presenti e capacita configurata.</p>
+          </article>
         </div>
       </ClientSurface>
 
       <ClientSurface
         title="Utilizzo registrato"
-        description="Riepilogo onesto dei record `api_usage` visibili al cliente."
+        description="Riepilogo onesto dei record di utilizzo visibili al cliente nel periodo corrente."
       >
         {usageTotals.length > 0 ? (
           <div className="client-metric-list">
@@ -62,7 +81,7 @@ export function ClientDeliveryCard({ summary }: ClientDeliveryCardProps) {
                 </div>
                 <div className="client-row__footer">
                   <span>{entry.quantity.toLocaleString()} unita</span>
-                  <span>ID {entry.id}</span>
+                  <span>Registrazione backend</span>
                 </div>
               </article>
             ))}

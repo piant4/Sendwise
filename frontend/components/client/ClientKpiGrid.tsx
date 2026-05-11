@@ -10,22 +10,26 @@ export function ClientKpiGrid({ summary }: ClientKpiGridProps) {
       title: "Campagne attive",
       value: summary.campaigns.activeCampaigns.toLocaleString(),
       tone: "campaigns",
-      detail: `${summary.campaigns.totalCampaigns.toLocaleString()} campagne totali nel perimetro cliente`,
+      emphasis: "primary",
+      detail: `${summary.campaigns.totalCampaigns.toLocaleString()} campagne totali visibili nel workspace cliente`,
     },
     {
-      title: "Campagne in corso",
+      title: "In corso ora",
       value: summary.campaigns.runningCampaigns.toLocaleString(),
       tone: "sent",
       detail: `${summary.campaigns.statusCounts.ready.toLocaleString()} pronte e ${summary.campaigns.statusCounts.draft.toLocaleString()} bozze`,
     },
     {
-      title: "Blocchi nel periodo",
+      title: "Invii bloccati nel periodo",
       value: summary.blockedSends.currentPeriodCount.toLocaleString(),
       tone: "blocked",
-      detail: "Conteggio del mese corrente registrato dal backend",
+      detail:
+        summary.blockedSends.currentPeriodCount > 0
+          ? "Sono presenti segnalazioni da controllare nella timeline blocchi."
+          : "Nessun blocco registrato nel periodo corrente.",
     },
     {
-      title: "Record utilizzo",
+      title: "Record utilizzo registrati",
       value: summary.usage.totalRecords.toLocaleString(),
       tone: "limits",
       detail:
@@ -38,7 +42,12 @@ export function ClientKpiGrid({ summary }: ClientKpiGridProps) {
   return (
     <section className="client-kpi-grid" aria-label="Indicatori cliente">
       {cards.map((card) => (
-        <article key={card.title} className="client-kpi-card" data-tone={card.tone}>
+        <article
+          key={card.title}
+          className="client-kpi-card"
+          data-tone={card.tone}
+          data-emphasis={card.emphasis}
+        >
           <div className="client-kpi-card__topline">
             <span className="client-kpi-card__title">{card.title}</span>
             <span className="client-kpi-card__pulse" aria-hidden="true" />

@@ -47,12 +47,7 @@ export function getNavigationRole(pathname: string): AppRole | null {
     return "admin";
   }
 
-  if (
-    pathname === "/client" ||
-    pathname.startsWith("/client/") ||
-    pathname === "/c" ||
-    pathname.startsWith("/c/")
-  ) {
+  if (pathname === "/c" || pathname.startsWith("/c/")) {
     return "client";
   }
 
@@ -81,9 +76,7 @@ export function getNavItems(role: AppRole, pathname: string): NavItem[] {
       ? item.suffix
         ? `${baseHref}${item.suffix}`
         : baseHref
-      : item.suffix
-        ? `/client${item.suffix}`
-        : "/auth/redirect",
+      : "/auth/redirect",
     label: item.label,
     icon: item.icon,
   }));

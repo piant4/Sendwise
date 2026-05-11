@@ -1292,6 +1292,22 @@ button {
   );
 }
 
+.admin-kpi-card[data-tone="sending"] {
+  background-image: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.96),
+    rgba(214, 229, 227, 0.66)
+  );
+}
+
+.admin-kpi-card[data-tone="volume"] {
+  background-image: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.96),
+    rgba(230, 238, 236, 0.88)
+  );
+}
+
 .admin-kpi-card[data-tone="limits"] {
   background-image: linear-gradient(
     180deg,
@@ -1485,9 +1501,14 @@ button {
 }
 
 .admin-metric-item strong,
-.admin-progress-block__header strong {
+.admin-progress-block__header strong,
+.admin-row__stat {
   color: var(--sw-olive);
   font-size: 0.94rem;
+}
+
+.admin-row__stat {
+  font-weight: 700;
 }
 
 .admin-progress-block {
@@ -1511,6 +1532,10 @@ button {
 .admin-system-list {
   display: grid;
   gap: 12px;
+}
+
+.admin-system-note {
+  margin-top: 14px;
 }
 
 .admin-page-shell {

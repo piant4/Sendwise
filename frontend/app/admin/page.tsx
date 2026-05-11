@@ -1,7 +1,7 @@
 import { auth } from "@clerk/nextjs/server";
 import { AdminDashboard } from "../../components/dashboard/AdminDashboard";
 import { DashboardErrorState } from "../../components/dashboard/DashboardErrorState";
-import { getAdminOverviewSummary, isApiError, USE_MOCK_API } from "../../lib/api";
+import { getAdminOverviewSummary, isApiError } from "../../lib/api";
 import { redirect } from "next/navigation";
 
 export const dynamic = "force-dynamic";
@@ -31,5 +31,5 @@ export default async function AdminPage() {
     );
   }
 
-  return <AdminDashboard summary={result.summary} isMockMode={USE_MOCK_API} />;
+  return <AdminDashboard summary={result.summary} />;
 }

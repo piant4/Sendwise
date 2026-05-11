@@ -7,17 +7,13 @@ import type { AdminOverviewSummary } from "../../types";
 
 interface AdminDashboardProps {
   summary: AdminOverviewSummary;
-  isMockMode: boolean;
 }
 
-export function AdminDashboard({
-  summary,
-  isMockMode,
-}: AdminDashboardProps) {
+export function AdminDashboard({ summary }: AdminDashboardProps) {
   return (
     <main className="shell">
       <section className="admin-dashboard">
-        <AdminDashboardHeader summary={summary} isMockMode={isMockMode} />
+        <AdminDashboardHeader summary={summary} />
         <AdminKpiGrid summary={summary} />
 
         <div className="admin-dashboard__content">

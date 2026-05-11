@@ -58,26 +58,30 @@ function getCampaignStatusVariant(status: CampaignStatus) {
 export function AdminRecentCampaignsCard({
   summary,
 }: AdminRecentCampaignsCardProps) {
+  const recentCampaigns = summary.campaigns.recentCampaigns;
+
   return (
     <AdminSurface
       title="Campagne recenti"
-      description="Ultimi aggiornamenti disponibili nella panoramica admin."
+      description="Ultime campagne aggiornate con contesto cliente reale."
       aside={
         <span className="admin-surface__eyebrow">
-          {summary.recentCampaigns.length.toLocaleString()} elementi
+          {recentCampaigns.length.toLocaleString()} elementi
         </span>
       }
     >
-      {summary.recentCampaigns.length > 0 ? (
+      {recentCampaigns.length > 0 ? (
         <div className="admin-list">
-          {summary.recentCampaigns.map((campaign) => (
+          {recentCampaigns.map((campaign) => (
             <article key={campaign.id} className="admin-row">
               <div className="admin-row__header">
                 <div className="admin-row__copy">
                   <strong className="admin-row__title">
                     {campaign.campaignName}
                   </strong>
-                  <span className="admin-row__meta">{campaign.clientName}</span>
+                  <span className="admin-row__meta">
+                    {campaign.clientName} · {campaign.clientEmail}
+                  </span>
                 </div>
                 <StatusBadge
                   label={getCampaignStatusLabel(campaign.status)}
@@ -85,17 +89,11 @@ export function AdminRecentCampaignsCard({
                 />
               </div>
               <p className="admin-row__support">
-                {campaign.subject || "Oggetto non ancora disponibile nel record corrente."}
+                {campaign.subject || "Nessun oggetto disponibile per questa campagna."}
               </p>
               <div className="admin-row__footer">
                 <span>Aggiornata {formatDateTimeLabel(campaign.updatedAt)}</span>
-                <button
-                  type="button"
-                  className="admin-inline-button"
-                  disabled
-                >
-                  Dettaglio
-                </button>
+                <span>Creata {formatDateTimeLabel(campaign.createdAt)}</span>
               </div>
             </article>
           ))}

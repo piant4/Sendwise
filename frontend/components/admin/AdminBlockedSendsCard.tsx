@@ -1,4 +1,3 @@
-import { StatusBadge } from "../ui/StatusBadge";
 import type { AdminOverviewSummary } from "../../types";
 import { AdminSurface } from "./AdminSurface";
 
@@ -22,46 +21,46 @@ function formatDateTimeLabel(value: string): string {
 export function AdminBlockedSendsCard({
   summary,
 }: AdminBlockedSendsCardProps) {
+  const recentCriticalEvents = summary.blocks.recentCriticalEvents;
+
   return (
     <AdminSurface
-      title="Invii bloccati recenti"
-      description="Segnalazioni sintetiche per il presidio operativo."
-      aside={<StatusBadge label="Controllo manuale" variant="warning" />}
+      title="Eventi critici recenti"
+      description="Eventi bloccanti letti da blocked_sends con contesto cliente e campagna."
+      aside={
+        <span className="admin-surface__eyebrow">
+          {recentCriticalEvents.length.toLocaleString()} elementi
+        </span>
+      }
     >
-      {summary.recentBlockedSends.length > 0 ? (
+      {recentCriticalEvents.length > 0 ? (
         <div className="admin-list">
-          {summary.recentBlockedSends.map((blockedSend) => (
-            <article key={blockedSend.id} className="admin-row admin-row--alert">
+          {recentCriticalEvents.map((event) => (
+            <article key={event.id} className="admin-row admin-row--alert">
               <div className="admin-row__header">
                 <div className="admin-row__copy">
                   <strong className="admin-row__title">
-                    {blockedSend.campaignName}
+                    {event.campaignName || "Campagna non disponibile"}
                   </strong>
                   <span className="admin-row__meta">
-                    {blockedSend.clientName}
+                    {event.clientName} · {event.clientEmail}
                   </span>
                 </div>
                 <span className="admin-row__timestamp">
-                  {formatDateTimeLabel(blockedSend.createdAt)}
+                  {formatDateTimeLabel(event.createdAt)}
                 </span>
               </div>
-              <p className="admin-row__support">{blockedSend.reason}</p>
+              <p className="admin-row__support">{event.reason}</p>
               <div className="admin-row__footer">
-                <span>Richiede verifica operativa</span>
-                <button
-                  type="button"
-                  className="admin-inline-button"
-                  disabled
-                >
-                  Apri coda
-                </button>
+                <span>Decisione: {event.decision}</span>
+                <span>Tipo: blocked_send</span>
               </div>
             </article>
           ))}
         </div>
       ) : (
         <div className="admin-empty-state">
-          Nessun blocco recente disponibile nella lettura corrente.
+          Nessun evento critico recente trovato nei dati correnti.
         </div>
       )}
     </AdminSurface>

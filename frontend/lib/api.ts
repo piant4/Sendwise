@@ -20,13 +20,6 @@ export const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL?.trim() ?? "";
 const INTERNAL_API_BASE_URL =
   process.env.BACKEND_URL?.trim() || API_BASE_URL;
 
-const DEFAULT_EMPTY_ADMIN_LIMITS = {
-  configuredClients: 0,
-  unconfiguredClients: 0,
-  totalEmailLimitPerCampaign: 0,
-  totalMaxCampaigns: 0,
-} as const;
-
 const ACTIVE_CAMPAIGN_STATUSES = new Set<Campaign["status"]>(["ready", "running"]);
 const ADMIN_ROUTE = "/admin";
 const CLIENT_PORTAL_ROUTE_PREFIX = "/c";
@@ -81,56 +74,93 @@ interface AdminCampaignApiItem {
 }
 
 interface AdminOverviewApiResponse {
-  total_clients: number;
-  active_campaigns: number;
-  blocked_sends_today: number;
-  monthly_ai_calls_used: number;
-  campaign_status_counts: {
-    active: number;
-    paused: number;
-    blocked: number;
-    draft: number;
-    completed: number;
-    failed: number;
+  clients: {
+    total_clients: number;
+    active_clients: number;
+    invited_or_pending_clients: number;
+    archived_or_blocked_clients: number;
+    status_counts: {
+      trial: number;
+      active: number;
+      paused: number;
+      blocked: number;
+      archived: number;
+    };
   };
-  client_status_counts: {
-    trial: number;
-    active: number;
-    paused: number;
-    blocked: number;
-    archived: number;
+  campaigns: {
+    total_campaigns: number;
+    running_campaigns: number;
+    paused_campaigns: number;
+    blocked_campaigns: number;
+    status_counts: {
+      active: number;
+      paused: number;
+      blocked: number;
+      draft: number;
+      completed: number;
+      failed: number;
+    };
+    recent_campaigns: {
+      id: string;
+      client_id: string;
+      client_name: string;
+      client_email: string;
+      campaign_name: string;
+      subject?: string | null;
+      status: Campaign["status"];
+      created_at: string;
+      updated_at: string;
+    }[];
   };
-  email_limit_overview?: {
-    configured_clients: number;
-    unconfigured_clients: number;
-    total_email_limit_per_campaign: number;
-    total_max_campaigns: number;
-  } | null;
-  recent_campaigns: {
-    id: string;
-    client_id: string;
-    client_name: string;
-    campaign_name: string;
-    subject?: string | null;
-    status: Campaign["status"];
-    created_at: string;
-    updated_at: string;
-  }[];
-  recent_blocked_sends: {
-    id: string;
-    client_id: string;
-    client_name: string;
-    campaign_id?: string | null;
-    campaign_name: string;
-    reason: string;
-    decision: BlockedSend["decision"];
-    created_at: string;
-  }[];
-  system_status: {
-    api: "ok" | "warning";
-    mock_data: "disabled";
-    sending: "disabled";
-    mailpit: "dev_only";
+  sending: {
+    emails_sent_today: number;
+    emails_sent_this_month: number;
+    top_clients_by_volume: {
+      client_id: string;
+      client_name: string;
+      client_email: string;
+      emails_sent: number;
+    }[];
+  };
+  blocks: {
+    blocked_sends_today: number;
+    recent_critical_events: {
+      id: string;
+      event_type: "blocked_send";
+      client_id: string;
+      client_name: string;
+      client_email: string;
+      campaign_id?: string | null;
+      campaign_name?: string | null;
+      reason: string;
+      decision: BlockedSend["decision"];
+      created_at: string;
+    }[];
+  };
+  limits: {
+    clients_near_limit: {
+      client_id: string;
+      client_name: string;
+      client_email: string;
+      usage_ratio: number;
+      limiting_factor: "campaign_slots" | "email_limit_per_campaign" | "both";
+      campaigns_in_use: number;
+      max_campaigns?: number | null;
+      highest_usage_campaign_id?: string | null;
+      highest_usage_campaign_name?: string | null;
+      highest_usage_campaign_volume: number;
+      email_limit_per_campaign?: number | null;
+      max_campaigns_ratio?: number | null;
+      email_limit_ratio?: number | null;
+    }[];
+    configured_limits_count: number;
+    unconfigured_limits_count: number;
+  };
+  system: {
+    api_status: "ok";
+    db_status: "ok";
+    email_sending_enabled: boolean;
+    generated_at: string;
   };
 }
 
@@ -509,59 +539,93 @@ function mapAdminOverviewSummary(
   payload: AdminOverviewApiResponse,
 ): AdminOverviewSummary {
   return {
-    totalClients: payload.total_clients,
-    activeCampaigns: payload.active_campaigns,
-    blockedSendsToday: payload.blocked_sends_today,
-    monthlyAiCallsUsed: payload.monthly_ai_calls_used,
-    campaignStatusCounts: {
-      active: payload.campaign_status_counts.active,
-      paused: payload.campaign_status_counts.paused,
-      blocked: payload.campaign_status_counts.blocked,
-      draft: payload.campaign_status_counts.draft,
-      completed: payload.campaign_status_counts.completed,
-      failed: payload.campaign_status_counts.failed,
+    clients: {
+      totalClients: payload.clients.total_clients,
+      activeClients: payload.clients.active_clients,
+      invitedOrPendingClients: payload.clients.invited_or_pending_clients,
+      archivedOrBlockedClients: payload.clients.archived_or_blocked_clients,
+      statusCounts: {
+        trial: payload.clients.status_counts.trial,
+        active: payload.clients.status_counts.active,
+        paused: payload.clients.status_counts.paused,
+        blocked: payload.clients.status_counts.blocked,
+        archived: payload.clients.status_counts.archived,
+      },
     },
-    clientStatusCounts: {
-      trial: payload.client_status_counts.trial,
-      active: payload.client_status_counts.active,
-      paused: payload.client_status_counts.paused,
-      blocked: payload.client_status_counts.blocked,
-      archived: payload.client_status_counts.archived,
+    campaigns: {
+      totalCampaigns: payload.campaigns.total_campaigns,
+      runningCampaigns: payload.campaigns.running_campaigns,
+      pausedCampaigns: payload.campaigns.paused_campaigns,
+      blockedCampaigns: payload.campaigns.blocked_campaigns,
+      statusCounts: {
+        active: payload.campaigns.status_counts.active,
+        paused: payload.campaigns.status_counts.paused,
+        blocked: payload.campaigns.status_counts.blocked,
+        draft: payload.campaigns.status_counts.draft,
+        completed: payload.campaigns.status_counts.completed,
+        failed: payload.campaigns.status_counts.failed,
+      },
+      recentCampaigns: payload.campaigns.recent_campaigns.map((campaign) => ({
+        id: campaign.id,
+        clientId: campaign.client_id,
+        clientName: campaign.client_name,
+        clientEmail: campaign.client_email,
+        campaignName: campaign.campaign_name,
+        subject: campaign.subject ?? null,
+        status: campaign.status,
+        createdAt: campaign.created_at,
+        updatedAt: campaign.updated_at,
+      })),
     },
-    emailLimitOverview: payload.email_limit_overview
-      ? {
-          configuredClients: payload.email_limit_overview.configured_clients,
-          unconfiguredClients: payload.email_limit_overview.unconfigured_clients,
-          totalEmailLimitPerCampaign:
-            payload.email_limit_overview.total_email_limit_per_campaign,
-          totalMaxCampaigns: payload.email_limit_overview.total_max_campaigns,
-        }
-      : DEFAULT_EMPTY_ADMIN_LIMITS,
-    recentCampaigns: payload.recent_campaigns.map((campaign) => ({
-      id: campaign.id,
-      clientId: campaign.client_id,
-      clientName: campaign.client_name,
-      campaignName: campaign.campaign_name,
-      subject: campaign.subject ?? null,
-      status: campaign.status,
-      createdAt: campaign.created_at,
-      updatedAt: campaign.updated_at,
-    })),
-    recentBlockedSends: payload.recent_blocked_sends.map((blockedSend) => ({
-      id: blockedSend.id,
-      clientId: blockedSend.client_id,
-      clientName: blockedSend.client_name,
-      campaignId: blockedSend.campaign_id ?? null,
-      campaignName: blockedSend.campaign_name,
-      reason: blockedSend.reason,
-      decision: blockedSend.decision,
-      createdAt: blockedSend.created_at,
-    })),
-    systemStatus: {
-      api: payload.system_status.api,
-      mockData: payload.system_status.mock_data,
-      sending: payload.system_status.sending,
-      mailpit: payload.system_status.mailpit,
+    sending: {
+      emailsSentToday: payload.sending.emails_sent_today,
+      emailsSentThisMonth: payload.sending.emails_sent_this_month,
+      topClientsByVolume: payload.sending.top_clients_by_volume.map((client) => ({
+        clientId: client.client_id,
+        clientName: client.client_name,
+        clientEmail: client.client_email,
+        emailsSent: client.emails_sent,
+      })),
+    },
+    blocks: {
+      blockedSendsToday: payload.blocks.blocked_sends_today,
+      recentCriticalEvents: payload.blocks.recent_critical_events.map((event) => ({
+        id: event.id,
+        eventType: event.event_type,
+        clientId: event.client_id,
+        clientName: event.client_name,
+        clientEmail: event.client_email,
+        campaignId: event.campaign_id ?? null,
+        campaignName: event.campaign_name ?? null,
+        reason: event.reason,
+        decision: event.decision,
+        createdAt: event.created_at,
+      })),
+    },
+    limits: {
+      clientsNearLimit: payload.limits.clients_near_limit.map((client) => ({
+        clientId: client.client_id,
+        clientName: client.client_name,
+        clientEmail: client.client_email,
+        usageRatio: client.usage_ratio,
+        limitingFactor: client.limiting_factor,
+        campaignsInUse: client.campaigns_in_use,
+        maxCampaigns: client.max_campaigns ?? null,
+        highestUsageCampaignId: client.highest_usage_campaign_id ?? null,
+        highestUsageCampaignName: client.highest_usage_campaign_name ?? null,
+        highestUsageCampaignVolume: client.highest_usage_campaign_volume,
+        emailLimitPerCampaign: client.email_limit_per_campaign ?? null,
+        maxCampaignsRatio: client.max_campaigns_ratio ?? null,
+        emailLimitRatio: client.email_limit_ratio ?? null,
+      })),
+      configuredLimitsCount: payload.limits.configured_limits_count,
+      unconfiguredLimitsCount: payload.limits.unconfigured_limits_count,
+    },
+    system: {
+      apiStatus: payload.system.api_status,
+      dbStatus: payload.system.db_status,
+      emailSendingEnabled: payload.system.email_sending_enabled,
+      generatedAt: payload.system.generated_at,
     },
   };
 }

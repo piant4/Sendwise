@@ -5,10 +5,13 @@ from typing import Optional
 
 from fastapi import Depends, HTTPException, status
 
+from app.core.config import Settings, get_settings
 from app.repositories.client_access import ClientAccessRecord
 from app.repositories.clients import (
     AdminBlockedSendRecord,
+    AdminCampaignEmailVolumeRecord,
     AdminCampaignRecord,
+    AdminTopClientVolumeRecord,
     ClientRecord,
     ClientRepository,
     get_client_repository,
@@ -16,22 +19,40 @@ from app.repositories.clients import (
 from app.schemas.clients import (
     AdminCampaignStatusCounts,
     AdminCampaignSummary,
+    AdminClientNearLimit,
     AdminClientStatusCounts,
-    AdminEmailLimitOverview,
+    AdminCriticalEvent,
     AdminEmailLimitRow,
     AdminEmailLimitsResponse,
     AdminEmailLimitsSummary,
+    AdminOverviewBlocksSummary,
+    AdminOverviewCampaignsSummary,
+    AdminOverviewClientsSummary,
+    AdminOverviewLimitsSummary,
+    AdminOverviewSendingSummary,
     AdminOverviewSummary,
-    AdminRecentBlockedSend,
     AdminRecentCampaign,
+    AdminSystemStatus,
+    AdminTopClientByVolume,
     Client,
     ClientAccessSummary,
 )
 from app.schemas.common import CampaignStatus
 
 ACTIVE_CAMPAIGN_STATUSES = {CampaignStatus.ready.value, CampaignStatus.running.value}
-RECENT_ADMIN_CAMPAIGNS_LIMIT = 4
-RECENT_ADMIN_BLOCKED_SENDS_LIMIT = 4
+RUNNING_CAMPAIGN_STATUSES = {CampaignStatus.running.value}
+LIMITED_CAMPAIGN_STATUSES = {
+    CampaignStatus.draft.value,
+    CampaignStatus.ready.value,
+    CampaignStatus.running.value,
+    CampaignStatus.paused.value,
+    CampaignStatus.blocked.value,
+}
+NEAR_LIMIT_THRESHOLD = 0.8
+RECENT_ADMIN_CAMPAIGNS_LIMIT = 5
+RECENT_ADMIN_BLOCKED_SENDS_LIMIT = 5
+TOP_CLIENTS_LIMIT = 5
+CLIENTS_NEAR_LIMIT_LIMIT = 5
 
 
 def _build_client_name(client: ClientRecord) -> str:
@@ -144,8 +165,13 @@ def has_any_email_limit_configured(client: ClientRecord) -> bool:
 
 
 class ClientsService:
-    def __init__(self, repository: ClientRepository) -> None:
+    def __init__(
+        self,
+        repository: ClientRepository,
+        settings: Optional[Settings] = None,
+    ) -> None:
         self._repository = repository
+        self._settings = settings or get_settings()
 
     def list_clients(self) -> list[ClientRecord]:
         return self._repository.list_clients()
@@ -291,6 +317,7 @@ class ClientsService:
         current_time = now or datetime.now(timezone.utc)
         clients = self.list_clients()
         campaigns = self._repository.list_admin_campaigns()
+        campaign_email_volumes = self._repository.list_admin_campaign_email_volumes()
 
         client_status_counts = AdminClientStatusCounts()
         for client in clients:
@@ -302,11 +329,12 @@ class ClientsService:
                 )
 
         campaign_status_counts = AdminCampaignStatusCounts()
-        active_campaigns = 0
+        running_campaigns = 0
         for campaign in campaigns:
             if campaign.status in ACTIVE_CAMPAIGN_STATUSES:
                 campaign_status_counts.active += 1
-                active_campaigns += 1
+                if campaign.status in RUNNING_CAMPAIGN_STATUSES:
+                    running_campaigns += 1
                 continue
 
             if campaign.status == CampaignStatus.paused.value:
@@ -328,24 +356,12 @@ class ClientsService:
             if campaign.status == CampaignStatus.failed.value:
                 campaign_status_counts.failed += 1
 
-        configured_clients = sum(
-            1 for client in clients if has_any_email_limit_configured(client)
-        )
-        email_limit_overview = AdminEmailLimitOverview(
-            configured_clients=configured_clients,
-            unconfigured_clients=max(len(clients) - configured_clients, 0),
-            total_email_limit_per_campaign=sum(
-                client.email_limit_per_campaign or 0 for client in clients
-            ),
-            total_max_campaigns=sum(client.max_campaigns or 0 for client in clients),
-        )
-
         recent_campaigns = [
             self._build_recent_campaign_summary(campaign)
             for campaign in campaigns[:RECENT_ADMIN_CAMPAIGNS_LIMIT]
         ]
-        recent_blocked_sends = [
-            self._build_recent_blocked_send_summary(blocked_send)
+        recent_critical_events = [
+            self._build_recent_critical_event(blocked_send)
             for blocked_send in self._repository.list_recent_admin_blocked_sends(
                 limit=RECENT_ADMIN_BLOCKED_SENDS_LIMIT,
             )
@@ -356,19 +372,79 @@ class ClientsService:
             second=0,
             microsecond=0,
         )
+        start_of_month = start_of_day.replace(day=1)
+        configured_limits_count = sum(
+            1 for client in clients if has_any_email_limit_configured(client)
+        )
+        client_access_by_client_id = {
+            client.id: client_access_service.get_access_by_client_id(client.id)
+            for client in clients
+        }
 
         return AdminOverviewSummary(
-            total_clients=len(clients),
-            active_campaigns=active_campaigns,
-            blocked_sends_today=self._repository.count_admin_blocked_sends_since(
-                start_of_day
+            clients=AdminOverviewClientsSummary(
+                total_clients=len(clients),
+                active_clients=sum(1 for client in clients if client.status == "active"),
+                invited_or_pending_clients=sum(
+                    1
+                    for access in client_access_by_client_id.values()
+                    if access
+                    and (
+                        access.status == "invited"
+                        or (access.invitation_status or "pending") == "pending"
+                    )
+                ),
+                archived_or_blocked_clients=sum(
+                    1
+                    for client in clients
+                    if client.status in {"archived", "blocked"}
+                ),
+                status_counts=client_status_counts,
             ),
-            monthly_ai_calls_used=0,
-            campaign_status_counts=campaign_status_counts,
-            client_status_counts=client_status_counts,
-            email_limit_overview=email_limit_overview,
-            recent_campaigns=recent_campaigns,
-            recent_blocked_sends=recent_blocked_sends,
+            campaigns=AdminOverviewCampaignsSummary(
+                total_campaigns=len(campaigns),
+                running_campaigns=running_campaigns,
+                paused_campaigns=campaign_status_counts.paused,
+                blocked_campaigns=campaign_status_counts.blocked,
+                status_counts=campaign_status_counts,
+                recent_campaigns=recent_campaigns,
+            ),
+            sending=AdminOverviewSendingSummary(
+                emails_sent_today=self._repository.count_admin_email_logs_since(
+                    start_of_day
+                ),
+                emails_sent_this_month=self._repository.count_admin_email_logs_since(
+                    start_of_month
+                ),
+                top_clients_by_volume=[
+                    self._build_top_client_volume(record)
+                    for record in self._repository.list_admin_top_sending_clients_since(
+                        started_at=start_of_month,
+                        limit=TOP_CLIENTS_LIMIT,
+                    )
+                ],
+            ),
+            blocks=AdminOverviewBlocksSummary(
+                blocked_sends_today=self._repository.count_admin_blocked_sends_since(
+                    start_of_day
+                ),
+                recent_critical_events=recent_critical_events,
+            ),
+            limits=AdminOverviewLimitsSummary(
+                clients_near_limit=self._build_clients_near_limit(
+                    clients=clients,
+                    campaigns=campaigns,
+                    campaign_email_volumes=campaign_email_volumes,
+                ),
+                configured_limits_count=configured_limits_count,
+                unconfigured_limits_count=max(len(clients) - configured_limits_count, 0),
+            ),
+            system=AdminSystemStatus(
+                api_status="ok",
+                db_status="ok",
+                email_sending_enabled=self._settings.email_sending_enabled,
+                generated_at=current_time,
+            ),
         )
 
     def get_admin_email_limits(
@@ -404,6 +480,7 @@ class ClientsService:
             id=campaign.id,
             client_id=campaign.client_id,
             client_name=campaign.client_name,
+            client_email=campaign.client_email,
             campaign_name=campaign.name,
             subject=campaign.subject,
             status=campaign.status,
@@ -411,14 +488,15 @@ class ClientsService:
             updated_at=campaign.updated_at,
         )
 
-    def _build_recent_blocked_send_summary(
+    def _build_recent_critical_event(
         self,
         blocked_send: AdminBlockedSendRecord,
-    ) -> AdminRecentBlockedSend:
-        return AdminRecentBlockedSend(
+    ) -> AdminCriticalEvent:
+        return AdminCriticalEvent(
             id=blocked_send.id,
             client_id=blocked_send.client_id,
             client_name=blocked_send.client_name,
+            client_email=blocked_send.client_email,
             campaign_id=blocked_send.campaign_id,
             campaign_name=blocked_send.campaign_name,
             reason=blocked_send.reason,
@@ -426,8 +504,111 @@ class ClientsService:
             created_at=blocked_send.created_at,
         )
 
+    def _build_top_client_volume(
+        self,
+        record: AdminTopClientVolumeRecord,
+    ) -> AdminTopClientByVolume:
+        return AdminTopClientByVolume(
+            client_id=record.client_id,
+            client_name=record.client_name,
+            client_email=record.client_email,
+            emails_sent=record.emails_sent,
+        )
+
+    def _build_clients_near_limit(
+        self,
+        *,
+        clients: list[ClientRecord],
+        campaigns: list[AdminCampaignRecord],
+        campaign_email_volumes: list[AdminCampaignEmailVolumeRecord],
+    ) -> list[AdminClientNearLimit]:
+        campaigns_in_use_by_client_id: dict[str, int] = {}
+        for campaign in campaigns:
+            if campaign.status not in LIMITED_CAMPAIGN_STATUSES:
+                continue
+
+            campaigns_in_use_by_client_id[campaign.client_id] = (
+                campaigns_in_use_by_client_id.get(campaign.client_id, 0) + 1
+            )
+
+        highest_campaign_volume_by_client_id: dict[str, AdminCampaignEmailVolumeRecord] = {}
+        for volume in campaign_email_volumes:
+            existing = highest_campaign_volume_by_client_id.get(volume.client_id)
+            if existing is None or volume.emails_sent > existing.emails_sent:
+                highest_campaign_volume_by_client_id[volume.client_id] = volume
+
+        near_limit_clients: list[AdminClientNearLimit] = []
+        for client in clients:
+            campaigns_in_use = campaigns_in_use_by_client_id.get(client.id, 0)
+            highest_campaign_volume = highest_campaign_volume_by_client_id.get(client.id)
+            max_campaigns_ratio = self._compute_ratio(
+                campaigns_in_use,
+                client.max_campaigns,
+            )
+            email_limit_ratio = self._compute_ratio(
+                highest_campaign_volume.emails_sent if highest_campaign_volume else 0,
+                client.email_limit_per_campaign,
+            )
+            usage_ratio = max(max_campaigns_ratio or 0.0, email_limit_ratio or 0.0)
+
+            if usage_ratio < NEAR_LIMIT_THRESHOLD:
+                continue
+
+            if (
+                max_campaigns_ratio is not None
+                and max_campaigns_ratio >= NEAR_LIMIT_THRESHOLD
+                and email_limit_ratio is not None
+                and email_limit_ratio >= NEAR_LIMIT_THRESHOLD
+            ):
+                limiting_factor = "both"
+            elif max_campaigns_ratio is not None and max_campaigns_ratio >= NEAR_LIMIT_THRESHOLD:
+                limiting_factor = "campaign_slots"
+            else:
+                limiting_factor = "email_limit_per_campaign"
+
+            near_limit_clients.append(
+                AdminClientNearLimit(
+                    client_id=client.id,
+                    client_name=_build_client_name(client),
+                    client_email=client.email,
+                    usage_ratio=usage_ratio,
+                    limiting_factor=limiting_factor,
+                    campaigns_in_use=campaigns_in_use,
+                    max_campaigns=client.max_campaigns,
+                    highest_usage_campaign_id=(
+                        highest_campaign_volume.campaign_id if highest_campaign_volume else None
+                    ),
+                    highest_usage_campaign_name=(
+                        highest_campaign_volume.campaign_name if highest_campaign_volume else None
+                    ),
+                    highest_usage_campaign_volume=(
+                        highest_campaign_volume.emails_sent if highest_campaign_volume else 0
+                    ),
+                    email_limit_per_campaign=client.email_limit_per_campaign,
+                    max_campaigns_ratio=max_campaigns_ratio,
+                    email_limit_ratio=email_limit_ratio,
+                )
+            )
+
+        near_limit_clients.sort(
+            key=lambda item: (item.usage_ratio, item.campaigns_in_use, item.client_name),
+            reverse=True,
+        )
+        return near_limit_clients[:CLIENTS_NEAR_LIMIT_LIMIT]
+
+    def _compute_ratio(
+        self,
+        used_value: int,
+        configured_limit: Optional[int],
+    ) -> Optional[float]:
+        if configured_limit is None or configured_limit <= 0:
+            return None
+
+        return min(used_value / configured_limit, 1.0)
+
 
 def get_clients_service(
     repository: ClientRepository = Depends(get_client_repository),
+    settings: Settings = Depends(get_settings),
 ) -> ClientsService:
-    return ClientsService(repository)
+    return ClientsService(repository, settings=settings)

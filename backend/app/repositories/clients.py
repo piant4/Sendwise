@@ -40,11 +40,26 @@ class AdminBlockedSendRecord(BaseModel):
     id: str
     client_id: str
     client_name: str
+    client_email: str
     campaign_id: Optional[str] = None
     campaign_name: str
     reason: str
     decision: str
     created_at: datetime
+
+
+class AdminTopClientVolumeRecord(BaseModel):
+    client_id: str
+    client_name: str
+    client_email: str
+    emails_sent: int
+
+
+class AdminCampaignEmailVolumeRecord(BaseModel):
+    client_id: str
+    campaign_id: Optional[str] = None
+    campaign_name: Optional[str] = None
+    emails_sent: int
 
 
 def require_psycopg() -> Any:
@@ -123,6 +138,20 @@ class ClientRepository:
         raise NotImplementedError
 
     def count_admin_blocked_sends_since(self, started_at: datetime) -> int:
+        raise NotImplementedError
+
+    def count_admin_email_logs_since(self, started_at: datetime) -> int:
+        raise NotImplementedError
+
+    def list_admin_top_sending_clients_since(
+        self,
+        *,
+        started_at: datetime,
+        limit: int,
+    ) -> list[AdminTopClientVolumeRecord]:
+        raise NotImplementedError
+
+    def list_admin_campaign_email_volumes(self) -> list[AdminCampaignEmailVolumeRecord]:
         raise NotImplementedError
 
     def delete_client_account(self, client_id: str) -> bool:
@@ -342,6 +371,7 @@ class PostgresClientRepository(ClientRepository):
                 blocked_sends.id::text AS id,
                 blocked_sends.client_id::text AS client_id,
                 COALESCE(NULLIF(clients.personal_name, ''), clients.email) AS client_name,
+                clients.email AS client_email,
                 blocked_sends.campaign_id::text AS campaign_id,
                 COALESCE(campaigns.name, 'Campagna non disponibile') AS campaign_name,
                 blocked_sends.reason,
@@ -376,6 +406,80 @@ class PostgresClientRepository(ClientRepository):
                 row = cursor.fetchone()
 
         return int((row or {}).get("total", 0))
+
+    def count_admin_email_logs_since(self, started_at: datetime) -> int:
+        query = """
+            SELECT COUNT(*)::int AS total
+            FROM email_logs
+            WHERE created_at >= %s
+        """
+
+        with postgres_connection(self._settings) as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(query, (started_at,))
+                row = cursor.fetchone()
+
+        return int((row or {}).get("total", 0))
+
+    def list_admin_top_sending_clients_since(
+        self,
+        *,
+        started_at: datetime,
+        limit: int,
+    ) -> list[AdminTopClientVolumeRecord]:
+        query = """
+            SELECT
+                email_logs.client_id::text AS client_id,
+                COALESCE(NULLIF(clients.personal_name, ''), clients.email) AS client_name,
+                clients.email AS client_email,
+                COUNT(*)::int AS emails_sent
+            FROM email_logs
+            INNER JOIN clients
+                ON clients.id = email_logs.client_id
+            WHERE email_logs.created_at >= %s
+            GROUP BY
+                email_logs.client_id,
+                clients.personal_name,
+                clients.email
+            ORDER BY
+                emails_sent DESC,
+                client_name ASC,
+                client_email ASC
+            LIMIT %s
+        """
+
+        with postgres_connection(self._settings) as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(query, (started_at, limit))
+                rows = cursor.fetchall()
+
+        return [AdminTopClientVolumeRecord.model_validate(row) for row in rows]
+
+    def list_admin_campaign_email_volumes(self) -> list[AdminCampaignEmailVolumeRecord]:
+        query = """
+            SELECT
+                email_logs.client_id::text AS client_id,
+                email_logs.campaign_id::text AS campaign_id,
+                campaigns.name AS campaign_name,
+                COUNT(*)::int AS emails_sent
+            FROM email_logs
+            LEFT JOIN campaigns
+                ON campaigns.id = email_logs.campaign_id
+            GROUP BY
+                email_logs.client_id,
+                email_logs.campaign_id,
+                campaigns.name
+            ORDER BY
+                emails_sent DESC,
+                campaign_name ASC NULLS LAST
+        """
+
+        with postgres_connection(self._settings) as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(query)
+                rows = cursor.fetchall()
+
+        return [AdminCampaignEmailVolumeRecord.model_validate(row) for row in rows]
 
     def delete_client_account(self, client_id: str) -> bool:
         delete_queries = (

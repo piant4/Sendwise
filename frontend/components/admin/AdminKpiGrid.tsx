@@ -4,46 +4,46 @@ interface AdminKpiGridProps {
   summary: AdminOverviewSummary;
 }
 
-function formatPercentage(value: number): string {
-  return `${Math.round(value)}%`;
-}
-
 export function AdminKpiGrid({ summary }: AdminKpiGridProps) {
-  const configuredClients = summary.emailLimitOverview.configuredClients;
-  const totalClients = summary.totalClients;
-  const configuredCoverage =
-    totalClients > 0
-      ? Math.min((configuredClients / totalClients) * 100, 100)
-      : 0;
-
   const cards = [
     {
-      title: "Clienti totali",
-      value: summary.totalClients.toLocaleString(),
+      title: "Clienti attivi",
+      value: `${summary.clients.activeClients.toLocaleString()} / ${summary.clients.totalClients.toLocaleString()}`,
       tone: "clients",
-      detail: `${summary.clientStatusCounts.active.toLocaleString()} attivi · ${summary.clientStatusCounts.trial.toLocaleString()} in verifica`,
-      note: "Portafoglio gestito dal pannello operativo.",
+      detail: `${summary.clients.invitedOrPendingClients.toLocaleString()} invitati o pending · ${summary.clients.archivedOrBlockedClients.toLocaleString()} archiviati o bloccati`,
     },
     {
-      title: "Campagne attive / running",
-      value: summary.activeCampaigns.toLocaleString(),
+      title: "Campagne in corso",
+      value: summary.campaigns.runningCampaigns.toLocaleString(),
       tone: "campaigns",
-      detail: `${summary.campaignStatusCounts.paused.toLocaleString()} in pausa · ${summary.campaignStatusCounts.blocked.toLocaleString()} bloccate`,
-      note: "Conta gli stati pronti o in esecuzione.",
+      detail: `${summary.campaigns.pausedCampaigns.toLocaleString()} in pausa · ${summary.campaigns.blockedCampaigns.toLocaleString()} bloccate`,
     },
     {
-      title: "Invii bloccati",
-      value: summary.blockedSendsToday.toLocaleString(),
+      title: "Email inviate oggi",
+      value: summary.sending.emailsSentToday.toLocaleString(),
+      tone: "sending",
+      detail: `${summary.sending.emailsSentThisMonth.toLocaleString()} nel mese corrente`,
+    },
+    {
+      title: "Blocchi oggi",
+      value: summary.blocks.blockedSendsToday.toLocaleString(),
       tone: "blocked",
-      detail: `${summary.recentBlockedSends.length.toLocaleString()} eventi recenti visibili`,
-      note: "Le decisioni di invio restano presidiate dal backend.",
+      detail: `${summary.blocks.recentCriticalEvents.length.toLocaleString()} eventi critici recenti`,
     },
     {
-      title: "Limiti email configurati",
-      value: `${formatPercentage(configuredCoverage)}`,
+      title: "Email inviate questo mese",
+      value: summary.sending.emailsSentThisMonth.toLocaleString(),
+      tone: "volume",
+      detail:
+        summary.sending.topClientsByVolume.length > 0
+          ? `${summary.sending.topClientsByVolume[0].clientName} guida il volume corrente`
+          : "Nessun invio registrato nel mese corrente",
+    },
+    {
+      title: "Clienti vicini al limite",
+      value: summary.limits.clientsNearLimit.length.toLocaleString(),
       tone: "limits",
-      detail: `${configuredClients.toLocaleString()} / ${totalClients.toLocaleString()} clienti con limiti attivi`,
-      note: `${summary.emailLimitOverview.totalMaxCampaigns.toLocaleString()} campagne massime aggregate disponibili.`,
+      detail: `${summary.limits.configuredLimitsCount.toLocaleString()} clienti con limiti configurati · ${summary.limits.unconfiguredLimitsCount.toLocaleString()} senza limiti`,
     },
   ];
 
@@ -61,7 +61,6 @@ export function AdminKpiGrid({ summary }: AdminKpiGridProps) {
           </div>
           <strong className="admin-kpi-card__value">{card.value}</strong>
           <p className="admin-kpi-card__detail">{card.detail}</p>
-          <span className="admin-kpi-card__note">{card.note}</span>
         </article>
       ))}
     </section>

@@ -14,7 +14,12 @@ from app.core.config import get_settings
 from app.main import app
 from app.repositories.auth_users import _build_auth_user_repository
 from app.repositories.client_access import ClientAccessRecord, ClientAccessRepository
-from app.repositories.clients import ClientRecord, ClientRepository
+from app.repositories.clients import (
+    AdminCampaignEmailVolumeRecord,
+    AdminTopClientVolumeRecord,
+    ClientRecord,
+    ClientRepository,
+)
 from app.services.auth import AccountDeletionService, ClerkUserDeletionGateway, get_account_deletion_service
 from app.services.client_access import (
     ClerkInvitationGateway,
@@ -60,10 +65,19 @@ class FakeAdminBlockedSendRecord:
     id: str
     client_id: str
     client_name: str
+    client_email: str
     campaign_id: Optional[str]
     campaign_name: str
     reason: str
     decision: str
+    created_at: datetime
+
+
+@dataclass
+class FakeAdminEmailLogRecord:
+    id: str
+    client_id: str
+    campaign_id: Optional[str]
     created_at: datetime
 
 
@@ -74,10 +88,12 @@ class FakeClientRepository(ClientRepository):
         *,
         admin_campaign_records: Optional[list[FakeAdminCampaignRecord]] = None,
         admin_blocked_send_records: Optional[list[FakeAdminBlockedSendRecord]] = None,
+        admin_email_log_records: Optional[list[FakeAdminEmailLogRecord]] = None,
     ) -> None:
         self._records = {record.id: record for record in records or []}
         self._admin_campaign_records = admin_campaign_records or []
         self._admin_blocked_send_records = admin_blocked_send_records or []
+        self._admin_email_log_records = admin_email_log_records or []
         self._counter = len(self._records)
         self.deleted_client_ids: list[str] = []
 
@@ -178,6 +194,78 @@ class FakeClientRepository(ClientRepository):
             for record in self._admin_blocked_send_records
             if record.created_at >= started_at
         )
+
+    def count_admin_email_logs_since(self, started_at: datetime) -> int:
+        return sum(
+            1
+            for record in self._admin_email_log_records
+            if record.created_at >= started_at
+        )
+
+    def list_admin_top_sending_clients_since(
+        self,
+        *,
+        started_at: datetime,
+        limit: int,
+    ) -> list[AdminTopClientVolumeRecord]:
+        totals_by_client_id: dict[str, int] = {}
+        for record in self._admin_email_log_records:
+            if record.created_at < started_at:
+                continue
+            totals_by_client_id[record.client_id] = (
+                totals_by_client_id.get(record.client_id, 0) + 1
+            )
+
+        sorted_client_ids = sorted(
+            totals_by_client_id,
+            key=lambda client_id: (
+                totals_by_client_id[client_id],
+                self._records[client_id].email,
+            ),
+            reverse=True,
+        )
+        rows: list[AdminTopClientVolumeRecord] = []
+        for client_id in sorted_client_ids[:limit]:
+            client = self._records[client_id]
+            rows.append(
+                AdminTopClientVolumeRecord(
+                    client_id=client_id,
+                    client_name=client.personal_name or client.email,
+                    client_email=client.email,
+                    emails_sent=totals_by_client_id[client_id],
+                )
+            )
+
+        return rows
+
+    def list_admin_campaign_email_volumes(self) -> list[AdminCampaignEmailVolumeRecord]:
+        totals_by_campaign: dict[tuple[str, Optional[str]], int] = {}
+        for record in self._admin_email_log_records:
+            key = (record.client_id, record.campaign_id)
+            totals_by_campaign[key] = totals_by_campaign.get(key, 0) + 1
+
+        campaign_names = {
+            campaign.id: campaign.name for campaign in self._admin_campaign_records
+        }
+        rows = [
+            AdminCampaignEmailVolumeRecord(
+                client_id=client_id,
+                campaign_id=campaign_id,
+                campaign_name=(
+                    campaign_names.get(campaign_id) if campaign_id is not None else None
+                ),
+                emails_sent=emails_sent,
+            )
+            for (client_id, campaign_id), emails_sent in totals_by_campaign.items()
+        ]
+        rows.sort(
+            key=lambda row: (
+                row.emails_sent,
+                row.campaign_name or "",
+            ),
+            reverse=True,
+        )
+        return rows
 
     def delete_client_account(self, client_id: str) -> bool:
         existing = self._records.pop(client_id, None)
@@ -529,6 +617,7 @@ def build_admin_blocked_send_record(
     blocked_send_id: str,
     client_id: str,
     client_name: str,
+    client_email: str = "client@example.test",
     campaign_id: Optional[str],
     campaign_name: str,
     reason: str,
@@ -539,11 +628,27 @@ def build_admin_blocked_send_record(
         id=blocked_send_id,
         client_id=client_id,
         client_name=client_name,
+        client_email=client_email,
         campaign_id=campaign_id,
         campaign_name=campaign_name,
         reason=reason,
         decision=decision,
         created_at=created_at or datetime.now(timezone.utc),
+    )
+
+
+def build_admin_email_log_record(
+    *,
+    log_id: str,
+    client_id: str,
+    campaign_id: Optional[str],
+    created_at: datetime,
+) -> FakeAdminEmailLogRecord:
+    return FakeAdminEmailLogRecord(
+        id=log_id,
+        client_id=client_id,
+        campaign_id=campaign_id,
+        created_at=created_at,
     )
 
 
@@ -553,6 +658,7 @@ def install_test_dependencies(
     access_records: Optional[list[ClientAccessRecord]] = None,
     admin_campaign_records: Optional[list[FakeAdminCampaignRecord]] = None,
     admin_blocked_send_records: Optional[list[FakeAdminBlockedSendRecord]] = None,
+    admin_email_log_records: Optional[list[FakeAdminEmailLogRecord]] = None,
     invitation_gateway: Optional[FakeClerkInvitationGateway] = None,
     deletion_gateway: Optional[FakeClerkUserDeletionGateway] = None,
 ) -> tuple[
@@ -565,12 +671,13 @@ def install_test_dependencies(
         client_records,
         admin_campaign_records=admin_campaign_records,
         admin_blocked_send_records=admin_blocked_send_records,
+        admin_email_log_records=admin_email_log_records,
     )
     client_access_repository = FakeClientAccessRepository(access_records)
     gateway = invitation_gateway or FakeClerkInvitationGateway()
     clerk_user_deletion_gateway = deletion_gateway or FakeClerkUserDeletionGateway()
     settings = get_settings()
-    clients_service = ClientsService(client_repository)
+    clients_service = ClientsService(client_repository, settings=settings)
     client_access_service = ClientAccessService(
         repository=client_access_repository,
         client_repository=client_repository,
@@ -1054,11 +1161,32 @@ def test_platform_admin_receives_backend_owned_overview_payload(
                 blocked_send_id="blocked_today",
                 client_id=second_client.id,
                 client_name="Beta",
+                client_email=second_client.email,
                 campaign_id="campaign_beta_paused",
                 campaign_name="Beta Paused",
                 reason="Guard prevented send.",
                 created_at=datetime.now(timezone.utc),
             )
+        ],
+        admin_email_log_records=[
+            build_admin_email_log_record(
+                log_id="email_today_alpha_1",
+                client_id=first_client.id,
+                campaign_id="campaign_alpha_ready",
+                created_at=datetime.now(timezone.utc),
+            ),
+            build_admin_email_log_record(
+                log_id="email_today_alpha_2",
+                client_id=first_client.id,
+                campaign_id="campaign_alpha_ready",
+                created_at=datetime.now(timezone.utc),
+            ),
+            build_admin_email_log_record(
+                log_id="email_month_beta_1",
+                client_id=second_client.id,
+                campaign_id="campaign_beta_paused",
+                created_at=datetime(2026, 5, 2, 8, 0, tzinfo=timezone.utc),
+            ),
         ],
     )
     token = make_token(signing_keypair, clerk_user_id="user_admin")
@@ -1067,17 +1195,24 @@ def test_platform_admin_receives_backend_owned_overview_payload(
 
     assert response.status_code == 200
     payload = response.json()
-    assert payload["total_clients"] == 2
-    assert payload["active_campaigns"] == 1
-    assert payload["blocked_sends_today"] == 1
-    assert payload["client_status_counts"] == {
-        "trial": 1,
-        "active": 1,
-        "paused": 0,
-        "blocked": 0,
-        "archived": 0,
+    assert payload["clients"] == {
+        "total_clients": 2,
+        "active_clients": 1,
+        "invited_or_pending_clients": 1,
+        "archived_or_blocked_clients": 0,
+        "status_counts": {
+            "trial": 1,
+            "active": 1,
+            "paused": 0,
+            "blocked": 0,
+            "archived": 0,
+        },
     }
-    assert payload["campaign_status_counts"] == {
+    assert payload["campaigns"]["total_campaigns"] == 2
+    assert payload["campaigns"]["running_campaigns"] == 0
+    assert payload["campaigns"]["paused_campaigns"] == 1
+    assert payload["campaigns"]["blocked_campaigns"] == 0
+    assert payload["campaigns"]["status_counts"] == {
         "active": 1,
         "paused": 1,
         "blocked": 0,
@@ -1085,20 +1220,132 @@ def test_platform_admin_receives_backend_owned_overview_payload(
         "completed": 0,
         "failed": 0,
     }
-    assert payload["email_limit_overview"] == {
-        "configured_clients": 1,
-        "unconfigured_clients": 1,
-        "total_email_limit_per_campaign": 2000,
-        "total_max_campaigns": 4,
+    assert payload["campaigns"]["recent_campaigns"][0]["client_name"] == "Alpha"
+    assert payload["sending"] == {
+        "emails_sent_today": 2,
+        "emails_sent_this_month": 3,
+        "top_clients_by_volume": [
+            {
+                "client_id": first_client.id,
+                "client_name": "Alpha",
+                "client_email": first_client.email,
+                "emails_sent": 2,
+            },
+            {
+                "client_id": second_client.id,
+                "client_name": "Beta",
+                "client_email": second_client.email,
+                "emails_sent": 1,
+            },
+        ],
     }
-    assert payload["recent_campaigns"][0]["client_name"] == "Alpha"
-    assert payload["recent_blocked_sends"][0]["campaign_name"] == "Beta Paused"
-    assert payload["system_status"] == {
-        "api": "ok",
-        "mock_data": "disabled",
-        "sending": "disabled",
-        "mailpit": "dev_only",
-    }
+    assert payload["blocks"]["blocked_sends_today"] == 1
+    assert (
+        payload["blocks"]["recent_critical_events"][0]["campaign_name"]
+        == "Beta Paused"
+    )
+    assert payload["limits"]["configured_limits_count"] == 1
+    assert payload["limits"]["unconfigured_limits_count"] == 1
+    assert payload["limits"]["clients_near_limit"] == []
+    assert payload["system"]["api_status"] == "ok"
+    assert payload["system"]["db_status"] == "ok"
+    assert (
+        payload["system"]["email_sending_enabled"]
+        == get_settings().email_sending_enabled
+    )
+
+
+def test_platform_admin_overview_reports_clients_near_limit_from_real_usage(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    signing_keypair: rsa.RSAPrivateKey,
+) -> None:
+    set_auth_mappings(
+        monkeypatch,
+        {
+            "user_admin": {
+                "email": "admin@sendwise.test",
+                "access_type": "platform_admin",
+                "status": "active",
+            }
+        },
+    )
+    limited_client = build_client_record(
+        client_id="client_limit",
+        email="limit@example.test",
+        personal_name="Limit Client",
+        status="active",
+        email_limit_per_campaign=500,
+        max_campaigns=5,
+    )
+    install_test_dependencies(
+        client_records=[limited_client],
+        access_records=[
+            build_access_record(client_id=limited_client.id, email=limited_client.email)
+        ],
+        admin_campaign_records=[
+            build_admin_campaign_record(
+                campaign_id="campaign_limit_running",
+                client_id=limited_client.id,
+                client_name="Limit Client",
+                client_email=limited_client.email,
+                name="Limit Running",
+                status="running",
+                subject="Ops burst",
+            ),
+            build_admin_campaign_record(
+                campaign_id="campaign_limit_ready",
+                client_id=limited_client.id,
+                client_name="Limit Client",
+                client_email=limited_client.email,
+                name="Limit Ready",
+                status="ready",
+                subject="Ops ready",
+            ),
+            build_admin_campaign_record(
+                campaign_id="campaign_limit_paused",
+                client_id=limited_client.id,
+                client_name="Limit Client",
+                client_email=limited_client.email,
+                name="Limit Paused",
+                status="paused",
+                subject="Ops paused",
+            ),
+            build_admin_campaign_record(
+                campaign_id="campaign_limit_draft",
+                client_id=limited_client.id,
+                client_name="Limit Client",
+                client_email=limited_client.email,
+                name="Limit Draft",
+                status="draft",
+                subject="Ops draft",
+            ),
+        ],
+        admin_email_log_records=[
+            *[
+                build_admin_email_log_record(
+                    log_id=f"limit_log_{index}",
+                    client_id=limited_client.id,
+                    campaign_id="campaign_limit_running",
+                    created_at=datetime(2026, 5, 9, 9, 0, tzinfo=timezone.utc),
+                )
+                for index in range(450)
+            ]
+        ],
+    )
+    token = make_token(signing_keypair, clerk_user_id="user_admin")
+
+    response = client.get("/admin/overview", headers=auth_header(token))
+
+    assert response.status_code == 200
+    payload = response.json()
+    near_limit_clients = payload["limits"]["clients_near_limit"]
+    assert len(near_limit_clients) == 1
+    assert near_limit_clients[0]["client_id"] == limited_client.id
+    assert near_limit_clients[0]["limiting_factor"] == "both"
+    assert near_limit_clients[0]["campaigns_in_use"] == 4
+    assert near_limit_clients[0]["max_campaigns"] == 5
+    assert near_limit_clients[0]["highest_usage_campaign_volume"] == 450
 
 
 def test_platform_admin_campaigns_are_loaded_from_cross_client_backend_data(

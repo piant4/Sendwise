@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Literal, Optional
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict
 
 from app.schemas.common import CampaignStatus, ClientStatus, SendDecision
 
@@ -94,17 +94,11 @@ class AdminClientStatusCounts(BaseModel):
     archived: int = 0
 
 
-class AdminEmailLimitOverview(BaseModel):
-    configured_clients: int = 0
-    unconfigured_clients: int = 0
-    total_email_limit_per_campaign: int = 0
-    total_max_campaigns: int = 0
-
-
 class AdminRecentCampaign(BaseModel):
     id: str
     client_id: str
     client_name: str
+    client_email: str
     campaign_name: str
     subject: Optional[str] = None
     status: CampaignStatus
@@ -112,35 +106,90 @@ class AdminRecentCampaign(BaseModel):
     updated_at: datetime
 
 
-class AdminRecentBlockedSend(BaseModel):
+class AdminCriticalEvent(BaseModel):
     id: str
+    event_type: Literal["blocked_send"] = "blocked_send"
     client_id: str
     client_name: str
+    client_email: str
     campaign_id: Optional[str] = None
-    campaign_name: str
+    campaign_name: Optional[str] = None
     reason: str
     decision: SendDecision
     created_at: datetime
 
 
 class AdminSystemStatus(BaseModel):
-    api: Literal["ok", "warning"] = "ok"
-    mock_data: Literal["disabled"] = "disabled"
-    sending: Literal["disabled"] = "disabled"
-    mailpit: Literal["dev_only"] = "dev_only"
+    api_status: Literal["ok"] = "ok"
+    db_status: Literal["ok"] = "ok"
+    email_sending_enabled: bool
+    generated_at: datetime
+
+
+class AdminOverviewClientsSummary(BaseModel):
+    total_clients: int
+    active_clients: int
+    invited_or_pending_clients: int = 0
+    archived_or_blocked_clients: int = 0
+    status_counts: AdminClientStatusCounts
+
+
+class AdminOverviewCampaignsSummary(BaseModel):
+    total_campaigns: int
+    running_campaigns: int
+    paused_campaigns: int
+    blocked_campaigns: int
+    status_counts: AdminCampaignStatusCounts
+    recent_campaigns: list[AdminRecentCampaign]
+
+
+class AdminTopClientByVolume(BaseModel):
+    client_id: str
+    client_name: str
+    client_email: str
+    emails_sent: int
+
+
+class AdminOverviewSendingSummary(BaseModel):
+    emails_sent_today: int
+    emails_sent_this_month: int
+    top_clients_by_volume: list[AdminTopClientByVolume]
+
+
+class AdminOverviewBlocksSummary(BaseModel):
+    blocked_sends_today: int
+    recent_critical_events: list[AdminCriticalEvent]
+
+
+class AdminClientNearLimit(BaseModel):
+    client_id: str
+    client_name: str
+    client_email: str
+    usage_ratio: float
+    limiting_factor: Literal["campaign_slots", "email_limit_per_campaign", "both"]
+    campaigns_in_use: int
+    max_campaigns: Optional[int] = None
+    highest_usage_campaign_id: Optional[str] = None
+    highest_usage_campaign_name: Optional[str] = None
+    highest_usage_campaign_volume: int = 0
+    email_limit_per_campaign: Optional[int] = None
+    max_campaigns_ratio: Optional[float] = None
+    email_limit_ratio: Optional[float] = None
+
+
+class AdminOverviewLimitsSummary(BaseModel):
+    clients_near_limit: list[AdminClientNearLimit]
+    configured_limits_count: int
+    unconfigured_limits_count: int
 
 
 class AdminOverviewSummary(BaseModel):
-    total_clients: int
-    active_campaigns: int
-    blocked_sends_today: int
-    monthly_ai_calls_used: int = 0
-    campaign_status_counts: AdminCampaignStatusCounts
-    client_status_counts: AdminClientStatusCounts
-    email_limit_overview: AdminEmailLimitOverview
-    recent_campaigns: list[AdminRecentCampaign]
-    recent_blocked_sends: list[AdminRecentBlockedSend]
-    system_status: AdminSystemStatus = Field(default_factory=AdminSystemStatus)
+    clients: AdminOverviewClientsSummary
+    campaigns: AdminOverviewCampaignsSummary
+    sending: AdminOverviewSendingSummary
+    blocks: AdminOverviewBlocksSummary
+    limits: AdminOverviewLimitsSummary
+    system: AdminSystemStatus
 
 
 class AdminCampaignSummary(BaseModel):

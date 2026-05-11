@@ -152,17 +152,11 @@ export interface AdminClientStatusCounts {
   archived: number;
 }
 
-export interface AdminEmailLimitOverview {
-  configuredClients: number;
-  unconfiguredClients: number;
-  totalEmailLimitPerCampaign: number;
-  totalMaxCampaigns: number;
-}
-
 export interface AdminRecentCampaign {
   id: string;
   clientId: string;
   clientName: string;
+  clientEmail: string;
   campaignName: string;
   subject?: string | null;
   status: CampaignStatus;
@@ -170,11 +164,13 @@ export interface AdminRecentCampaign {
   updatedAt: string;
 }
 
-export interface AdminRecentBlockedSend {
+export interface AdminCriticalEvent {
   id: string;
+  eventType: "blocked_send";
   clientId: string;
   clientName: string;
-  campaignName: string;
+  clientEmail: string;
+  campaignName?: string | null;
   campaignId?: string | null;
   reason: string;
   decision: SendDecision;
@@ -182,23 +178,76 @@ export interface AdminRecentBlockedSend {
 }
 
 export interface AdminSystemStatus {
-  api: "ok" | "warning";
-  mockData: "enabled" | "disabled";
-  sending: "disabled";
-  mailpit: "dev_only";
+  apiStatus: "ok";
+  dbStatus: "ok";
+  emailSendingEnabled: boolean;
+  generatedAt: string;
+}
+
+export interface AdminOverviewClientsSummary {
+  totalClients: number;
+  activeClients: number;
+  invitedOrPendingClients: number;
+  archivedOrBlockedClients: number;
+  statusCounts: AdminClientStatusCounts;
+}
+
+export interface AdminOverviewCampaignsSummary {
+  totalCampaigns: number;
+  runningCampaigns: number;
+  pausedCampaigns: number;
+  blockedCampaigns: number;
+  statusCounts: AdminCampaignStatusCounts;
+  recentCampaigns: AdminRecentCampaign[];
+}
+
+export interface AdminTopClientByVolume {
+  clientId: string;
+  clientName: string;
+  clientEmail: string;
+  emailsSent: number;
+}
+
+export interface AdminOverviewSendingSummary {
+  emailsSentToday: number;
+  emailsSentThisMonth: number;
+  topClientsByVolume: AdminTopClientByVolume[];
+}
+
+export interface AdminOverviewBlocksSummary {
+  blockedSendsToday: number;
+  recentCriticalEvents: AdminCriticalEvent[];
+}
+
+export interface AdminClientNearLimit {
+  clientId: string;
+  clientName: string;
+  clientEmail: string;
+  usageRatio: number;
+  limitingFactor: "campaign_slots" | "email_limit_per_campaign" | "both";
+  campaignsInUse: number;
+  maxCampaigns?: number | null;
+  highestUsageCampaignId?: string | null;
+  highestUsageCampaignName?: string | null;
+  highestUsageCampaignVolume: number;
+  emailLimitPerCampaign?: number | null;
+  maxCampaignsRatio?: number | null;
+  emailLimitRatio?: number | null;
+}
+
+export interface AdminOverviewLimitsSummary {
+  clientsNearLimit: AdminClientNearLimit[];
+  configuredLimitsCount: number;
+  unconfiguredLimitsCount: number;
 }
 
 export interface AdminOverviewSummary {
-  totalClients: number;
-  activeCampaigns: number;
-  blockedSendsToday: number;
-  monthlyAiCallsUsed: number;
-  campaignStatusCounts: AdminCampaignStatusCounts;
-  clientStatusCounts: AdminClientStatusCounts;
-  emailLimitOverview: AdminEmailLimitOverview;
-  recentCampaigns: AdminRecentCampaign[];
-  recentBlockedSends: AdminRecentBlockedSend[];
-  systemStatus: AdminSystemStatus;
+  clients: AdminOverviewClientsSummary;
+  campaigns: AdminOverviewCampaignsSummary;
+  sending: AdminOverviewSendingSummary;
+  blocks: AdminOverviewBlocksSummary;
+  limits: AdminOverviewLimitsSummary;
+  system: AdminSystemStatus;
 }
 
 export interface AdminCampaignSummary {

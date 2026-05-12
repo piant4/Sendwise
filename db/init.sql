@@ -84,6 +84,7 @@ CREATE TABLE IF NOT EXISTS email_logs (
     contact_id UUID REFERENCES contacts(id),
     status TEXT NOT NULL,
     provider_message_id TEXT,
+    body TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 

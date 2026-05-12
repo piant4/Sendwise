@@ -13,6 +13,7 @@ from app.repositories.listmonk_mappings import InMemoryListmonkMappingRepository
 from app.services.campaign_preparation import CampaignPreparationService
 from app.services.contact_subscriber_sync import ContactSubscriberSyncService
 from app.services.listmonk_mappings import ListmonkMappingService
+from app.services.template_renderer import get_default_template_renderer
 
 
 class FakeListmonkPreparationClient:
@@ -76,6 +77,20 @@ class FakeListmonkPreparationClient:
 class FakeCampaignRepository:
     def __init__(self, campaigns: list[ClientCampaignRecord]) -> None:
         self._campaigns = campaigns
+
+    def get_by_id(self, client_id: str) -> Any | None:
+        for campaign in self._campaigns:
+            if campaign.client_id == client_id:
+                return type(
+                    "ClientStub",
+                    (),
+                    {
+                        "id": client_id,
+                        "personal_name": "Test Client",
+                        "email": f"{client_id}@example.test",
+                    },
+                )()
+        return None
 
     def list_client_campaigns(self, client_id: str) -> list[ClientCampaignRecord]:
         return [
@@ -165,6 +180,7 @@ def build_preparation_service(
         mapping_service=mapping_service,
         client_repository=FakeCampaignRepository([campaign_record]),  # type: ignore[arg-type]
         contact_sync_service=contact_sync_service,
+        template_renderer=get_default_template_renderer(),
     )
     return service, fake_listmonk, repository
 
@@ -175,28 +191,28 @@ def test_prepare_campaign_creates_list_subscribers_campaign_and_mappings() -> No
     result = service.prepare_campaign("campaign_123")
 
     assert result["status"] == "synced"
-    assert result["content_ready"] is False
+    assert result["content_ready"] is True
     assert result["contact_summary"]["total_contacts"] == 2
     assert result["contact_summary"]["synced_count"] == 2
     assert result["list_mapping"]["created"] is True
     assert result["listmonk_mapping"]["created"] is True
     assert fake_listmonk.created_lists[0]["name"] == "sendwise-campaign-campaign_123"
     assert len(fake_listmonk.created_subscribers) == 2
-    assert fake_listmonk.created_campaign_payloads == [
-        {
-            "name": "Launch campaign",
-            "subject": "Launch",
-            "lists": [1],
-            "type": "regular",
-            "content_type": "html",
-            "body": (
-                "<p>Sendwise technical campaign draft. "
-                "Final campaign content is not ready.</p>"
-            ),
-            "tags": ["sendwise", "content_ready:false"],
-            "from_email": "sender@example.test",
-        }
-    ]
+    assert len(fake_listmonk.created_campaign_payloads) == 1
+    created_payload = fake_listmonk.created_campaign_payloads[0]
+    assert created_payload["name"] == "Launch campaign"
+    assert created_payload["subject"] == "Launch"
+    assert created_payload["lists"] == [1]
+    assert created_payload["type"] == "regular"
+    assert created_payload["content_type"] == "html"
+    assert created_payload["tags"] == ["sendwise", "content_ready:true"]
+    assert created_payload["from_email"] == "sender@example.test"
+    assert created_payload["body"].startswith("<!doctype html>")
+    assert "Launch campaign" in created_payload["body"]
+    assert "unsubscribe" in created_payload["body"].lower()
+    assert result["content"]["body"] == created_payload["body"]
+    assert result["content"]["template_name"] == "campaign"
+    assert result["content"]["preview_text"] == "Technical preview for campaign Launch campaign."
     mapping_types = {
         (mapping.entity_type, mapping.entity_id, mapping.listmonk_type)
         for mapping in repository.list_by_client("client_123")

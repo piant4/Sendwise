@@ -19,6 +19,13 @@ from app.services.listmonk_mappings import (
     LISTMONK_TYPE_CAMPAIGN,
     ListmonkMappingService,
 )
+from app.services.template_renderer import (
+    CompiledTemplateNotFoundError,
+    TemplateRenderError,
+    TemplateRenderer,
+    build_unsubscribe_url,
+    get_default_template_renderer,
+)
 
 
 @dataclass(frozen=True)
@@ -28,6 +35,7 @@ class CampaignPreparationService:
     mapping_service: ListmonkMappingService
     client_repository: ClientRepository
     contact_sync_service: ContactSubscriberSyncService
+    template_renderer: TemplateRenderer
 
     def prepare_campaign(
         self,
@@ -46,6 +54,9 @@ class CampaignPreparationService:
                 "reason": "Campaign was not found in Business DB for this caller.",
             }
 
+        client = self.client_repository.get_by_id(campaign.client_id)
+        content = self._render_campaign_content(campaign=campaign, client=client)
+
         list_mapping, list_created = self.contact_sync_service.ensure_campaign_list(
             client_id=campaign.client_id,
             campaign_id=campaign.id,
@@ -58,6 +69,7 @@ class CampaignPreparationService:
             self._ensure_listmonk_campaign(
                 campaign=campaign,
                 list_id=self._coerce_listmonk_int(list_mapping.listmonk_id, "list"),
+                content=content,
             )
         )
 
@@ -68,6 +80,7 @@ class CampaignPreparationService:
             "listmonk_synced": True,
             "content_ready": content_ready,
             "contact_summary": contact_summary,
+            "content": content,
             "list_mapping": {
                 "entity_type": list_mapping.entity_type,
                 "entity_id": list_mapping.entity_id,
@@ -89,10 +102,12 @@ class CampaignPreparationService:
         *,
         campaign: ClientCampaignRecord,
         list_id: int,
+        content: dict[str, Any],
     ) -> tuple[Any, bool, bool]:
         payload, content_ready = self._build_listmonk_campaign_payload(
             campaign=campaign,
             list_id=list_id,
+            content=content,
         )
         mapping = self.mapping_service.get_mapping(
             client_id=campaign.client_id,
@@ -119,15 +134,11 @@ class CampaignPreparationService:
         *,
         campaign: ClientCampaignRecord,
         list_id: int,
+        content: dict[str, Any],
     ) -> tuple[dict[str, Any], bool]:
         subject = (campaign.subject or "").strip()
-        content_ready = False
-        body = ""
-        if self.settings.environment in {"development", "dev", "test", "testing"}:
-            body = (
-                "<p>Sendwise technical campaign draft. "
-                "Final campaign content is not ready.</p>"
-            )
+        content_ready = bool(content["content_ready"])
+        body = str(content.get("body") or "")
 
         payload: dict[str, Any] = {
             "name": campaign.name,
@@ -142,6 +153,67 @@ class CampaignPreparationService:
             payload["from_email"] = self.settings.smtp_from_email.strip()
 
         return payload, content_ready
+
+    def _render_campaign_content(
+        self,
+        *,
+        campaign: ClientCampaignRecord,
+        client: Any | None,
+    ) -> dict[str, Any]:
+        subject = (campaign.subject or "").strip() or f"Sendwise draft {campaign.id}"
+        preview_text = f"Technical preview for campaign {campaign.name}."
+        body = (
+            f"<p>This is the Sendwise technical preview for <strong>{campaign.name}</strong>.</p>"
+            f"<p>Subject: {subject}</p>"
+            "<p>No real email was sent. This HTML exists for campaign preparation "
+            "and simulation only.</p>"
+        )
+        client_name = self._resolve_client_name(client)
+        unsubscribe_url = build_unsubscribe_url(
+            settings=self.settings,
+            campaign_id=campaign.id,
+            client_id=campaign.client_id,
+        )
+        try:
+            rendered = self.template_renderer.render(
+                template_name="campaign",
+                subject=subject,
+                preview_text=preview_text,
+                body=body,
+                unsubscribe_url=unsubscribe_url,
+                client_name=client_name,
+            )
+        except (CompiledTemplateNotFoundError, TemplateRenderError) as error:
+            return {
+                "template_name": "campaign",
+                "content_ready": False,
+                "reason": str(error),
+                "subject": subject,
+                "preview_text": preview_text,
+                "body": "",
+                "unsubscribe_url": unsubscribe_url,
+                "client_name": client_name,
+            }
+
+        return {
+            "template_name": rendered.template_name,
+            "content_ready": True,
+            "reason": None,
+            "subject": rendered.subject,
+            "preview_text": rendered.preview_text,
+            "body": rendered.body,
+            "unsubscribe_url": rendered.unsubscribe_url,
+            "client_name": rendered.client_name,
+        }
+
+    def _resolve_client_name(self, client: Any | None) -> str:
+        if client is None:
+            return "Sendwise client"
+        if getattr(client, "personal_name", None):
+            return str(client.personal_name)
+        if getattr(client, "email", None):
+            return str(client.email).split("@")[0]
+        return "Sendwise client"
 
     def _get_campaign(
         self,
@@ -201,4 +273,5 @@ def get_campaign_preparation_service() -> CampaignPreparationService:
         mapping_service=mapping_service,
         client_repository=PostgresClientRepository(settings),
         contact_sync_service=contact_sync_service,
+        template_renderer=get_default_template_renderer(),
     )

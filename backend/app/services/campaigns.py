@@ -125,6 +125,18 @@ class CampaignDispatchService:
                         )
                     ),
                 )
+            content = preparation.get("content")
+            if isinstance(content, dict) and not content.get("content_ready"):
+                return self._diagnostic_response(
+                    campaign_id=campaign_id,
+                    decision=guard_result.decision,
+                    reason=str(
+                        content.get(
+                            "reason",
+                            "Campaign HTML template is not ready for dispatch.",
+                        )
+                    ),
+                )
 
         mapping = mapping_service.get_mapping(
             client_id=campaign.client_id,

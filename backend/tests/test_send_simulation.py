@@ -18,6 +18,7 @@ from app.services.send_simulation import SendSimulationService
 class FakePreparationService:
     def __init__(self) -> None:
         self.prepared_campaign_ids: list[str] = []
+        self.trigger_campaign_send_called = False
 
     def prepare_campaign(
         self,
@@ -36,7 +37,22 @@ class FakePreparationService:
                 "listmonk_id": "lm_123",
                 "created": False,
             },
+            "content_ready": True,
+            "content": {
+                "template_name": "campaign",
+                "content_ready": True,
+                "reason": None,
+                "subject": "Launch",
+                "preview_text": "Technical preview for campaign Launch campaign.",
+                "body": "<html><body><p>Simulated HTML body.</p></body></html>",
+                "unsubscribe_url": "http://localhost:3000/unsubscribe",
+                "client_name": "Test Client",
+            },
         }
+
+    def trigger_campaign_send(self, _campaign_id: str) -> None:
+        self.trigger_campaign_send_called = True
+        raise AssertionError("Simulation must not trigger a real send.")
 
 
 class FakeClientRepository:
@@ -161,9 +177,14 @@ def test_simulation_authorizes_without_real_sending_enabled_and_logs_contacts() 
     assert result["listmonk_dispatched"] is False
     assert result["real_send_attempted"] is False
     assert preparation_service.prepared_campaign_ids == ["campaign_123"]
+    assert preparation_service.trigger_campaign_send_called is False
     logs = email_log_repository.list_by_campaign("campaign_123")
     assert [log.status for log in logs] == ["simulated", "simulated"]
     assert [log.provider_message_id for log in logs] == [None, None]
+    assert all(log.body == "<html><body><p>Simulated HTML body.</p></body></html>" for log in logs)
+    assert result["content"]["template_name"] == "campaign"
+    assert result["content"]["content_ready"] is True
+    assert result["content"]["body"].startswith("<html")
 
 
 def test_simulation_block_does_not_create_email_logs_or_prepare_listmonk() -> None:

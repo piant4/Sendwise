@@ -36,6 +36,40 @@ class FakeListmonkClient:
         return {"status": "mocked"}
 
 
+class FakePreparationService:
+    def __init__(self, *, content_ready: bool) -> None:
+        self.content_ready = content_ready
+
+    def prepare_campaign(
+        self,
+        campaign_id: str,
+        _current_user: AuthenticatedUser | None = None,
+    ) -> dict[str, Any]:
+        return {
+            "status": "synced",
+            "campaign_id": campaign_id,
+            "listmonk_synced": True,
+            "content_ready": self.content_ready,
+            "content": {
+                "template_name": "campaign",
+                "content_ready": self.content_ready,
+                "reason": "Compiled template missing." if not self.content_ready else None,
+                "subject": "Launch",
+                "preview_text": "Preview",
+                "body": "<html><body><p>Body</p></body></html>" if self.content_ready else "",
+                "unsubscribe_url": "http://localhost:3000/unsubscribe",
+                "client_name": "Test Client",
+            },
+            "listmonk_mapping": {
+                "entity_type": "campaign",
+                "entity_id": campaign_id,
+                "listmonk_type": "campaign",
+                "listmonk_id": "lm_existing",
+                "created": False,
+            },
+        }
+
+
 class FakeClientRepository:
     def __init__(
         self,
@@ -121,6 +155,7 @@ def build_dispatch_service(
     clients: list[ClientRecord] | None = None,
     contact_repository: InMemoryContactRepository | None = None,
     suppression_repository: InMemorySuppressionListRepository | None = None,
+    preparation_service: FakePreparationService | None = None,
 ) -> CampaignDispatchService:
     selected_campaigns = [build_campaign()] if campaigns is None else campaigns
     selected_clients = [build_client()] if clients is None else clients
@@ -143,6 +178,7 @@ def build_dispatch_service(
         or InMemorySuppressionListRepository(),
         blocked_send_repository=blocked_send_repository
         or InMemoryBlockedSendRepository(),
+        campaign_preparation_service=preparation_service,
     )
 
 
@@ -160,6 +196,21 @@ def test_upsert_mapping_creates_new_mapping() -> None:
     assert mapping.entity_id == "campaign_123"
     assert mapping.listmonk_type == "campaign"
     assert mapping.listmonk_id == "lm_123"
+
+
+def test_dispatch_does_not_trigger_real_send_when_content_is_not_ready() -> None:
+    fake_listmonk = FakeListmonkClient()
+    service = build_dispatch_service(
+        fake_listmonk=fake_listmonk,
+        preparation_service=FakePreparationService(content_ready=False),
+    )
+
+    result = service.send_campaign("campaign_123")
+
+    assert result["status"] == "dispatch_blocked"
+    assert "Compiled template missing." in result["reason"]
+    assert result["listmonk_dispatched"] is False
+    assert fake_listmonk.sent_campaign_ids == []
 
 
 def test_upsert_mapping_is_idempotent_for_same_target() -> None:

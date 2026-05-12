@@ -17,6 +17,7 @@ class EmailLogRecord(BaseModel):
     contact_id: Optional[str] = None
     status: str
     provider_message_id: Optional[str] = None
+    body: Optional[str] = None
     created_at: datetime
 
 
@@ -29,6 +30,7 @@ class EmailLogRepository:
         contact_id: str,
         status: str,
         provider_message_id: Optional[str] = None,
+        body: Optional[str] = None,
     ) -> EmailLogRecord:
         raise NotImplementedError
 
@@ -38,6 +40,7 @@ class EmailLogRepository:
         client_id: str,
         campaign_id: str,
         contact_ids: list[str],
+        body: str,
     ) -> list[EmailLogRecord]:
         return [
             self.create_email_log(
@@ -46,6 +49,7 @@ class EmailLogRepository:
                 contact_id=contact_id,
                 status="simulated",
                 provider_message_id=None,
+                body=body,
             )
             for contact_id in contact_ids
         ]
@@ -63,6 +67,7 @@ class PostgresEmailLogRepository(EmailLogRepository):
         contact_id: str,
         status: str,
         provider_message_id: Optional[str] = None,
+        body: Optional[str] = None,
     ) -> EmailLogRecord:
         query = """
             INSERT INTO email_logs (
@@ -70,9 +75,10 @@ class PostgresEmailLogRepository(EmailLogRepository):
                 campaign_id,
                 contact_id,
                 status,
-                provider_message_id
+                provider_message_id,
+                body
             )
-            VALUES (%s, %s, %s, %s, %s)
+            VALUES (%s, %s, %s, %s, %s, %s)
             RETURNING
                 id::text AS id,
                 client_id::text AS client_id,
@@ -80,6 +86,7 @@ class PostgresEmailLogRepository(EmailLogRepository):
                 contact_id::text AS contact_id,
                 status,
                 provider_message_id,
+                body,
                 created_at
         """
 
@@ -87,7 +94,14 @@ class PostgresEmailLogRepository(EmailLogRepository):
             with connection.cursor() as cursor:
                 cursor.execute(
                     query,
-                    (client_id, campaign_id, contact_id, status, provider_message_id),
+                    (
+                        client_id,
+                        campaign_id,
+                        contact_id,
+                        status,
+                        provider_message_id,
+                        body,
+                    ),
                 )
                 row = cursor.fetchone()
             connection.commit()
@@ -107,6 +121,7 @@ class InMemoryEmailLogRepository(EmailLogRepository):
         contact_id: str,
         status: str,
         provider_message_id: Optional[str] = None,
+        body: Optional[str] = None,
     ) -> EmailLogRecord:
         record = EmailLogRecord(
             id=str(uuid4()),
@@ -115,6 +130,7 @@ class InMemoryEmailLogRepository(EmailLogRepository):
             contact_id=contact_id,
             status=status,
             provider_message_id=provider_message_id,
+            body=body,
             created_at=datetime.now(timezone.utc),
         )
         self._records.append(record)

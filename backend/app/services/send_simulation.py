@@ -97,11 +97,34 @@ class SendSimulationService:
                     guard_result=guard_result,
                     preparation=preparation,
                 )
+            content = preparation.get("content")
+            if not isinstance(content, dict) or not content.get("content_ready"):
+                return self._diagnostic_response(
+                    campaign_id=campaign_id,
+                    client_id=campaign.client_id,
+                    reason=str(
+                        (content or {}).get(
+                            "reason",
+                            "Campaign HTML template is not ready for simulation.",
+                        )
+                    ),
+                    guard_result=guard_result,
+                    preparation=preparation,
+                )
+        else:
+            return self._diagnostic_response(
+                campaign_id=campaign_id,
+                client_id=campaign.client_id,
+                reason="Campaign preparation service is not configured.",
+                guard_result=guard_result,
+                preparation={},
+            )
 
         logs = self.email_log_repository.create_simulated_campaign_logs(
             client_id=campaign.client_id,
             campaign_id=campaign.id,
             contact_ids=[contact.id for contact in contacts],
+            body=str(preparation["content"]["body"]),
         )
         response: dict[str, Any] = {
             "status": "simulated",
@@ -122,13 +145,17 @@ class SendSimulationService:
                     "contact_id": log.contact_id,
                     "status": log.status,
                     "provider_message_id": log.provider_message_id,
+                    "body": log.body,
                     "created_at": log.created_at,
                 }
                 for log in logs
             ],
             "content": {
-                "subject": campaign.subject,
-                "body": "Simulated dispatch only; campaign body is not stored in Business DB.",
+                "subject": preparation["content"]["subject"],
+                "preview_text": preparation["content"]["preview_text"],
+                "body": preparation["content"]["body"],
+                "template_name": preparation["content"]["template_name"],
+                "content_ready": preparation["content"]["content_ready"],
             },
         }
         if preparation is not None:

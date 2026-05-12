@@ -8,3 +8,5 @@ node_modules/
 dist/
 build/
 .DS_Store
+!templates/dist/
+!templates/dist/*.html

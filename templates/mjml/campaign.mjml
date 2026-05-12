@@ -1,13 +1,114 @@
 <mjml>
   <mj-head>
-    <mj-title>Campaign Placeholder</mj-title>
+    <mj-title>{{subject}}</mj-title>
+    <mj-preview>{{preview_text}}</mj-preview>
+    <mj-attributes>
+      <mj-all font-family="Arial, Helvetica, sans-serif" color="#102a43" />
+      <mj-body background-color="#eef2f8" />
+      <mj-section padding="0" />
+      <mj-column padding="0" />
+      <mj-text font-size="16px" line-height="24px" color="#243b53" />
+    </mj-attributes>
+    <mj-style inline="inline">
+      .campaign-shell {
+        border-radius: 24px;
+        overflow: hidden;
+      }
+      .footer a {
+        color: #2f855a !important;
+      }
+      @media (prefers-color-scheme: dark) {
+        .dark-frame {
+          background: #111827 !important;
+        }
+        .dark-card {
+          background: #0f172a !important;
+        }
+        .dark-copy div,
+        .dark-copy p,
+        .dark-copy a {
+          color: #e5edf6 !important;
+        }
+      }
+    </mj-style>
   </mj-head>
   <mj-body>
-    <!-- Milestone 0 placeholder only. Real campaign copy and AI placeholders come later. -->
-    <mj-section>
-      <mj-column>
-        <mj-text>Campaign email template placeholder.</mj-text>
-      </mj-column>
-    </mj-section>
+    <mj-wrapper css-class="campaign-shell" padding="24px 16px">
+      <mj-section
+        background-color="#dff3e4"
+        padding="20px 24px"
+        css-class="dark-frame"
+      >
+        <mj-column width="70%">
+          <mj-text
+            color="#166534"
+            font-size="12px"
+            font-weight="700"
+            text-transform="uppercase"
+            letter-spacing="1px"
+            padding-bottom="10px"
+          >
+            Campaign preview
+          </mj-text>
+          <mj-text
+            css-class="dark-copy"
+            color="#0f172a"
+            font-size="30px"
+            font-weight="700"
+            line-height="36px"
+            padding="0"
+          >
+            {{subject}}
+          </mj-text>
+        </mj-column>
+        <mj-column width="30%">
+          <mj-text
+            align="right"
+            css-class="dark-copy"
+            color="#285943"
+            font-size="13px"
+            padding="6px 0 0 0"
+          >
+            {{client_name}}
+          </mj-text>
+        </mj-column>
+      </mj-section>
+      <mj-section background-color="#ffffff" padding="24px" css-class="dark-card">
+        <mj-column>
+          <mj-text
+            css-class="dark-copy"
+            font-size="15px"
+            color="#486581"
+            padding-bottom="16px"
+          >
+            {{preview_text}}
+          </mj-text>
+          <mj-text css-class="dark-copy" padding="0">
+            {{body}}
+          </mj-text>
+        </mj-column>
+      </mj-section>
+      <mj-section
+        background-color="#f8fafc"
+        padding="18px 24px"
+        css-class="footer dark-card"
+      >
+        <mj-column>
+          <mj-divider border-color="#d9e2ec" padding="0 0 16px 0" />
+          <mj-text
+            css-class="dark-copy"
+            font-size="12px"
+            color="#52606d"
+            padding-bottom="8px"
+          >
+            Sendwise compiled this MJML template for campaign preparation and simulation.
+          </mj-text>
+          <mj-text css-class="dark-copy" font-size="12px" color="#52606d" padding="0">
+            Manage preferences or unsubscribe here:
+            <a href="{{unsubscribe_url}}">unsubscribe</a>
+          </mj-text>
+        </mj-column>
+      </mj-section>
+    </mj-wrapper>
   </mj-body>
 </mjml>

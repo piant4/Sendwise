@@ -7,6 +7,10 @@ from app.services.campaign_preparation import (
     get_campaign_preparation_service,
 )
 from app.services.campaigns import CampaignDispatchService, get_campaign_dispatch_service
+from app.services.send_simulation import (
+    SendSimulationService,
+    get_send_simulation_service,
+)
 
 router = APIRouter(
     prefix="/campaigns",
@@ -69,4 +73,27 @@ def send_campaign(
             "decision": "authorized",
             "reason": str(error),
             "listmonk_dispatched": False,
+        }
+
+
+@router.post("/{campaign_id}/simulate-send")
+def simulate_send_campaign(
+    campaign_id: str,
+    current_user: AuthenticatedUser = Depends(require_active_user),
+    send_simulation_service: SendSimulationService = Depends(
+        get_send_simulation_service
+    ),
+) -> dict[str, object]:
+    try:
+        return send_simulation_service.simulate_campaign_send(campaign_id, current_user)
+    except ListmonkError as error:
+        return {
+            "status": "simulation_failed",
+            "mode": "simulation",
+            "campaign_id": campaign_id,
+            "decision": "authorized",
+            "reason": str(error),
+            "listmonk_dispatched": False,
+            "real_send_attempted": False,
+            "email_logs_created": 0,
         }

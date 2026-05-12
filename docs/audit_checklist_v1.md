@@ -9,46 +9,52 @@ Run this checklist after each milestone and record results in `docs/audit_log.md
 - [ ] UI does not call listmonk.
 - [ ] UI does not write directly to DB.
 - [ ] backend is gatekeeper.
+- [ ] Business PostgreSQL remains source of truth.
 - [ ] listmonk does not decide business logic.
 - [ ] Mailpit is not used in production.
-- [ ] n8n is not core V1.
+- [ ] `EMAIL_SENDING_ENABLED` remains fail-closed for real dispatch.
 
-## Security
+## Client Self-Service Contract
 
-- [ ] endpoint protection planned/present.
-- [ ] API key/auth planned/present.
-- [ ] public signup disabled or explicitly still out of scope.
-- [ ] frontend does not trust access type or `client_id`.
-- [ ] Sendwise DB stores no user password, password hash, password reset token, or session secret.
+- [ ] client campaign management is documented as backend-scoped to the authenticated client.
+- [ ] frontend does not trust or send a privileged `client_id`.
+- [ ] frontend does not decide slot limits.
+- [ ] frontend does not decide Guard or review results.
+- [ ] backend validates campaign-step progression.
+- [ ] cross-client campaign access is denied.
+
+## Wizard And Review Contract
+
+- [ ] contract documents `setup`, `content`, `recipients`, `review`, `send` steps.
+- [ ] contract documents `content_ready`.
+- [ ] contract documents `contacts_ready`.
+- [ ] contract documents `review_ready`.
+- [ ] review is documented as non-sending.
+- [ ] send is documented to re-run or validate Guard.
+
+## Limits And Slots
+
+- [ ] current legacy limit fields are identified.
+- [ ] recommended `campaign_slots` contract is documented.
+- [ ] `clients.email_limit_per_campaign` is marked legacy/fallback.
+- [ ] `clients.max_campaigns` compatibility is documented.
+- [ ] Guard ownership of final limit enforcement is preserved.
+
+## Templates And AI
+
+- [ ] template catalog is documented as Business DB truth.
+- [ ] listmonk receives final rendered HTML only.
+- [ ] AI is documented as editorial assistance only.
+- [ ] AI cannot send or authorize.
+- [ ] future AI usage logging is documented.
+
+## Security And Auth
+
 - [ ] protected backend requests use backend-owned auth verification or are explicitly documented as stubs.
-- [ ] secrets not committed.
-- [ ] secret values are not returned to frontend or logs.
-- [ ] PostgreSQL not publicly exposed.
-- [ ] listmonk admin not publicly exposed without protection.
-
-## Auth And Onboarding Contract
-
-- [ ] platform admin is backend-controlled.
-- [ ] there is no role selector in client access UI.
-- [ ] there is no admin or client selector in client access UI.
-- [ ] there is no multi-user or team client UI in V1.
-- [ ] invite-access endpoint accepts `email` only.
-- [ ] invite-access endpoint does not accept trusted role or access type from frontend.
-- [ ] onboarding endpoint does not accept trusted `client_id` or role from frontend.
-- [ ] onboarding endpoint accepts `personal_name` and optional `company_name`.
-- [ ] each client has at most one active access in V1.
+- [ ] backend derives trusted `client_id` from access mapping.
+- [ ] no password, password hash, reset token, or session secret is stored in Sendwise DB.
 - [ ] client account cannot access admin endpoints.
-- [ ] invited, suspended, and archived access cannot access protected data.
-- [ ] no public signup route exists.
-- [ ] no `SignUpButton` is exposed.
-
-## Multi-client
-
-- [ ] client_id isolation enforced in contracts.
-- [ ] client dashboard cannot access other clients.
-- [ ] every business entity maps to client_id.
-- [ ] backend resolves client scope from Business PostgreSQL mapping, not from frontend input.
-- [ ] client_id is backend-derived or path-derived and validated where required.
+- [ ] invited, suspended, and archived access cannot access protected client data.
 
 ## Deliverability
 
@@ -56,30 +62,18 @@ Run this checklist after each milestone and record results in `docs/audit_log.md
 - [ ] bounced not sent.
 - [ ] unsubscribed not sent.
 - [ ] blacklisted not sent.
-- [ ] EMAIL_SENDING_ENABLED fail-closed.
+- [ ] no send path bypasses the Guard.
 
 ## Testing
 
-- [ ] smoke test.
-- [ ] backend tests.
-- [ ] frontend basic build planned.
-- [ ] docker compose config.
-- [ ] healthcheck.
-- [ ] Mailpit test in dev.
+- [ ] `bash scripts/audit.sh`
+- [ ] `bash scripts/smoke_test.sh`
+- [ ] `docker compose config`
+- [ ] `git diff --check`
 
 ## Regression
 
 - [ ] no features outside scope.
 - [ ] no unrequested refactors.
-- [ ] no backend bypass.
-- [ ] no restoration of old n8n-core architecture.
-
-## Milestone 0.5 - Parallel Work Boundary
-
-- [ ] backend schemas exist.
-- [ ] frontend types exist.
-- [ ] frontend mock API exists.
-- [ ] admin/client endpoint stubs exist.
-- [ ] client mock data uses a single client_id.
-- [ ] frontend API client supports mock mode.
-- [ ] ownership file defines backend/frontend split.
+- [ ] no frontend trust-boundary regression.
+- [ ] no listmonk source-of-truth regression.

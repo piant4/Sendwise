@@ -1926,6 +1926,68 @@ Scope confirmation:
 - No `client_access` persistence was implemented.
 - No Clerk invitation API, admin invite flow, onboarding endpoint, public signup, custom password form, custom 2FA, real listmonk, real sending, AI, n8n, Celery, Keycloak, Metabase, Postal, Rspamd, or Budibase was implemented.
 
+## Milestone 10.5 — Contract Alignment For Self-Service Campaigns
+
+Date: 2026-05-13
+Branch: develop
+
+Verified state:
+- Audited current campaign persistence and runtime behavior from:
+- `db/init.sql`
+- `backend/app/api/campaigns.py`
+- `backend/app/api/client.py`
+- `backend/app/services/campaigns.py`
+- `backend/app/services/campaign_preparation.py`
+- `backend/app/services/send_simulation.py`
+- `backend/app/guard/deliverability_guard.py`
+- `backend/app/repositories/clients.py`
+- `backend/app/repositories/contacts.py`
+- `backend/app/repositories/email_logs.py`
+- `frontend/app/c/[portalSlug]/campaigns/page.tsx`
+- `frontend/lib/api.ts`
+- Verified current runtime contract:
+- campaigns are currently persisted with `id`, `client_id`, `name`, `status`, `subject`, timestamps only
+- client campaign reads are currently available through backend-owned `GET /client/campaigns`
+- client campaign detail and stats routes still return stub responses
+- `POST /campaigns/{campaign_id}/simulate-send` is implemented and creates `email_logs.status="simulated"`
+- `POST /campaigns/{campaign_id}/send` is implemented for controlled dev dispatch and creates `email_logs.status="queued"`
+- Deliverability Guard currently enforces `clients.email_limit_per_campaign` and `clients.max_campaigns`
+- no persisted `campaign_slots`, `email_templates`, wizard-step flags, or final-review records exist today
+- Updated contracts only:
+- `docs/structural_contracts_v1.md`
+- `docs/api_contracts_v1.md`
+- `docs/data_model_v1.md`
+- `docs/states_v1.md`
+- `docs/ownership_v1.md`
+- `docs/audit_checklist_v1.md`
+- `docs/architecture_v1.md`
+- Contract updates now document:
+- client self-service campaign ownership in the portal
+- backend-derived `client_id` and backend-owned Guard/review decisions
+- recommended wizard steps and readiness flags
+- recommended `campaign_slots` model with legacy compatibility for `email_limit_per_campaign` and `max_campaigns`
+- recommended `email_templates` product model
+- future AI assistant boundaries as editorial-only
+- proposed future client/admin/AI endpoints clearly marked `planned` or `future`
+
+Known limits:
+- No runtime schema, API, service, frontend, or Guard implementation was changed for the new self-service flow.
+- `campaign_slots` and `email_templates` remain contractual only.
+- Current runtime still uses legacy campaign states including `running`, `completed`, and `failed`.
+- Current runtime still stores only `subject` on campaigns and builds HTML from the technical template renderer during preparation/simulation/send.
+
+Checks referenced:
+- `bash scripts/audit.sh`
+- `bash scripts/smoke_test.sh`
+- `docker compose config`
+- `git diff --check`
+
+Scope confirmation:
+- No DB migration was implemented.
+- No backend runtime feature was implemented.
+- No frontend UI flow was implemented.
+- No real AI, CSV import, slot persistence, SES rollout, worker, or new integration was implemented.
+
 ## Milestone 0.9E.2 Completion — Real Clerk Mapped Users Verification
 
 Date: 2026-05-08

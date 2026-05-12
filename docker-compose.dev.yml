@@ -1,6 +1,12 @@
 services:
+  backend:
+    volumes:
+      - ./templates/dist:/templates/dist:ro
+
   listmonk:
     environment:
+      LISTMONK_ADMIN_USER: ${LISTMONK_USERNAME:-admin}
+      LISTMONK_ADMIN_PASSWORD: ${LISTMONK_PASSWORD:-change_me}
       LISTMONK_smtp__enabled: "true"
       LISTMONK_smtp__host: ${SMTP_HOST:-mailpit}
       LISTMONK_smtp__port: ${SMTP_PORT:-1025}

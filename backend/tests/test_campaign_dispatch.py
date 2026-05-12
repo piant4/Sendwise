@@ -13,6 +13,7 @@ from app.repositories.blocked_sends import InMemoryBlockedSendRepository
 from app.main import app
 from app.repositories.clients import ClientCampaignRecord, ClientRecord
 from app.repositories.contacts import ContactRecord, InMemoryContactRepository
+from app.repositories.email_logs import InMemoryEmailLogRepository
 from app.repositories.listmonk_mappings import InMemoryListmonkMappingRepository
 from app.repositories.suppression_list import InMemorySuppressionListRepository
 from app.services.campaigns import CampaignDispatchService
@@ -39,12 +40,14 @@ class FakeListmonkClient:
 class FakePreparationService:
     def __init__(self, *, content_ready: bool) -> None:
         self.content_ready = content_ready
+        self.prepared_campaign_ids: list[str] = []
 
     def prepare_campaign(
         self,
         campaign_id: str,
         _current_user: AuthenticatedUser | None = None,
     ) -> dict[str, Any]:
+        self.prepared_campaign_ids.append(campaign_id)
         return {
             "status": "synced",
             "campaign_id": campaign_id,
@@ -148,9 +151,12 @@ def build_contact(
 def build_dispatch_service(
     *,
     email_sending_enabled_raw: str = "true",
+    environment: str = "development",
+    email_provider: str = "mailpit",
     fake_listmonk: FakeListmonkClient | None = None,
     mapping_service: ListmonkMappingService | None = None,
     blocked_send_repository: InMemoryBlockedSendRepository | None = None,
+    email_log_repository: InMemoryEmailLogRepository | None = None,
     campaigns: list[ClientCampaignRecord] | None = None,
     clients: list[ClientRecord] | None = None,
     contact_repository: InMemoryContactRepository | None = None,
@@ -164,7 +170,11 @@ def build_dispatch_service(
         campaign_contacts={("client_123", "campaign_123", "contact_123")},
     )
     return CampaignDispatchService(
-        settings=Settings(email_sending_enabled_raw=email_sending_enabled_raw),
+        settings=Settings(
+            email_sending_enabled_raw=email_sending_enabled_raw,
+            environment=environment,
+            email_provider=email_provider,
+        ),
         guard=DeliverabilityGuard(),
         listmonk_client=fake_listmonk or FakeListmonkClient(),  # type: ignore[arg-type]
         mapping_service=mapping_service
@@ -178,6 +188,7 @@ def build_dispatch_service(
         or InMemorySuppressionListRepository(),
         blocked_send_repository=blocked_send_repository
         or InMemoryBlockedSendRepository(),
+        email_log_repository=email_log_repository or InMemoryEmailLogRepository(),
         campaign_preparation_service=preparation_service,
     )
 
@@ -200,16 +211,22 @@ def test_upsert_mapping_creates_new_mapping() -> None:
 
 def test_dispatch_does_not_trigger_real_send_when_content_is_not_ready() -> None:
     fake_listmonk = FakeListmonkClient()
+    email_log_repository = InMemoryEmailLogRepository()
     service = build_dispatch_service(
         fake_listmonk=fake_listmonk,
+        email_log_repository=email_log_repository,
         preparation_service=FakePreparationService(content_ready=False),
     )
 
     result = service.send_campaign("campaign_123")
 
     assert result["status"] == "dispatch_blocked"
+    assert result["code"] == "content_not_ready"
     assert "Compiled template missing." in result["reason"]
     assert result["listmonk_dispatched"] is False
+    assert result["dispatch_attempted"] is False
+    assert result["email_logs_created"] == 0
+    assert email_log_repository.list_by_campaign("campaign_123") == []
     assert fake_listmonk.sent_campaign_ids == []
 
 
@@ -296,11 +313,13 @@ def test_disabled_campaign_send_does_not_call_listmonk() -> None:
     fake_listmonk = FakeListmonkClient()
     repository = InMemoryListmonkMappingRepository()
     blocked_send_repository = InMemoryBlockedSendRepository()
+    email_log_repository = InMemoryEmailLogRepository()
     service = build_dispatch_service(
         email_sending_enabled_raw="false",
         fake_listmonk=fake_listmonk,
         mapping_service=ListmonkMappingService(repository),
         blocked_send_repository=blocked_send_repository,
+        email_log_repository=email_log_repository,
     )
 
     result = service.send_campaign("campaign_123")
@@ -312,6 +331,8 @@ def test_disabled_campaign_send_does_not_call_listmonk() -> None:
     assert result["listmonk_dispatched"] is False
     assert result["client_id"] == "client_123"
     assert result["blocked_send_id"]
+    assert result["dispatch_attempted"] is False
+    assert result["email_logs_created"] == 0
     assert repository.list_by_client("client_123") == []
     blocked_sends = blocked_send_repository.list_by_campaign("campaign_123")
     assert len(blocked_sends) == 1
@@ -319,6 +340,29 @@ def test_disabled_campaign_send_does_not_call_listmonk() -> None:
     assert blocked_sends[0].client_id == "client_123"
     assert blocked_sends[0].reason == f'{result["code"]}: {result["reason"]}'
     assert blocked_sends[0].decision == "blocked"
+    assert email_log_repository.list_by_campaign("campaign_123") == []
+    assert fake_listmonk.created_campaign_payloads == []
+    assert fake_listmonk.sent_campaign_ids == []
+
+
+def test_production_runtime_blocks_controlled_dispatch_before_listmonk() -> None:
+    fake_listmonk = FakeListmonkClient()
+    email_log_repository = InMemoryEmailLogRepository()
+    service = build_dispatch_service(
+        fake_listmonk=fake_listmonk,
+        email_log_repository=email_log_repository,
+        environment="production",
+        email_provider="ses",
+        preparation_service=FakePreparationService(content_ready=True),
+    )
+
+    result = service.send_campaign("campaign_123")
+
+    assert result["status"] == "dispatch_blocked"
+    assert result["code"] == "controlled_runtime_required"
+    assert result["listmonk_dispatched"] is False
+    assert result["dispatch_attempted"] is False
+    assert email_log_repository.list_by_campaign("campaign_123") == []
     assert fake_listmonk.created_campaign_payloads == []
     assert fake_listmonk.sent_campaign_ids == []
 
@@ -326,10 +370,12 @@ def test_disabled_campaign_send_does_not_call_listmonk() -> None:
 def test_paused_client_blocks_campaign_send_without_listmonk() -> None:
     fake_listmonk = FakeListmonkClient()
     blocked_send_repository = InMemoryBlockedSendRepository()
+    email_log_repository = InMemoryEmailLogRepository()
     service = build_dispatch_service(
         fake_listmonk=fake_listmonk,
         clients=[build_client(status="paused")],
         blocked_send_repository=blocked_send_repository,
+        email_log_repository=email_log_repository,
     )
 
     result = service.send_campaign("campaign_123")
@@ -338,6 +384,7 @@ def test_paused_client_blocks_campaign_send_without_listmonk() -> None:
     assert result["code"] == "client_status_not_sendable"
     assert result["listmonk_dispatched"] is False
     assert blocked_send_repository.list_by_campaign("campaign_123")
+    assert email_log_repository.list_by_campaign("campaign_123") == []
     assert fake_listmonk.created_campaign_payloads == []
     assert fake_listmonk.sent_campaign_ids == []
 
@@ -524,24 +571,45 @@ def test_disabled_campaign_send_without_campaign_context_does_not_persist_fake_b
 
 def test_enabled_campaign_send_creates_mapping_after_guard_authorizes() -> None:
     fake_listmonk = FakeListmonkClient()
-    service = build_dispatch_service(fake_listmonk=fake_listmonk)
+    email_log_repository = InMemoryEmailLogRepository()
+    preparation_service = FakePreparationService(content_ready=True)
+    service = build_dispatch_service(
+        fake_listmonk=fake_listmonk,
+        email_log_repository=email_log_repository,
+        preparation_service=preparation_service,
+    )
 
     result = service.send_campaign("campaign_123")
 
     assert result["status"] == "queued"
+    assert result["mode"] == "controlled_dev"
+    assert result["provider"] == "mailpit"
+    assert result["allowed"] is True
     assert result["decision"] == "authorized"
+    assert result["dispatch_attempted"] is True
+    assert result["real_send_attempted"] is True
     assert result["guard"]["eligible_contact_count"] == 1
     assert result["listmonk_dispatched"] is True
+    assert result["content_ready"] is True
+    assert result["email_logs_created"] == 1
     assert result["listmonk_mapping"]["listmonk_id"] == "lm_1"
     assert result["listmonk_mapping"]["created"] is True
+    assert preparation_service.prepared_campaign_ids == ["campaign_123"]
     assert fake_listmonk.created_campaign_payloads == [
         {"name": "Launch campaign", "subject": "Launch"}
     ]
     assert fake_listmonk.sent_campaign_ids == ["lm_1"]
+    logs = email_log_repository.list_by_campaign("campaign_123")
+    assert len(logs) == 1
+    assert logs[0].status == "queued"
+    assert logs[0].provider_message_id is None
+    assert logs[0].body == "<html><body><p>Body</p></body></html>"
 
 
 def test_enabled_campaign_send_reuses_existing_mapping() -> None:
     fake_listmonk = FakeListmonkClient()
+    email_log_repository = InMemoryEmailLogRepository()
+    preparation_service = FakePreparationService(content_ready=True)
     mapping_service = ListmonkMappingService(InMemoryListmonkMappingRepository())
     mapping_service.ensure_campaign_mapping(
         client_id="client_123",
@@ -550,15 +618,21 @@ def test_enabled_campaign_send_reuses_existing_mapping() -> None:
     )
     service = build_dispatch_service(
         fake_listmonk=fake_listmonk,
+        email_log_repository=email_log_repository,
         mapping_service=mapping_service,
+        preparation_service=preparation_service,
     )
 
     result = service.send_campaign("campaign_123")
 
     assert result["status"] == "queued"
+    assert result["email_logs_created"] == 1
     assert result["listmonk_mapping"]["created"] is False
+    assert preparation_service.prepared_campaign_ids == ["campaign_123"]
     assert fake_listmonk.created_campaign_payloads == []
     assert fake_listmonk.sent_campaign_ids == ["lm_existing"]
+    logs = email_log_repository.list_by_campaign("campaign_123")
+    assert [log.status for log in logs] == ["queued"]
 
 
 def test_send_endpoint_uses_guarded_dispatch_service() -> None:
@@ -611,5 +685,61 @@ def test_listmonk_client_health_returns_json(monkeypatch: Any) -> None:
 
     monkeypatch.setattr(httpx, "request", fake_request)
     client = ListmonkClient(base_url="http://listmonk.test", timeout_seconds=1)
+
+    assert client.health() == {"status": "ok"}
+
+
+def test_listmonk_client_falls_back_to_session_login_after_403(monkeypatch: Any) -> None:
+    def fake_request(*_args: object, **_kwargs: object) -> httpx.Response:
+        request = httpx.Request("GET", "http://listmonk.test/api/health")
+        return httpx.Response(403, request=request, json={"message": "forbidden"})
+
+    class FakeSessionClient:
+        def __init__(self, *args: object, **kwargs: object) -> None:
+            self.logged_in = False
+
+        def __enter__(self) -> "FakeSessionClient":
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            return None
+
+        def get(self, path: str) -> httpx.Response:
+            request = httpx.Request("GET", f"http://listmonk.test{path}")
+            return httpx.Response(
+                200,
+                request=request,
+                text='<input type="hidden" name="nonce" value="nonce123" />',
+            )
+
+        def post(self, path: str, data: dict[str, str]) -> httpx.Response:
+            assert path == "/admin/login"
+            assert data["username"] == "admin"
+            assert data["password"] == "change_me"
+            assert data["nonce"] == "nonce123"
+            self.logged_in = True
+            request = httpx.Request("POST", f"http://listmonk.test{path}")
+            return httpx.Response(200, request=request, text="ok")
+
+        def request(
+            self,
+            method: str,
+            path: str,
+            *,
+            json: dict[str, Any] | None = None,
+            params: dict[str, Any] | None = None,
+        ) -> httpx.Response:
+            assert self.logged_in is True
+            request = httpx.Request(method, f"http://listmonk.test{path}")
+            return httpx.Response(200, request=request, json={"status": "ok"})
+
+    monkeypatch.setattr(httpx, "request", fake_request)
+    monkeypatch.setattr(httpx, "Client", FakeSessionClient)
+    client = ListmonkClient(
+        base_url="http://listmonk.test",
+        username="admin",
+        password="change_me",
+        timeout_seconds=1,
+    )
 
     assert client.health() == {"status": "ok"}

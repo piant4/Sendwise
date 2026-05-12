@@ -34,6 +34,28 @@ class EmailLogRepository:
     ) -> EmailLogRecord:
         raise NotImplementedError
 
+    def create_campaign_logs(
+        self,
+        *,
+        client_id: str,
+        campaign_id: str,
+        contact_ids: list[str],
+        status: str,
+        provider_message_id: Optional[str] = None,
+        body: Optional[str] = None,
+    ) -> list[EmailLogRecord]:
+        return [
+            self.create_email_log(
+                client_id=client_id,
+                campaign_id=campaign_id,
+                contact_id=contact_id,
+                status=status,
+                provider_message_id=provider_message_id,
+                body=body,
+            )
+            for contact_id in contact_ids
+        ]
+
     def create_simulated_campaign_logs(
         self,
         *,
@@ -42,17 +64,31 @@ class EmailLogRepository:
         contact_ids: list[str],
         body: str,
     ) -> list[EmailLogRecord]:
-        return [
-            self.create_email_log(
-                client_id=client_id,
-                campaign_id=campaign_id,
-                contact_id=contact_id,
-                status="simulated",
-                provider_message_id=None,
-                body=body,
-            )
-            for contact_id in contact_ids
-        ]
+        return self.create_campaign_logs(
+            client_id=client_id,
+            campaign_id=campaign_id,
+            contact_ids=contact_ids,
+            status="simulated",
+            provider_message_id=None,
+            body=body,
+        )
+
+    def create_dispatched_campaign_logs(
+        self,
+        *,
+        client_id: str,
+        campaign_id: str,
+        contact_ids: list[str],
+        body: Optional[str] = None,
+    ) -> list[EmailLogRecord]:
+        return self.create_campaign_logs(
+            client_id=client_id,
+            campaign_id=campaign_id,
+            contact_ids=contact_ids,
+            status="queued",
+            provider_message_id=None,
+            body=body,
+        )
 
 
 class PostgresEmailLogRepository(EmailLogRepository):

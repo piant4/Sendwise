@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+import re
 from typing import Any, Optional
 
 import httpx
@@ -123,15 +124,14 @@ class ListmonkClient:
         auth = (self.username, self.password or "") if self.username else None
 
         try:
-            response = httpx.request(
-                method,
-                url,
+            response = self._perform_request(
+                method=method,
+                path=path,
+                url=url,
                 auth=auth,
                 json=json,
                 params=params,
-                timeout=self.timeout_seconds,
             )
-            response.raise_for_status()
         except httpx.TimeoutException as error:
             raise ListmonkError("listmonk request timed out") from error
         except httpx.HTTPStatusError as error:
@@ -155,3 +155,70 @@ class ListmonkClient:
             return payload
 
         return {"data": payload}
+
+    def _perform_request(
+        self,
+        *,
+        method: str,
+        path: str,
+        url: str,
+        auth: tuple[str, str] | None,
+        json: Optional[dict[str, Any]],
+        params: Optional[dict[str, Any]],
+    ) -> httpx.Response:
+        try:
+            response = httpx.request(
+                method,
+                url,
+                auth=auth,
+                json=json,
+                params=params,
+                timeout=self.timeout_seconds,
+            )
+            response.raise_for_status()
+            return response
+        except httpx.HTTPStatusError as error:
+            if error.response.status_code != 403 or auth is None:
+                raise
+            return self._perform_session_request(
+                method=method,
+                path=path,
+                json=json,
+                params=params,
+            )
+
+    def _perform_session_request(
+        self,
+        *,
+        method: str,
+        path: str,
+        json: Optional[dict[str, Any]],
+        params: Optional[dict[str, Any]],
+    ) -> httpx.Response:
+        if not self.username or self.password is None:
+            raise ListmonkError("listmonk session login requires configured credentials")
+
+        with httpx.Client(
+            base_url=self.base_url.rstrip("/"),
+            follow_redirects=True,
+            timeout=self.timeout_seconds,
+        ) as client:
+            login_page = client.get("/admin/login?next=%2Fadmin")
+            login_page.raise_for_status()
+            nonce_match = re.search(r'name="nonce" value="([^"]+)"', login_page.text)
+            login_payload = {
+                "username": self.username,
+                "password": self.password,
+                "next": "/admin",
+                "nonce": nonce_match.group(1) if nonce_match else "",
+            }
+            login_response = client.post("/admin/login", data=login_payload)
+            login_response.raise_for_status()
+            response = client.request(
+                method,
+                f"/{path.lstrip('/')}",
+                json=json,
+                params=params,
+            )
+            response.raise_for_status()
+            return response

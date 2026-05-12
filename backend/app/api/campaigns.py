@@ -69,10 +69,20 @@ def send_campaign(
     except ListmonkError as error:
         return {
             "status": "dispatch_failed",
+            "mode": "controlled_dev",
             "campaign_id": campaign_id,
+            "allowed": False,
             "decision": "authorized",
             "reason": str(error),
+            "code": "listmonk_dispatch_failed",
+            "severity": "error",
+            "dispatch_attempted": False,
+            "real_send_attempted": False,
+            "listmonk_prepared": False,
             "listmonk_dispatched": False,
+            "content_ready": False,
+            "email_logs_created": 0,
+            "email_logs_updated": 0,
         }
 
 

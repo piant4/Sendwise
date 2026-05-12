@@ -5,6 +5,10 @@ from app.core.auth import AuthenticatedUser
 from app.core.config import Settings, get_settings
 from app.guard.deliverability_guard import DeliverabilityGuard, SendDecision
 from app.integrations.listmonk.client import ListmonkClient, extract_listmonk_id
+from app.repositories.blocked_sends import (
+    BlockedSendRepository,
+    get_blocked_send_repository,
+)
 from app.repositories.clients import (
     ClientCampaignRecord,
     ClientRepository,
@@ -26,6 +30,7 @@ class CampaignDispatchService:
     listmonk_client: ListmonkClient
     mapping_service: ListmonkMappingService | None = None
     client_repository: ClientRepository | None = None
+    blocked_send_repository: BlockedSendRepository | None = None
 
     def send_campaign(
         self,
@@ -36,17 +41,41 @@ class CampaignDispatchService:
             self.settings.email_sending_enabled
         )
 
+        mapping_service = self.mapping_service
+        client_repository = self.client_repository
+        blocked_send_repository = self.blocked_send_repository
+
         if guard_result.decision != SendDecision.AUTHORIZED:
-            return {
+            blocked_send_id: str | None = None
+            campaign = None
+            if client_repository is not None:
+                campaign = self._get_campaign_for_dispatch(
+                    campaign_id=campaign_id,
+                    current_user=current_user,
+                    client_repository=client_repository,
+                )
+            if campaign is not None and blocked_send_repository is not None:
+                blocked_send = blocked_send_repository.create_blocked_send(
+                    client_id=campaign.client_id,
+                    campaign_id=campaign.id,
+                    reason=guard_result.reason,
+                    decision=guard_result.decision,
+                )
+                blocked_send_id = blocked_send.id
+
+            response: dict[str, Any] = {
                 "status": "blocked",
                 "campaign_id": campaign_id,
                 "decision": guard_result.decision,
                 "reason": guard_result.reason,
                 "listmonk_dispatched": False,
             }
+            if campaign is not None:
+                response["client_id"] = campaign.client_id
+            if blocked_send_id is not None:
+                response["blocked_send_id"] = blocked_send_id
+            return response
 
-        mapping_service = self.mapping_service
-        client_repository = self.client_repository
         if mapping_service is None or client_repository is None:
             return self._diagnostic_response(
                 campaign_id=campaign_id,
@@ -194,4 +223,5 @@ def get_campaign_dispatch_service() -> CampaignDispatchService:
         listmonk_client=build_listmonk_client(settings),
         mapping_service=ListmonkMappingService(mapping_repository),
         client_repository=PostgresClientRepository(settings),
+        blocked_send_repository=get_blocked_send_repository(),
     )

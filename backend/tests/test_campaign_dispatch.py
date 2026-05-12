@@ -9,6 +9,7 @@ from app.core.auth import AuthenticatedUser, require_active_user
 from app.core.config import Settings
 from app.guard.deliverability_guard import DeliverabilityGuard
 from app.integrations.listmonk.client import ListmonkClient, ListmonkError
+from app.repositories.blocked_sends import InMemoryBlockedSendRepository
 from app.main import app
 from app.repositories.clients import ClientCampaignRecord
 from app.repositories.listmonk_mappings import InMemoryListmonkMappingRepository
@@ -68,6 +69,7 @@ def build_dispatch_service(
     email_sending_enabled_raw: str = "true",
     fake_listmonk: FakeListmonkClient | None = None,
     mapping_service: ListmonkMappingService | None = None,
+    blocked_send_repository: InMemoryBlockedSendRepository | None = None,
     campaigns: list[ClientCampaignRecord] | None = None,
 ) -> CampaignDispatchService:
     return CampaignDispatchService(
@@ -77,8 +79,10 @@ def build_dispatch_service(
         mapping_service=mapping_service
         or ListmonkMappingService(InMemoryListmonkMappingRepository()),
         client_repository=FakeClientRepository(  # type: ignore[arg-type]
-            campaigns or [build_campaign()]
+            [build_campaign()] if campaigns is None else campaigns
         ),
+        blocked_send_repository=blocked_send_repository
+        or InMemoryBlockedSendRepository(),
     )
 
 
@@ -180,18 +184,50 @@ def test_no_cross_client_mapping_leakage() -> None:
 def test_disabled_campaign_send_does_not_call_listmonk() -> None:
     fake_listmonk = FakeListmonkClient()
     repository = InMemoryListmonkMappingRepository()
+    blocked_send_repository = InMemoryBlockedSendRepository()
     service = build_dispatch_service(
         email_sending_enabled_raw="false",
         fake_listmonk=fake_listmonk,
         mapping_service=ListmonkMappingService(repository),
+        blocked_send_repository=blocked_send_repository,
     )
 
     result = service.send_campaign("campaign_123")
 
     assert result["status"] == "blocked"
     assert result["decision"] == "blocked"
+    assert result["reason"] == 'EMAIL_SENDING_ENABLED is not exactly "true".'
     assert result["listmonk_dispatched"] is False
+    assert result["client_id"] == "client_123"
+    assert result["blocked_send_id"]
     assert repository.list_by_client("client_123") == []
+    blocked_sends = blocked_send_repository.list_by_campaign("campaign_123")
+    assert len(blocked_sends) == 1
+    assert blocked_sends[0].id == result["blocked_send_id"]
+    assert blocked_sends[0].client_id == "client_123"
+    assert blocked_sends[0].reason == result["reason"]
+    assert blocked_sends[0].decision == "blocked"
+    assert fake_listmonk.created_campaign_payloads == []
+    assert fake_listmonk.sent_campaign_ids == []
+
+
+def test_disabled_campaign_send_without_campaign_context_does_not_persist_fake_block() -> None:
+    fake_listmonk = FakeListmonkClient()
+    blocked_send_repository = InMemoryBlockedSendRepository()
+    service = build_dispatch_service(
+        email_sending_enabled_raw="false",
+        fake_listmonk=fake_listmonk,
+        blocked_send_repository=blocked_send_repository,
+        campaigns=[],
+    )
+
+    result = service.send_campaign("missing_campaign")
+
+    assert result["status"] == "blocked"
+    assert result["listmonk_dispatched"] is False
+    assert "client_id" not in result
+    assert "blocked_send_id" not in result
+    assert blocked_send_repository.list_by_campaign("missing_campaign") == []
     assert fake_listmonk.created_campaign_payloads == []
     assert fake_listmonk.sent_campaign_ids == []
 

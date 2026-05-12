@@ -1,0 +1,171 @@
+from __future__ import annotations
+
+from datetime import datetime, timezone
+from typing import Any, Optional
+from uuid import uuid4
+
+from pydantic import BaseModel
+
+from app.core.config import Settings, get_settings
+from app.repositories.clients import postgres_connection
+
+
+class BlockedSendRecord(BaseModel):
+    id: str
+    client_id: str
+    campaign_id: Optional[str] = None
+    contact_id: Optional[str] = None
+    reason: str
+    decision: str
+    created_at: datetime
+
+
+class BlockedSendRepository:
+    def create_blocked_send(
+        self,
+        *,
+        client_id: str,
+        campaign_id: str,
+        reason: str,
+        decision: str,
+        contact_id: Optional[str] = None,
+    ) -> BlockedSendRecord:
+        raise NotImplementedError
+
+    def list_by_campaign(self, campaign_id: str) -> list[BlockedSendRecord]:
+        raise NotImplementedError
+
+    def list_by_client(self, client_id: str) -> list[BlockedSendRecord]:
+        raise NotImplementedError
+
+
+class PostgresBlockedSendRepository(BlockedSendRepository):
+    def __init__(self, settings: Settings) -> None:
+        self._settings = settings
+
+    def create_blocked_send(
+        self,
+        *,
+        client_id: str,
+        campaign_id: str,
+        reason: str,
+        decision: str,
+        contact_id: Optional[str] = None,
+    ) -> BlockedSendRecord:
+        query = """
+            INSERT INTO blocked_sends (
+                client_id,
+                campaign_id,
+                contact_id,
+                reason,
+                decision
+            )
+            VALUES (%s, %s, %s, %s, %s)
+            RETURNING
+                id::text AS id,
+                client_id::text AS client_id,
+                campaign_id::text AS campaign_id,
+                contact_id::text AS contact_id,
+                reason,
+                decision,
+                created_at
+        """
+
+        with postgres_connection(self._settings) as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    query,
+                    (client_id, campaign_id, contact_id, reason, decision),
+                )
+                row = cursor.fetchone()
+            connection.commit()
+
+        return BlockedSendRecord.model_validate(row)
+
+    def list_by_campaign(self, campaign_id: str) -> list[BlockedSendRecord]:
+        query = """
+            SELECT
+                id::text AS id,
+                client_id::text AS client_id,
+                campaign_id::text AS campaign_id,
+                contact_id::text AS contact_id,
+                reason,
+                decision,
+                created_at
+            FROM blocked_sends
+            WHERE campaign_id::text = %s
+            ORDER BY created_at DESC, id DESC
+        """
+
+        with postgres_connection(self._settings) as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(query, (campaign_id,))
+                rows = cursor.fetchall()
+
+        return [BlockedSendRecord.model_validate(row) for row in rows]
+
+    def list_by_client(self, client_id: str) -> list[BlockedSendRecord]:
+        query = """
+            SELECT
+                id::text AS id,
+                client_id::text AS client_id,
+                campaign_id::text AS campaign_id,
+                contact_id::text AS contact_id,
+                reason,
+                decision,
+                created_at
+            FROM blocked_sends
+            WHERE client_id::text = %s
+            ORDER BY created_at DESC, id DESC
+        """
+
+        with postgres_connection(self._settings) as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(query, (client_id,))
+                rows = cursor.fetchall()
+
+        return [BlockedSendRecord.model_validate(row) for row in rows]
+
+
+class InMemoryBlockedSendRepository(BlockedSendRepository):
+    def __init__(self) -> None:
+        self._records: list[BlockedSendRecord] = []
+
+    def create_blocked_send(
+        self,
+        *,
+        client_id: str,
+        campaign_id: str,
+        reason: str,
+        decision: str,
+        contact_id: Optional[str] = None,
+    ) -> BlockedSendRecord:
+        record = BlockedSendRecord(
+            id=str(uuid4()),
+            client_id=client_id,
+            campaign_id=campaign_id,
+            contact_id=contact_id,
+            reason=reason,
+            decision=decision,
+            created_at=datetime.now(timezone.utc),
+        )
+        self._records.append(record)
+        return record
+
+    def list_by_campaign(self, campaign_id: str) -> list[BlockedSendRecord]:
+        return [
+            record
+            for record in self._records
+            if record.campaign_id == campaign_id
+        ]
+
+    def list_by_client(self, client_id: str) -> list[BlockedSendRecord]:
+        return [
+            record
+            for record in self._records
+            if record.client_id == client_id
+        ]
+
+
+def get_blocked_send_repository() -> BlockedSendRepository:
+    return PostgresBlockedSendRepository(get_settings())

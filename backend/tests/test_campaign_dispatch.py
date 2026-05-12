@@ -11,8 +11,10 @@ from app.guard.deliverability_guard import DeliverabilityGuard
 from app.integrations.listmonk.client import ListmonkClient, ListmonkError
 from app.repositories.blocked_sends import InMemoryBlockedSendRepository
 from app.main import app
-from app.repositories.clients import ClientCampaignRecord
+from app.repositories.clients import ClientCampaignRecord, ClientRecord
+from app.repositories.contacts import ContactRecord, InMemoryContactRepository
 from app.repositories.listmonk_mappings import InMemoryListmonkMappingRepository
+from app.repositories.suppression_list import InMemorySuppressionListRepository
 from app.services.campaigns import CampaignDispatchService
 from app.services.listmonk_mappings import (
     ListmonkMappingConflictError,
@@ -35,8 +37,16 @@ class FakeListmonkClient:
 
 
 class FakeClientRepository:
-    def __init__(self, campaigns: list[ClientCampaignRecord]) -> None:
+    def __init__(
+        self,
+        campaigns: list[ClientCampaignRecord],
+        clients: list[ClientRecord],
+    ) -> None:
         self._campaigns = campaigns
+        self._clients = {client.id: client for client in clients}
+
+    def get_by_id(self, client_id: str) -> ClientRecord | None:
+        return self._clients.get(client_id)
 
     def list_client_campaigns(self, client_id: str) -> list[ClientCampaignRecord]:
         return [
@@ -51,14 +61,51 @@ def build_campaign(
     campaign_id: str = "campaign_123",
     client_id: str = "client_123",
     subject: str = "Launch",
+    status: str = "ready",
 ) -> ClientCampaignRecord:
     now = datetime.now(timezone.utc)
     return ClientCampaignRecord(
         id=campaign_id,
         client_id=client_id,
         name="Launch campaign",
-        status="draft",
+        status=status,
         subject=subject,
+        created_at=now,
+        updated_at=now,
+    )
+
+
+def build_client(
+    client_id: str = "client_123",
+    status: str = "active",
+    email_limit_per_campaign: int | None = None,
+    max_campaigns: int | None = None,
+) -> ClientRecord:
+    now = datetime.now(timezone.utc)
+    return ClientRecord(
+        id=client_id,
+        email=f"{client_id}@example.test",
+        personal_name="Test Client",
+        status=status,
+        email_limit_per_campaign=email_limit_per_campaign,
+        max_campaigns=max_campaigns,
+        created_at=now,
+        updated_at=now,
+    )
+
+
+def build_contact(
+    contact_id: str = "contact_123",
+    client_id: str = "client_123",
+    email: str = "person@example.test",
+    status: str = "sendable",
+) -> ContactRecord:
+    now = datetime.now(timezone.utc)
+    return ContactRecord(
+        id=contact_id,
+        client_id=client_id,
+        email=email,
+        status=status,
         created_at=now,
         updated_at=now,
     )
@@ -71,7 +118,16 @@ def build_dispatch_service(
     mapping_service: ListmonkMappingService | None = None,
     blocked_send_repository: InMemoryBlockedSendRepository | None = None,
     campaigns: list[ClientCampaignRecord] | None = None,
+    clients: list[ClientRecord] | None = None,
+    contact_repository: InMemoryContactRepository | None = None,
+    suppression_repository: InMemorySuppressionListRepository | None = None,
 ) -> CampaignDispatchService:
+    selected_campaigns = [build_campaign()] if campaigns is None else campaigns
+    selected_clients = [build_client()] if clients is None else clients
+    selected_contact_repository = contact_repository or InMemoryContactRepository(
+        contacts=[build_contact()],
+        campaign_contacts={("client_123", "campaign_123", "contact_123")},
+    )
     return CampaignDispatchService(
         settings=Settings(email_sending_enabled_raw=email_sending_enabled_raw),
         guard=DeliverabilityGuard(),
@@ -79,8 +135,12 @@ def build_dispatch_service(
         mapping_service=mapping_service
         or ListmonkMappingService(InMemoryListmonkMappingRepository()),
         client_repository=FakeClientRepository(  # type: ignore[arg-type]
-            [build_campaign()] if campaigns is None else campaigns
+            selected_campaigns,
+            selected_clients,
         ),
+        contact_repository=selected_contact_repository,
+        suppression_list_repository=suppression_repository
+        or InMemorySuppressionListRepository(),
         blocked_send_repository=blocked_send_repository
         or InMemoryBlockedSendRepository(),
     )
@@ -197,6 +257,7 @@ def test_disabled_campaign_send_does_not_call_listmonk() -> None:
     assert result["status"] == "blocked"
     assert result["decision"] == "blocked"
     assert result["reason"] == 'EMAIL_SENDING_ENABLED is not exactly "true".'
+    assert result["code"] == "email_sending_disabled"
     assert result["listmonk_dispatched"] is False
     assert result["client_id"] == "client_123"
     assert result["blocked_send_id"]
@@ -205,9 +266,187 @@ def test_disabled_campaign_send_does_not_call_listmonk() -> None:
     assert len(blocked_sends) == 1
     assert blocked_sends[0].id == result["blocked_send_id"]
     assert blocked_sends[0].client_id == "client_123"
-    assert blocked_sends[0].reason == result["reason"]
+    assert blocked_sends[0].reason == f'{result["code"]}: {result["reason"]}'
     assert blocked_sends[0].decision == "blocked"
     assert fake_listmonk.created_campaign_payloads == []
+    assert fake_listmonk.sent_campaign_ids == []
+
+
+def test_paused_client_blocks_campaign_send_without_listmonk() -> None:
+    fake_listmonk = FakeListmonkClient()
+    blocked_send_repository = InMemoryBlockedSendRepository()
+    service = build_dispatch_service(
+        fake_listmonk=fake_listmonk,
+        clients=[build_client(status="paused")],
+        blocked_send_repository=blocked_send_repository,
+    )
+
+    result = service.send_campaign("campaign_123")
+
+    assert result["status"] == "blocked"
+    assert result["code"] == "client_status_not_sendable"
+    assert result["listmonk_dispatched"] is False
+    assert blocked_send_repository.list_by_campaign("campaign_123")
+    assert fake_listmonk.created_campaign_payloads == []
+    assert fake_listmonk.sent_campaign_ids == []
+
+
+def test_draft_campaign_blocks_campaign_send_without_listmonk() -> None:
+    fake_listmonk = FakeListmonkClient()
+    service = build_dispatch_service(
+        fake_listmonk=fake_listmonk,
+        campaigns=[build_campaign(status="draft")],
+    )
+
+    result = service.send_campaign("campaign_123")
+
+    assert result["status"] == "blocked"
+    assert result["code"] == "campaign_status_not_sendable"
+    assert result["listmonk_dispatched"] is False
+    assert fake_listmonk.created_campaign_payloads == []
+    assert fake_listmonk.sent_campaign_ids == []
+
+
+def test_email_limit_per_campaign_blocks_oversized_batch() -> None:
+    fake_listmonk = FakeListmonkClient()
+    contact_repository = InMemoryContactRepository(
+        contacts=[
+            build_contact(contact_id="contact_1", email="one@example.test"),
+            build_contact(contact_id="contact_2", email="two@example.test"),
+        ],
+        campaign_contacts={
+            ("client_123", "campaign_123", "contact_1"),
+            ("client_123", "campaign_123", "contact_2"),
+        },
+    )
+    service = build_dispatch_service(
+        fake_listmonk=fake_listmonk,
+        clients=[build_client(email_limit_per_campaign=1)],
+        contact_repository=contact_repository,
+    )
+
+    result = service.send_campaign("campaign_123")
+
+    assert result["status"] == "blocked"
+    assert result["code"] == "email_limit_per_campaign_exceeded"
+    assert result["eligible_contact_count"] == 2
+    assert fake_listmonk.sent_campaign_ids == []
+
+
+def test_empty_campaign_batch_blocks_without_listmonk() -> None:
+    fake_listmonk = FakeListmonkClient()
+    service = build_dispatch_service(
+        fake_listmonk=fake_listmonk,
+        contact_repository=InMemoryContactRepository(),
+    )
+
+    result = service.send_campaign("campaign_123")
+
+    assert result["status"] == "blocked"
+    assert result["code"] == "empty_campaign_batch"
+    assert fake_listmonk.sent_campaign_ids == []
+
+
+def test_suppressed_contact_blocks_partial_batch_without_listmonk() -> None:
+    fake_listmonk = FakeListmonkClient()
+    contact_repository = InMemoryContactRepository(
+        contacts=[
+            build_contact(contact_id="contact_1", email="one@example.test"),
+            build_contact(contact_id="contact_2", email="two@example.test"),
+        ],
+        campaign_contacts={
+            ("client_123", "campaign_123", "contact_1"),
+            ("client_123", "campaign_123", "contact_2"),
+        },
+    )
+    suppression_repository = InMemorySuppressionListRepository()
+    suppression_repository.add_suppression(
+        client_id="client_123",
+        email="two@example.test",
+        reason="manual",
+    )
+    service = build_dispatch_service(
+        fake_listmonk=fake_listmonk,
+        contact_repository=contact_repository,
+        suppression_repository=suppression_repository,
+    )
+
+    result = service.send_campaign("campaign_123")
+
+    assert result["status"] == "blocked"
+    assert result["code"] == "partial_batch_not_supported"
+    assert result["eligible_contact_count"] == 1
+    assert result["blocked_contact_count"] == 1
+    assert result["blocked_reasons"] == {"suppression_list": 1}
+    assert fake_listmonk.sent_campaign_ids == []
+
+
+def test_all_non_sendable_contacts_block_without_listmonk() -> None:
+    fake_listmonk = FakeListmonkClient()
+    contact_repository = InMemoryContactRepository(
+        contacts=[
+            build_contact(status="unsubscribed"),
+            build_contact(
+                contact_id="contact_2",
+                email="two@example.test",
+                status="bounced",
+            ),
+        ],
+        campaign_contacts={
+            ("client_123", "campaign_123", "contact_123"),
+            ("client_123", "campaign_123", "contact_2"),
+        },
+    )
+    service = build_dispatch_service(
+        fake_listmonk=fake_listmonk,
+        contact_repository=contact_repository,
+    )
+
+    result = service.send_campaign("campaign_123")
+
+    assert result["status"] == "blocked"
+    assert result["code"] == "no_eligible_contacts"
+    assert result["blocked_reasons"] == {
+        "contact_bounced": 1,
+        "contact_unsubscribed": 1,
+    }
+    assert fake_listmonk.sent_campaign_ids == []
+
+
+def test_contact_client_mismatch_blocks_without_listmonk() -> None:
+    fake_listmonk = FakeListmonkClient()
+    contact_repository = InMemoryContactRepository(
+        contacts=[build_contact(client_id="client_other")],
+        campaign_contacts={("client_123", "campaign_123", "contact_123")},
+    )
+    service = build_dispatch_service(
+        fake_listmonk=fake_listmonk,
+        contact_repository=contact_repository,
+    )
+
+    result = service.send_campaign("campaign_123")
+
+    assert result["status"] == "blocked"
+    assert result["code"] == "no_eligible_contacts"
+    assert result["blocked_reasons"] == {"contact_client_mismatch": 1}
+    assert fake_listmonk.sent_campaign_ids == []
+
+
+def test_max_campaigns_blocks_when_active_campaign_count_exceeds_limit() -> None:
+    fake_listmonk = FakeListmonkClient()
+    service = build_dispatch_service(
+        fake_listmonk=fake_listmonk,
+        clients=[build_client(max_campaigns=1)],
+        campaigns=[
+            build_campaign(campaign_id="campaign_123"),
+            build_campaign(campaign_id="campaign_456"),
+        ],
+    )
+
+    result = service.send_campaign("campaign_123")
+
+    assert result["status"] == "blocked"
+    assert result["code"] == "max_campaigns_exceeded"
     assert fake_listmonk.sent_campaign_ids == []
 
 
@@ -240,6 +479,7 @@ def test_enabled_campaign_send_creates_mapping_after_guard_authorizes() -> None:
 
     assert result["status"] == "queued"
     assert result["decision"] == "authorized"
+    assert result["guard"]["eligible_contact_count"] == 1
     assert result["listmonk_dispatched"] is True
     assert result["listmonk_mapping"]["listmonk_id"] == "lm_1"
     assert result["listmonk_mapping"]["created"] is True

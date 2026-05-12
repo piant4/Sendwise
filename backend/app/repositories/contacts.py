@@ -114,13 +114,12 @@ class PostgresContactRepository(ContactRepository):
                 ON contacts.id = campaign_contacts.contact_id
             WHERE campaign_contacts.client_id::text = %s
                 AND campaign_contacts.campaign_id::text = %s
-                AND contacts.client_id::text = %s
             ORDER BY campaign_contacts.created_at ASC, campaign_contacts.id ASC
         """
 
         with postgres_connection(self._settings) as connection:
             with connection.cursor() as cursor:
-                cursor.execute(query, (client_id, campaign_id, client_id))
+                cursor.execute(query, (client_id, campaign_id))
                 rows = cursor.fetchall()
 
         return [ContactRecord.model_validate(row) for row in rows]
@@ -162,7 +161,6 @@ class InMemoryContactRepository(ContactRepository):
             contact
             for contact_id in contact_ids
             if (contact := self._contacts.get(contact_id)) is not None
-            and contact.client_id == client_id
         ]
 
     def add_contact(

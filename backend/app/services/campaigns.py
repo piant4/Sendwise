@@ -1,9 +1,22 @@
 from dataclasses import dataclass
 from typing import Any
 
+from app.core.auth import AuthenticatedUser
 from app.core.config import Settings, get_settings
 from app.guard.deliverability_guard import DeliverabilityGuard, SendDecision
-from app.integrations.listmonk.client import ListmonkClient
+from app.integrations.listmonk.client import ListmonkClient, extract_listmonk_id
+from app.repositories.clients import (
+    ClientCampaignRecord,
+    ClientRepository,
+    PostgresClientRepository,
+)
+from app.repositories.listmonk_mappings import get_listmonk_mapping_repository
+from app.services.listmonk_mappings import (
+    ENTITY_TYPE_CAMPAIGN,
+    LISTMONK_TYPE_CAMPAIGN,
+    ListmonkMappingConflictError,
+    ListmonkMappingService,
+)
 
 
 @dataclass(frozen=True)
@@ -11,8 +24,14 @@ class CampaignDispatchService:
     settings: Settings
     guard: DeliverabilityGuard
     listmonk_client: ListmonkClient
+    mapping_service: ListmonkMappingService | None = None
+    client_repository: ClientRepository | None = None
 
-    def send_campaign(self, campaign_id: str) -> dict[str, Any]:
+    def send_campaign(
+        self,
+        campaign_id: str,
+        current_user: AuthenticatedUser | None = None,
+    ) -> dict[str, Any]:
         guard_result = self.guard.authorize_campaign_send(
             self.settings.email_sending_enabled
         )
@@ -26,14 +45,134 @@ class CampaignDispatchService:
                 "listmonk_dispatched": False,
             }
 
-        listmonk_result = self.listmonk_client.trigger_campaign_send(campaign_id)
+        mapping_service = self.mapping_service
+        client_repository = self.client_repository
+        if mapping_service is None or client_repository is None:
+            return self._diagnostic_response(
+                campaign_id=campaign_id,
+                decision=guard_result.decision,
+                reason="Campaign dispatch persistence is not configured.",
+            )
+
+        campaign = self._get_campaign_for_dispatch(
+            campaign_id=campaign_id,
+            current_user=current_user,
+            client_repository=client_repository,
+        )
+        if campaign is None:
+            return self._diagnostic_response(
+                campaign_id=campaign_id,
+                decision=guard_result.decision,
+                reason="Campaign was not found in Business DB for this caller.",
+            )
+
+        mapping = mapping_service.get_mapping(
+            client_id=campaign.client_id,
+            entity_type=ENTITY_TYPE_CAMPAIGN,
+            entity_id=campaign.id,
+            listmonk_type=LISTMONK_TYPE_CAMPAIGN,
+        )
+        mapping_created = False
+
+        if mapping is None:
+            create_payload = self._build_listmonk_campaign_payload(campaign)
+            if create_payload is None:
+                return self._diagnostic_response(
+                    campaign_id=campaign_id,
+                    decision=guard_result.decision,
+                    reason="Campaign is missing required Business DB data for listmonk mapping.",
+                )
+
+            listmonk_campaign = self.listmonk_client.create_campaign(create_payload)
+            listmonk_campaign_id = extract_listmonk_id(listmonk_campaign)
+            try:
+                mapping = mapping_service.ensure_campaign_mapping(
+                    client_id=campaign.client_id,
+                    campaign_id=campaign.id,
+                    listmonk_campaign_id=listmonk_campaign_id,
+                )
+            except ListmonkMappingConflictError as error:
+                return self._diagnostic_response(
+                    campaign_id=campaign_id,
+                    decision=guard_result.decision,
+                    reason=str(error),
+                )
+            mapping_created = True
+
+        listmonk_result = self.listmonk_client.trigger_campaign_send(mapping.listmonk_id)
         return {
             "status": "queued",
             "campaign_id": campaign_id,
+            "client_id": campaign.client_id,
             "decision": guard_result.decision,
             "reason": guard_result.reason,
             "listmonk_dispatched": True,
+            "listmonk_mapping": {
+                "entity_type": mapping.entity_type,
+                "entity_id": mapping.entity_id,
+                "listmonk_type": mapping.listmonk_type,
+                "listmonk_id": mapping.listmonk_id,
+                "created": mapping_created,
+            },
             "listmonk": listmonk_result,
+        }
+
+    def _get_campaign_for_dispatch(
+        self,
+        *,
+        campaign_id: str,
+        current_user: AuthenticatedUser | None,
+        client_repository: ClientRepository,
+    ) -> ClientCampaignRecord | None:
+        if current_user is not None and current_user.access_type == "client":
+            if not current_user.client_id:
+                return None
+            for campaign in client_repository.list_client_campaigns(
+                current_user.client_id
+            ):
+                if campaign.id == campaign_id:
+                    return campaign
+            return None
+
+        for campaign in client_repository.list_admin_campaigns():
+            if campaign.id == campaign_id:
+                return ClientCampaignRecord(
+                    id=campaign.id,
+                    client_id=campaign.client_id,
+                    name=campaign.name,
+                    status=campaign.status,
+                    subject=campaign.subject,
+                    created_at=campaign.created_at,
+                    updated_at=campaign.updated_at,
+                )
+
+        return None
+
+    def _build_listmonk_campaign_payload(
+        self,
+        campaign: ClientCampaignRecord,
+    ) -> dict[str, Any] | None:
+        if not campaign.name.strip() or not (campaign.subject or "").strip():
+            return None
+
+        return {
+            "name": campaign.name,
+            "subject": campaign.subject,
+        }
+
+    def _diagnostic_response(
+        self,
+        *,
+        campaign_id: str,
+        decision: SendDecision,
+        reason: str,
+    ) -> dict[str, Any]:
+        return {
+            "status": "dispatch_blocked",
+            "campaign_id": campaign_id,
+            "decision": decision,
+            "reason": reason,
+            "listmonk_dispatched": False,
         }
 
 
@@ -48,8 +187,11 @@ def build_listmonk_client(settings: Settings) -> ListmonkClient:
 
 def get_campaign_dispatch_service() -> CampaignDispatchService:
     settings = get_settings()
+    mapping_repository = get_listmonk_mapping_repository()
     return CampaignDispatchService(
         settings=settings,
         guard=DeliverabilityGuard(),
         listmonk_client=build_listmonk_client(settings),
+        mapping_service=ListmonkMappingService(mapping_repository),
+        client_repository=PostgresClientRepository(settings),
     )

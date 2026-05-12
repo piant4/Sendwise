@@ -8,6 +8,25 @@ class ListmonkError(RuntimeError):
     """Controlled error for failed listmonk API calls."""
 
 
+def extract_listmonk_id(payload: dict[str, Any]) -> str:
+    """Return a stable id from common listmonk response shapes."""
+    candidates = [
+        payload.get("id"),
+        payload.get("campaign_id"),
+    ]
+    data = payload.get("data")
+    if isinstance(data, dict):
+        candidates.extend([data.get("id"), data.get("campaign_id")])
+
+    for candidate in candidates:
+        if candidate is not None:
+            normalized = str(candidate).strip()
+            if normalized:
+                return normalized
+
+    raise ListmonkError("listmonk response did not include a technical id")
+
+
 @dataclass(frozen=True)
 class ListmonkClient:
     """Thin listmonk API adapter.

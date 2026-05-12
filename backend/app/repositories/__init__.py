@@ -1,1 +1,1 @@
-"""Repository placeholders for future milestones."""
+"""Repository package."""

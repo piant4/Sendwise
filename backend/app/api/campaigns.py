@@ -32,13 +32,13 @@ def authorize_campaign(
 @router.post("/{campaign_id}/send")
 def send_campaign(
     campaign_id: str,
-    _current_user: AuthenticatedUser = Depends(require_active_user),
+    current_user: AuthenticatedUser = Depends(require_active_user),
     campaign_dispatch_service: CampaignDispatchService = Depends(
         get_campaign_dispatch_service
     ),
 ) -> dict[str, object]:
     try:
-        return campaign_dispatch_service.send_campaign(campaign_id)
+        return campaign_dispatch_service.send_campaign(campaign_id, current_user)
     except ListmonkError as error:
         return {
             "status": "dispatch_failed",

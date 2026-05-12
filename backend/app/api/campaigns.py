@@ -1,6 +1,8 @@
 from fastapi import APIRouter, Depends, status
 
 from app.core.auth import AuthenticatedUser, require_active_user
+from app.integrations.listmonk.client import ListmonkError
+from app.services.campaigns import CampaignDispatchService, get_campaign_dispatch_service
 
 router = APIRouter(
     prefix="/campaigns",
@@ -31,5 +33,17 @@ def authorize_campaign(
 def send_campaign(
     campaign_id: str,
     _current_user: AuthenticatedUser = Depends(require_active_user),
-) -> dict[str, str]:
-    return stub_response(f"POST /campaigns/{campaign_id}/send")
+    campaign_dispatch_service: CampaignDispatchService = Depends(
+        get_campaign_dispatch_service
+    ),
+) -> dict[str, object]:
+    try:
+        return campaign_dispatch_service.send_campaign(campaign_id)
+    except ListmonkError as error:
+        return {
+            "status": "dispatch_failed",
+            "campaign_id": campaign_id,
+            "decision": "authorized",
+            "reason": str(error),
+            "listmonk_dispatched": False,
+        }

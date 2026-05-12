@@ -84,6 +84,13 @@ else
   echo "OK EMAIL_SENDING_ENABLED defaults false"
 fi
 
+if ! grep -q '^EMAIL_PROVIDER=mailpit$' .env.example; then
+  echo "FAIL .env.example must default EMAIL_PROVIDER to mailpit for dev"
+  failures=$((failures + 1))
+else
+  echo "OK EMAIL_PROVIDER defaults to mailpit"
+fi
+
 if grep -q '5432:5432' docker-compose.yml; then
   echo "FAIL docker-compose.yml must not expose PostgreSQL publicly"
   failures=$((failures + 1))
@@ -103,6 +110,13 @@ if ! grep -qi 'mailpit' docker-compose.dev.yml; then
   failures=$((failures + 1))
 else
   echo "OK Mailpit present in dev compose"
+fi
+
+if ! grep -q 'LISTMONK_smtp__host: ${SMTP_HOST:-mailpit}' docker-compose.dev.yml; then
+  echo "FAIL dev compose must wire listmonk SMTP host to Mailpit"
+  failures=$((failures + 1))
+else
+  echo "OK dev compose wires listmonk SMTP host to Mailpit"
 fi
 
 if ! grep -qi 'n8n is optional' README.md; then

@@ -1,4 +1,17 @@
 services:
+  listmonk:
+    environment:
+      LISTMONK_smtp__enabled: "true"
+      LISTMONK_smtp__host: ${SMTP_HOST:-mailpit}
+      LISTMONK_smtp__port: ${SMTP_PORT:-1025}
+      LISTMONK_smtp__username: ${SMTP_USERNAME:-}
+      LISTMONK_smtp__password: ${SMTP_PASSWORD:-}
+      LISTMONK_smtp__tls_enabled: ${SMTP_TLS:-false}
+      LISTMONK_smtp__from_email: ${SMTP_FROM_EMAIL:-dev@sendwise.local}
+    depends_on:
+      mailpit:
+        condition: service_started
+
   mailpit:
     image: axllent/mailpit:latest
     ports:

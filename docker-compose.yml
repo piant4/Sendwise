@@ -34,7 +34,17 @@ services:
       CLERK_API_BASE_URL: ${CLERK_API_BASE_URL:-https://api.clerk.com/v1}
       AUTH_USER_MAPPINGS_JSON: ${AUTH_USER_MAPPINGS_JSON:-{"user_clerk_admin_id":{"email":"platform-admin@example.com","access_type":"platform_admin","status":"active"}}}
       EMAIL_SENDING_ENABLED: ${EMAIL_SENDING_ENABLED:-false}
+      EMAIL_PROVIDER: ${EMAIL_PROVIDER:-smtp_dev}
       LISTMONK_URL: ${LISTMONK_URL:-http://listmonk:9000}
+      LISTMONK_USERNAME: ${LISTMONK_USERNAME:-admin}
+      LISTMONK_PASSWORD: ${LISTMONK_PASSWORD:-change_me}
+      LISTMONK_TIMEOUT_SECONDS: ${LISTMONK_TIMEOUT_SECONDS:-5}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-0}
+      SMTP_USERNAME: ${SMTP_USERNAME:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_TLS: ${SMTP_TLS:-false}
+      SMTP_FROM_EMAIL: ${SMTP_FROM_EMAIL:-}
       FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
     ports:
       - "8000:8000"
@@ -72,6 +82,7 @@ services:
 
   listmonk:
     image: listmonk/listmonk:latest
+    command: ["sh", "-c", "./listmonk --install --yes --idempotent && ./listmonk"]
     environment:
       LISTMONK_app__address: 0.0.0.0:9000
       LISTMONK_db__host: postgres

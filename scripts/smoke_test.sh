@@ -12,6 +12,7 @@ if ! docker compose version >/dev/null 2>&1; then
 fi
 
 docker compose config >/dev/null
+docker compose -f docker-compose.yml -f docker-compose.dev.yml config >/dev/null
 bash scripts/audit.sh
 
 echo "Smoke test passed."

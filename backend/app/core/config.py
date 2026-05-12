@@ -35,9 +35,21 @@ class Settings(BaseModel):
     email_sending_enabled_raw: str = Field(
         default_factory=lambda: getenv("EMAIL_SENDING_ENABLED", "false")
     )
+    email_provider: str = Field(default_factory=lambda: getenv("EMAIL_PROVIDER", "mailpit"))
     listmonk_url: str = Field(
         default_factory=lambda: getenv("LISTMONK_URL", "http://listmonk:9000")
     )
+    listmonk_username: str = Field(default_factory=lambda: getenv("LISTMONK_USERNAME", "admin"))
+    listmonk_password: str = Field(default_factory=lambda: getenv("LISTMONK_PASSWORD", ""))
+    listmonk_timeout_seconds: float = Field(
+        default_factory=lambda: float(getenv("LISTMONK_TIMEOUT_SECONDS", "5"))
+    )
+    smtp_host: str = Field(default_factory=lambda: getenv("SMTP_HOST", "mailpit"))
+    smtp_port: int = Field(default_factory=lambda: int(getenv("SMTP_PORT", "1025")))
+    smtp_username: str = Field(default_factory=lambda: getenv("SMTP_USERNAME", ""))
+    smtp_password: str = Field(default_factory=lambda: getenv("SMTP_PASSWORD", ""))
+    smtp_tls_raw: str = Field(default_factory=lambda: getenv("SMTP_TLS", "false"))
+    smtp_from_email: str = Field(default_factory=lambda: getenv("SMTP_FROM_EMAIL", ""))
     frontend_url: str = Field(
         default_factory=lambda: getenv("FRONTEND_URL", "http://localhost:3000")
     )
@@ -45,6 +57,10 @@ class Settings(BaseModel):
     @property
     def email_sending_enabled(self) -> bool:
         return self.email_sending_enabled_raw == "true"
+
+    @property
+    def smtp_tls(self) -> bool:
+        return self.smtp_tls_raw == "true"
 
     @property
     def clerk_audience(self) -> Optional[Union[str, List[str]]]:

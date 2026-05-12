@@ -15,22 +15,22 @@ class GuardResult:
 
 
 class DeliverabilityGuard:
-    """Placeholder fail-closed Deliverability Guard.
+    """Fail-closed Deliverability Guard boundary.
 
     Future milestones will enforce client, campaign, contact, suppression,
-    bounce, unsubscribe, blacklist, and usage checks here. Milestone 0 performs
-    no advanced scoring and no real sending authorization.
+    bounce, unsubscribe, blacklist, and usage checks here. This milestone keeps
+    the runtime switch check in the Guard before any listmonk dispatch.
     """
 
     def authorize_campaign_send(self, email_sending_enabled: bool) -> GuardResult:
         if not email_sending_enabled:
             return GuardResult(
-                decision=SendDecision.DRY_RUN,
+                decision=SendDecision.BLOCKED,
                 reason='EMAIL_SENDING_ENABLED is not exactly "true".',
             )
         return GuardResult(
-            decision=SendDecision.BLOCKED,
-            reason="Real send authorization is not implemented in Milestone 0.",
+            decision=SendDecision.AUTHORIZED,
+            reason="EMAIL_SENDING_ENABLED is explicitly true.",
         )
 
     def can_send_to_contact(self, *_args: object, **_kwargs: object) -> GuardResult:

@@ -31,6 +31,7 @@ class CampaignDispatchService:
     mapping_service: ListmonkMappingService | None = None
     client_repository: ClientRepository | None = None
     blocked_send_repository: BlockedSendRepository | None = None
+    campaign_preparation_service: Any | None = None
 
     def send_campaign(
         self,
@@ -95,13 +96,35 @@ class CampaignDispatchService:
                 reason="Campaign was not found in Business DB for this caller.",
             )
 
+        preparation = None
+        if self.campaign_preparation_service is not None:
+            preparation = self.campaign_preparation_service.prepare_campaign(
+                campaign_id,
+                current_user,
+            )
+            if preparation.get("status") != "synced":
+                return self._diagnostic_response(
+                    campaign_id=campaign_id,
+                    decision=guard_result.decision,
+                    reason=str(
+                        preparation.get(
+                            "reason",
+                            "Campaign listmonk preparation failed.",
+                        )
+                    ),
+                )
+
         mapping = mapping_service.get_mapping(
             client_id=campaign.client_id,
             entity_type=ENTITY_TYPE_CAMPAIGN,
             entity_id=campaign.id,
             listmonk_type=LISTMONK_TYPE_CAMPAIGN,
         )
-        mapping_created = False
+        mapping_created = bool(
+            preparation
+            and isinstance(preparation.get("listmonk_mapping"), dict)
+            and preparation["listmonk_mapping"].get("created")
+        )
 
         if mapping is None:
             create_payload = self._build_listmonk_campaign_payload(campaign)
@@ -129,7 +152,7 @@ class CampaignDispatchService:
             mapping_created = True
 
         listmonk_result = self.listmonk_client.trigger_campaign_send(mapping.listmonk_id)
-        return {
+        response = {
             "status": "queued",
             "campaign_id": campaign_id,
             "client_id": campaign.client_id,
@@ -145,6 +168,9 @@ class CampaignDispatchService:
             },
             "listmonk": listmonk_result,
         }
+        if preparation is not None:
+            response["preparation"] = preparation
+        return response
 
     def _get_campaign_for_dispatch(
         self,
@@ -217,6 +243,8 @@ def build_listmonk_client(settings: Settings) -> ListmonkClient:
 def get_campaign_dispatch_service() -> CampaignDispatchService:
     settings = get_settings()
     mapping_repository = get_listmonk_mapping_repository()
+    from app.services.campaign_preparation import get_campaign_preparation_service
+
     return CampaignDispatchService(
         settings=settings,
         guard=DeliverabilityGuard(),
@@ -224,4 +252,5 @@ def get_campaign_dispatch_service() -> CampaignDispatchService:
         mapping_service=ListmonkMappingService(mapping_repository),
         client_repository=PostgresClientRepository(settings),
         blocked_send_repository=get_blocked_send_repository(),
+        campaign_preparation_service=get_campaign_preparation_service(),
     )

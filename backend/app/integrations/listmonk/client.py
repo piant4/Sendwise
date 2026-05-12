@@ -51,6 +51,13 @@ class ListmonkClient:
     def create_campaign(self, payload: dict[str, Any]) -> dict[str, Any]:
         return self._request("POST", "/api/campaigns", json=payload)
 
+    def update_campaign(
+        self,
+        campaign_id: int | str,
+        payload: dict[str, Any],
+    ) -> dict[str, Any]:
+        return self._request("PUT", f"/api/campaigns/{campaign_id}", json=payload)
+
     def trigger_campaign_send(self, campaign_id: int | str) -> dict[str, Any]:
         return self._request("PUT", f"/api/campaigns/{campaign_id}/status", json={"status": "running"})
 

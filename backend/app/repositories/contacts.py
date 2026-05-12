@@ -39,6 +39,14 @@ class ContactRepository:
     ) -> bool:
         raise NotImplementedError
 
+    def list_campaign_contacts(
+        self,
+        *,
+        client_id: str,
+        campaign_id: str,
+    ) -> list[ContactRecord]:
+        raise NotImplementedError
+
 
 class PostgresContactRepository(ContactRepository):
     def __init__(self, settings: Settings) -> None:
@@ -87,6 +95,36 @@ class PostgresContactRepository(ContactRepository):
 
         return row is not None
 
+    def list_campaign_contacts(
+        self,
+        *,
+        client_id: str,
+        campaign_id: str,
+    ) -> list[ContactRecord]:
+        query = """
+            SELECT
+                contacts.id::text AS id,
+                contacts.client_id::text AS client_id,
+                contacts.email,
+                contacts.status,
+                contacts.created_at,
+                contacts.updated_at
+            FROM campaign_contacts
+            INNER JOIN contacts
+                ON contacts.id = campaign_contacts.contact_id
+            WHERE campaign_contacts.client_id::text = %s
+                AND campaign_contacts.campaign_id::text = %s
+                AND contacts.client_id::text = %s
+            ORDER BY campaign_contacts.created_at ASC, campaign_contacts.id ASC
+        """
+
+        with postgres_connection(self._settings) as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(query, (client_id, campaign_id, client_id))
+                rows = cursor.fetchall()
+
+        return [ContactRecord.model_validate(row) for row in rows]
+
 
 class InMemoryContactRepository(ContactRepository):
     def __init__(
@@ -108,6 +146,24 @@ class InMemoryContactRepository(ContactRepository):
         contact_id: str,
     ) -> bool:
         return (client_id, campaign_id, contact_id) in self._campaign_contacts
+
+    def list_campaign_contacts(
+        self,
+        *,
+        client_id: str,
+        campaign_id: str,
+    ) -> list[ContactRecord]:
+        contact_ids = sorted(
+            contact_id
+            for relation_client_id, relation_campaign_id, contact_id in self._campaign_contacts
+            if relation_client_id == client_id and relation_campaign_id == campaign_id
+        )
+        return [
+            contact
+            for contact_id in contact_ids
+            if (contact := self._contacts.get(contact_id)) is not None
+            and contact.client_id == client_id
+        ]
 
     def add_contact(
         self,

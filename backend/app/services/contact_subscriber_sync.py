@@ -32,6 +32,7 @@ BLOCKLISTED_CONTACT_STATUSES = {
     "unsubscribed",
     "blacklisted",
 }
+SKIPPED_CAMPAIGN_CONTACT_STATUSES = {"error"}
 
 
 @dataclass(frozen=True)
@@ -39,6 +40,83 @@ class ContactSubscriberSyncService:
     listmonk_client: ListmonkClient
     mapping_service: ListmonkMappingService
     contact_repository: ContactRepository
+
+    def sync_campaign_contacts(
+        self,
+        *,
+        client_id: str,
+        campaign_id: str,
+    ) -> dict[str, Any]:
+        contacts = self.contact_repository.list_campaign_contacts(
+            client_id=client_id,
+            campaign_id=campaign_id,
+        )
+        summary: dict[str, Any] = {
+            "campaign_id": campaign_id,
+            "client_id": client_id,
+            "total_contacts": len(contacts),
+            "synced_count": 0,
+            "skipped_count": 0,
+            "failed_count": 0,
+            "errors": [],
+        }
+
+        for contact in contacts:
+            if contact.client_id != client_id:
+                summary["skipped_count"] += 1
+                summary["errors"].append(
+                    {
+                        "contact_id": contact.id,
+                        "reason": "Contact does not belong to this campaign client.",
+                    }
+                )
+                continue
+
+            if contact.status in SKIPPED_CAMPAIGN_CONTACT_STATUSES:
+                summary["skipped_count"] += 1
+                summary["errors"].append(
+                    {
+                        "contact_id": contact.id,
+                        "reason": f"Contact status {contact.status} is not syncable.",
+                    }
+                )
+                continue
+
+            try:
+                result = self.sync_contact(
+                    contact_id=contact.id,
+                    campaign_id=campaign_id,
+                )
+            except ListmonkError as error:
+                summary["failed_count"] += 1
+                summary["errors"].append(
+                    {"contact_id": contact.id, "reason": str(error)}
+                )
+                continue
+
+            if result.get("status") == "synced":
+                summary["synced_count"] += 1
+            elif result.get("status") == "not_synced":
+                summary["skipped_count"] += 1
+                summary["errors"].append(
+                    {
+                        "contact_id": contact.id,
+                        "reason": result.get("reason", "Contact was not synced."),
+                    }
+                )
+            else:
+                summary["failed_count"] += 1
+                summary["errors"].append(
+                    {
+                        "contact_id": contact.id,
+                        "reason": result.get("reason", "Contact sync failed."),
+                    }
+                )
+
+        return summary
+
+    def ensure_campaign_list(self, *, client_id: str, campaign_id: str) -> tuple[Any, bool]:
+        return self._ensure_target_list(client_id=client_id, campaign_id=campaign_id)
 
     def sync_contact(
         self,

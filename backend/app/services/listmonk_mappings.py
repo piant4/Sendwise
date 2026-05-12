@@ -98,6 +98,21 @@ class ListmonkMappingService:
             listmonk_id=listmonk_list_id,
         )
 
+    def ensure_campaign_list_mapping(
+        self,
+        *,
+        client_id: str,
+        campaign_id: str,
+        listmonk_list_id: str,
+    ) -> ListmonkMappingRecord:
+        return self.upsert_mapping(
+            client_id=client_id,
+            entity_type=ENTITY_TYPE_CAMPAIGN,
+            entity_id=campaign_id,
+            listmonk_type=LISTMONK_TYPE_LIST,
+            listmonk_id=listmonk_list_id,
+        )
+
     def ensure_contact_subscriber_mapping(
         self,
         *,

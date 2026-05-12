@@ -7,6 +7,10 @@ import httpx
 class ListmonkError(RuntimeError):
     """Controlled error for failed listmonk API calls."""
 
+    def __init__(self, message: str, *, status_code: int | None = None) -> None:
+        super().__init__(message)
+        self.status_code = status_code
+
 
 def extract_listmonk_id(payload: dict[str, Any]) -> str:
     """Return a stable id from common listmonk response shapes."""
@@ -50,12 +54,63 @@ class ListmonkClient:
     def trigger_campaign_send(self, campaign_id: int | str) -> dict[str, Any]:
         return self._request("PUT", f"/api/campaigns/{campaign_id}/status", json={"status": "running"})
 
+    def create_list(self, payload: dict[str, Any]) -> dict[str, Any]:
+        return self._request("POST", "/api/lists", json=payload)
+
+    def get_subscriber_by_email(self, email: str) -> dict[str, Any] | None:
+        escaped_email = email.replace("'", "''")
+        payload = self._request(
+            "GET",
+            "/api/subscribers",
+            params={
+                "query": f"subscribers.email = '{escaped_email}'",
+                "per_page": "1",
+            },
+        )
+        data = payload.get("data")
+        if isinstance(data, dict):
+            results = data.get("results")
+            if isinstance(results, list) and results:
+                first = results[0]
+                if isinstance(first, dict):
+                    return first
+        return None
+
+    def create_subscriber(self, payload: dict[str, Any]) -> dict[str, Any]:
+        return self._request("POST", "/api/subscribers", json=payload)
+
+    def patch_subscriber(
+        self,
+        subscriber_id: int | str,
+        payload: dict[str, Any],
+    ) -> dict[str, Any]:
+        return self._request("PATCH", f"/api/subscribers/{subscriber_id}", json=payload)
+
+    def assign_subscriber_lists(
+        self,
+        *,
+        subscriber_ids: list[int],
+        list_ids: list[int],
+        status: str = "confirmed",
+    ) -> dict[str, Any]:
+        return self._request(
+            "PUT",
+            "/api/subscribers/lists",
+            json={
+                "ids": subscriber_ids,
+                "action": "add",
+                "target_list_ids": list_ids,
+                "status": status,
+            },
+        )
+
     def _request(
         self,
         method: str,
         path: str,
         *,
         json: Optional[dict[str, Any]] = None,
+        params: Optional[dict[str, Any]] = None,
     ) -> dict[str, Any]:
         url = f"{self.base_url.rstrip('/')}/{path.lstrip('/')}"
         auth = (self.username, self.password or "") if self.username else None
@@ -66,6 +121,7 @@ class ListmonkClient:
                 url,
                 auth=auth,
                 json=json,
+                params=params,
                 timeout=self.timeout_seconds,
             )
             response.raise_for_status()
@@ -73,7 +129,10 @@ class ListmonkClient:
             raise ListmonkError("listmonk request timed out") from error
         except httpx.HTTPStatusError as error:
             status_code = error.response.status_code
-            raise ListmonkError(f"listmonk returned HTTP {status_code}") from error
+            raise ListmonkError(
+                f"listmonk returned HTTP {status_code}",
+                status_code=status_code,
+            ) from error
         except httpx.RequestError as error:
             raise ListmonkError("listmonk request failed") from error
 

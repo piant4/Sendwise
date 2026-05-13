@@ -7,8 +7,17 @@ import {
   getCampaignStatusVariant,
 } from "../../../../components/client/clientStatus";
 import { StatusBadge } from "../../../../components/ui/StatusBadge";
-import { getClientCampaigns } from "../../../../lib/api";
-import type { Campaign } from "../../../../types";
+import {
+  getClientCampaignDetail,
+  getClientCampaigns,
+  getClientCampaignStats,
+} from "../../../../lib/api";
+import type {
+  Campaign,
+  CampaignLogsSummary,
+  CampaignReadModel,
+  ClientCampaignStatsReadModel,
+} from "../../../../types";
 import { requireClientPortalRequest } from "../portalPageData";
 
 export const dynamic = "force-dynamic";
@@ -32,6 +41,61 @@ function buildCampaignStats(campaigns: Campaign[]) {
   };
 }
 
+function formatCount(value: number): string {
+  return value.toLocaleString("it-IT");
+}
+
+function buildProviderEventsLabel(logs: CampaignLogsSummary): string {
+  if (logs.providerEventsAvailable) {
+    return "Eventi provider disponibili";
+  }
+
+  if (
+    logs.queued === 0 &&
+    logs.sent === 0 &&
+    logs.opened === 0 &&
+    logs.clicked === 0 &&
+    logs.bounced === 0 &&
+    logs.complained === 0 &&
+    logs.unsubscribed === 0
+  ) {
+    return "Nessun evento provider ancora registrato";
+  }
+
+  return "Metriche provider non ancora disponibili";
+}
+
+async function loadCampaignReadModels(
+  campaigns: Campaign[],
+  accessToken: string | null,
+): Promise<
+  Record<
+    string,
+    { detail: CampaignReadModel; stats: ClientCampaignStatsReadModel } | Error
+  >
+> {
+  const entries = await Promise.all(
+    campaigns.map(async (campaign) => {
+      try {
+        const [detail, stats] = await Promise.all([
+          getClientCampaignDetail(campaign.id, accessToken),
+          getClientCampaignStats(campaign.id, accessToken),
+        ]);
+        return [campaign.id, { detail, stats }] as const;
+      } catch (error) {
+        return [
+          campaign.id,
+          error instanceof Error
+            ? error
+            : new Error("Read model campagna non disponibile."),
+        ] as const;
+      }
+    }),
+  );
+
+  return Object.fromEntries(entries);
+}
+
 export default async function ClientCampaignsPage({
   params,
 }: ClientCampaignsPageProps) {
@@ -39,7 +103,10 @@ export default async function ClientCampaignsPage({
   const { accessToken } = await requireClientPortalRequest(portalSlug);
 
   const result = await getClientCampaigns(accessToken)
-    .then((campaigns) => ({ campaigns }))
+    .then(async (campaigns) => ({
+      campaigns,
+      campaignReadModels: await loadCampaignReadModels(campaigns, accessToken),
+    }))
     .catch((error: unknown) => ({
       errorMessage:
         error instanceof Error ? error.message : "Impossibile caricare le campagne.",
@@ -126,6 +193,94 @@ export default async function ClientCampaignsPage({
                       <strong>{formatDateTimeLabel(campaign.updated_at)}</strong>
                     </div>
                   </div>
+
+                  {(() => {
+                    const readModel = result.campaignReadModels[campaign.id];
+
+                    if (!readModel || readModel instanceof Error) {
+                      return (
+                        <p className="client-row__support">
+                          Read model backend non disponibile:{" "}
+                          {readModel?.message ?? "pending backend data"}.
+                        </p>
+                      );
+                    }
+
+                    const { detail, stats: backendStats } = readModel;
+                    const noContacts = detail.recipients.total === 0;
+                    const noEligibleRecipients =
+                      detail.recipients.total > 0 && detail.recipients.eligible === 0;
+                    const allRecipientsBlocked =
+                      detail.recipients.total > 0 &&
+                      detail.recipients.blocked === detail.recipients.total;
+
+                    return (
+                      <>
+                        <div className="client-detail-grid">
+                          <div>
+                            <span>Readiness</span>
+                            <strong>
+                              Content {detail.campaign.contentReady ? "ok" : "pending"} ·
+                              Contatti {detail.campaign.contactsReady ? "ok" : "pending"} ·
+                              Review {detail.campaign.reviewReady ? "ok" : "pending"}
+                            </strong>
+                          </div>
+                          <div>
+                            <span>Destinatari</span>
+                            <strong>
+                              {formatCount(detail.recipients.eligible)} eleggibili /{" "}
+                              {formatCount(detail.recipients.total)} totali
+                            </strong>
+                          </div>
+                          <div>
+                            <span>Bloccati</span>
+                            <strong>
+                              {formatCount(detail.recipients.blocked)} totali ·{" "}
+                              {formatCount(detail.recipients.suppressed)} soppressi
+                            </strong>
+                          </div>
+                          <div>
+                            <span>Provider events</span>
+                            <strong>{buildProviderEventsLabel(backendStats.logs)}</strong>
+                          </div>
+                          <div>
+                            <span>Stats backend</span>
+                            <strong>
+                              queued {formatCount(backendStats.logs.queued)} · sent{" "}
+                              {formatCount(backendStats.logs.sent)} · bounce{" "}
+                              {formatCount(backendStats.logs.bounced)}
+                            </strong>
+                          </div>
+                          <div>
+                            <span>Invii bloccati</span>
+                            <strong>
+                              {formatCount(backendStats.blockedSends.total)} record
+                            </strong>
+                          </div>
+                        </div>
+                        {(noContacts || noEligibleRecipients || allRecipientsBlocked) && (
+                          <p className="client-row__support">
+                            {noContacts
+                              ? "Nessun contatto associato alla campagna."
+                              : noEligibleRecipients
+                                ? "Nessun destinatario eleggibile nei dati backend."
+                                : "Tutti i destinatari risultano bloccati nei dati backend."}
+                          </p>
+                        )}
+                        {!backendStats.logs.providerEventsAvailable && (
+                          <p className="client-row__support">
+                            Le metriche provider restano vuote finche il backend non
+                            registra eventi provider processati.
+                          </p>
+                        )}
+                        {backendStats.blockedSends.latest.length > 0 && (
+                          <p className="client-row__support">
+                            Ultimo blocco: {backendStats.blockedSends.latest[0].reason}
+                          </p>
+                        )}
+                      </>
+                    );
+                  })()}
                 </article>
               ))}
             </div>

@@ -1,5 +1,6 @@
 import type {
   AdminBlockedSendItem,
+  AdminCampaignReadinessSummary,
   AdminCampaignSummary,
   AdminClientInviteResponse,
   AdminClientUpdateInput,
@@ -9,8 +10,15 @@ import type {
   ApiUsage,
   BlockedSend,
   Campaign,
+  CampaignBlockedSendsSummary,
+  CampaignLogsSummary,
+  CampaignReadModel,
+  CampaignRecipientsSummary,
+  CampaignSlotSummary,
+  CampaignSummaryItem,
   Client,
   ClientContext,
+  ClientCampaignStatsReadModel,
   ClientOverviewSummary,
   CompleteClientOnboardingInput,
 } from "../types";
@@ -71,6 +79,70 @@ interface AdminCampaignApiItem {
   created_at: string;
   updated_at: string;
   blocked_sends_count: number;
+}
+
+interface CampaignReadModelApiResponse {
+  campaign: {
+    id: string;
+    client_id: string;
+    name: string;
+    status: Campaign["status"];
+    subject?: string | null;
+    preview_text?: string | null;
+    current_step: string;
+    content_ready: boolean;
+    contacts_ready: boolean;
+    review_ready: boolean;
+  };
+  slot: {
+    id?: string | null;
+    label?: string | null;
+    max_emails?: number | null;
+    status?: string | null;
+    limit_source?: string | null;
+  };
+  recipients: {
+    total: number;
+    eligible: number;
+    invalid: number;
+    suppressed: number;
+    blocked: number;
+  };
+  logs: {
+    simulated: number;
+    queued: number;
+    sent: number;
+    opened: number;
+    clicked: number;
+    bounced: number;
+    complained: number;
+    unsubscribed: number;
+    provider_events_available: boolean;
+  };
+  blocked_sends: {
+    total: number;
+    latest: BlockedSend[];
+  };
+}
+
+interface AdminCampaignSummaryApiResponse extends CampaignReadModelApiResponse {
+  client: {
+    id: string;
+    email: string;
+    personal_name?: string | null;
+    status: string;
+  };
+  can_send: boolean;
+  blocking_errors: string[];
+  warnings: string[];
+}
+
+interface ClientCampaignStatsApiResponse {
+  campaign_id: string;
+  client_id: string;
+  recipients: CampaignReadModelApiResponse["recipients"];
+  logs: CampaignReadModelApiResponse["logs"];
+  blocked_sends: CampaignReadModelApiResponse["blocked_sends"];
 }
 
 interface AdminBlockedSendApiItem {
@@ -455,6 +527,16 @@ async function fetchAdminCampaigns(
   return apiGet<AdminCampaignApiItem[]>("/admin/campaigns", accessToken);
 }
 
+async function fetchAdminCampaignSummary(
+  campaignId: string,
+  accessToken?: string | null,
+): Promise<AdminCampaignSummaryApiResponse> {
+  return apiGet<AdminCampaignSummaryApiResponse>(
+    `/admin/campaigns/${campaignId}/summary`,
+    accessToken,
+  );
+}
+
 async function fetchAdminBlockedSends(
   accessToken?: string | null,
 ): Promise<AdminBlockedSendApiItem[]> {
@@ -485,6 +567,26 @@ async function fetchClientOverview(
 
 async function fetchClientCampaigns(accessToken?: string | null): Promise<Campaign[]> {
   return apiGet<Campaign[]>("/client/campaigns", accessToken);
+}
+
+async function fetchClientCampaignDetail(
+  campaignId: string,
+  accessToken?: string | null,
+): Promise<CampaignReadModelApiResponse> {
+  return apiGet<CampaignReadModelApiResponse>(
+    `/client/campaigns/${campaignId}`,
+    accessToken,
+  );
+}
+
+async function fetchClientCampaignStats(
+  campaignId: string,
+  accessToken?: string | null,
+): Promise<ClientCampaignStatsApiResponse> {
+  return apiGet<ClientCampaignStatsApiResponse>(
+    `/client/campaigns/${campaignId}/stats`,
+    accessToken,
+  );
 }
 
 async function fetchClientUsage(accessToken?: string | null): Promise<ApiUsage[]> {
@@ -715,6 +817,113 @@ function mapAdminCampaignSummary(
   };
 }
 
+function mapCampaignSummaryItem(
+  payload: CampaignReadModelApiResponse["campaign"],
+): CampaignSummaryItem {
+  return {
+    id: payload.id,
+    clientId: payload.client_id,
+    name: payload.name,
+    status: payload.status,
+    subject: payload.subject ?? null,
+    previewText: payload.preview_text ?? null,
+    currentStep: payload.current_step,
+    contentReady: payload.content_ready,
+    contactsReady: payload.contacts_ready,
+    reviewReady: payload.review_ready,
+  };
+}
+
+function mapCampaignSlotSummary(
+  payload: CampaignReadModelApiResponse["slot"],
+): CampaignSlotSummary {
+  return {
+    id: payload.id ?? null,
+    label: payload.label ?? null,
+    maxEmails: payload.max_emails ?? null,
+    status: payload.status ?? null,
+    limitSource: payload.limit_source ?? null,
+  };
+}
+
+function mapCampaignRecipientsSummary(
+  payload: CampaignReadModelApiResponse["recipients"],
+): CampaignRecipientsSummary {
+  return {
+    total: payload.total,
+    eligible: payload.eligible,
+    invalid: payload.invalid,
+    suppressed: payload.suppressed,
+    blocked: payload.blocked,
+  };
+}
+
+function mapCampaignLogsSummary(
+  payload: CampaignReadModelApiResponse["logs"],
+): CampaignLogsSummary {
+  return {
+    simulated: payload.simulated,
+    queued: payload.queued,
+    sent: payload.sent,
+    opened: payload.opened,
+    clicked: payload.clicked,
+    bounced: payload.bounced,
+    complained: payload.complained,
+    unsubscribed: payload.unsubscribed,
+    providerEventsAvailable: payload.provider_events_available,
+  };
+}
+
+function mapCampaignBlockedSendsSummary(
+  payload: CampaignReadModelApiResponse["blocked_sends"],
+): CampaignBlockedSendsSummary {
+  return {
+    total: payload.total,
+    latest: payload.latest,
+  };
+}
+
+function mapCampaignReadModel(
+  payload: CampaignReadModelApiResponse,
+): CampaignReadModel {
+  return {
+    campaign: mapCampaignSummaryItem(payload.campaign),
+    slot: mapCampaignSlotSummary(payload.slot),
+    recipients: mapCampaignRecipientsSummary(payload.recipients),
+    logs: mapCampaignLogsSummary(payload.logs),
+    blockedSends: mapCampaignBlockedSendsSummary(payload.blocked_sends),
+  };
+}
+
+function mapAdminCampaignReadinessSummary(
+  payload: AdminCampaignSummaryApiResponse,
+): AdminCampaignReadinessSummary {
+  return {
+    ...mapCampaignReadModel(payload),
+    client: {
+      id: payload.client.id,
+      email: payload.client.email,
+      personalName: payload.client.personal_name ?? null,
+      status: payload.client.status,
+    },
+    canSend: payload.can_send,
+    blockingErrors: payload.blocking_errors,
+    warnings: payload.warnings,
+  };
+}
+
+function mapClientCampaignStats(
+  payload: ClientCampaignStatsApiResponse,
+): ClientCampaignStatsReadModel {
+  return {
+    campaignId: payload.campaign_id,
+    clientId: payload.client_id,
+    recipients: mapCampaignRecipientsSummary(payload.recipients),
+    logs: mapCampaignLogsSummary(payload.logs),
+    blockedSends: mapCampaignBlockedSendsSummary(payload.blocked_sends),
+  };
+}
+
 function mapAdminEmailLimitsResponse(
   payload: AdminEmailLimitsApiResponse,
 ): AdminEmailLimitsResponse {
@@ -911,6 +1120,16 @@ export function getAdminCampaigns(
   );
 }
 
+export function getAdminCampaignSummary(
+  campaignId: string,
+  accessToken?: string | null,
+): Promise<AdminCampaignReadinessSummary> {
+  assertAdminBackendEnabled(`/admin/campaigns/${campaignId}/summary`);
+  return fetchAdminCampaignSummary(campaignId, accessToken).then(
+    mapAdminCampaignReadinessSummary,
+  );
+}
+
 export function getAdminBlockedSends(
   accessToken?: string | null,
 ): Promise<AdminBlockedSendItem[]> {
@@ -954,6 +1173,38 @@ export function getClientCampaigns(
   return USE_MOCK_API
     ? mockApi.getClientCampaigns()
     : fetchClientCampaigns(accessToken);
+}
+
+export function getClientCampaignDetail(
+  campaignId: string,
+  accessToken?: string | null,
+): Promise<CampaignReadModel> {
+  if (USE_MOCK_API) {
+    throw new ApiError({
+      path: `/client/campaigns/${campaignId}`,
+      status: 500,
+      detail:
+        "Client campaign detail requires NEXT_PUBLIC_USE_MOCK_API=false so campaign read models come from the backend.",
+    });
+  }
+
+  return fetchClientCampaignDetail(campaignId, accessToken).then(mapCampaignReadModel);
+}
+
+export function getClientCampaignStats(
+  campaignId: string,
+  accessToken?: string | null,
+): Promise<ClientCampaignStatsReadModel> {
+  if (USE_MOCK_API) {
+    throw new ApiError({
+      path: `/client/campaigns/${campaignId}/stats`,
+      status: 500,
+      detail:
+        "Client campaign stats require NEXT_PUBLIC_USE_MOCK_API=false so metrics stay backend-backed.",
+    });
+  }
+
+  return fetchClientCampaignStats(campaignId, accessToken).then(mapClientCampaignStats);
 }
 
 export function getClientUsage(

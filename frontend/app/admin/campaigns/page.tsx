@@ -2,8 +2,20 @@ import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 import { AdminSurface } from "../../../components/admin/AdminSurface";
 import { StatusBadge } from "../../../components/ui/StatusBadge";
-import { getAdminCampaigns, isApiError } from "../../../lib/api";
-import type { AdminCampaignSummary, CampaignStatus } from "../../../types";
+import {
+  getAdminCampaigns,
+  getAdminCampaignSummary,
+  getAdminSystemStatus,
+  isApiError,
+} from "../../../lib/api";
+import type {
+  AdminCampaignReadinessSummary,
+  AdminCampaignSummary,
+  AdminSystemStatus,
+  CampaignLogsSummary,
+  CampaignRecipientsSummary,
+  CampaignStatus,
+} from "../../../types";
 
 export const dynamic = "force-dynamic";
 
@@ -67,16 +79,90 @@ function buildCampaignStats(campaigns: AdminCampaignSummary[]) {
   };
 }
 
+function formatCount(value: number): string {
+  return value.toLocaleString("it-IT");
+}
+
+function buildRecipientNotes(recipients: CampaignRecipientsSummary): string[] {
+  const notes = [
+    recipients.invalid > 0
+      ? `${formatCount(recipients.invalid)} email non valide`
+      : null,
+    recipients.suppressed > 0
+      ? `${formatCount(recipients.suppressed)} contatti soppressi`
+      : null,
+    recipients.blocked > 0 ? `${formatCount(recipients.blocked)} bloccati` : null,
+  ].filter((note): note is string => Boolean(note));
+
+  return notes.length > 0 ? notes : ["Nessun blocco destinatario nei dati backend."];
+}
+
+function buildProviderEventsLabel(logs: CampaignLogsSummary): string {
+  if (logs.providerEventsAvailable) {
+    return "Eventi provider disponibili";
+  }
+
+  if (
+    logs.queued === 0 &&
+    logs.sent === 0 &&
+    logs.opened === 0 &&
+    logs.clicked === 0 &&
+    logs.bounced === 0 &&
+    logs.complained === 0 &&
+    logs.unsubscribed === 0
+  ) {
+    return "Nessun evento provider ancora registrato";
+  }
+
+  return "Eventi provider non disponibili per questa campagna";
+}
+
+async function loadCampaignReadiness(
+  campaigns: AdminCampaignSummary[],
+  accessToken: string | null,
+): Promise<Record<string, AdminCampaignReadinessSummary | Error>> {
+  const entries = await Promise.all(
+    campaigns.map(async (campaign) => {
+      try {
+        return [
+          campaign.id,
+          await getAdminCampaignSummary(campaign.id, accessToken),
+        ] as const;
+      } catch (error) {
+        return [
+          campaign.id,
+          error instanceof Error
+            ? error
+            : new Error("Read model campagna non disponibile."),
+        ] as const;
+      }
+    }),
+  );
+
+  return Object.fromEntries(entries);
+}
+
 export default async function AdminCampaignsPage() {
   const { getToken } = await auth();
   let result:
-    | { campaigns: AdminCampaignSummary[] }
+    | {
+        campaigns: AdminCampaignSummary[];
+        campaignReadiness: Record<string, AdminCampaignReadinessSummary | Error>;
+        systemStatus: AdminSystemStatus | null;
+      }
     | {
         errorMessage: string;
       };
 
   try {
-    result = { campaigns: await getAdminCampaigns(await getToken()) };
+    const accessToken = await getToken();
+    const campaigns = await getAdminCampaigns(accessToken);
+    const [campaignReadiness, systemStatus] = await Promise.all([
+      loadCampaignReadiness(campaigns, accessToken),
+      getAdminSystemStatus(accessToken).catch(() => null),
+    ]);
+
+    result = { campaigns, campaignReadiness, systemStatus };
   } catch (error) {
     if (isApiError(error) && [401, 403].includes(error.status ?? 0)) {
       redirect("/auth/redirect");
@@ -187,6 +273,92 @@ export default async function AdminCampaignsPage() {
                         {campaign.subject ||
                           "Oggetto non disponibile nel record corrente."}
                       </p>
+
+                      {(() => {
+                        const readiness = result.campaignReadiness[campaign.id];
+
+                        if (!readiness || readiness instanceof Error) {
+                          return (
+                            <p className="admin-record-row__note">
+                              Read model backend non disponibile:{" "}
+                              {readiness?.message ?? "pending backend data"}.
+                            </p>
+                          );
+                        }
+
+                        return (
+                          <dl className="admin-record-grid">
+                            <div>
+                              <dt>Readiness</dt>
+                              <dd>
+                                Content {readiness.campaign.contentReady ? "ok" : "pending"} ·
+                                Contatti {readiness.campaign.contactsReady ? "ok" : "pending"} ·
+                                Review {readiness.campaign.reviewReady ? "ok" : "pending"}
+                              </dd>
+                            </div>
+                            <div>
+                              <dt>Send safety</dt>
+                              <dd>
+                                {readiness.canSend
+                                  ? "Backend consente invio controllato"
+                                  : "Bloccato dal backend"}
+                              </dd>
+                            </div>
+                            <div>
+                              <dt>Destinatari</dt>
+                              <dd>
+                                {formatCount(readiness.recipients.eligible)} eleggibili /{" "}
+                                {formatCount(readiness.recipients.total)} totali
+                              </dd>
+                            </div>
+                            <div>
+                              <dt>Blocked reasons</dt>
+                              <dd>{buildRecipientNotes(readiness.recipients).join(", ")}</dd>
+                            </div>
+                            <div>
+                              <dt>Provider events</dt>
+                              <dd>{buildProviderEventsLabel(readiness.logs)}</dd>
+                            </div>
+                            <div>
+                              <dt>Stats backend</dt>
+                              <dd>
+                                queued {formatCount(readiness.logs.queued)} · sent{" "}
+                                {formatCount(readiness.logs.sent)} · bounce{" "}
+                                {formatCount(readiness.logs.bounced)} · unsubscribe{" "}
+                                {formatCount(readiness.logs.unsubscribed)}
+                              </dd>
+                            </div>
+                            <div>
+                              <dt>Email sending</dt>
+                              <dd>
+                                {result.systemStatus?.emailSendingEnabled
+                                  ? "Abilitato dal backend"
+                                  : "Disabilitato o non esposto"}
+                              </dd>
+                            </div>
+                            <div>
+                              <dt>Provider mode</dt>
+                              <dd>
+                                {result.systemStatus?.environment
+                                  ? `${result.systemStatus.environment}; provider non esposto qui`
+                                  : "Not available yet"}
+                              </dd>
+                            </div>
+                            <div>
+                              <dt>SES live validation</dt>
+                              <dd>Pending: non validata in Milestone 12.1</dd>
+                            </div>
+                            <div>
+                              <dt>Warnings</dt>
+                              <dd>
+                                {[...readiness.blockingErrors, ...readiness.warnings].join(
+                                  " · ",
+                                ) || "Nessun warning dal backend."}
+                              </dd>
+                            </div>
+                          </dl>
+                        );
+                      })()}
                     </article>
                   ))}
                 </div>

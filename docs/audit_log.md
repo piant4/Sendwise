@@ -2283,3 +2283,31 @@ Checks referenced:
 Scope confirmation:
 - No frontend, schema, campaign send logic, Deliverability Guard, credential, fake metric, provider event, or real send behavior was changed.
 - No email was sent and no listmonk campaign send was triggered.
+
+## Milestone 13 - Campaign Wizard And Stats UI Alignment
+
+Date: 2026-05-13
+Branch: develop
+
+Verified state:
+- Admin campaign list now reads the existing backend campaign summary read model for readiness flags, recipient eligibility/blocked counts, blocked-send reasons, sendability warnings, DB-backed log counts, and provider-events availability.
+- Client campaign list now reads existing client-scoped campaign detail and stats endpoints for readiness, recipient counts, blocked sends, and DB/provider-backed log counts.
+- Empty and neutral states were added for unavailable read models, no contacts, no eligible recipients, all recipients blocked, no provider events, and pending SES live validation.
+
+Known limits:
+- SES live validation remains pending; the UI does not claim real SES delivery validation.
+- Provider mode is not exposed in the campaign read model, so the UI shows a neutral unavailable state instead of inventing it.
+
+Checks referenced:
+- `bash scripts/audit.sh`
+- `bash scripts/smoke_test.sh`
+- `docker compose config`
+- `docker compose -f docker-compose.yml -f docker-compose.dev.yml config`
+- `bash scripts/apply_migrations.sh`
+- Docker backend pytest with `/templates/dist` mounted
+- Docker frontend builder `npm run lint`
+- Fresh Docker frontend image build
+- `git diff --check`
+
+Scope confirmation:
+- No backend send/dispatch logic, DB schema, listmonk integration, n8n files, local env files, secrets, fake metrics, or direct frontend listmonk access were added.

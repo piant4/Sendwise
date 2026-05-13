@@ -281,6 +281,82 @@ export interface AdminCampaignSummary {
   blockedSendsCount: number;
 }
 
+export interface CampaignSummaryItem {
+  id: string;
+  clientId: string;
+  name: string;
+  status: CampaignStatus;
+  subject?: string | null;
+  previewText?: string | null;
+  currentStep: string;
+  contentReady: boolean;
+  contactsReady: boolean;
+  reviewReady: boolean;
+}
+
+export interface CampaignClientSummary {
+  id: string;
+  email: string;
+  personalName?: string | null;
+  status: string;
+}
+
+export interface CampaignSlotSummary {
+  id?: string | null;
+  label?: string | null;
+  maxEmails?: number | null;
+  status?: string | null;
+  limitSource?: string | null;
+}
+
+export interface CampaignRecipientsSummary {
+  total: number;
+  eligible: number;
+  invalid: number;
+  suppressed: number;
+  blocked: number;
+}
+
+export interface CampaignLogsSummary {
+  simulated: number;
+  queued: number;
+  sent: number;
+  opened: number;
+  clicked: number;
+  bounced: number;
+  complained: number;
+  unsubscribed: number;
+  providerEventsAvailable: boolean;
+}
+
+export interface CampaignBlockedSendsSummary {
+  total: number;
+  latest: BlockedSend[];
+}
+
+export interface CampaignReadModel {
+  campaign: CampaignSummaryItem;
+  slot: CampaignSlotSummary;
+  recipients: CampaignRecipientsSummary;
+  logs: CampaignLogsSummary;
+  blockedSends: CampaignBlockedSendsSummary;
+}
+
+export interface AdminCampaignReadinessSummary extends CampaignReadModel {
+  client: CampaignClientSummary;
+  canSend: boolean;
+  blockingErrors: string[];
+  warnings: string[];
+}
+
+export interface ClientCampaignStatsReadModel {
+  campaignId: string;
+  clientId: string;
+  recipients: CampaignRecipientsSummary;
+  logs: CampaignLogsSummary;
+  blockedSends: CampaignBlockedSendsSummary;
+}
+
 export interface AdminEmailLimitRow {
   clientId: string;
   clientName: string;

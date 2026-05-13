@@ -15,4 +15,9 @@ docker compose config >/dev/null
 docker compose -f docker-compose.yml -f docker-compose.dev.yml config >/dev/null
 bash scripts/audit.sh
 
+if [ ! -x scripts/apply_migrations.sh ]; then
+  echo "Migration runner is missing or not executable: scripts/apply_migrations.sh"
+  exit 1
+fi
+
 echo "Smoke test passed."

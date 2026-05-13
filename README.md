@@ -106,6 +106,24 @@ Mailpit:
 
 Mailpit is dev/staging only and must not be used for production sending.
 
+### Apply database migrations
+
+`db/init.sql` initializes fresh PostgreSQL volumes. Existing dev or staging
+volumes must be updated explicitly with the migration runner:
+
+```bash
+./scripts/apply_migrations.sh
+```
+
+The runner uses the `postgres` Docker Compose service, creates
+`schema_migrations` if needed, applies pending files from `db/migrations` in
+lexicographic order, and skips files already recorded. To inspect status without
+changing the database:
+
+```bash
+./scripts/apply_migrations.sh --dry-run
+```
+
 ## 🧪 Development Commands
 
 ```bash

@@ -1926,6 +1926,25 @@ Scope confirmation:
 - No `client_access` persistence was implemented.
 - No Clerk invitation API, admin invite flow, onboarding endpoint, public signup, custom password form, custom 2FA, real listmonk, real sending, AI, n8n, Celery, Keycloak, Metabase, Postal, Rspamd, or Budibase was implemented.
 
+## Milestone 11.2 - DB Migration Runner Hardening
+
+Date: 2026-05-13
+Branch: develop
+
+Verified state:
+- Added `scripts/apply_migrations.sh` as the explicit dev/staging SQL migration runner.
+- Existing PostgreSQL volumes can be aligned with `db/migrations` without dropping data or resetting volumes.
+- The runner creates `schema_migrations` if missing, applies pending migration files once in lexicographic order, and skips filenames already recorded.
+- `--dry-run` lists pending/applied status without creating the tracking table or mutating schema.
+- `scripts/smoke_test.sh` now verifies the runner exists and is executable without mutating the database.
+
+Known limits:
+- Existing migrations are not rewritten to be independently rerunnable; idempotency is enforced by tracking table filename registration.
+- `20260508_client_access_v1.sql` still contains the historical `DROP TABLE IF EXISTS client_users`; the runner prevents accidental second application after tracking.
+
+Out of scope:
+- No SES controlled send, frontend UI, provider event expansion, send flow, Guard logic, auth, AI, or worker changes were implemented.
+
 Milestone 11 audit note:
 - Added backend-owned `GET /unsubscribe/{token}` with signed opaque tokens, idempotent suppression, and minimal safe HTML response.
 - Added `POST /events/provider` ingestion for normalized provider payloads and minimal SES/SNS-like payloads, persisting idempotent `provider_events` rows before correlated side effects.

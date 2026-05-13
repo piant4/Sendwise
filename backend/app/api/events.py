@@ -1,7 +1,7 @@
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Header, status
 from fastapi.responses import HTMLResponse
 
-from app.core.security import require_api_key
+from app.core.config import Settings, get_settings
 from app.schemas.provider_events import ProviderEventIngestResponse
 from app.services.provider_events import (
     ProviderEventIngestionService,
@@ -16,6 +16,17 @@ from app.services.unsubscribe import (
 router = APIRouter(
     tags=["events"],
 )
+
+
+def require_events_api_key(
+    x_api_key: str | None = Header(default=None, alias="X-API-Key"),
+    settings: Settings = Depends(get_settings),
+) -> None:
+    if not x_api_key or x_api_key != settings.backend_api_key:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or missing API key.",
+        )
 
 
 @router.get(
@@ -49,7 +60,7 @@ def unsubscribe(
 @router.post(
     "/events/listmonk",
     status_code=status.HTTP_202_ACCEPTED,
-    dependencies=[Depends(require_api_key)],
+    dependencies=[Depends(require_events_api_key)],
 )
 def receive_listmonk_event(
     payload: dict[str, object],
@@ -66,7 +77,7 @@ def receive_listmonk_event(
     "/events/provider",
     response_model=ProviderEventIngestResponse,
     status_code=status.HTTP_202_ACCEPTED,
-    dependencies=[Depends(require_api_key)],
+    dependencies=[Depends(require_events_api_key)],
 )
 def receive_provider_event(
     payload: dict[str, object],

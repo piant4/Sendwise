@@ -7,7 +7,7 @@ from uuid import uuid4
 from pydantic import BaseModel
 
 from app.core.config import Settings, get_settings
-from app.repositories.clients import postgres_connection
+from app.repositories.clients import postgres_connection, require_psycopg
 
 
 class SuppressionRecord(BaseModel):
@@ -74,6 +74,7 @@ class PostgresSuppressionListRepository(SuppressionListRepository):
         client_id: str | None = None,
         reason: str = "manual",
     ) -> SuppressionRecord:
+        psycopg = require_psycopg()
         normalized_email = email.strip().lower()
         insert_query = """
             INSERT INTO suppression_list (
@@ -112,23 +113,29 @@ class PostgresSuppressionListRepository(SuppressionListRepository):
         """
 
         with postgres_connection(self._settings) as connection:
-            with connection.cursor() as cursor:
-                cursor.execute(
-                    insert_query,
-                    (
-                        client_id,
-                        normalized_email,
-                        reason,
-                        normalized_email,
-                        reason,
-                        client_id,
-                    ),
-                )
-                row = cursor.fetchone()
-                if row is None:
+            try:
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        insert_query,
+                        (
+                            client_id,
+                            normalized_email,
+                            reason,
+                            normalized_email,
+                            reason,
+                            client_id,
+                        ),
+                    )
+                    row = cursor.fetchone()
+                    if row is None:
+                        cursor.execute(select_query, (normalized_email, reason, client_id))
+                        row = cursor.fetchone()
+                connection.commit()
+            except psycopg.errors.UniqueViolation:
+                connection.rollback()
+                with connection.cursor() as cursor:
                     cursor.execute(select_query, (normalized_email, reason, client_id))
                     row = cursor.fetchone()
-            connection.commit()
 
         if row is None:
             raise ValueError("suppression record could not be created or loaded")

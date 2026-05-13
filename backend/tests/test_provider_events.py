@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 
 from fastapi.testclient import TestClient
 
-from app.core.config import Settings
+from app.core.config import Settings, get_settings
 from app.guard.deliverability_guard import DeliverabilityGuard
 from app.main import app
 from app.repositories.blocked_sends import InMemoryBlockedSendRepository
@@ -20,6 +20,7 @@ from app.services.campaigns import AdminCampaignService
 from app.services.provider_events import (
     NormalizedProviderEvent,
     ProviderEventIngestionService,
+    get_provider_event_ingestion_service,
 )
 from app.services.unsubscribe import (
     UnsubscribeService,
@@ -196,6 +197,76 @@ def test_unsubscribe_token_invalid_is_rejected() -> None:
 
     assert response.status_code == 400
     assert response.json()["detail"] == "Invalid unsubscribe link."
+
+
+def test_provider_event_endpoint_requires_api_key() -> None:
+    runtime = build_runtime()
+    provider_event_service: ProviderEventIngestionService = runtime["provider_event_service"]  # type: ignore[assignment]
+    settings = Settings(
+        environment="development",
+        backend_api_key="test-api-key",
+        backend_public_url="http://localhost:8000",
+        unsubscribe_token_secret="unsubscribe-secret",
+    )
+    app.dependency_overrides[get_settings] = lambda: settings
+    app.dependency_overrides[get_provider_event_ingestion_service] = (
+        lambda: provider_event_service
+    )
+    try:
+        response = TestClient(app).post(
+            "/events/provider",
+            json={
+                "provider": "ses",
+                "event_type": "ses_bounce",
+                "campaign_id": "campaign_123",
+                "contact_id": "contact_123",
+                "provider_event_id": "bounce-route-1",
+                "provider_message_id": "msg-1",
+                "email": "person@example.test",
+            },
+        )
+    finally:
+        app.dependency_overrides.pop(get_provider_event_ingestion_service, None)
+        app.dependency_overrides.pop(get_settings, None)
+
+    assert response.status_code == 401
+    assert response.json()["detail"] == "Invalid or missing API key."
+
+
+def test_provider_event_endpoint_accepts_valid_api_key() -> None:
+    runtime = build_runtime()
+    provider_event_service: ProviderEventIngestionService = runtime["provider_event_service"]  # type: ignore[assignment]
+    settings = Settings(
+        environment="development",
+        backend_api_key="test-api-key",
+        backend_public_url="http://localhost:8000",
+        unsubscribe_token_secret="unsubscribe-secret",
+    )
+    app.dependency_overrides[get_settings] = lambda: settings
+    app.dependency_overrides[get_provider_event_ingestion_service] = (
+        lambda: provider_event_service
+    )
+    try:
+        response = TestClient(app).post(
+            "/events/provider",
+            headers={"X-API-Key": "test-api-key"},
+            json={
+                "provider": "ses",
+                "event_type": "ses_bounce",
+                "campaign_id": "campaign_123",
+                "contact_id": "contact_123",
+                "provider_event_id": "bounce-route-2",
+                "provider_message_id": "msg-1",
+                "email": "person@example.test",
+            },
+        )
+    finally:
+        app.dependency_overrides.pop(get_provider_event_ingestion_service, None)
+        app.dependency_overrides.pop(get_settings, None)
+
+    assert response.status_code == 202
+    assert response.json()["created"] is True
+    assert response.json()["event_type"] == "ses_bounce"
 
 
 def test_unsubscribe_is_idempotent() -> None:

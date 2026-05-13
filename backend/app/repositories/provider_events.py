@@ -7,7 +7,7 @@ from uuid import uuid4
 from pydantic import BaseModel
 
 from app.core.config import Settings, get_settings
-from app.repositories.clients import postgres_connection
+from app.repositories.clients import postgres_connection, require_psycopg
 
 
 class ProviderEventRecord(BaseModel):
@@ -97,6 +97,7 @@ class PostgresProviderEventRepository(ProviderEventRepository):
         payload: dict[str, Any],
         occurred_at: datetime,
     ) -> tuple[ProviderEventRecord, bool]:
+        psycopg = require_psycopg()
         insert_query = """
             INSERT INTO provider_events (
                 client_id,
@@ -148,30 +149,67 @@ class PostgresProviderEventRepository(ProviderEventRepository):
             FROM provider_events
             WHERE event_key = %s
         """
+        select_by_provider_event_id_query = """
+            SELECT
+                id::text AS id,
+                client_id::text AS client_id,
+                campaign_id::text AS campaign_id,
+                contact_id::text AS contact_id,
+                email_log_id::text AS email_log_id,
+                provider,
+                source,
+                provider_event_id,
+                event_key,
+                event_type,
+                payload,
+                occurred_at,
+                processed_at,
+                created_at
+            FROM provider_events
+            WHERE provider = %s
+                AND provider_event_id = %s
+            LIMIT 1
+        """
 
         with postgres_connection(self._settings) as connection:
-            with connection.cursor() as cursor:
-                cursor.execute(
-                    insert_query,
-                    (
-                        client_id,
-                        campaign_id,
-                        contact_id,
-                        email_log_id,
-                        provider,
-                        source,
-                        provider_event_id,
-                        event_key,
-                        event_type,
-                        _json_payload(payload),
-                        occurred_at,
-                    ),
-                )
-                row = cursor.fetchone()
-                created = row is not None
-                if row is None:
-                    cursor.execute(select_query, (event_key,))
+            try:
+                with connection.cursor() as cursor:
+                    cursor.execute(
+                        insert_query,
+                        (
+                            client_id,
+                            campaign_id,
+                            contact_id,
+                            email_log_id,
+                            provider,
+                            source,
+                            provider_event_id,
+                            event_key,
+                            event_type,
+                            _json_payload(payload),
+                            occurred_at,
+                        ),
+                    )
                     row = cursor.fetchone()
+                    created = row is not None
+                    if row is None:
+                        cursor.execute(select_query, (event_key,))
+                        row = cursor.fetchone()
+                connection.commit()
+            except psycopg.errors.UniqueViolation:
+                connection.rollback()
+                created = False
+                row = None
+                with connection.cursor() as cursor:
+                    if provider_event_id is not None:
+                        cursor.execute(
+                            select_by_provider_event_id_query,
+                            (provider, provider_event_id),
+                        )
+                        row = cursor.fetchone()
+                    if row is None:
+                        cursor.execute(select_query, (event_key,))
+                        row = cursor.fetchone()
             connection.commit()
 
         if row is None:

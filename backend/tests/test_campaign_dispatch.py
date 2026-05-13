@@ -101,6 +101,9 @@ def build_campaign(
     subject: str = "Launch",
     status: str = "ready",
     campaign_slot_id: str | None = None,
+    content_ready: bool = True,
+    contacts_ready: bool = True,
+    review_ready: bool = True,
 ) -> ClientCampaignRecord:
     now = datetime.now(timezone.utc)
     return ClientCampaignRecord(
@@ -110,6 +113,10 @@ def build_campaign(
         status=status,
         subject=subject,
         campaign_slot_id=campaign_slot_id,
+        body_html="<p>Body</p>",
+        content_ready=content_ready,
+        contacts_ready=contacts_ready,
+        review_ready=review_ready,
         created_at=now,
         updated_at=now,
     )
@@ -166,6 +173,7 @@ def build_dispatch_service(
     suppression_repository: InMemorySuppressionListRepository | None = None,
     campaign_slot_repository: InMemoryCampaignSlotRepository | None = None,
     preparation_service: FakePreparationService | None = None,
+    settings: Settings | None = None,
 ) -> CampaignDispatchService:
     selected_campaigns = [build_campaign()] if campaigns is None else campaigns
     selected_clients = [build_client()] if clients is None else clients
@@ -174,7 +182,8 @@ def build_dispatch_service(
         campaign_contacts={("client_123", "campaign_123", "contact_123")},
     )
     return CampaignDispatchService(
-        settings=Settings(
+        settings=settings
+        or Settings(
             email_sending_enabled_raw=email_sending_enabled_raw,
             environment=environment,
             email_provider=email_provider,
@@ -348,6 +357,280 @@ def test_disabled_campaign_send_does_not_call_listmonk() -> None:
     assert email_log_repository.list_by_campaign("campaign_123") == []
     assert fake_listmonk.created_campaign_payloads == []
     assert fake_listmonk.sent_campaign_ids == []
+
+
+def test_ses_send_blocked_when_email_sending_disabled() -> None:
+    fake_listmonk = FakeListmonkClient()
+    email_log_repository = InMemoryEmailLogRepository()
+    service = build_dispatch_service(
+        settings=Settings(
+            email_sending_enabled_raw="false",
+            email_provider="ses",
+            environment="development",
+            smtp_host="email-smtp.eu-west-1.amazonaws.com",
+            smtp_port=587,
+            smtp_username="dummy",
+            smtp_password="dummy",
+            smtp_tls_raw="true",
+            smtp_from_email="sender@example.test",
+            backend_public_url="https://sendwise.example.test",
+            real_send_allowed_recipients_raw="person@example.test",
+            real_send_max_recipients=1,
+        ),
+        fake_listmonk=fake_listmonk,
+        email_log_repository=email_log_repository,
+        preparation_service=FakePreparationService(content_ready=True),
+    )
+
+    result = service.send_campaign("campaign_123")
+
+    assert result["status"] == "blocked"
+    assert result["code"] == "email_sending_disabled"
+    assert result["provider"] == "ses"
+    assert result["listmonk_dispatched"] is False
+    assert email_log_repository.list_by_campaign("campaign_123") == []
+    assert fake_listmonk.sent_campaign_ids == []
+
+
+def test_ses_send_blocked_when_smtp_config_is_incomplete() -> None:
+    fake_listmonk = FakeListmonkClient()
+    email_log_repository = InMemoryEmailLogRepository()
+    service = build_dispatch_service(
+        settings=Settings(
+            email_sending_enabled_raw="true",
+            email_provider="ses",
+            environment="development",
+            smtp_host="",
+            smtp_port=587,
+            smtp_username="",
+            smtp_password="",
+            smtp_tls_raw="true",
+            smtp_from_email="sender@example.test",
+            backend_public_url="https://sendwise.example.test",
+            real_send_allowed_recipients_raw="person@example.test",
+            real_send_max_recipients=1,
+        ),
+        fake_listmonk=fake_listmonk,
+        email_log_repository=email_log_repository,
+        preparation_service=FakePreparationService(content_ready=True),
+    )
+
+    result = service.send_campaign("campaign_123")
+
+    assert result["status"] == "dispatch_blocked"
+    assert result["code"] == "ses_smtp_config_incomplete"
+    assert result["safety_checked"] is True
+    assert result["safety_passed"] is False
+    assert result["listmonk_prepared"] is False
+    assert result["listmonk_dispatched"] is False
+    assert email_log_repository.list_by_campaign("campaign_123") == []
+    assert fake_listmonk.sent_campaign_ids == []
+
+
+def test_ses_send_blocked_when_recipient_is_not_allowed() -> None:
+    fake_listmonk = FakeListmonkClient()
+    email_log_repository = InMemoryEmailLogRepository()
+    service = build_dispatch_service(
+        settings=Settings(
+            email_sending_enabled_raw="true",
+            email_provider="ses",
+            environment="development",
+            smtp_host="email-smtp.eu-west-1.amazonaws.com",
+            smtp_port=587,
+            smtp_username="dummy",
+            smtp_password="dummy",
+            smtp_tls_raw="true",
+            smtp_from_email="sender@example.test",
+            backend_public_url="https://sendwise.example.test",
+            real_send_allowed_recipients_raw="allowed@example.test",
+            real_send_max_recipients=1,
+        ),
+        fake_listmonk=fake_listmonk,
+        email_log_repository=email_log_repository,
+        preparation_service=FakePreparationService(content_ready=True),
+    )
+
+    result = service.send_campaign("campaign_123")
+
+    assert result["status"] == "dispatch_blocked"
+    assert result["code"] == "real_send_recipient_not_allowed"
+    assert result["allowed_recipients_checked"] is True
+    assert result["listmonk_dispatched"] is False
+    assert email_log_repository.list_by_campaign("campaign_123") == []
+    assert fake_listmonk.sent_campaign_ids == []
+
+
+def test_ses_send_blocked_when_eligible_count_exceeds_real_send_max() -> None:
+    fake_listmonk = FakeListmonkClient()
+    email_log_repository = InMemoryEmailLogRepository()
+    contact_repository = InMemoryContactRepository(
+        contacts=[
+            build_contact(contact_id="contact_1", email="one@example.test"),
+            build_contact(contact_id="contact_2", email="two@example.test"),
+        ],
+        campaign_contacts={
+            ("client_123", "campaign_123", "contact_1"),
+            ("client_123", "campaign_123", "contact_2"),
+        },
+    )
+    service = build_dispatch_service(
+        settings=Settings(
+            email_sending_enabled_raw="true",
+            email_provider="ses",
+            environment="development",
+            smtp_host="email-smtp.eu-west-1.amazonaws.com",
+            smtp_port=587,
+            smtp_username="dummy",
+            smtp_password="dummy",
+            smtp_tls_raw="true",
+            smtp_from_email="sender@example.test",
+            backend_public_url="https://sendwise.example.test",
+            real_send_allowed_recipients_raw="one@example.test,two@example.test",
+            real_send_max_recipients=1,
+        ),
+        fake_listmonk=fake_listmonk,
+        contact_repository=contact_repository,
+        email_log_repository=email_log_repository,
+        preparation_service=FakePreparationService(content_ready=True),
+    )
+
+    result = service.send_campaign("campaign_123")
+
+    assert result["status"] == "dispatch_blocked"
+    assert result["code"] == "real_send_max_recipients_exceeded"
+    assert result["eligible_contact_count"] == 2
+    assert result["max_real_send_recipients"] == 1
+    assert result["listmonk_dispatched"] is False
+    assert email_log_repository.list_by_campaign("campaign_123") == []
+    assert fake_listmonk.sent_campaign_ids == []
+
+
+def test_ses_send_blocked_when_unsubscribe_public_url_is_not_ready() -> None:
+    fake_listmonk = FakeListmonkClient()
+    email_log_repository = InMemoryEmailLogRepository()
+    service = build_dispatch_service(
+        settings=Settings(
+            email_sending_enabled_raw="true",
+            email_provider="ses",
+            environment="development",
+            smtp_host="email-smtp.eu-west-1.amazonaws.com",
+            smtp_port=587,
+            smtp_username="dummy",
+            smtp_password="dummy",
+            smtp_tls_raw="true",
+            smtp_from_email="sender@example.test",
+            backend_public_url="http://localhost:8000",
+            real_send_allowed_recipients_raw="person@example.test",
+            real_send_max_recipients=1,
+        ),
+        fake_listmonk=fake_listmonk,
+        email_log_repository=email_log_repository,
+        preparation_service=FakePreparationService(content_ready=True),
+    )
+
+    result = service.send_campaign("campaign_123")
+
+    assert result["status"] == "dispatch_blocked"
+    assert result["code"] == "unsubscribe_public_url_not_ready"
+    assert result["unsubscribe_ready"] is False
+    assert result["listmonk_prepared"] is False
+    assert result["listmonk_dispatched"] is False
+    assert email_log_repository.list_by_campaign("campaign_123") == []
+    assert fake_listmonk.sent_campaign_ids == []
+
+
+def test_ses_send_blocked_when_prepared_unsubscribe_link_is_missing() -> None:
+    fake_listmonk = FakeListmonkClient()
+    email_log_repository = InMemoryEmailLogRepository()
+    service = build_dispatch_service(
+        settings=Settings(
+            email_sending_enabled_raw="true",
+            email_provider="ses",
+            environment="development",
+            smtp_host="email-smtp.eu-west-1.amazonaws.com",
+            smtp_port=587,
+            smtp_username="dummy",
+            smtp_password="dummy",
+            smtp_tls_raw="true",
+            smtp_from_email="sender@example.test",
+            backend_public_url="https://sendwise.example.test",
+            real_send_allowed_recipients_raw="person@example.test",
+            real_send_max_recipients=1,
+        ),
+        fake_listmonk=fake_listmonk,
+        email_log_repository=email_log_repository,
+        preparation_service=FakePreparationService(content_ready=True),
+    )
+
+    result = service.send_campaign("campaign_123")
+
+    assert result["status"] == "dispatch_blocked"
+    assert result["code"] == "unsubscribe_not_ready"
+    assert result["listmonk_prepared"] is True
+    assert result["listmonk_dispatched"] is False
+    assert email_log_repository.list_by_campaign("campaign_123") == []
+    assert fake_listmonk.sent_campaign_ids == []
+
+
+def test_ses_send_allowed_only_after_safety_gate_passes() -> None:
+    fake_listmonk = FakeListmonkClient()
+    email_log_repository = InMemoryEmailLogRepository()
+
+    class SesReadyPreparationService(FakePreparationService):
+        def prepare_campaign(
+            self,
+            campaign_id: str,
+            _current_user: AuthenticatedUser | None = None,
+        ) -> dict[str, Any]:
+            prepared = super().prepare_campaign(campaign_id, _current_user)
+            unsubscribe_url = "https://sendwise.example.test/unsubscribe/token?campaign_id=campaign_123"
+            prepared["content"]["unsubscribe_url"] = unsubscribe_url
+            prepared["content"]["body"] = (
+                "<html><body><p>Body</p>"
+                f'<a href="{unsubscribe_url}">unsubscribe</a>'
+                "</body></html>"
+            )
+            return prepared
+
+    service = build_dispatch_service(
+        settings=Settings(
+            email_sending_enabled_raw="true",
+            email_provider="ses",
+            environment="development",
+            smtp_host="email-smtp.eu-west-1.amazonaws.com",
+            smtp_port=587,
+            smtp_username="dummy",
+            smtp_password="dummy",
+            smtp_tls_raw="true",
+            smtp_from_email="sender@example.test",
+            backend_public_url="https://sendwise.example.test",
+            real_send_allowed_recipients_raw="person@example.test",
+            real_send_max_recipients=1,
+        ),
+        fake_listmonk=fake_listmonk,
+        email_log_repository=email_log_repository,
+        preparation_service=SesReadyPreparationService(content_ready=True),
+    )
+
+    result = service.send_campaign("campaign_123")
+
+    assert result["status"] == "queued"
+    assert result["provider"] == "ses"
+    assert result["safety_checked"] is True
+    assert result["safety_passed"] is True
+    assert result["allowed_recipients_checked"] is True
+    assert result["eligible_contact_count"] == 1
+    assert result["max_real_send_recipients"] == 1
+    assert result["listmonk_dispatched"] is True
+    assert result["real_send_attempted"] is True
+    assert result["email_logs_created"] == 1
+    assert result["unsubscribe_ready"] is True
+    assert result["provider_events_ready"] is True
+    assert fake_listmonk.sent_campaign_ids == ["lm_1"]
+    logs = email_log_repository.list_by_campaign("campaign_123")
+    assert [log.status for log in logs] == ["queued"]
+    assert logs[0].provider_message_id is None
+    assert "unsubscribe" in (logs[0].body or "")
 
 
 def test_production_runtime_blocks_controlled_dispatch_before_listmonk() -> None:

@@ -66,6 +66,7 @@ done
 check_file .env.example
 check_file docker-compose.yml
 check_file docker-compose.dev.yml
+check_file scripts/validate_ses_readiness.sh
 check_file backend/app/api/health.py
 check_file backend/app/schemas/clients.py
 check_file backend/app/schemas/campaigns.py
@@ -91,6 +92,20 @@ else
   echo "OK EMAIL_PROVIDER defaults to mailpit"
 fi
 
+if grep -q '^EMAIL_SENDING_ENABLED=true$' .env.example docker-compose.yml docker-compose.dev.yml; then
+  echo "FAIL versioned config must not enable real sending by default"
+  failures=$((failures + 1))
+else
+  echo "OK versioned config keeps real sending disabled by default"
+fi
+
+if ! grep -q '^REAL_SEND_MAX_RECIPIENTS=3$' .env.example; then
+  echo "FAIL .env.example must cap SES controlled send recipients at 3"
+  failures=$((failures + 1))
+else
+  echo "OK SES controlled send recipient cap defaults to 3"
+fi
+
 if grep -q '5432:5432' docker-compose.yml; then
   echo "FAIL docker-compose.yml must not expose PostgreSQL publicly"
   failures=$((failures + 1))
@@ -98,11 +113,11 @@ else
   echo "OK PostgreSQL is not publicly exposed"
 fi
 
-if grep -qi 'mailpit' docker-compose.yml; then
-  echo "FAIL Mailpit must not be in production docker-compose.yml"
+if grep -Eqi 'image:.*mailpit|^[[:space:]]+mailpit:' docker-compose.yml; then
+  echo "FAIL Mailpit service/image must not be in production docker-compose.yml"
   failures=$((failures + 1))
 else
-  echo "OK Mailpit absent from production compose"
+  echo "OK Mailpit service absent from production compose"
 fi
 
 if ! grep -qi 'mailpit' docker-compose.dev.yml; then

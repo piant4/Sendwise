@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from typing import Any
+from urllib.parse import urlsplit
 
 from fastapi import HTTPException, status
 
@@ -1095,6 +1096,21 @@ class CampaignDispatchService:
                 code="controlled_runtime_required",
             )
 
+        safety_result = self._evaluate_real_send_safety(
+            provider=runtime_provider,
+            campaign=campaign,
+            contacts=contacts,
+            guard_result=guard_result,
+            preparation=None,
+        )
+        if not safety_result["safety_passed"]:
+            return self._safety_failed_response(
+                campaign_id=campaign_id,
+                client_id=campaign.client_id,
+                guard_result=guard_result,
+                safety_result=safety_result,
+            )
+
         if self.campaign_preparation_service is None:
             return self._diagnostic_response(
                 campaign_id=campaign_id,
@@ -1148,6 +1164,23 @@ class CampaignDispatchService:
                 code="content_not_ready",
                 content_ready=False,
                 preparation=preparation,
+            )
+
+        safety_result = self._evaluate_real_send_safety(
+            provider=runtime_provider,
+            campaign=campaign,
+            contacts=contacts,
+            guard_result=guard_result,
+            preparation=preparation,
+        )
+        if not safety_result["safety_passed"]:
+            return self._safety_failed_response(
+                campaign_id=campaign_id,
+                client_id=campaign.client_id,
+                guard_result=guard_result,
+                safety_result=safety_result,
+                preparation=preparation,
+                content_ready=True,
             )
 
         mapping = mapping_service.get_mapping(
@@ -1239,7 +1272,11 @@ class CampaignDispatchService:
             "reason": guard_result.reason,
             "code": guard_result.code,
             "severity": guard_result.severity,
+            "safety_checked": True,
+            "safety_passed": True,
+            "allowed_recipients_checked": safety_result["allowed_recipients_checked"],
             "eligible_contact_count": guard_result.eligible_contact_count,
+            "max_real_send_recipients": safety_result["max_real_send_recipients"],
             "blocked_contact_count": guard_result.blocked_contact_count,
             "blocked_reasons": dict(guard_result.blocked_reasons or {}),
             "diagnostic": guard_result.diagnostic,
@@ -1251,6 +1288,8 @@ class CampaignDispatchService:
             "listmonk_prepared": True,
             "listmonk_dispatched": True,
             "content_ready": True,
+            "unsubscribe_ready": safety_result["unsubscribe_ready"],
+            "provider_events_ready": True,
             "email_logs_created": len(logs),
             "email_logs_updated": 0,
             "listmonk_mapping": {
@@ -1328,16 +1367,250 @@ class CampaignDispatchService:
 
     def _resolve_controlled_provider(self) -> str | None:
         environment = self.settings.environment.strip().lower()
-        email_provider = self.settings.email_provider.strip().lower()
+        email_provider = self.settings.email_provider_normalized
         allowed_environments = {"development", "staging", "test"}
-        allowed_providers = {"mailpit", "smtp_dev"}
+        allowed_providers = {"mailpit", "smtp_dev", "ses"}
 
         if environment not in allowed_environments:
             return None
         if email_provider not in allowed_providers:
             return None
 
+        if email_provider == "ses":
+            return "ses"
         return "mailpit"
+
+    def _evaluate_real_send_safety(
+        self,
+        *,
+        provider: str,
+        campaign: ClientCampaignRecord,
+        contacts: list[ContactRecord],
+        guard_result: GuardResult,
+        preparation: dict[str, Any] | None,
+    ) -> dict[str, Any]:
+        if provider != "ses":
+            return self._safety_result(
+                provider=provider,
+                safety_passed=True,
+                code="mailpit_controlled_dispatch",
+                reason="Mailpit controlled dispatch does not require SES safety gates.",
+                eligible_contact_count=guard_result.eligible_contact_count,
+                max_real_send_recipients=self.settings.real_send_max_recipients,
+                allowed_recipients_checked=False,
+                unsubscribe_ready=True,
+            )
+
+        checks = [
+            self._check_real_send_environment(),
+            self._check_ses_smtp_config(),
+            self._check_backend_public_url(),
+            self._check_campaign_review_ready(campaign),
+            self._check_real_send_recipient_limit(guard_result.eligible_contact_count),
+            self._check_allowed_recipients(contacts),
+        ]
+        if preparation is not None:
+            checks.append(self._check_unsubscribe_ready(preparation))
+
+        for check in checks:
+            if not check["passed"]:
+                return self._safety_result(
+                    provider=provider,
+                    safety_passed=False,
+                    code=str(check["code"]),
+                    reason=str(check["reason"]),
+                    eligible_contact_count=guard_result.eligible_contact_count,
+                    max_real_send_recipients=self.settings.real_send_max_recipients,
+                    allowed_recipients_checked=bool(check.get("allowed_recipients_checked", True)),
+                    unsubscribe_ready=bool(check.get("unsubscribe_ready", False)),
+                )
+
+        return self._safety_result(
+            provider=provider,
+            safety_passed=True,
+            code="ses_safety_passed",
+            reason="SES controlled-send safety gate passed.",
+            eligible_contact_count=guard_result.eligible_contact_count,
+            max_real_send_recipients=self.settings.real_send_max_recipients,
+            allowed_recipients_checked=True,
+            unsubscribe_ready=preparation is None or self._unsubscribe_ready(preparation),
+        )
+
+    def _check_real_send_environment(self) -> dict[str, Any]:
+        environment = self.settings.environment.strip().lower()
+        if environment not in self.settings.real_send_environments:
+            return {
+                "passed": False,
+                "code": "real_send_environment_not_allowed",
+                "reason": "SES controlled send is not allowed in this runtime environment.",
+            }
+        return {"passed": True}
+
+    def _check_ses_smtp_config(self) -> dict[str, Any]:
+        missing = []
+        if not self.settings.smtp_host.strip():
+            missing.append("SMTP_HOST")
+        if self.settings.smtp_port <= 0:
+            missing.append("SMTP_PORT")
+        if not self.settings.smtp_username.strip():
+            missing.append("SMTP_USERNAME")
+        if not self.settings.smtp_password.strip():
+            missing.append("SMTP_PASSWORD")
+        if not self.settings.smtp_from_email.strip():
+            missing.append("SMTP_FROM_EMAIL")
+        if not self.settings.smtp_tls:
+            missing.append("SMTP_TLS=true")
+        if missing:
+            return {
+                "passed": False,
+                "code": "ses_smtp_config_incomplete",
+                "reason": f"SES SMTP config is incomplete: {', '.join(missing)}.",
+            }
+        return {"passed": True}
+
+    def _check_backend_public_url(self) -> dict[str, Any]:
+        parsed = urlsplit(self.settings.backend_public_url.strip())
+        blocked_hosts = {"localhost", "127.0.0.1", "0.0.0.0", "backend"}
+        if (
+            parsed.scheme not in {"http", "https"}
+            or not parsed.netloc
+            or (parsed.hostname or "").lower() in blocked_hosts
+        ):
+            return {
+                "passed": False,
+                "code": "unsubscribe_public_url_not_ready",
+                "reason": "BACKEND_PUBLIC_URL must be a reachable public URL for SES unsubscribe links.",
+                "unsubscribe_ready": False,
+            }
+        return {"passed": True, "unsubscribe_ready": True}
+
+    def _check_campaign_review_ready(
+        self,
+        campaign: ClientCampaignRecord,
+    ) -> dict[str, Any]:
+        if not campaign.content_ready or not campaign.contacts_ready or not campaign.review_ready:
+            return {
+                "passed": False,
+                "code": "campaign_review_not_ready",
+                "reason": "SES controlled send requires content_ready, contacts_ready, and review_ready.",
+            }
+        return {"passed": True}
+
+    def _check_real_send_recipient_limit(self, eligible_contact_count: int) -> dict[str, Any]:
+        if eligible_contact_count > self.settings.real_send_max_recipients:
+            return {
+                "passed": False,
+                "code": "real_send_max_recipients_exceeded",
+                "reason": "Eligible contact count exceeds REAL_SEND_MAX_RECIPIENTS.",
+            }
+        return {"passed": True}
+
+    def _check_allowed_recipients(self, contacts: list[ContactRecord]) -> dict[str, Any]:
+        allowed_recipients = self.settings.real_send_allowed_recipients
+        if self.settings.real_send_require_allowed_recipients and not allowed_recipients:
+            return {
+                "passed": False,
+                "code": "real_send_allowed_recipients_missing",
+                "reason": "REAL_SEND_ALLOWED_RECIPIENTS is required for SES controlled send.",
+                "allowed_recipients_checked": True,
+            }
+        unauthorized = [
+            contact.email
+            for contact in contacts
+            if contact.email.strip().lower() not in allowed_recipients
+        ]
+        if unauthorized:
+            return {
+                "passed": False,
+                "code": "real_send_recipient_not_allowed",
+                "reason": "SES controlled send includes recipients outside REAL_SEND_ALLOWED_RECIPIENTS.",
+                "allowed_recipients_checked": True,
+            }
+        return {"passed": True, "allowed_recipients_checked": True}
+
+    def _check_unsubscribe_ready(self, preparation: dict[str, Any]) -> dict[str, Any]:
+        if not self._unsubscribe_ready(preparation):
+            return {
+                "passed": False,
+                "code": "unsubscribe_not_ready",
+                "reason": "Prepared SES campaign content does not include a real unsubscribe URL.",
+                "unsubscribe_ready": False,
+            }
+        return {"passed": True, "unsubscribe_ready": True}
+
+    def _unsubscribe_ready(self, preparation: dict[str, Any]) -> bool:
+        content = preparation.get("content")
+        if not isinstance(content, dict):
+            return False
+        unsubscribe_url = str(content.get("unsubscribe_url") or "").strip()
+        body = str(content.get("body") or "")
+        parsed = urlsplit(unsubscribe_url)
+        return (
+            parsed.scheme in {"http", "https"}
+            and bool(parsed.netloc)
+            and "/unsubscribe/" in parsed.path
+            and unsubscribe_url in body
+        )
+
+    def _safety_result(
+        self,
+        *,
+        provider: str,
+        safety_passed: bool,
+        code: str,
+        reason: str,
+        eligible_contact_count: int,
+        max_real_send_recipients: int,
+        allowed_recipients_checked: bool,
+        unsubscribe_ready: bool,
+    ) -> dict[str, Any]:
+        return {
+            "provider": provider,
+            "safety_checked": True,
+            "safety_passed": safety_passed,
+            "code": code,
+            "reason": reason,
+            "eligible_contact_count": eligible_contact_count,
+            "max_real_send_recipients": max_real_send_recipients,
+            "allowed_recipients_checked": allowed_recipients_checked,
+            "unsubscribe_ready": unsubscribe_ready,
+            "provider_events_ready": True,
+        }
+
+    def _safety_failed_response(
+        self,
+        *,
+        campaign_id: str,
+        client_id: str,
+        guard_result: GuardResult,
+        safety_result: dict[str, Any],
+        preparation: dict[str, Any] | None = None,
+        content_ready: bool = False,
+    ) -> dict[str, Any]:
+        response = self._diagnostic_response(
+            campaign_id=campaign_id,
+            decision=guard_result,
+            reason=str(safety_result["reason"]),
+            client_id=client_id,
+            code=str(safety_result["code"]),
+            severity="critical",
+            content_ready=content_ready,
+            preparation=preparation,
+        )
+        response.update(
+            {
+                "provider": safety_result["provider"],
+                "safety_checked": True,
+                "safety_passed": False,
+                "allowed_recipients_checked": safety_result[
+                    "allowed_recipients_checked"
+                ],
+                "max_real_send_recipients": safety_result["max_real_send_recipients"],
+                "unsubscribe_ready": safety_result["unsubscribe_ready"],
+                "provider_events_ready": safety_result["provider_events_ready"],
+            }
+        )
+        return response
 
     def _blocked_response(
         self,
@@ -1370,7 +1643,11 @@ class CampaignDispatchService:
             "reason": guard_result.reason,
             "code": guard_result.code,
             "severity": guard_result.severity,
+            "safety_checked": True,
+            "safety_passed": False,
+            "allowed_recipients_checked": False,
             "eligible_contact_count": guard_result.eligible_contact_count,
+            "max_real_send_recipients": self.settings.real_send_max_recipients,
             "blocked_contact_count": guard_result.blocked_contact_count,
             "blocked_reasons": dict(guard_result.blocked_reasons or {}),
             "diagnostic": guard_result.diagnostic,
@@ -1382,6 +1659,8 @@ class CampaignDispatchService:
             "listmonk_prepared": False,
             "listmonk_dispatched": False,
             "content_ready": False,
+            "unsubscribe_ready": False,
+            "provider_events_ready": True,
             "email_logs_created": 0,
             "email_logs_updated": 0,
         }

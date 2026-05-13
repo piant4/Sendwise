@@ -2207,3 +2207,26 @@ Scope confirmation:
 - No DB migration was implemented.
 - No `client_access` persistence was implemented.
 - No Clerk invitation API, admin invite flow, onboarding endpoint, public signup, custom password form, custom 2FA, real listmonk, real sending, AI, n8n, Celery, Keycloak, Metabase, Postal, Rspamd, or Budibase was implemented.
+
+## Milestone 12 Safety Implementation - SES Controlled Send
+
+Date: 2026-05-13
+Branch: develop
+
+Verified state:
+- Added SES controlled-send safety configuration while keeping repository defaults fail-closed: `EMAIL_SENDING_ENABLED=false` and `EMAIL_PROVIDER=mailpit`.
+- Added backend SES safety gate before listmonk dispatch for runtime environment, SES SMTP completeness, public unsubscribe URL, review readiness, allowed recipients, recipient max, and prepared unsubscribe link.
+- Added admin send response diagnostics for provider, safety checks, recipient counts, listmonk dispatch, real-send attempt, email log creation, unsubscribe readiness, and provider event readiness.
+- Added `scripts/validate_ses_readiness.sh` and `docs/runbook_ses_controlled_send.md` for dev/staging live-test preparation without printing or committing secrets.
+
+Known limits:
+- SES live send was not validated in this implementation pass because local SES credentials and an authorized live recipient were not provided.
+- SES SNS signature verification remains a follow-up.
+- No frontend, AI, worker, production mass-send, or provider-event expansion was implemented.
+
+Checks referenced:
+- Backend SES safety tests are in `backend/tests/test_campaign_dispatch.py`.
+- Full command results are reported in the Milestone 12 completion response for this task.
+
+Scope confirmation:
+- No secrets, local env files, frontend files, auth flow, n8n, AI, worker, or dashboard UI were changed.

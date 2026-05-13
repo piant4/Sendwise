@@ -129,6 +129,8 @@ Admin-managed contract notes:
 - admin may assign `campaign_slot_id`, save content, associate/import contacts, request review, simulate, and send
 - Guard remains mandatory for simulation and real dispatch
 - `EMAIL_SENDING_ENABLED` remains the real-dispatch kill switch
+- `EMAIL_PROVIDER=ses` adds a backend safety gate requiring explicit dev/staging runtime, complete SES SMTP env, public unsubscribe URL, review readiness, allowed recipients, and recipient max before listmonk dispatch
+- controlled send responses include provider and safety diagnostics such as `safety_checked`, `safety_passed`, `allowed_recipients_checked`, `eligible_contact_count`, `max_real_send_recipients`, `listmonk_dispatched`, `real_send_attempted`, `email_logs_created`, `unsubscribe_ready`, and `provider_events_ready`
 - listmonk remains a technical engine only
 
 ## Client Read-Only Campaign API Contract

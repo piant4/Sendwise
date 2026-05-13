@@ -36,6 +36,24 @@ class Settings(BaseModel):
         default_factory=lambda: getenv("EMAIL_SENDING_ENABLED", "false")
     )
     email_provider: str = Field(default_factory=lambda: getenv("EMAIL_PROVIDER", "mailpit"))
+    real_send_allowed_recipients_raw: str = Field(
+        default_factory=lambda: getenv("REAL_SEND_ALLOWED_RECIPIENTS", "")
+    )
+    real_send_require_allowed_recipients_raw: str = Field(
+        default_factory=lambda: getenv("REAL_SEND_REQUIRE_ALLOWED_RECIPIENTS", "true")
+    )
+    real_send_max_recipients: int = Field(
+        default_factory=lambda: int(getenv("REAL_SEND_MAX_RECIPIENTS", "3"))
+    )
+    real_send_environments_raw: str = Field(
+        default_factory=lambda: getenv(
+            "REAL_SEND_ENVIRONMENTS",
+            "development,staging,test",
+        )
+    )
+    real_send_confirmation_token: str = Field(
+        default_factory=lambda: getenv("REAL_SEND_CONFIRMATION_TOKEN", "")
+    )
     listmonk_url: str = Field(
         default_factory=lambda: getenv("LISTMONK_URL", "http://listmonk:9000")
     )
@@ -50,6 +68,10 @@ class Settings(BaseModel):
     smtp_password: str = Field(default_factory=lambda: getenv("SMTP_PASSWORD", ""))
     smtp_tls_raw: str = Field(default_factory=lambda: getenv("SMTP_TLS", "false"))
     smtp_from_email: str = Field(default_factory=lambda: getenv("SMTP_FROM_EMAIL", ""))
+    aws_ses_region: str = Field(default_factory=lambda: getenv("AWS_SES_REGION", ""))
+    ses_configuration_set: str = Field(
+        default_factory=lambda: getenv("SES_CONFIGURATION_SET", "")
+    )
     frontend_url: str = Field(
         default_factory=lambda: getenv("FRONTEND_URL", "http://localhost:3000")
     )
@@ -71,8 +93,32 @@ class Settings(BaseModel):
         return self.email_sending_enabled_raw == "true"
 
     @property
+    def email_provider_normalized(self) -> str:
+        return self.email_provider.strip().lower()
+
+    @property
     def smtp_tls(self) -> bool:
         return self.smtp_tls_raw == "true"
+
+    @property
+    def real_send_allowed_recipients(self) -> set[str]:
+        return {
+            email.strip().lower()
+            for email in self.real_send_allowed_recipients_raw.split(",")
+            if email.strip()
+        }
+
+    @property
+    def real_send_require_allowed_recipients(self) -> bool:
+        return self.real_send_require_allowed_recipients_raw.strip().lower() == "true"
+
+    @property
+    def real_send_environments(self) -> set[str]:
+        return {
+            environment.strip().lower()
+            for environment in self.real_send_environments_raw.split(",")
+            if environment.strip()
+        }
 
     @property
     def clerk_audience(self) -> Optional[Union[str, List[str]]]:

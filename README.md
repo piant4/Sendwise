@@ -163,12 +163,20 @@ Expected response:
 Sendwise is conservative by default:
 
 - `EMAIL_SENDING_ENABLED=false` in `.env.example`.
+- `EMAIL_PROVIDER=mailpit` in `.env.example`; SES is never the default.
+- SES controlled send requires explicit runtime overrides plus `REAL_SEND_ALLOWED_RECIPIENTS` and `REAL_SEND_MAX_RECIPIENTS`.
 - Only the exact string `"true"` may enable future send logic.
 - PostgreSQL is not publicly exposed in the production compose file.
 - Mailpit is excluded from the production compose file.
 - listmonk admin access must be protected before production use.
 - Client data must be isolated by `client_id`.
 - No email may be sent without backend authorization.
+
+### SES controlled send
+
+Milestone 12 adds a dev/staging SES controlled-send gate for 1-3 explicitly allowed recipients. It remains fail-closed unless `EMAIL_SENDING_ENABLED=true`, `EMAIL_PROVIDER=ses`, SES SMTP env is complete, `BACKEND_PUBLIC_URL` is public, Guard authorizes the campaign, and every eligible recipient is listed in `REAL_SEND_ALLOWED_RECIPIENTS`.
+
+Use `docs/runbook_ses_controlled_send.md` and `scripts/validate_ses_readiness.sh` before any SES live test. Do not commit SMTP credentials, AWS secrets, or real recipient allowlists.
 
 ## 📚 Documentation
 

@@ -34,7 +34,12 @@ services:
       CLERK_API_BASE_URL: ${CLERK_API_BASE_URL:-https://api.clerk.com/v1}
       AUTH_USER_MAPPINGS_JSON: ${AUTH_USER_MAPPINGS_JSON:-{"user_clerk_admin_id":{"email":"platform-admin@example.com","access_type":"platform_admin","status":"active"}}}
       EMAIL_SENDING_ENABLED: ${EMAIL_SENDING_ENABLED:-false}
-      EMAIL_PROVIDER: ${EMAIL_PROVIDER:-smtp_dev}
+      EMAIL_PROVIDER: ${EMAIL_PROVIDER:-mailpit}
+      REAL_SEND_ALLOWED_RECIPIENTS: ${REAL_SEND_ALLOWED_RECIPIENTS:-}
+      REAL_SEND_REQUIRE_ALLOWED_RECIPIENTS: ${REAL_SEND_REQUIRE_ALLOWED_RECIPIENTS:-true}
+      REAL_SEND_MAX_RECIPIENTS: ${REAL_SEND_MAX_RECIPIENTS:-3}
+      REAL_SEND_ENVIRONMENTS: ${REAL_SEND_ENVIRONMENTS:-development,staging,test}
+      REAL_SEND_CONFIRMATION_TOKEN: ${REAL_SEND_CONFIRMATION_TOKEN:-}
       LISTMONK_URL: ${LISTMONK_URL:-http://listmonk:9000}
       LISTMONK_USERNAME: ${LISTMONK_USERNAME:-admin}
       LISTMONK_PASSWORD: ${LISTMONK_PASSWORD:-change_me}
@@ -45,7 +50,10 @@ services:
       SMTP_PASSWORD: ${SMTP_PASSWORD:-}
       SMTP_TLS: ${SMTP_TLS:-false}
       SMTP_FROM_EMAIL: ${SMTP_FROM_EMAIL:-}
+      AWS_SES_REGION: ${AWS_SES_REGION:-}
+      SES_CONFIGURATION_SET: ${SES_CONFIGURATION_SET:-}
       FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
+      BACKEND_PUBLIC_URL: ${BACKEND_PUBLIC_URL:-http://localhost:8000}
     ports:
       - "8000:8000"
     depends_on:

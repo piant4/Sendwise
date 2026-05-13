@@ -1643,7 +1643,12 @@ def test_platform_admin_can_read_safe_system_status_without_secret_values(
     )
     monkeypatch.setenv("ENVIRONMENT", "staging")
     monkeypatch.setenv("EMAIL_SENDING_ENABLED", "true")
+    monkeypatch.setenv("EMAIL_PROVIDER", "ses")
     monkeypatch.setenv("CLERK_SECRET_KEY", "super-secret-clerk-value")
+    monkeypatch.setenv("SMTP_HOST", "smtp.secret.example")
+    monkeypatch.setenv("SMTP_USERNAME", "smtp-user-secret")
+    monkeypatch.setenv("SMTP_PASSWORD", "smtp-password-secret")
+    monkeypatch.setenv("AWS_SES_REGION", "eu-west-1")
     get_settings.cache_clear()
     install_test_dependencies()
     token = make_token(signing_keypair, clerk_user_id="user_admin")
@@ -1655,6 +1660,21 @@ def test_platform_admin_can_read_safe_system_status_without_secret_values(
     assert payload["api_status"] == "ok"
     assert payload["db_status"] == "ok"
     assert payload["email_sending_enabled"] is True
+    assert payload["email_provider"] == "ses"
+    assert payload["provider_mode_label"] == "SES configured but live validation pending"
+    assert payload["real_send_available"] is False
+    assert payload["ses_live_validation_status"] == "pending"
+    assert payload["provider_events_available"] is False
+    assert payload["mailpit_dev_mode"] is False
+    assert payload["runtime"] == {
+        "email_sending_enabled": True,
+        "email_provider": "ses",
+        "provider_mode_label": "SES configured but live validation pending",
+        "real_send_available": False,
+        "ses_live_validation_status": "pending",
+        "provider_events_available": False,
+        "mailpit_dev_mode": False,
+    }
     assert payload["environment"] == "staging"
     assert payload["auth_provider_configured"] is True
     assert payload["clerk_management_api_configured"] is True
@@ -1662,6 +1682,10 @@ def test_platform_admin_can_read_safe_system_status_without_secret_values(
     assert payload["delivery_engine_configured"] is True
     assert "generated_at" in payload
     assert "super-secret-clerk-value" not in response.text
+    assert "smtp.secret.example" not in response.text
+    assert "smtp-user-secret" not in response.text
+    assert "smtp-password-secret" not in response.text
+    assert "eu-west-1" not in response.text
     assert "CLERK_SECRET_KEY" not in response.text
     assert "DATABASE_URL" not in response.text
     assert "POSTGRES_PASSWORD" not in response.text

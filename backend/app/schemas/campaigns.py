@@ -209,6 +209,16 @@ class CampaignLogsSummary(BaseModel):
     provider_events_available: bool = False
 
 
+class ProviderRuntimeSummary(BaseModel):
+    email_sending_enabled: bool
+    email_provider: str
+    provider_mode_label: str
+    real_send_available: bool = False
+    ses_live_validation_status: Optional[str] = None
+    provider_events_available: bool = False
+    mailpit_dev_mode: bool = False
+
+
 class CampaignBlockedSendsSummary(BaseModel):
     total: int
     latest: list[BlockedSend]
@@ -219,6 +229,7 @@ class CampaignReadModel(BaseModel):
     slot: CampaignSlotSummary
     recipients: CampaignRecipientsSummary
     logs: CampaignLogsSummary
+    runtime: ProviderRuntimeSummary
     blocked_sends: CampaignBlockedSendsSummary
 
 

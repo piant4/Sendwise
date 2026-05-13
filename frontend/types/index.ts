@@ -194,6 +194,13 @@ export interface AdminSystemStatus {
   apiStatus: "ok";
   dbStatus: "ok" | "degraded";
   emailSendingEnabled: boolean;
+  emailProvider: string;
+  providerModeLabel: string;
+  realSendAvailable: boolean;
+  sesLiveValidationStatus?: "pending" | null;
+  providerEventsAvailable: boolean;
+  mailpitDevMode: boolean;
+  runtime: ProviderRuntimeSummary;
   environment: string;
   authProviderConfigured: boolean;
   clerkManagementApiConfigured: boolean;
@@ -329,6 +336,16 @@ export interface CampaignLogsSummary {
   providerEventsAvailable: boolean;
 }
 
+export interface ProviderRuntimeSummary {
+  emailSendingEnabled: boolean;
+  emailProvider: string;
+  providerModeLabel: string;
+  realSendAvailable: boolean;
+  sesLiveValidationStatus?: "pending" | null;
+  providerEventsAvailable: boolean;
+  mailpitDevMode: boolean;
+}
+
 export interface CampaignBlockedSendsSummary {
   total: number;
   latest: BlockedSend[];
@@ -339,6 +356,7 @@ export interface CampaignReadModel {
   slot: CampaignSlotSummary;
   recipients: CampaignRecipientsSummary;
   logs: CampaignLogsSummary;
+  runtime: ProviderRuntimeSummary;
   blockedSends: CampaignBlockedSendsSummary;
 }
 

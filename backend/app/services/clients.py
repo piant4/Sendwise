@@ -77,6 +77,7 @@ from app.schemas.campaigns import (
 )
 from app.schemas.common import CampaignStatus
 from app.schemas.usage import ApiUsage
+from app.services.provider_runtime import build_provider_runtime_summary
 
 ACTIVE_CAMPAIGN_STATUSES = {CampaignStatus.ready.value, CampaignStatus.running.value}
 RUNNING_CAMPAIGN_STATUSES = {CampaignStatus.running.value}
@@ -789,10 +790,18 @@ class ClientsService:
         auth_provider_configured = bool(
             self._settings.clerk_issuer.strip() and self._settings.clerk_jwks_url.strip()
         )
+        runtime = build_provider_runtime_summary(self._settings)
         return AdminSystemStatus(
             api_status="ok",
             db_status="ok" if self._repository.is_database_available() else "degraded",
             email_sending_enabled=self._settings.email_sending_enabled,
+            email_provider=runtime.email_provider,
+            provider_mode_label=runtime.provider_mode_label,
+            real_send_available=runtime.real_send_available,
+            ses_live_validation_status=runtime.ses_live_validation_status,
+            provider_events_available=runtime.provider_events_available,
+            mailpit_dev_mode=runtime.mailpit_dev_mode,
+            runtime=runtime,
             environment=self._settings.environment.strip() or "unknown",
             auth_provider_configured=auth_provider_configured,
             clerk_management_api_configured=bool(self._settings.clerk_secret_key.strip()),
@@ -867,6 +876,10 @@ class ClientsService:
                 slot_id=campaign.campaign_slot_id,
             )
 
+        logs = self._build_campaign_logs_summary(
+            client_id=client_id,
+            campaign_id=campaign_id,
+        )
         return ClientCampaignDetailResponse(
             campaign=CampaignSummaryItem(
                 id=campaign.id,
@@ -890,9 +903,10 @@ class ClientsService:
                 limit_source="campaign_slot" if slot is not None else "legacy_client_limit",
             ),
             recipients=recipients,
-            logs=self._build_campaign_logs_summary(
-                client_id=client_id,
-                campaign_id=campaign_id,
+            logs=logs,
+            runtime=build_provider_runtime_summary(
+                self._settings,
+                provider_events_available=logs.provider_events_available,
             ),
             blocked_sends=self._build_campaign_blocked_sends_summary(
                 client_id=client_id,

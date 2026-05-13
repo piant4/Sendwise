@@ -34,6 +34,9 @@ export function AdminSystemHealthPanel({
   const emailBadge = status.emailSendingEnabled
     ? { label: "Abilitato", variant: "warning" as const }
     : { label: "Disabilitato", variant: "neutral" as const };
+  const providerBadge = status.realSendAvailable
+    ? { label: status.providerModeLabel, variant: "success" as const }
+    : { label: status.providerModeLabel, variant: "neutral" as const };
   const authProviderBadge = getBooleanBadge(status.authProviderConfigured);
   const clerkManagementBadge = getBooleanBadge(status.clerkManagementApiConfigured);
   const frontendOriginBadge = getBooleanBadge(status.frontendOriginConfigured);
@@ -53,6 +56,10 @@ export function AdminSystemHealthPanel({
         <div className="admin-system-item">
           <span>Invio email</span>
           <StatusBadge label={emailBadge.label} variant={emailBadge.variant} />
+        </div>
+        <div className="admin-system-item">
+          <span>Provider mode</span>
+          <StatusBadge label={providerBadge.label} variant={providerBadge.variant} />
         </div>
         <div className="admin-system-item">
           <span>Ambiente</span>
@@ -87,6 +94,26 @@ export function AdminSystemHealthPanel({
           <StatusBadge
             label={deliveryEngineBadge.label}
             variant={deliveryEngineBadge.variant}
+          />
+        </div>
+        <div className="admin-system-config-card">
+          <span>SES live validation</span>
+          <StatusBadge
+            label={
+              status.sesLiveValidationStatus === "pending"
+                ? "Pending"
+                : "Non richiesta"
+            }
+            variant={
+              status.sesLiveValidationStatus === "pending" ? "warning" : "neutral"
+            }
+          />
+        </div>
+        <div className="admin-system-config-card">
+          <span>Mailpit dev</span>
+          <StatusBadge
+            label={status.mailpitDevMode ? "Mailpit/dev" : "Assente"}
+            variant={status.mailpitDevMode ? "success" : "neutral"}
           />
         </div>
       </div>

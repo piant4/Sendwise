@@ -441,9 +441,56 @@ def test_admin_summary_returns_campaign_client_slot_and_readiness() -> None:
     assert result.slot.status == "assigned"
     assert result.slot.limit_source == "campaign_slot"
     assert result.can_send is False
+    assert result.runtime.email_sending_enabled is False
+    assert result.runtime.email_provider == "mailpit"
+    assert result.runtime.provider_mode_label == "Sending disabled"
+    assert result.runtime.real_send_available is False
+    assert result.runtime.ses_live_validation_status is None
+    assert result.runtime.provider_events_available is False
+    assert result.runtime.mailpit_dev_mode is True
     assert result.warnings == [
         'EMAIL_SENDING_ENABLED is not exactly "true"; real dispatch is disabled.'
     ]
+
+
+def test_admin_summary_endpoint_exposes_safe_runtime_shape_without_secrets() -> None:
+    repository = InMemoryCampaignRepository()
+    campaign = repository.add_campaign(campaign_id="campaign_123", client_id="client_123")
+    admin_service = build_admin_service(
+        settings=Settings(
+            email_sending_enabled_raw="true",
+            email_provider="ses",
+            smtp_host="smtp.secret.example",
+            smtp_username="smtp-user-secret",
+            smtp_password="smtp-password-secret",
+            aws_ses_region="eu-west-1",
+        ),
+        campaign_repository=repository,
+    )
+
+    app.dependency_overrides[require_platform_admin] = build_admin_user
+    app.dependency_overrides[get_admin_campaign_service] = lambda: admin_service
+
+    try:
+        response = TestClient(app).get(f"/admin/campaigns/{campaign.id}/summary")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["runtime"] == {
+        "email_sending_enabled": True,
+        "email_provider": "ses",
+        "provider_mode_label": "SES configured but live validation pending",
+        "real_send_available": False,
+        "ses_live_validation_status": "pending",
+        "provider_events_available": False,
+        "mailpit_dev_mode": False,
+    }
+    assert "smtp.secret.example" not in response.text
+    assert "smtp-user-secret" not in response.text
+    assert "smtp-password-secret" not in response.text
+    assert "eu-west-1" not in response.text
 
 
 def test_admin_summary_returns_recipients_summary() -> None:

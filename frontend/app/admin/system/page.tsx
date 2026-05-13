@@ -57,7 +57,7 @@ export default async function AdminSystemPage() {
                 { label: "Database", value: system.dbStatus.toUpperCase() },
                 {
                   label: "Invio email",
-                  value: system.emailSendingEnabled ? "ATTIVO" : "DISABILITATO",
+                  value: system.providerModeLabel,
                 },
                 { label: "Ambiente", value: system.environment.toUpperCase() },
               ].map((stat) => (

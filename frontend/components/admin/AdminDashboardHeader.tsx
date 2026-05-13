@@ -55,11 +55,7 @@ export function AdminDashboardHeader({
           <StatusBadge label={backendBadge.label} variant={backendBadge.variant} />
           <StatusBadge label={databaseBadge.label} variant={databaseBadge.variant} />
           <StatusBadge
-            label={
-              summary.system.emailSendingEnabled
-                ? "Invio email attivo"
-                : "Invio email disattivato"
-            }
+            label={summary.system.providerModeLabel}
             variant={summary.system.emailSendingEnabled ? "warning" : "neutral"}
           />
         </div>

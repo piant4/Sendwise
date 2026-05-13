@@ -5,16 +5,15 @@ import { StatusBadge } from "../../../components/ui/StatusBadge";
 import {
   getAdminCampaigns,
   getAdminCampaignSummary,
-  getAdminSystemStatus,
   isApiError,
 } from "../../../lib/api";
 import type {
   AdminCampaignReadinessSummary,
   AdminCampaignSummary,
-  AdminSystemStatus,
   CampaignLogsSummary,
   CampaignRecipientsSummary,
   CampaignStatus,
+  ProviderRuntimeSummary,
 } from "../../../types";
 
 export const dynamic = "force-dynamic";
@@ -117,6 +116,28 @@ function buildProviderEventsLabel(logs: CampaignLogsSummary): string {
   return "Eventi provider non disponibili per questa campagna";
 }
 
+function buildRuntimeLabel(runtime?: ProviderRuntimeSummary | null): string {
+  if (!runtime) {
+    return "Provider mode unavailable";
+  }
+
+  return runtime.providerModeLabel || "Provider mode unavailable";
+}
+
+function buildSesValidationLabel(runtime?: ProviderRuntimeSummary | null): string {
+  if (!runtime) {
+    return "Provider mode unavailable";
+  }
+
+  if (runtime.sesLiveValidationStatus === "pending") {
+    return "SES configured but live validation pending";
+  }
+
+  return runtime.emailProvider === "ses"
+    ? "SES live validation pending"
+    : "Non richiesta per il provider corrente";
+}
+
 async function loadCampaignReadiness(
   campaigns: AdminCampaignSummary[],
   accessToken: string | null,
@@ -148,7 +169,6 @@ export default async function AdminCampaignsPage() {
     | {
         campaigns: AdminCampaignSummary[];
         campaignReadiness: Record<string, AdminCampaignReadinessSummary | Error>;
-        systemStatus: AdminSystemStatus | null;
       }
     | {
         errorMessage: string;
@@ -157,12 +177,9 @@ export default async function AdminCampaignsPage() {
   try {
     const accessToken = await getToken();
     const campaigns = await getAdminCampaigns(accessToken);
-    const [campaignReadiness, systemStatus] = await Promise.all([
-      loadCampaignReadiness(campaigns, accessToken),
-      getAdminSystemStatus(accessToken).catch(() => null),
-    ]);
+    const campaignReadiness = await loadCampaignReadiness(campaigns, accessToken);
 
-    result = { campaigns, campaignReadiness, systemStatus };
+    result = { campaigns, campaignReadiness };
   } catch (error) {
     if (isApiError(error) && [401, 403].includes(error.status ?? 0)) {
       redirect("/auth/redirect");
@@ -331,22 +348,18 @@ export default async function AdminCampaignsPage() {
                             <div>
                               <dt>Email sending</dt>
                               <dd>
-                                {result.systemStatus?.emailSendingEnabled
+                                {readiness.runtime.emailSendingEnabled
                                   ? "Abilitato dal backend"
-                                  : "Disabilitato o non esposto"}
+                                  : "Sending disabled"}
                               </dd>
                             </div>
                             <div>
                               <dt>Provider mode</dt>
-                              <dd>
-                                {result.systemStatus?.environment
-                                  ? `${result.systemStatus.environment}; provider non esposto qui`
-                                  : "Not available yet"}
-                              </dd>
+                              <dd>{buildRuntimeLabel(readiness.runtime)}</dd>
                             </div>
                             <div>
                               <dt>SES live validation</dt>
-                              <dd>Pending: non validata in Milestone 12.1</dd>
+                              <dd>{buildSesValidationLabel(readiness.runtime)}</dd>
                             </div>
                             <div>
                               <dt>Warnings</dt>

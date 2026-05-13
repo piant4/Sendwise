@@ -5,7 +5,7 @@ from pydantic import BaseModel, ConfigDict
 
 from app.schemas.common import CampaignStatus, ClientStatus, SendDecision
 from app.schemas.usage import ApiUsage
-from app.schemas.campaigns import Campaign
+from app.schemas.campaigns import Campaign, ProviderRuntimeSummary
 from app.schemas.blocked_sends import BlockedSend
 
 
@@ -198,6 +198,13 @@ class AdminSystemStatus(BaseModel):
     api_status: Literal["ok"] = "ok"
     db_status: Literal["ok", "degraded"] = "ok"
     email_sending_enabled: bool
+    email_provider: str
+    provider_mode_label: str
+    real_send_available: bool = False
+    ses_live_validation_status: Optional[str] = None
+    provider_events_available: bool = False
+    mailpit_dev_mode: bool = False
+    runtime: ProviderRuntimeSummary
     environment: str
     auth_provider_configured: bool
     clerk_management_api_configured: bool

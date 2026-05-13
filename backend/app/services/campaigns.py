@@ -64,6 +64,7 @@ from app.schemas.campaigns import (
     CampaignSummaryItem,
 )
 from app.schemas.common import CampaignStatus
+from app.services.provider_runtime import build_provider_runtime_summary
 from app.services.campaign_slots import (
     CampaignSlotConflictError,
     CampaignSlotService,
@@ -228,6 +229,10 @@ class AdminCampaignService:
             slot=slot,
             contact_summary=contact_summary,
         )
+        logs = self._build_campaign_logs_summary(
+            client_id=campaign.client_id,
+            campaign_id=campaign.id,
+        )
         return AdminCampaignSummaryResponse(
             campaign=self._build_campaign_summary_item(
                 campaign=campaign,
@@ -246,9 +251,10 @@ class AdminCampaignService:
                 evaluation=evaluation,
             ),
             recipients=self._build_campaign_recipients_summary(contact_summary),
-            logs=self._build_campaign_logs_summary(
-                client_id=campaign.client_id,
-                campaign_id=campaign.id,
+            logs=logs,
+            runtime=build_provider_runtime_summary(
+                self.settings,
+                provider_events_available=logs.provider_events_available,
             ),
             blocked_sends=self._build_campaign_blocked_sends_summary(
                 campaign=campaign,

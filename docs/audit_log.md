@@ -2231,6 +2231,33 @@ Checks referenced:
 Scope confirmation:
 - No secrets, local env files, frontend files, auth flow, n8n, AI, worker, or dashboard UI were changed.
 
+## Milestone 13.1 - Runtime Provider Mode Read Model
+
+Date: 2026-05-13
+Branch: develop
+
+Verified state:
+- Added a safe runtime provider read model to admin system status and campaign read-model responses: `email_sending_enabled`, normalized `email_provider`, `provider_mode_label`, `real_send_available=false`, `ses_live_validation_status`, `provider_events_available`, and `mailpit_dev_mode`.
+- Updated admin campaign/system UI labels to use backend runtime labels for Mailpit/dev, SES pending validation, sending disabled, and unavailable provider modes.
+- Response tests assert the runtime shape and verify fake SMTP/AWS/Clerk secret values are not present in responses.
+
+Known limits:
+- SES live validation remains `pending`; this milestone does not validate SES live delivery.
+- `real_send_available` remains false because no new live-send validation was performed.
+
+Checks referenced:
+- `bash scripts/audit.sh`
+- `bash scripts/smoke_test.sh`
+- `docker compose config`
+- `docker compose -f docker-compose.yml -f docker-compose.dev.yml config`
+- `bash scripts/apply_migrations.sh`
+- backend tests
+- frontend lint/build
+- `git diff --check`
+
+Scope confirmation:
+- No send/dispatch behavior, database schema, SES enablement, secret response fields, fake metrics, direct frontend listmonk access, or broad refactor was added.
+
 ## Milestone 12.1 - Live SES Validation Preflight
 
 Date: 2026-05-13

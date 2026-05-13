@@ -14,6 +14,7 @@ import type {
   CampaignLogsSummary,
   CampaignReadModel,
   CampaignRecipientsSummary,
+  ProviderRuntimeSummary,
   CampaignSlotSummary,
   CampaignSummaryItem,
   Client,
@@ -118,6 +119,15 @@ interface CampaignReadModelApiResponse {
     complained: number;
     unsubscribed: number;
     provider_events_available: boolean;
+  };
+  runtime: {
+    email_sending_enabled: boolean;
+    email_provider: string;
+    provider_mode_label: string;
+    real_send_available: boolean;
+    ses_live_validation_status?: "pending" | null;
+    provider_events_available: boolean;
+    mailpit_dev_mode: boolean;
   };
   blocked_sends: {
     total: number;
@@ -244,6 +254,13 @@ interface AdminOverviewApiResponse {
     api_status: "ok";
     db_status: "ok" | "degraded";
     email_sending_enabled: boolean;
+    email_provider: string;
+    provider_mode_label: string;
+    real_send_available: boolean;
+    ses_live_validation_status?: "pending" | null;
+    provider_events_available: boolean;
+    mailpit_dev_mode: boolean;
+    runtime: CampaignReadModelApiResponse["runtime"];
     environment: string;
     auth_provider_configured: boolean;
     clerk_management_api_configured: boolean;
@@ -774,6 +791,13 @@ function mapAdminOverviewSummary(
       apiStatus: payload.system.api_status,
       dbStatus: payload.system.db_status,
       emailSendingEnabled: payload.system.email_sending_enabled,
+      emailProvider: payload.system.email_provider,
+      providerModeLabel: payload.system.provider_mode_label,
+      realSendAvailable: payload.system.real_send_available,
+      sesLiveValidationStatus: payload.system.ses_live_validation_status ?? null,
+      providerEventsAvailable: payload.system.provider_events_available,
+      mailpitDevMode: payload.system.mailpit_dev_mode,
+      runtime: mapProviderRuntimeSummary(payload.system.runtime),
       environment: payload.system.environment,
       authProviderConfigured: payload.system.auth_provider_configured,
       clerkManagementApiConfigured: payload.system.clerk_management_api_configured,
@@ -874,6 +898,20 @@ function mapCampaignLogsSummary(
   };
 }
 
+function mapProviderRuntimeSummary(
+  payload: CampaignReadModelApiResponse["runtime"],
+): ProviderRuntimeSummary {
+  return {
+    emailSendingEnabled: payload.email_sending_enabled,
+    emailProvider: payload.email_provider,
+    providerModeLabel: payload.provider_mode_label,
+    realSendAvailable: payload.real_send_available,
+    sesLiveValidationStatus: payload.ses_live_validation_status ?? null,
+    providerEventsAvailable: payload.provider_events_available,
+    mailpitDevMode: payload.mailpit_dev_mode,
+  };
+}
+
 function mapCampaignBlockedSendsSummary(
   payload: CampaignReadModelApiResponse["blocked_sends"],
 ): CampaignBlockedSendsSummary {
@@ -891,6 +929,7 @@ function mapCampaignReadModel(
     slot: mapCampaignSlotSummary(payload.slot),
     recipients: mapCampaignRecipientsSummary(payload.recipients),
     logs: mapCampaignLogsSummary(payload.logs),
+    runtime: mapProviderRuntimeSummary(payload.runtime),
     blockedSends: mapCampaignBlockedSendsSummary(payload.blocked_sends),
   };
 }
@@ -954,6 +993,13 @@ function mapAdminSystemStatus(
     apiStatus: payload.api_status,
     dbStatus: payload.db_status,
     emailSendingEnabled: payload.email_sending_enabled,
+    emailProvider: payload.email_provider,
+    providerModeLabel: payload.provider_mode_label,
+    realSendAvailable: payload.real_send_available,
+    sesLiveValidationStatus: payload.ses_live_validation_status ?? null,
+    providerEventsAvailable: payload.provider_events_available,
+    mailpitDevMode: payload.mailpit_dev_mode,
+    runtime: mapProviderRuntimeSummary(payload.runtime),
     environment: payload.environment,
     authProviderConfigured: payload.auth_provider_configured,
     clerkManagementApiConfigured: payload.clerk_management_api_configured,

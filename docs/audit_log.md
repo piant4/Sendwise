@@ -2260,3 +2260,26 @@ Result:
 - Milestone 12.1 is blocked by external/local runtime configuration and missing target data, not by the send service.
 - No fake delivery, open, click, or provider metrics were added.
 - No secrets or local env files were committed.
+
+## Milestone 12.0R - SES Runtime Readiness Seed
+
+Date: 2026-05-13
+Branch: develop
+
+Verified state:
+- Expanded `docs/runbook_ses_controlled_send.md` with an uncommitted SES override flow using placeholders only, one-recipient allowlist requirements, public HTTPS unsubscribe requirements, listmonk API `403` diagnostics, and an exact manual validation sequence.
+- Added `scripts/prepare_ses_validation_target.sh` as a validation-only Business DB target checker. It rejects missing or multiple recipients, does not create data, does not send email, does not call listmonk, and prints target IDs only when an existing client/campaign/contact relation is safe for one-recipient SES validation.
+- Kept committed defaults safe: `EMAIL_SENDING_ENABLED=false`, `EMAIL_PROVIDER=mailpit`, Mailpit remains the dev default, and no local env or credential files were changed.
+
+Known limits:
+- The new target script does not create test data because review state, Guard eligibility, and prepared listmonk content must remain backend/admin-flow owned.
+- Live SES validation still requires local/staging secrets, one allowlisted recipient, a verified SES from identity, public HTTPS `BACKEND_PUBLIC_URL`, working listmonk API auth, and an existing reviewed campaign target.
+
+Checks referenced:
+- `bash -n scripts/validate_ses_readiness.sh`
+- `bash -n scripts/prepare_ses_validation_target.sh`
+- `git diff --check`
+
+Scope confirmation:
+- No frontend, schema, campaign send logic, Deliverability Guard, credential, fake metric, provider event, or real send behavior was changed.
+- No email was sent and no listmonk campaign send was triggered.

@@ -1926,6 +1926,57 @@ Scope confirmation:
 - No `client_access` persistence was implemented.
 - No Clerk invitation API, admin invite flow, onboarding endpoint, public signup, custom password form, custom 2FA, real listmonk, real sending, AI, n8n, Celery, Keycloak, Metabase, Postal, Rspamd, or Budibase was implemented.
 
+## Milestone 10.6.5 - Campaign Contract Realignment
+
+Date: 2026-05-13
+Branch: develop
+Scope: Docs-only correction of campaign ownership contracts from the Milestone 10.5 self-service direction to the binding admin-managed direction.
+
+Files modified:
+- `docs/structural_contracts_v1.md`
+- `docs/api_contracts_v1.md`
+- `docs/data_model_v1.md`
+- `docs/states_v1.md`
+- `docs/ownership_v1.md`
+- `docs/audit_checklist_v1.md`
+- `docs/architecture_v1.md`
+- `docs/audit_log.md`
+
+Audit summary:
+- Verified runtime campaign write routes still exist under the generic backend-owned `/campaigns/*` surface.
+- Verified client runtime routes remain read-only today: `GET /client/campaigns`, `GET /client/usage`, `GET /client/blocked-sends`, plus stub detail/stats.
+- Verified admin runtime surfaces exist for campaign listing and client administration, while the admin campaign wizard remains contractual only.
+- Verified persisted `campaign_slots`, `campaign_slot_id`, `preview_text`, `body_html`, `body_text`, `content_ready`, `contacts_ready`, `review_ready`, and `current_step` remain valid for the admin-managed model.
+- Verified Deliverability Guard, Mailpit dispatch, `email_logs`, `blocked_sends`, template rendering, and listmonk mapping/sync remain unchanged and in scope.
+
+Contract updates:
+- Admin is now documented as the only V1 actor allowed to create, configure, review, simulate, and send campaigns.
+- Client portal is now documented as read-only for campaign visibility, usage, blocked sends, and delivery metrics.
+- Client-side write campaign endpoints were removed from the V1 contract and replaced by planned admin campaign endpoints.
+- AI editorial endpoints were moved under future admin-owned routes.
+- Historical self-service wording in older audit entries is superseded by this milestone.
+
+Tests executed:
+- `bash scripts/audit.sh`
+- `bash scripts/smoke_test.sh`
+- `docker compose config`
+- `git diff --check`
+
+Tests not executed and reason:
+- `PYTHONPATH=backend pytest backend/tests` was not run because only docs were modified.
+- Frontend lint/build checks were not run because no frontend files changed.
+
+Residual risks:
+- Current runtime still exposes generic `/campaigns/*` write routes, so the final admin namespaced API contract is not implemented yet.
+- Historical branch handoff and audit log entries still describe the old self-service direction as past context.
+- Client detail, stats, and events routes remain stub/future and do not yet deliver the full read-only contract.
+
+Scope confirmation:
+- No frontend UI was modified.
+- No backend runtime route, service, repository, Guard, listmonk adapter, or auth flow was modified.
+- No DB schema or migration was modified.
+- No Mailpit, SMTP, SES, worker, or provider behavior was modified.
+
 ## Milestone 10.5 — Contract Alignment For Self-Service Campaigns
 
 Date: 2026-05-13

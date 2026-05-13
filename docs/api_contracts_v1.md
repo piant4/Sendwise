@@ -14,6 +14,7 @@ All product APIs must be called through FastAPI. Frontend and external callers m
 ## Global Trust Rules
 
 - backend resolves trusted `client_id` from authenticated identity mapping
+- only admin campaign-write endpoints may accept a user-selected `client_id`, and backend must validate it
 - frontend never sends a trusted `client_id` for client-scoped operations
 - frontend never sends a trusted Guard result, slot limit, or provider choice
 - review endpoints are advisory/preflight only
@@ -84,55 +85,80 @@ Current contract note:
 
 ## Campaign Runtime Endpoints Current
 
-These are backend-owned campaign operations not yet shaped as the final self-service client API.
+These are backend-owned technical routes currently present in the runtime before the final admin namespaced contract is implemented.
 
 | Endpoint | Purpose | Allowed caller | Required access | High-level input | High-level output | Main errors | Status |
 |---|---|---|---|---|---|---|---|
-| `POST /campaigns` | Create campaign draft. | Admin or active client caller. | Active user. | Campaign draft fields. | Placeholder result. | `400`, `401`, `403`, `409`. | `stub` |
-| `POST /campaigns/{campaign_id}/authorize` | Run send authorization. | Admin or active client caller. | Active user. | `campaign_id`. | Placeholder result. | `400`, `401`, `403`, `404`, `409`, `423`. | `stub` |
-| `POST /campaigns/{campaign_id}/sync-listmonk` | Prepare listmonk technical entities for a campaign. | Admin or active client caller. | Active user with backend-owned scope. | `campaign_id`. | Preparation result, list mappings, content readiness. | `400`, `401`, `403`, `404`, integration failures. | `implemented` |
-| `POST /campaigns/{campaign_id}/simulate-send` | Run backend preflight plus simulation log creation without real dispatch. | Admin or active client caller. | Active user with backend-owned scope. | `campaign_id`. | Simulation result, Guard payload, content snapshot, email-log summary. | `400`, `401`, `403`, `404`, `409`, `423`. | `implemented` |
-| `POST /campaigns/{campaign_id}/send` | Trigger controlled dev dispatch after backend checks. | Admin or active client caller. | Active user with backend-owned scope. | `campaign_id`. | Blocked, failed, or queued controlled-dispatch result. | `400`, `401`, `403`, `404`, `409`, `423`. | `implemented` |
+| `POST /campaigns` | Create campaign draft through the current generic runtime surface. | Backend-owned runtime caller. | Active user. | Campaign draft fields. | Placeholder result. | `400`, `401`, `403`, `409`. | `stub` |
+| `POST /campaigns/{campaign_id}/authorize` | Run send authorization through the current generic runtime surface. | Backend-owned runtime caller. | Active user. | `campaign_id`. | Placeholder result. | `400`, `401`, `403`, `404`, `409`, `423`. | `stub` |
+| `POST /campaigns/{campaign_id}/sync-listmonk` | Prepare listmonk technical entities for a campaign. | Backend-owned runtime caller. | Active user with backend-owned scope. | `campaign_id`. | Preparation result, list mappings, content readiness. | `400`, `401`, `403`, `404`, integration failures. | `implemented` |
+| `POST /campaigns/{campaign_id}/simulate-send` | Run backend preflight plus simulation log creation without real dispatch. | Backend-owned runtime caller. | Active user with backend-owned scope. | `campaign_id`. | Simulation result, Guard payload, content snapshot, email-log summary. | `400`, `401`, `403`, `404`, `409`, `423`. | `implemented` |
+| `POST /campaigns/{campaign_id}/send` | Trigger controlled dev dispatch after backend checks. | Backend-owned runtime caller. | Active user with backend-owned scope. | `campaign_id`. | Blocked, failed, or queued controlled-dispatch result. | `400`, `401`, `403`, `404`, `409`, `423`. | `implemented` |
 
 Current runtime notes:
 
 - real dispatch still depends on `EMAIL_SENDING_ENABLED=true`
 - send remains fail-closed outside controlled runtime/provider conditions
-- current send flow still uses legacy campaign and limit modeling
+- current generic routes do not define the final product ownership model
+- final V1 product contract remains admin-managed for campaign write actions
 
-## Self-Service Campaign API Proposed
+## Admin-Managed Campaign API Proposed
 
-These are proposed product contracts for the guided client wizard. They are not implemented by this milestone unless explicitly marked otherwise.
+These are the planned V1 product endpoints for the only operational campaign flow. They are not implemented by this milestone unless explicitly marked otherwise.
+
+| Endpoint | Purpose | Allowed caller | Required access | High-level input | High-level output | Main errors | Status |
+|---|---|---|---|---|---|---|---|
+| `GET /admin/campaigns` | List campaigns across clients. | Admin dashboard. | Platform admin. | Filters, pagination. | Campaign summaries. | `401`, `403`. | `implemented` |
+| `POST /admin/campaigns` | Create a new admin-managed campaign draft. | Admin dashboard. | Platform admin. | Selected `client_id`, setup fields. | Created draft campaign. | `400`, `401`, `403`, `404`, `409`, `422`. | `planned` |
+| `POST /admin/clients/{client_id}/campaigns` | Shortcut to create a campaign from a client context. | Admin dashboard. | Platform admin. | Setup fields. | Created draft campaign already scoped to the client. | `400`, `401`, `403`, `404`, `409`, `422`. | `planned` |
+| `GET /admin/campaigns/{campaign_id}` | Read admin campaign detail. | Admin dashboard. | Platform admin. | `campaign_id`. | Campaign detail. | `401`, `403`, `404`. | `stub` |
+| `PATCH /admin/campaigns/{campaign_id}` | Update allowed campaign setup fields. | Admin dashboard. | Platform admin. | Partial setup fields. | Updated campaign. | `400`, `401`, `403`, `404`, `409`, `422`. | `planned` |
+| `POST /admin/campaigns/{campaign_id}/select-slot` | Assign a slot to a campaign. | Admin dashboard. | Platform admin. | `slot_id`. | Slot assignment summary. | `400`, `401`, `403`, `404`, `409`, `422`. | `planned` |
+| `POST /admin/campaigns/{campaign_id}/content` | Save content or apply a template into campaign content fields. | Admin dashboard. | Platform admin. | `subject`, `preview_text`, `body_html`, `body_text`, optional template reference. | Updated campaign content state. | `400`, `401`, `403`, `404`, `409`, `422`. | `planned` |
+| `POST /admin/campaigns/{campaign_id}/contacts/import` | Import or associate contacts for the campaign. | Admin dashboard. | Platform admin. | CSV or structured contact payload. | Import summary and validation preview. | `400`, `401`, `403`, `404`, `409`, `413`, `422`. | `planned` |
+| `GET /admin/campaigns/{campaign_id}/contacts` | Read contacts associated with the campaign. | Admin dashboard. | Platform admin. | `campaign_id`. | Campaign contact list and summary. | `401`, `403`, `404`. | `planned` |
+| `POST /admin/campaigns/{campaign_id}/review` | Build final review payload without dispatching. | Admin dashboard. | Platform admin. | `campaign_id`. | Warnings, blocking errors, counts, readiness, slot limit. | `400`, `401`, `403`, `404`, `409`, `422`. | `planned` |
+| `POST /admin/campaigns/{campaign_id}/simulate-send` | Request backend simulation from the admin flow. | Admin dashboard. | Platform admin. | `campaign_id`. | Simulation result. | `400`, `401`, `403`, `404`, `409`, `423`. | `planned` |
+| `POST /admin/campaigns/{campaign_id}/send` | Request controlled send from the admin flow. | Admin dashboard. | Platform admin. | `campaign_id`. | Blocked, failed, or queued send result. | `400`, `401`, `403`, `404`, `409`, `423`. | `planned` |
+
+Admin-managed contract notes:
+
+- only admin selects `client_id`
+- backend validates selected `client_id` and client status on every write action
+- admin may assign `campaign_slot_id`, save content, associate/import contacts, request review, simulate, and send
+- Guard remains mandatory for simulation and real dispatch
+- `EMAIL_SENDING_ENABLED` remains the real-dispatch kill switch
+- listmonk remains a technical engine only
+
+## Client Read-Only Campaign API Contract
+
+These are the V1 client-facing campaign routes. They are read-only and scoped by backend-derived `client_id`.
 
 | Endpoint | Purpose | Allowed caller | Required access | High-level input | High-level output | Main errors | Status |
 |---|---|---|---|---|---|---|---|
 | `GET /client/campaigns` | List own campaigns. | Client portal. | Active client account. | Filters. | Campaign summaries. | `401`, `403`. | `implemented` |
-| `POST /client/campaigns` | Create a new client-scoped campaign. | Client portal. | Active client account. | Setup fields only. | Created draft campaign. | `400`, `401`, `403`, `409`. | `planned` |
-| `GET /client/campaigns/{campaign_id}` | Read own campaign detail. | Client portal. | Active client account. | `campaign_id`. | Full client-owned campaign detail. | `401`, `403`, `404`. | `planned` |
-| `PATCH /client/campaigns/{campaign_id}` | Update allowed draft/review fields on own campaign. | Client portal. | Active client account. | Partial setup fields. | Updated campaign draft. | `400`, `401`, `403`, `404`, `409`. | `planned` |
-| `POST /client/campaigns/{campaign_id}/select-slot` | Assign an available slot to a campaign. | Client portal. | Active client account. | `slot_id`. | Slot assignment summary. | `400`, `401`, `403`, `404`, `409`. | `future` |
-| `POST /client/campaigns/{campaign_id}/content` | Save working content for a campaign. | Client portal. | Active client account. | `subject`, `preview_text`, `body_html`, `body_text`, content metadata. | Updated campaign content state. | `400`, `401`, `403`, `404`, `409`, `422`. | `planned` |
-| `POST /client/campaigns/{campaign_id}/contacts/import` | Import contacts into the campaign workflow. | Client portal. | Active client account. | CSV or structured contact payload. | Import summary and validation preview. | `400`, `401`, `403`, `404`, `409`, `413`, `422`. | `future` |
-| `GET /client/campaigns/{campaign_id}/contacts` | Read contacts associated with the campaign. | Client portal. | Active client account. | `campaign_id`. | Campaign contact list and summary. | `401`, `403`, `404`. | `future` |
-| `POST /client/campaigns/{campaign_id}/review` | Build final review payload without dispatching. | Client portal. | Active client account. | `campaign_id`. | Warnings, blocking errors, counts, readiness, slot limit. | `400`, `401`, `403`, `404`, `409`, `422`. | `planned` |
-| `POST /client/campaigns/{campaign_id}/simulate-send` | Request backend simulation from the client flow. | Client portal. | Active client account. | `campaign_id`. | Simulation result. | `400`, `401`, `403`, `404`, `409`, `423`. | `planned` |
-| `POST /client/campaigns/{campaign_id}/send` | Request controlled send from the client flow. | Client portal. | Active client account. | `campaign_id`. | Blocked, failed, or queued send result. | `400`, `401`, `403`, `404`, `409`, `423`. | `planned` |
+| `GET /client/campaigns/{campaign_id}` | Read own campaign detail. | Client portal. | Active client account. | `campaign_id`. | Full client-scoped campaign detail. | `401`, `403`, `404`. | `stub` |
+| `GET /client/campaigns/{campaign_id}/stats` | Read own campaign stats. | Client portal. | Active client account. | `campaign_id`. | Send counts and delivery metrics when available. | `401`, `403`, `404`. | `stub` |
+| `GET /client/campaigns/{campaign_id}/events` | Read own campaign timeline and delivery events when available. | Client portal. | Active client account. | `campaign_id`, filters. | Client-scoped event list. | `401`, `403`, `404`. | `future` |
+| `GET /client/blocked-sends` | Read own blocked sends. | Client portal. | Active client account. | Filters. | Client-scoped blocked-send records. | `401`, `403`. | `implemented` |
+| `GET /client/usage` | Read own usage. | Client portal. | Active client account. | Date range. | Client-scoped usage records. | `401`, `403`. | `implemented` |
 
-Self-service contract notes:
+Client read-only notes:
 
+- V1 client routes do not create, edit, delete, import, simulate, send, assign slots, or mutate templates
 - backend derives `client_id` from auth and `client_access`
-- backend validates step progression and cross-client access
-- send requires content readiness, contact readiness, review validity, Guard allow, valid slot/limit, and `EMAIL_SENDING_ENABLED=true` for real dispatch
+- backend denies cross-client access even for read-only campaign data
+- client-visible metrics may include queued, sent, opens, clicks, bounce, complaint/spam, unsubscribe, blocked sends, and slot/limit usage when the backend exposes them
 
-## Template API Proposed
+## Admin Template API Future
+
+Client-side template CRUD is not part of V1. If template catalog management is introduced later, it belongs under admin-owned routes.
 
 | Endpoint | Purpose | Allowed caller | Required access | High-level input | High-level output | Main errors | Status |
 |---|---|---|---|---|---|---|---|
-| `GET /client/templates` | List visible templates. | Client portal. | Active client account. | Filters. | System and owned client templates. | `401`, `403`. | `future` |
-| `POST /client/templates` | Create client-owned template. | Client portal. | Active client account. | Template fields. | Created template. | `400`, `401`, `403`, `409`, `422`. | `future` |
-| `GET /client/templates/{template_id}` | Read template detail. | Client portal. | Active client account. | `template_id`. | Template detail if visible. | `401`, `403`, `404`. | `future` |
-| `PATCH /client/templates/{template_id}` | Update owned template. | Client portal. | Active client account. | Partial template fields. | Updated template. | `400`, `401`, `403`, `404`, `409`, `422`. | `future` |
-| `POST /client/campaigns/{campaign_id}/apply-template` | Copy a template into campaign content. | Client portal. | Active client account. | `template_id`. | Updated campaign content snapshot. | `400`, `401`, `403`, `404`, `409`. | `future` |
+| `GET /admin/templates` | List templates available to admins. | Admin dashboard. | Platform admin. | Filters. | System and client-scoped template summaries. | `401`, `403`. | `future` |
+| `POST /admin/templates` | Create a template for later campaign use. | Admin dashboard. | Platform admin. | Template fields. | Created template. | `400`, `401`, `403`, `409`, `422`. | `future` |
+| `PATCH /admin/templates/{template_id}` | Update a template. | Admin dashboard. | Platform admin. | Partial template fields. | Updated template. | `400`, `401`, `403`, `404`, `409`, `422`. | `future` |
 
 ## Campaign Slot Admin API Proposed
 
@@ -147,10 +173,10 @@ Self-service contract notes:
 
 | Endpoint | Purpose | Allowed caller | Required access | High-level input | High-level output | Main errors | Status |
 |---|---|---|---|---|---|---|---|
-| `POST /client/campaigns/{campaign_id}/ai/generate` | Generate draft email content from brief. | Client portal. | Active client account. | Brief and content options. | Structured proposed content. | `400`, `401`, `403`, `404`, `409`, `422`. | `future` |
-| `POST /client/campaigns/{campaign_id}/ai/improve` | Improve existing content. | Client portal. | Active client account. | Current content and intent. | Structured suggested revision. | `400`, `401`, `403`, `404`, `409`, `422`. | `future` |
-| `POST /client/campaigns/{campaign_id}/ai/subject-variants` | Propose subject variants. | Client portal. | Active client account. | Current campaign content. | Subject option list. | `400`, `401`, `403`, `404`, `409`, `422`. | `future` |
-| `POST /client/campaigns/{campaign_id}/ai/review-content` | Analyze content risk without sending. | Client portal. | Active client account. | Current campaign content. | Risk notes and improvements. | `400`, `401`, `403`, `404`, `409`, `422`. | `future` |
+| `POST /admin/campaigns/{campaign_id}/ai/generate` | Generate draft email content from brief. | Admin dashboard. | Platform admin. | Brief and content options. | Structured proposed content. | `400`, `401`, `403`, `404`, `409`, `422`. | `future` |
+| `POST /admin/campaigns/{campaign_id}/ai/improve` | Improve existing content. | Admin dashboard. | Platform admin. | Current content and intent. | Structured suggested revision. | `400`, `401`, `403`, `404`, `409`, `422`. | `future` |
+| `POST /admin/campaigns/{campaign_id}/ai/subject-variants` | Propose subject variants. | Admin dashboard. | Platform admin. | Current campaign content. | Subject option list. | `400`, `401`, `403`, `404`, `409`, `422`. | `future` |
+| `POST /admin/campaigns/{campaign_id}/ai/review-content` | Analyze content risk without sending. | Admin dashboard. | Platform admin. | Current campaign content. | Risk notes and improvements. | `400`, `401`, `403`, `404`, `409`, `422`. | `future` |
 
 AI contract notes:
 
@@ -162,10 +188,15 @@ AI contract notes:
 
 | Endpoint | Purpose | Allowed caller | Required access | High-level input | High-level output | Main errors | Status |
 |---|---|---|---|---|---|---|---|
-| `POST /contacts/import` | Import contacts. | Admin or active client caller. | Active user. | File or batch metadata. | Placeholder result. | `400`, `401`, `403`, `409`, `413`. | `stub` |
+| `POST /contacts/import` | Import contacts through the current generic runtime surface. | Backend-owned runtime caller. | Active user. | File or batch metadata. | Placeholder result. | `400`, `401`, `403`, `409`, `413`. | `stub` |
 | `GET /contacts` | List contacts visible to caller. | Admin or active client caller. | Active user. | Filters. | Placeholder result. | `401`, `403`. | `stub` |
 | `POST /contacts/{contact_id}/sync` | Sync a contact to listmonk. | Admin or active client caller. | Active user. | `contact_id`, optional `campaign_id`. | Sync result. | `400`, `401`, `403`, `404`. | `implemented` |
 | `POST /contacts/{contact_id}/suppress` | Suppress contact. | Admin or active client caller. | Active user. | `contact_id`, reason. | Placeholder result. | `401`, `403`, `404`, `409`. | `stub` |
+
+Contacts notes:
+
+- V1 campaign contact import/association belongs to admin-managed campaign endpoints, not client write routes
+- client portal may read campaign outcomes and metrics, but not mutate contact membership for campaigns
 
 ## Events
 

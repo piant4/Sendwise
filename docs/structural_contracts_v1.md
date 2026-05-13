@@ -24,25 +24,33 @@ These contracts are binding for V1 until explicitly changed. Older files are his
 
 ## Product Direction
 
-The client portal is the future product surface for self-service campaign management.
+The admin portal is the only V1 operational surface for campaign creation, setup, review, simulation, and controlled send on behalf of a client.
 
-Target V1 self-service flow:
+Target V1 admin-managed flow:
 
-1. Setup campaign
-2. Create content or apply a template
-3. Add or import recipients
-4. Review content and delivery readiness
-5. Request simulation or controlled send
+1. New campaign
+2. Select client
+3. Setup campaign
+4. Create content or apply a template
+5. Add or import recipients
+6. Review content and delivery readiness
+7. Request simulation or controlled send
 
-This milestone updates contracts only. It does not implement the wizard, slot persistence, template CRUD, AI generation, or new dispatch behavior.
+Client portal V1 scope:
+
+- read campaign overview, detail, state, usage, blocked sends, and delivery metrics when available
+- no campaign create, edit, template, contact-import, slot-assignment, simulation, or send actions
+
+This milestone updates contracts only. It does not implement the wizard, template CRUD, AI generation, or new dispatch behavior.
 
 ## Components
 
 ### Frontend Custom Next.js
 
 Can do:
-- Render admin and client dashboards and future client self-service wizard screens.
-- Collect form input for campaign setup, content, recipients, and review actions.
+- Render admin dashboards and future admin-managed campaign wizard screens.
+- Render read-only client dashboards and campaign detail/metrics screens.
+- Collect admin form input for campaign setup, content, recipients, review, simulation, and send actions.
 - Call FastAPI backend endpoints only.
 - Display backend-owned states, readiness flags, blocked-send reasons, slot summaries, and usage data.
 
@@ -54,6 +62,7 @@ Cannot do:
 - Decide slot or campaign limits.
 - Decide Guard or review outcome.
 - Authorize sending.
+- Expose client campaign write actions in V1.
 - Bypass Deliverability Guard.
 
 ### FastAPI Backend
@@ -61,8 +70,9 @@ Cannot do:
 Can do:
 - Serve admin, client, auth, campaign, contact, and future AI-assist APIs.
 - Resolve trusted `client_id` from auth and `client_access`.
+- Validate admin-selected `client_id` before creating or mutating a campaign on behalf of that client.
 - Enforce client isolation and cross-client denial.
-- Create and update client-scoped campaigns.
+- Create and update admin-managed campaigns for a validated client.
 - Validate step progression, readiness, slot assignment, and state transitions.
 - Own final review and Deliverability Guard evaluation.
 - Read and write Business PostgreSQL.
@@ -73,6 +83,7 @@ Cannot do:
 - Trust frontend-supplied `client_id`, limits, Guard result, or provider choice.
 - Treat listmonk as source of truth.
 - Let AI publish or send autonomously.
+- Allow client campaign write operations in V1 without an approved contract change.
 - Bypass Deliverability Guard.
 
 ### Business PostgreSQL

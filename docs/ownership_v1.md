@@ -22,6 +22,7 @@ Contracts cannot be changed during feature branch work unless explicitly approve
 
 - campaign creation rules
 - trusted `client_id` scoping from auth and `client_access`
+- validation of admin-selected `client_id` on campaign write flows
 - cross-client denial
 - slot-assignment validation
 - legacy and future limit evaluation
@@ -35,8 +36,9 @@ Contracts cannot be changed during feature branch work unless explicitly approve
 
 ### Frontend owns
 
-- wizard UX and navigation
-- form input and draft interactions
+- admin wizard UX and navigation
+- client read-only campaign dashboard UX
+- form input for admin-managed draft interactions
 - content preview rendering
 - campaign/review status display
 - calls to backend APIs only
@@ -47,22 +49,35 @@ Frontend does not own:
 - Guard outcome
 - send authorization
 - provider selection
+- client campaign write capability in V1
 
 ### Admin owns
 
 - client operational status
+- campaign creation
+- client selection for new campaigns
+- slot assignment
+- content and template selection
+- contact import or association
+- review request
+- simulation request
+- send request
 - slot creation, edit, archive, and limit policy
 - client-level operational controls
 
 ### Client owns
 
-- campaign draft intent
-- content draft input
-- contact input/import request
-- template selection and customization
-- explicit request to simulate or send
+- read-only visibility of own campaigns
+- read-only visibility of own metrics, usage, blocked sends, and delivery outcomes
+- future business feedback workflows only if explicitly introduced later
 
 Client does not own:
+- campaign creation
+- campaign mutation
+- contact import
+- template selection or template CRUD
+- slot assignment
+- simulation or send request
 - authorization outcome
 - final limit calculation
 - slot mutation policy

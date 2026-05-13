@@ -41,7 +41,7 @@ Current runtime rules:
 - `running` is currently treated as sendable by the Guard.
 - `paused`, `blocked`, `completed`, and `failed` are not sendable.
 
-### Recommended self-service contract states
+### Recommended product contract states
 
 ```txt
 draft
@@ -90,14 +90,24 @@ review_ready
 ```
 
 Rules:
-- `setup` captures name and baseline campaign metadata.
-- `content` owns template selection, content draft, and future AI assist application.
-- `recipients` owns recipient import/selection and deduped association.
-- `review` owns preflight analysis and warnings.
-- `send` is an action step, not a trust boundary; backend still rechecks.
+- V1 admin UX flow is:
+  1. New campaign
+  2. Select client
+  3. Setup campaign
+  4. Email/template
+  5. Recipients
+  6. Review/analysis
+  7. Simulation/send
+- persisted `current_step` values stay `setup`, `content`, `recipients`, `review`, `send` in the current schema
+- `setup` captures admin-created campaign shell, validated client selection, name, and baseline campaign metadata.
+- `content` owns admin template selection, content draft, and future AI assist application.
+- `recipients` owns admin recipient import/selection and deduped association.
+- `review` owns backend/admin preflight analysis and warnings.
+- `send` is the admin simulation/send action step, not a trust boundary; backend still rechecks.
 - `current_step`, `content_ready`, `contacts_ready`, and `review_ready` are now persisted on `campaigns`.
 - `content_ready=true` requires persisted `body_html` in Business PostgreSQL for real dispatch.
 - `contacts_ready` may be refreshed from persisted `campaign_contacts`, but Guard still performs the final eligibility check.
+- client portal may display wizard-derived state, but does not mutate it in V1
 
 ## Contact Sendability
 
@@ -135,6 +145,7 @@ Recommended review output fields:
 Rules:
 - review does not send
 - review does not replace the Guard
+- `review_ready` is produced by backend-owned review flow requested from the admin surface
 - send must re-run or revalidate backend authorization before dispatch
 
 ## Send Authorization
@@ -154,6 +165,7 @@ Rules:
 - if slot or limit is invalid -> no send
 - if `EMAIL_SENDING_ENABLED` is not exactly `true` -> no real dispatch
 - simulation and real dispatch remain distinct outcomes
+- only admin requests simulation or send in V1
 
 ## Editability Matrix
 

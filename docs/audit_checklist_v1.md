@@ -14,23 +14,33 @@ Run this checklist after each milestone and record results in `docs/audit_log.md
 - [ ] Mailpit is not used in production.
 - [ ] `EMAIL_SENDING_ENABLED` remains fail-closed for real dispatch.
 
-## Client Self-Service Contract
+## Admin-Managed Campaign Contract
 
-- [ ] client campaign management is documented as backend-scoped to the authenticated client.
+- [ ] admin campaign creation is documented as the only V1 operational campaign flow.
+- [ ] backend validates admin-selected `client_id` on every campaign write action.
 - [ ] frontend does not trust or send a privileged `client_id`.
 - [ ] frontend does not decide slot limits.
 - [ ] frontend does not decide Guard or review results.
 - [ ] backend validates campaign-step progression.
 - [ ] cross-client campaign access is denied.
+- [ ] no client write endpoint for campaign creation, mutation, simulation, or send is documented as V1.
 
 ## Wizard And Review Contract
 
-- [ ] contract documents `setup`, `content`, `recipients`, `review`, `send` steps.
+- [ ] contract documents the admin UX flow `new campaign`, `select client`, `setup`, `content`, `recipients`, `review`, `send`.
+- [ ] contract documents persisted `setup`, `content`, `recipients`, `review`, `send` step values.
 - [ ] contract documents `content_ready`.
 - [ ] contract documents `contacts_ready`.
 - [ ] contract documents `review_ready`.
 - [ ] review is documented as non-sending.
 - [ ] send is documented to re-run or validate Guard.
+
+## Client Read-Only Contract
+
+- [ ] client campaign routes are documented as read-only in V1.
+- [ ] client portal does not expose CTA or documented flow for "Nuova campagna".
+- [ ] client routes do not simulate, send, assign slots, import contacts, or mutate templates.
+- [ ] client dashboard is documented as visibility/metrics only.
 
 ## Limits And Slots
 
@@ -54,6 +64,7 @@ Run this checklist after each milestone and record results in `docs/audit_log.md
 - [ ] backend derives trusted `client_id` from access mapping.
 - [ ] no password, password hash, reset token, or session secret is stored in Sendwise DB.
 - [ ] client account cannot access admin endpoints.
+- [ ] client account cannot use campaign write endpoints in V1.
 - [ ] invited, suspended, and archived access cannot access protected client data.
 
 ## Deliverability

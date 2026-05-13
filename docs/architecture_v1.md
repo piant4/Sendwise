@@ -23,13 +23,17 @@ flowchart LR
 
 ## Product Direction
 
-The client portal is evolving toward a guided self-service campaign flow:
+The admin portal is the only V1 operational surface for the guided campaign flow:
 
-1. Setup campaign
-2. Create content or select template
-3. Add/import recipients
-4. Review and analyze
-5. Simulate or request controlled send
+1. New campaign
+2. Select client
+3. Setup campaign
+4. Create content or select template
+5. Add/import recipients
+6. Review and analyze
+7. Simulate or request controlled send
+
+The client portal remains read-only for campaign overview, detail, state, usage, blocked sends, and delivery metrics when available.
 
 This milestone aligns the contracts to that direction without implementing the full product flow.
 
@@ -38,7 +42,8 @@ This milestone aligns the contracts to that direction without implementing the f
 FastAPI owns:
 
 - trusted auth-to-client resolution
-- campaign creation and mutation rules
+- admin-managed campaign creation and mutation rules
+- validation of admin-selected `client_id`
 - slot and limit enforcement
 - review and Guard orchestration
 - listmonk preparation and dispatch orchestration
@@ -80,7 +85,7 @@ listmonk does not own:
 
 ## Why Frontend Is Not A Trust Boundary
 
-The frontend is a product surface only. It may render a wizard and collect user intent, but it must not decide:
+The frontend is a product surface only. It may render an admin wizard and client read-only dashboards, but it must not decide:
 
 - `client_id`
 - slot limits
@@ -90,7 +95,7 @@ The frontend is a product surface only. It may render a wizard and collect user 
 
 ## Why Campaign Slots Are Preferred
 
-The previous single client-wide `email_limit_per_campaign` model is too coarse for self-service campaigns with different operational tiers.
+The previous single client-wide `email_limit_per_campaign` model is too coarse for admin-managed campaigns with different operational tiers.
 
 Recommended direction:
 
@@ -139,9 +144,9 @@ AI may not:
 
 ## Future Contract Systems
 
-- `campaign_slots`
 - `email_templates`
-- client campaign review endpoint
+- admin campaign wizard endpoints
+- client campaign detail, stats, and events completion
 - editorial AI-assist endpoints
 
 These are proposed product contracts, not implemented runtime features in this milestone.

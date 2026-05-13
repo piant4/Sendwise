@@ -5,7 +5,7 @@ Source of truth: `project_handoff_v1.md`.
 This file now distinguishes between:
 
 - verified current persistence
-- recommended contract additions for self-service V1
+- recommended contract additions for admin-managed V1
 - legacy compatibility that remains during migration
 
 Mandatory rule:
@@ -50,7 +50,7 @@ completed
 failed
 ```
 
-Recommended self-service campaign statuses for product V1:
+Recommended product campaign statuses for V1:
 
 ```txt
 draft
@@ -144,13 +144,20 @@ Current audited limitations:
 - no dedicated product template entity yet
 - technical template rendering remains a legacy fallback and does not make campaign content product-ready by itself
 
-Recommended additions for self-service V1 contract:
+Recommended additions for admin-managed V1 contract:
 - optional `review_snapshot` or separate review persistence later
 
-Current verified self-service compatibility:
+Current verified admin-managed compatibility:
 - `campaign_slot_id` links a campaign to `campaign_slots` when assigned
+- `campaign_slot_id` is assigned by admin workflow and validated by backend
 - `clients.email_limit_per_campaign` remains the legacy fallback when no slot is linked
 - `max_campaigns` remains the legacy active-campaign-count compatibility check
+
+Contract rules:
+
+- admin creates and updates campaign content/state on behalf of a validated client
+- client portal reads campaign state and metrics scoped to its own `client_id`
+- `current_step`, `content_ready`, `contacts_ready`, and `review_ready` describe the admin flow state, not a client-owned write flow
 
 ### contacts
 
@@ -182,7 +189,7 @@ Current verified fields:
 
 Contract rules:
 - `campaign_id`, `contact_id`, and `client_id` must remain consistent
-- future import/selection flows must populate this relationship in Business PostgreSQL first
+- future admin import/selection flows must populate this relationship in Business PostgreSQL first
 
 ### email_logs
 
@@ -298,7 +305,8 @@ Current verified statuses:
 
 Current verified rules:
 - only admin creates, edits, or archives slots
-- client selection flow remains future work
+- only admin assigns a slot to a campaign
+- client portal may read slot or limit usage if exposed later, but cannot mutate slots
 - one slot can be assigned to at most one campaign
 - Guard applies `campaign_slots.max_emails`
 - `clients.email_limit_per_campaign` remains fallback/legacy until migration completes
@@ -311,7 +319,7 @@ Current V1 choice:
 
 Status: recommended contract, not implemented.
 
-Purpose: Product template catalog for system, client, campaign-derived, and AI-generated email content.
+Purpose: Product template catalog for system, client-scoped, campaign-derived, and AI-generated email content managed by admin in V1.
 
 Recommended fields:
 - `id`
@@ -335,8 +343,10 @@ Recommended `source_type` values:
 - `ai_generated`
 
 Recommended rules:
-- system templates are readable by all eligible clients
-- client templates are visible only to the owning client
+- only admin creates, edits, selects, or applies templates in V1
+- system templates are readable by admin for all eligible clients
+- client-scoped templates are visible to admin when operating for the owning client
+- client portal template management is not part of V1
 - applying a template copies content into the campaign record; the campaign becomes the active working copy
 - Business PostgreSQL remains the source of truth
 - listmonk receives only final rendered HTML after backend approval

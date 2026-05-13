@@ -25,6 +25,7 @@ from app.services.listmonk_mappings import (
     ListmonkMappingConflictError,
     ListmonkMappingService,
 )
+from app.services.unsubscribe import LISTMONK_UNSUBSCRIBE_TOKEN_ATTR, UnsubscribeTokenService
 
 BLOCKLISTED_CONTACT_STATUSES = {
     "suppressed",
@@ -40,6 +41,7 @@ class ContactSubscriberSyncService:
     listmonk_client: ListmonkClient
     mapping_service: ListmonkMappingService
     contact_repository: ContactRepository
+    unsubscribe_token_service: UnsubscribeTokenService
 
     def sync_campaign_contacts(
         self,
@@ -321,6 +323,10 @@ class ContactSubscriberSyncService:
             "attribs": {
                 "sendwise_client_id": contact.client_id,
                 "sendwise_contact_id": contact.id,
+                LISTMONK_UNSUBSCRIBE_TOKEN_ATTR: self.unsubscribe_token_service.generate_token(
+                    client_id=contact.client_id,
+                    contact_id=contact.id,
+                ),
             },
         }
 
@@ -358,4 +364,5 @@ def get_contact_subscriber_sync_service() -> ContactSubscriberSyncService:
         listmonk_client=build_listmonk_client(settings),
         mapping_service=ListmonkMappingService(mapping_repository),
         contact_repository=PostgresContactRepository(settings),
+        unsubscribe_token_service=UnsubscribeTokenService(settings),
     )

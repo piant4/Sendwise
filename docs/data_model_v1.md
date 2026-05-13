@@ -208,6 +208,7 @@ Current verified fields:
 Current audited behavior:
 - simulation writes `status="simulated"`
 - controlled dev dispatch writes `status="queued"`
+- provider and unsubscribe events may update `status` for correlated logs without adding a separate delivery-state table yet
 
 ### api_usage
 
@@ -237,19 +238,31 @@ Current verified fields:
 
 Contract rule:
 - suppression remains enforced by backend and Guard, not by listmonk alone
+- unsubscribe, complaint, and bounce may all write suppression rows idempotently for the same client-scoped e-mail with different reasons
 
 ### provider_events
 
-Purpose: Future normalized provider/listmonk event store.
+Purpose: Append-only normalized provider/listmonk event store.
 
 Current verified fields:
 - `id`
 - `client_id`
 - `campaign_id`
 - `contact_id`
+- `email_log_id`
+- `provider`
+- `source`
+- `provider_event_id`
+- `event_key`
 - `event_type`
 - `payload`
+- `occurred_at`
+- `processed_at`
 - `created_at`
+
+Current audited behavior:
+- events are persisted idempotently by `event_key`
+- correlated bounce, complaint, and unsubscribe events may update `email_logs`, `contacts`, `suppression_list`, and campaign read-model metrics
 
 ### blocked_sends
 

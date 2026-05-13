@@ -5,6 +5,7 @@ from pathlib import Path
 from urllib.parse import urlencode
 
 from app.core.config import Settings
+from app.services.unsubscribe import LISTMONK_UNSUBSCRIBE_TOKEN_PLACEHOLDER
 
 
 class TemplateRenderError(RuntimeError):
@@ -112,16 +113,32 @@ def get_default_template_renderer() -> TemplateRenderer:
     )
 
 
+def ensure_unsubscribe_link(body: str, unsubscribe_url: str) -> str:
+    if unsubscribe_url in body:
+        return body
+
+    if "{{unsubscribe_url}}" in body:
+        return body.replace("{{unsubscribe_url}}", unsubscribe_url)
+
+    footer = (
+        '<p style="font-size:12px;line-height:20px;color:#52606d;">'
+        f'Manage preferences or <a href="{unsubscribe_url}">unsubscribe</a>.'
+        "</p>"
+    )
+    lower_body = body.lower()
+    body_close_index = lower_body.rfind("</body>")
+    if body_close_index >= 0:
+        return f"{body[:body_close_index]}{footer}{body[body_close_index:]}"
+    return f"{body}{footer}"
+
+
 def build_unsubscribe_url(
     *,
     settings: Settings,
     campaign_id: str,
-    client_id: str,
-    contact_id: str | None = None,
+    token: str = LISTMONK_UNSUBSCRIBE_TOKEN_PLACEHOLDER,
 ) -> str:
-    base_url = settings.frontend_origin or settings.frontend_url.strip()
+    base_url = settings.backend_public_origin or settings.backend_public_url.strip()
     base_url = base_url.rstrip("/") or "https://example.invalid"
-    query = {"campaign_id": campaign_id, "client_id": client_id}
-    if contact_id:
-        query["contact_id"] = contact_id
-    return f"{base_url}/unsubscribe?{urlencode(query)}"
+    query = urlencode({"campaign_id": campaign_id})
+    return f"{base_url}/unsubscribe/{token}?{query}"

@@ -5,6 +5,7 @@ import pytest
 from app.services.template_renderer import (
     CompiledTemplateNotFoundError,
     TemplateRenderer,
+    ensure_unsubscribe_link,
 )
 
 
@@ -61,3 +62,13 @@ def test_render_replaces_minimal_variables(tmp_path: Path) -> None:
     assert "<p>Hello</p>" in rendered.body
     assert "https://example.test/unsubscribe" in rendered.body
     assert "Acme" in rendered.body
+
+
+def test_ensure_unsubscribe_link_appends_footer_when_missing() -> None:
+    rendered = ensure_unsubscribe_link(
+        "<html><body><p>Hello</p></body></html>",
+        "https://example.test/unsubscribe/token",
+    )
+
+    assert "https://example.test/unsubscribe/token" in rendered
+    assert rendered.count("unsubscribe") >= 1

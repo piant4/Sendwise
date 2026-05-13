@@ -53,6 +53,18 @@ class Settings(BaseModel):
     frontend_url: str = Field(
         default_factory=lambda: getenv("FRONTEND_URL", "http://localhost:3000")
     )
+    backend_url: str = Field(
+        default_factory=lambda: getenv("BACKEND_URL", "http://backend:8000")
+    )
+    backend_public_url: str = Field(
+        default_factory=lambda: getenv("BACKEND_PUBLIC_URL", "http://localhost:8000")
+    )
+    unsubscribe_token_secret: str = Field(
+        default_factory=lambda: getenv(
+            "UNSUBSCRIBE_TOKEN_SECRET",
+            getenv("BACKEND_API_KEY", "change_me"),
+        )
+    )
 
     @property
     def email_sending_enabled(self) -> bool:
@@ -93,7 +105,14 @@ class Settings(BaseModel):
 
     @property
     def frontend_origin(self) -> str:
-        frontend_url = self.frontend_url.strip()
+        return self._origin_from_url(self.frontend_url)
+
+    @property
+    def backend_public_origin(self) -> str:
+        return self._origin_from_url(self.backend_public_url)
+
+    def _origin_from_url(self, value: str) -> str:
+        frontend_url = value.strip()
 
         if not frontend_url:
             return ""

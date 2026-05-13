@@ -37,6 +37,10 @@ from app.repositories.contacts import (
 )
 from app.repositories.email_logs import EmailLogRepository, get_email_log_repository
 from app.repositories.listmonk_mappings import get_listmonk_mapping_repository
+from app.repositories.provider_events import (
+    ProviderEventRepository,
+    get_provider_event_repository,
+)
 from app.repositories.suppression_list import (
     SuppressionListRepository,
     get_suppression_list_repository,
@@ -79,6 +83,19 @@ EDITABLE_CAMPAIGN_STATUSES = {
 }
 NON_WRITABLE_CLIENT_STATUSES = {"blocked", "archived", "suspended"}
 BLOCKED_SENDS_LATEST_LIMIT = 5
+
+
+def _prefer_provider_metric(
+    *,
+    status_counts: dict[str, int],
+    event_counts: dict[str, int],
+    status_keys: tuple[str, ...],
+    event_types: tuple[str, ...],
+) -> int:
+    provider_total = sum(event_counts.get(event_type, 0) for event_type in event_types)
+    if provider_total > 0:
+        return provider_total
+    return sum(status_counts.get(status_key, 0) for status_key in status_keys)
 
 
 @dataclass(frozen=True)
@@ -169,6 +186,7 @@ class AdminCampaignService:
     suppression_list_repository: SuppressionListRepository
     blocked_send_repository: BlockedSendRepository
     email_log_repository: EmailLogRepository
+    provider_event_repository: ProviderEventRepository
 
     def get_campaign_record(self, campaign_id: str) -> CampaignRecord:
         campaign = self.repository.get_by_id(campaign_id=campaign_id)
@@ -828,17 +846,54 @@ class AdminCampaignService:
             client_id=client_id,
             campaign_id=campaign_id,
         )
+        event_counts = self.provider_event_repository.get_campaign_event_counts(
+            client_id=client_id,
+            campaign_id=campaign_id,
+        )
+        provider_events_available = self.provider_event_repository.has_events_for_campaign(
+            client_id=client_id,
+            campaign_id=campaign_id,
+        )
         return CampaignLogsSummary(
             simulated=status_counts.get("simulated", 0),
             queued=status_counts.get("queued", 0),
-            sent=status_counts.get("sent", 0) + status_counts.get("dispatched", 0),
-            opened=status_counts.get("opened", 0),
-            clicked=status_counts.get("clicked", 0),
-            bounced=status_counts.get("bounced", 0),
-            complained=status_counts.get("complained", 0)
-            + status_counts.get("spam", 0),
-            unsubscribed=status_counts.get("unsubscribed", 0),
-            provider_events_available=False,
+            sent=_prefer_provider_metric(
+                status_counts=status_counts,
+                event_counts=event_counts,
+                status_keys=("sent", "dispatched", "delivered"),
+                event_types=("ses_send", "ses_delivery"),
+            ),
+            opened=_prefer_provider_metric(
+                status_counts=status_counts,
+                event_counts=event_counts,
+                status_keys=("opened",),
+                event_types=("ses_open",),
+            ),
+            clicked=_prefer_provider_metric(
+                status_counts=status_counts,
+                event_counts=event_counts,
+                status_keys=("clicked",),
+                event_types=("ses_click",),
+            ),
+            bounced=_prefer_provider_metric(
+                status_counts=status_counts,
+                event_counts=event_counts,
+                status_keys=("bounced",),
+                event_types=("ses_bounce",),
+            ),
+            complained=_prefer_provider_metric(
+                status_counts=status_counts,
+                event_counts=event_counts,
+                status_keys=("complained", "spam"),
+                event_types=("ses_complaint",),
+            ),
+            unsubscribed=_prefer_provider_metric(
+                status_counts=status_counts,
+                event_counts=event_counts,
+                status_keys=("unsubscribed",),
+                event_types=("sendwise_unsubscribe",),
+            ),
+            provider_events_available=provider_events_available,
         )
 
     def _build_campaign_blocked_sends_summary(
@@ -1485,6 +1540,7 @@ def get_admin_campaign_service() -> AdminCampaignService:
         suppression_list_repository=get_suppression_list_repository(),
         blocked_send_repository=get_blocked_send_repository(),
         email_log_repository=get_email_log_repository(),
+        provider_event_repository=get_provider_event_repository(),
     )
 
 

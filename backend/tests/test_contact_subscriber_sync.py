@@ -5,6 +5,7 @@ import httpx
 from fastapi.testclient import TestClient
 
 from app.api.contacts import get_contact_subscriber_sync_service
+from app.core.config import get_settings
 from app.core.security import require_api_key
 from app.integrations.listmonk.client import ListmonkClient, ListmonkError
 from app.main import app
@@ -12,6 +13,7 @@ from app.repositories.contacts import ContactRecord, InMemoryContactRepository
 from app.repositories.listmonk_mappings import InMemoryListmonkMappingRepository
 from app.services.contact_subscriber_sync import ContactSubscriberSyncService
 from app.services.listmonk_mappings import ListmonkMappingService
+from app.services.unsubscribe import UnsubscribeTokenService
 
 
 class FakeListmonkSubscriberClient:
@@ -98,12 +100,14 @@ def build_sync_service(
             contacts=contacts,
             campaign_contacts=campaign_contacts,
         ),
+        unsubscribe_token_service=UnsubscribeTokenService(settings=get_settings()),
     )
     return service, fake_listmonk, repository
 
 
 def test_sync_contact_creates_client_list_subscriber_membership_and_mapping() -> None:
     service, fake_listmonk, repository = build_sync_service()
+    token_service = UnsubscribeTokenService(settings=get_settings())
 
     result = service.sync_contact(contact_id="contact_123")
 
@@ -129,6 +133,10 @@ def test_sync_contact_creates_client_list_subscriber_membership_and_mapping() ->
             "attribs": {
                 "sendwise_client_id": "client_123",
                 "sendwise_contact_id": "contact_123",
+                "sendwise_unsubscribe_token": token_service.generate_token(
+                    client_id="client_123",
+                    contact_id="contact_123",
+                ),
             },
             "lists": [1],
             "preconfirm_subscriptions": True,
@@ -144,6 +152,7 @@ def test_sync_contact_creates_client_list_subscriber_membership_and_mapping() ->
 def test_sync_contact_reuses_mapping_without_duplicate_subscriber() -> None:
     repository = InMemoryListmonkMappingRepository()
     mapping_service = ListmonkMappingService(repository)
+    token_service = UnsubscribeTokenService(settings=get_settings())
     mapping_service.ensure_client_list_mapping(
         client_id="client_123",
         listmonk_list_id="7",
@@ -174,6 +183,10 @@ def test_sync_contact_reuses_mapping_without_duplicate_subscriber() -> None:
                 "attribs": {
                     "sendwise_client_id": "client_123",
                     "sendwise_contact_id": "contact_123",
+                    "sendwise_unsubscribe_token": token_service.generate_token(
+                        client_id="client_123",
+                        contact_id="contact_123",
+                    ),
                 },
             },
         )

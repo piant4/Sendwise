@@ -14,6 +14,7 @@ from app.repositories.clients import ClientCampaignRecord, ClientRecord
 from app.repositories.contacts import ContactRecord, InMemoryContactRepository
 from app.repositories.email_logs import InMemoryEmailLogRepository
 from app.repositories.listmonk_mappings import InMemoryListmonkMappingRepository
+from app.repositories.provider_events import InMemoryProviderEventRepository
 from app.repositories.suppression_list import (
     InMemorySuppressionListRepository,
     SuppressionRecord,
@@ -202,6 +203,7 @@ def build_admin_service(
         ),
         blocked_send_repository=blocked_send_repository or InMemoryBlockedSendRepository(),
         email_log_repository=email_log_repository or InMemoryEmailLogRepository(),
+        provider_event_repository=InMemoryProviderEventRepository(),
     )
 
 

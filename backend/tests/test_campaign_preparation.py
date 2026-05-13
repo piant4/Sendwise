@@ -14,6 +14,7 @@ from app.services.campaign_preparation import CampaignPreparationService
 from app.services.contact_subscriber_sync import ContactSubscriberSyncService
 from app.services.listmonk_mappings import ListmonkMappingService
 from app.services.template_renderer import get_default_template_renderer
+from app.services.unsubscribe import UnsubscribeTokenService
 
 
 class FakeListmonkPreparationClient:
@@ -181,6 +182,7 @@ def build_preparation_service(
         listmonk_client=fake_listmonk,  # type: ignore[arg-type]
         mapping_service=mapping_service,
         contact_repository=contact_repository,
+        unsubscribe_token_service=UnsubscribeTokenService(Settings(environment="test")),
     )
     service = CampaignPreparationService(
         settings=Settings(environment="test", smtp_from_email="sender@example.test"),
@@ -215,10 +217,17 @@ def test_prepare_campaign_creates_list_subscribers_campaign_and_mappings() -> No
     assert created_payload["content_type"] == "html"
     assert created_payload["tags"] == ["sendwise", "content_ready:true"]
     assert created_payload["from_email"] == "sender@example.test"
-    assert created_payload["body"] == "<html><body><p>Persisted body.</p></body></html>"
+    assert (
+        created_payload["body"]
+        == "<html><body><p>Persisted body.</p><p style=\"font-size:12px;line-height:20px;color:#52606d;\">Manage preferences or <a href=\"http://localhost:8000/unsubscribe/{{ .Subscriber.Attribs.sendwise_unsubscribe_token }}?campaign_id=campaign_123\">unsubscribe</a>.</p></body></html>"
+    )
     assert result["content"]["body"] == created_payload["body"]
     assert result["content"]["template_name"] == "campaign_business_db"
     assert result["content"]["preview_text"] == "Preview"
+    assert (
+        result["content"]["unsubscribe_url"]
+        == "http://localhost:8000/unsubscribe/{{ .Subscriber.Attribs.sendwise_unsubscribe_token }}?campaign_id=campaign_123"
+    )
     mapping_types = {
         (mapping.entity_type, mapping.entity_id, mapping.listmonk_type)
         for mapping in repository.list_by_client("client_123")

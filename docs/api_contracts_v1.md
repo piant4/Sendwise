@@ -203,5 +203,6 @@ Contacts notes:
 
 | Endpoint | Purpose | Allowed caller | Required access | High-level input | High-level output | Main errors | Status |
 |---|---|---|---|---|---|---|---|
-| `POST /events/listmonk` | Receive listmonk webhook events. | listmonk. | Webhook secret or API key. | Event payload. | Accepted placeholder result. | `400`, `401`, `403`, `409`. | `stub` |
-| `POST /events/provider` | Receive provider events if configured later. | SMTP/provider webhook. | Webhook secret or API key. | Event payload. | Accepted placeholder result. | `400`, `401`, `403`, `409`. | `future` |
+| `GET /unsubscribe/{token}` | Public Sendwise-managed unsubscribe endpoint. | Email recipient. | None. | Signed opaque token and optional `campaign_id`. | Minimal HTML confirmation and backend-owned suppression side effects. | `400`. | `implemented` |
+| `POST /events/listmonk` | Receive listmonk webhook events. | listmonk. | Webhook secret or API key. | Event payload. | Accepted ignored result for legacy compatibility. | `400`, `401`, `403`, `409`. | `implemented` |
+| `POST /events/provider` | Receive normalized provider events and minimal SES/SNS-like payloads. | SMTP/provider webhook. | Webhook secret or API key. | Event payload. | Accepted normalized event persistence plus correlated side effects when resolvable. | `400`, `401`, `403`, `409`. | `implemented` |

@@ -24,6 +24,10 @@ from app.repositories.clients import (
 )
 from app.repositories.contacts import ContactRepository, PostgresContactRepository
 from app.repositories.email_logs import EmailLogRepository, get_email_log_repository
+from app.repositories.provider_events import (
+    ProviderEventRepository,
+    get_provider_event_repository,
+)
 from app.repositories.suppression_list import (
     SuppressionListRepository,
     get_suppression_list_repository,
@@ -88,6 +92,19 @@ RECENT_ADMIN_CAMPAIGNS_LIMIT = 5
 RECENT_ADMIN_BLOCKED_SENDS_LIMIT = 5
 TOP_CLIENTS_LIMIT = 5
 CLIENTS_NEAR_LIMIT_LIMIT = 5
+
+
+def _prefer_provider_metric(
+    *,
+    status_counts: dict[str, int],
+    event_counts: dict[str, int],
+    status_keys: tuple[str, ...],
+    event_types: tuple[str, ...],
+) -> int:
+    provider_total = sum(event_counts.get(event_type, 0) for event_type in event_types)
+    if provider_total > 0:
+        return provider_total
+    return sum(status_counts.get(status_key, 0) for status_key in status_keys)
 RECENT_CAMPAIGNS_LIMIT = 5
 RECENT_USAGE_LIMIT = 5
 RECENT_BLOCKED_SENDS_LIMIT = 5
@@ -214,6 +231,7 @@ class ClientsService:
         suppression_list_repository: SuppressionListRepository | None = None,
         blocked_send_repository: BlockedSendRepository | None = None,
         email_log_repository: EmailLogRepository | None = None,
+        provider_event_repository: ProviderEventRepository | None = None,
     ) -> None:
         self._repository = repository
         self._settings = settings or get_settings()
@@ -223,6 +241,7 @@ class ClientsService:
         self._suppression_list_repository = suppression_list_repository
         self._blocked_send_repository = blocked_send_repository
         self._email_log_repository = email_log_repository
+        self._provider_event_repository = provider_event_repository
 
     def list_clients(self) -> list[ClientRecord]:
         return self._repository.list_clients()
@@ -965,17 +984,55 @@ class ClientsService:
             client_id=client_id,
             campaign_id=campaign_id,
         )
+        provider_event_repository = self._require_provider_event_repository()
+        event_counts = provider_event_repository.get_campaign_event_counts(
+            client_id=client_id,
+            campaign_id=campaign_id,
+        )
+        provider_events_available = provider_event_repository.has_events_for_campaign(
+            client_id=client_id,
+            campaign_id=campaign_id,
+        )
         return CampaignLogsSummary(
             simulated=status_counts.get("simulated", 0),
             queued=status_counts.get("queued", 0),
-            sent=status_counts.get("sent", 0) + status_counts.get("dispatched", 0),
-            opened=status_counts.get("opened", 0),
-            clicked=status_counts.get("clicked", 0),
-            bounced=status_counts.get("bounced", 0),
-            complained=status_counts.get("complained", 0)
-            + status_counts.get("spam", 0),
-            unsubscribed=status_counts.get("unsubscribed", 0),
-            provider_events_available=False,
+            sent=_prefer_provider_metric(
+                status_counts=status_counts,
+                event_counts=event_counts,
+                status_keys=("sent", "dispatched", "delivered"),
+                event_types=("ses_send", "ses_delivery"),
+            ),
+            opened=_prefer_provider_metric(
+                status_counts=status_counts,
+                event_counts=event_counts,
+                status_keys=("opened",),
+                event_types=("ses_open",),
+            ),
+            clicked=_prefer_provider_metric(
+                status_counts=status_counts,
+                event_counts=event_counts,
+                status_keys=("clicked",),
+                event_types=("ses_click",),
+            ),
+            bounced=_prefer_provider_metric(
+                status_counts=status_counts,
+                event_counts=event_counts,
+                status_keys=("bounced",),
+                event_types=("ses_bounce",),
+            ),
+            complained=_prefer_provider_metric(
+                status_counts=status_counts,
+                event_counts=event_counts,
+                status_keys=("complained", "spam"),
+                event_types=("ses_complaint",),
+            ),
+            unsubscribed=_prefer_provider_metric(
+                status_counts=status_counts,
+                event_counts=event_counts,
+                status_keys=("unsubscribed",),
+                event_types=("sendwise_unsubscribe",),
+            ),
+            provider_events_available=provider_events_available,
         )
 
     def _build_campaign_blocked_sends_summary(
@@ -1034,6 +1091,13 @@ class ClientsService:
         if self._email_log_repository is None:
             raise RuntimeError("Email log repository is required for client campaign reads.")
         return self._email_log_repository
+
+    def _require_provider_event_repository(self) -> ProviderEventRepository:
+        if self._provider_event_repository is None:
+            raise RuntimeError(
+                "Provider event repository is required for client campaign reads."
+            )
+        return self._provider_event_repository
 
     def _build_client_usage(self, entry: ClientUsageRecord) -> ApiUsage:
         return ApiUsage(
@@ -1208,4 +1272,5 @@ def get_clients_service(
         suppression_list_repository=get_suppression_list_repository(),
         blocked_send_repository=get_blocked_send_repository(),
         email_log_repository=get_email_log_repository(),
+        provider_event_repository=get_provider_event_repository(),
     )

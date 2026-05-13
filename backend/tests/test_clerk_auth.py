@@ -25,6 +25,7 @@ from app.repositories.clients import (
 )
 from app.repositories.contacts import InMemoryContactRepository
 from app.repositories.email_logs import InMemoryEmailLogRepository
+from app.repositories.provider_events import InMemoryProviderEventRepository
 from app.repositories.suppression_list import InMemorySuppressionListRepository
 from app.services.auth import AccountDeletionService, ClerkUserDeletionGateway, get_account_deletion_service
 from app.services.client_access import (
@@ -884,6 +885,7 @@ def install_test_dependencies(
         suppression_list_repository=suppression_list_repository,
         blocked_send_repository=blocked_send_repository,
         email_log_repository=email_log_repository,
+        provider_event_repository=InMemoryProviderEventRepository(),
     )
     client_access_service = ClientAccessService(
         repository=client_access_repository,

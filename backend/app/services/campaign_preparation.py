@@ -24,8 +24,10 @@ from app.services.template_renderer import (
     TemplateRenderError,
     TemplateRenderer,
     build_unsubscribe_url,
+    ensure_unsubscribe_link,
     get_default_template_renderer,
 )
+from app.services.unsubscribe import UnsubscribeTokenService
 
 
 @dataclass(frozen=True)
@@ -165,16 +167,19 @@ class CampaignPreparationService:
         unsubscribe_url = build_unsubscribe_url(
             settings=self.settings,
             campaign_id=campaign.id,
-            client_id=campaign.client_id,
         )
         if campaign.content_ready and (campaign.body_html or "").strip():
+            rendered_body = ensure_unsubscribe_link(
+                str(campaign.body_html),
+                unsubscribe_url,
+            )
             return {
                 "template_name": "campaign_business_db",
                 "content_ready": True,
                 "reason": None,
                 "subject": subject,
                 "preview_text": (campaign.preview_text or "").strip(),
-                "body": str(campaign.body_html),
+                "body": rendered_body,
                 "body_text": campaign.body_text,
                 "unsubscribe_url": unsubscribe_url,
                 "client_name": client_name,
@@ -291,6 +296,7 @@ def get_campaign_preparation_service() -> CampaignPreparationService:
         listmonk_client=listmonk_client,
         mapping_service=mapping_service,
         contact_repository=contact_repository,
+        unsubscribe_token_service=UnsubscribeTokenService(settings),
     )
     return CampaignPreparationService(
         settings=settings,

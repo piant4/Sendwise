@@ -158,15 +158,38 @@ CREATE TABLE IF NOT EXISTS suppression_list (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+CREATE UNIQUE INDEX IF NOT EXISTS suppression_list_client_email_reason_idx
+    ON suppression_list ((COALESCE(client_id::text, '')), lower(email), reason);
+
 CREATE TABLE IF NOT EXISTS provider_events (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     client_id UUID REFERENCES clients(id),
     campaign_id UUID REFERENCES campaigns(id),
     contact_id UUID REFERENCES contacts(id),
+    email_log_id UUID REFERENCES email_logs(id),
+    provider TEXT NOT NULL DEFAULT 'unknown',
+    source TEXT NOT NULL DEFAULT 'webhook',
+    provider_event_id TEXT,
+    event_key TEXT NOT NULL DEFAULT gen_random_uuid()::text,
     event_type TEXT NOT NULL,
     payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+    occurred_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    processed_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+CREATE UNIQUE INDEX IF NOT EXISTS provider_events_event_key_idx
+    ON provider_events (event_key);
+
+CREATE UNIQUE INDEX IF NOT EXISTS provider_events_provider_event_id_idx
+    ON provider_events (provider, provider_event_id)
+    WHERE provider_event_id IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS provider_events_campaign_idx
+    ON provider_events (campaign_id, event_type);
+
+CREATE INDEX IF NOT EXISTS provider_events_contact_idx
+    ON provider_events (contact_id, event_type);
 
 CREATE TABLE IF NOT EXISTS blocked_sends (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

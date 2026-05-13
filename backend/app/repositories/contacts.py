@@ -82,6 +82,14 @@ class ContactRepository:
     ) -> int:
         raise NotImplementedError
 
+    def update_status(
+        self,
+        *,
+        contact_id: str,
+        status: str,
+    ) -> Optional[ContactRecord]:
+        raise NotImplementedError
+
 
 class PostgresContactRepository(ContactRepository):
     def __init__(self, settings: Settings) -> None:
@@ -281,6 +289,35 @@ class PostgresContactRepository(ContactRepository):
 
         return int(row["total"]) if row is not None else 0
 
+    def update_status(
+        self,
+        *,
+        contact_id: str,
+        status: str,
+    ) -> Optional[ContactRecord]:
+        query = """
+            UPDATE contacts
+            SET
+                status = %s,
+                updated_at = NOW()
+            WHERE id::text = %s
+            RETURNING
+                id::text AS id,
+                client_id::text AS client_id,
+                email,
+                status,
+                created_at,
+                updated_at
+        """
+
+        with postgres_connection(self._settings) as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(query, (status, contact_id))
+                row = cursor.fetchone()
+            connection.commit()
+
+        return _map_contact_row(row)
+
 
 class InMemoryContactRepository(ContactRepository):
     def __init__(
@@ -400,6 +437,24 @@ class InMemoryContactRepository(ContactRepository):
         )
         self._contacts[contact.id] = contact
         return contact
+
+    def update_status(
+        self,
+        *,
+        contact_id: str,
+        status: str,
+    ) -> Optional[ContactRecord]:
+        existing = self._contacts.get(contact_id)
+        if existing is None:
+            return None
+        updated = existing.model_copy(
+            update={
+                "status": status,
+                "updated_at": datetime.now(timezone.utc),
+            }
+        )
+        self._contacts[contact_id] = updated
+        return updated
 
 
 def get_contact_repository() -> ContactRepository:

@@ -1926,6 +1926,11 @@ Scope confirmation:
 - No `client_access` persistence was implemented.
 - No Clerk invitation API, admin invite flow, onboarding endpoint, public signup, custom password form, custom 2FA, real listmonk, real sending, AI, n8n, Celery, Keycloak, Metabase, Postal, Rspamd, or Budibase was implemented.
 
+Milestone 11 audit note:
+- Added backend-owned `GET /unsubscribe/{token}` with signed opaque tokens, idempotent suppression, and minimal safe HTML response.
+- Added `POST /events/provider` ingestion for normalized provider payloads and minimal SES/SNS-like payloads, persisting idempotent `provider_events` rows before correlated side effects.
+- Campaign read models now expose provider-event-backed `opened`, `clicked`, `bounced`, `complained`, and `unsubscribed` counts when processed events exist, while keeping zero/unavailable behavior honest when they do not.
+
 ## 2026-05-13 - Milestone 10.9 admin review summary and client campaign stats
 
 Summary:

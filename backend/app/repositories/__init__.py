@@ -12,6 +12,12 @@ from app.repositories.campaigns import (
     InMemoryCampaignRepository,
     PostgresCampaignRepository,
 )
+from app.repositories.provider_events import (
+    InMemoryProviderEventRepository,
+    PostgresProviderEventRepository,
+    ProviderEventRecord,
+    ProviderEventRepository,
+)
 
 __all__ = [
     "CampaignRecord",
@@ -20,6 +26,10 @@ __all__ = [
     "CampaignSlotRepository",
     "InMemoryCampaignRepository",
     "InMemoryCampaignSlotRepository",
+    "InMemoryProviderEventRepository",
     "PostgresCampaignRepository",
     "PostgresCampaignSlotRepository",
+    "PostgresProviderEventRepository",
+    "ProviderEventRecord",
+    "ProviderEventRepository",
 ]

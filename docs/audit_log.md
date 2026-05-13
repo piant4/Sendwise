@@ -1926,6 +1926,30 @@ Scope confirmation:
 - No `client_access` persistence was implemented.
 - No Clerk invitation API, admin invite flow, onboarding endpoint, public signup, custom password form, custom 2FA, real listmonk, real sending, AI, n8n, Celery, Keycloak, Metabase, Postal, Rspamd, or Budibase was implemented.
 
+## 2026-05-13 - Milestone 10.9 admin review summary and client campaign stats
+
+Summary:
+- Implemented `GET /admin/campaigns/{campaign_id}/summary` as a Business-DB-backed read model for admin review.
+- Consolidated `POST /admin/campaigns/{campaign_id}/review` to return stable readiness/sendability fields including `allowed_to_send`, `can_send_when_enabled`, `sending_enabled`, and `current_step`.
+- Implemented `GET /client/campaigns/{campaign_id}` and `GET /client/campaigns/{campaign_id}/stats` as client-scoped read-only endpoints backed by `campaigns`, `campaign_contacts`, `email_logs`, `blocked_sends`, and suppression data.
+- Kept provider-event-derived metrics honest: `opened`, `clicked`, `complained/spam`, and similar metrics remain `0` with unavailable source metadata when no DB-backed event data exists.
+
+Checks:
+- `docker run --rm -v "$PWD/backend:/app" -v "$PWD/templates/dist:/templates/dist:ro" -w /app sendwise-backend python -m pytest tests`
+- `cd templates && npm run build`
+- `cd frontend && npm run build`
+- `cd frontend && npm run lint`
+- `bash scripts/audit.sh`
+- `bash scripts/smoke_test.sh`
+- `docker compose config`
+- `docker compose -f docker-compose.yml -f docker-compose.dev.yml config`
+- `git diff --check`
+
+Scope confirmation:
+- No frontend implementation was added.
+- No AI, SES, provider-event ingestion, or real send-path behavior was added.
+- No broad refactor or listmonk bypass was introduced.
+
 ## Milestone 10.8 Completion — Admin Campaign Recipients API
 
 Date: 2026-05-13

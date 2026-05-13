@@ -10,6 +10,7 @@ from app.schemas.campaigns import (
     AdminCampaignCreateRequest,
     AdminCampaignDetail,
     AdminCampaignReviewResponse,
+    AdminCampaignSummaryResponse,
     AdminCampaignSelectSlotRequest,
     AdminCampaignSlotAssignmentResponse,
     AdminCampaignUpdateRequest,
@@ -274,6 +275,15 @@ def get_campaign(
     campaign_service: AdminCampaignService = Depends(get_admin_campaign_service),
 ) -> AdminCampaignDetail:
     return campaign_service.get_campaign_detail(campaign_id)
+
+
+@router.get("/campaigns/{campaign_id}/summary", response_model=AdminCampaignSummaryResponse)
+def get_campaign_summary(
+    campaign_id: str,
+    _current_user: AuthenticatedUser = Depends(require_platform_admin),
+    campaign_service: AdminCampaignService = Depends(get_admin_campaign_service),
+) -> AdminCampaignSummaryResponse:
+    return campaign_service.get_campaign_summary(campaign_id)
 
 
 @router.patch("/campaigns/{campaign_id}", response_model=AdminCampaignDetail)

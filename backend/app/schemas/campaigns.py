@@ -4,6 +4,7 @@ from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.schemas.blocked_sends import BlockedSend
 from app.schemas.common import CampaignStats, CampaignStatus
 
 
@@ -91,6 +92,8 @@ class AdminCampaignReviewResponse(BaseModel):
     campaign_id: str
     client_id: str
     allowed_to_send: bool
+    can_send_when_enabled: bool
+    sending_enabled: bool
     warnings: list[str]
     blocking_errors: list[str]
     eligible_contact_count: int
@@ -100,6 +103,7 @@ class AdminCampaignReviewResponse(BaseModel):
     content_ready: bool
     contacts_ready: bool
     review_ready: bool
+    current_step: str
 
 
 class AdminCampaignContactPayload(BaseModel):
@@ -155,3 +159,83 @@ class AdminCampaignContactsImportResponse(BaseModel):
     invalid_contacts: int
     contacts_ready: bool
     errors: list[AdminCampaignContactError]
+
+
+class CampaignSummaryItem(BaseModel):
+    id: str
+    client_id: str
+    name: str
+    status: CampaignStatus
+    subject: Optional[str] = None
+    preview_text: Optional[str] = None
+    current_step: str
+    content_ready: bool
+    contacts_ready: bool
+    review_ready: bool
+
+
+class CampaignClientSummary(BaseModel):
+    id: str
+    email: str
+    personal_name: Optional[str] = None
+    status: str
+
+
+class CampaignSlotSummary(BaseModel):
+    id: Optional[str] = None
+    label: Optional[str] = None
+    max_emails: Optional[int] = None
+    status: Optional[str] = None
+    limit_source: Optional[str] = None
+
+
+class CampaignRecipientsSummary(BaseModel):
+    total: int
+    eligible: int
+    invalid: int
+    suppressed: int
+    blocked: int
+
+
+class CampaignLogsSummary(BaseModel):
+    simulated: int = 0
+    queued: int = 0
+    sent: int = 0
+    opened: int = 0
+    clicked: int = 0
+    bounced: int = 0
+    complained: int = 0
+    unsubscribed: int = 0
+    provider_events_available: bool = False
+
+
+class CampaignBlockedSendsSummary(BaseModel):
+    total: int
+    latest: list[BlockedSend]
+
+
+class CampaignReadModel(BaseModel):
+    campaign: CampaignSummaryItem
+    slot: CampaignSlotSummary
+    recipients: CampaignRecipientsSummary
+    logs: CampaignLogsSummary
+    blocked_sends: CampaignBlockedSendsSummary
+
+
+class AdminCampaignSummaryResponse(CampaignReadModel):
+    client: CampaignClientSummary
+    can_send: bool
+    blocking_errors: list[str]
+    warnings: list[str]
+
+
+class ClientCampaignDetailResponse(CampaignReadModel):
+    pass
+
+
+class ClientCampaignStatsResponse(BaseModel):
+    campaign_id: str
+    client_id: str
+    recipients: CampaignRecipientsSummary
+    logs: CampaignLogsSummary
+    blocked_sends: CampaignBlockedSendsSummary

@@ -110,13 +110,22 @@ def build_admin_user() -> AuthenticatedUser:
     )
 
 
-def build_client(client_id: str = "client_123", status: str = "active") -> ClientRecord:
+def build_client(
+    client_id: str = "client_123",
+    status: str = "active",
+    email_limit_per_campaign: int | None = None,
+    max_campaigns: int | None = None,
+) -> ClientRecord:
     now = datetime.now(timezone.utc)
     return ClientRecord(
         id=client_id,
         email=f"{client_id}@example.test",
         personal_name=client_id.title(),
         status=status,
+        email_limit_per_campaign=email_limit_per_campaign,
+        max_campaigns=max_campaigns,
+        monthly_email_limit=None,
+        daily_email_limit=None,
         created_at=now,
         updated_at=now,
     )
@@ -169,6 +178,8 @@ def build_admin_service(
     contacts: list[ContactRecord] | None = None,
     campaign_contacts: set[tuple[str, str, str]] | None = None,
     suppression_records: list[SuppressionRecord] | None = None,
+    blocked_send_repository: InMemoryBlockedSendRepository | None = None,
+    email_log_repository: InMemoryEmailLogRepository | None = None,
 ) -> AdminCampaignService:
     repository = campaign_repository or InMemoryCampaignRepository()
     slots = slot_repository or InMemoryCampaignSlotRepository()
@@ -189,6 +200,8 @@ def build_admin_service(
         suppression_list_repository=InMemorySuppressionListRepository(
             records=suppression_records or []
         ),
+        blocked_send_repository=blocked_send_repository or InMemoryBlockedSendRepository(),
+        email_log_repository=email_log_repository or InMemoryEmailLogRepository(),
     )
 
 
@@ -375,6 +388,173 @@ def test_admin_select_slot_blocks_cross_client_mismatch() -> None:
         raise AssertionError("Expected cross-client mismatch rejection")
 
 
+def test_admin_summary_returns_campaign_client_slot_and_readiness() -> None:
+    repository = InMemoryCampaignRepository()
+    campaign = repository.add_campaign(
+        campaign_id="campaign_123",
+        client_id="client_123",
+        status="ready",
+        subject="Launch",
+        preview_text="Preview line",
+        body_html="<p>Hello</p>",
+        body_text="Hello",
+        current_step="review",
+    )
+    slot_repository = InMemoryCampaignSlotRepository()
+    slot_repository.add_slot(
+        slot_id="slot_123",
+        client_id="client_123",
+        label="Starter",
+        max_emails=500,
+        status="assigned",
+        assigned_campaign_id=campaign.id,
+    )
+    campaign = repository.update_campaign(
+        client_id=campaign.client_id,
+        campaign_id=campaign.id,
+        campaign_slot_id="slot_123",
+    )
+    contact = build_contact(contact_id="contact_1", email="one@example.test")
+    service = build_admin_service(
+        campaign_repository=repository,
+        slot_repository=slot_repository,
+        contacts=[contact],
+        campaign_contacts={("client_123", campaign.id, contact.id)},
+    )
+
+    result = service.get_campaign_summary(campaign.id)
+
+    assert result.campaign.id == campaign.id
+    assert result.campaign.client_id == "client_123"
+    assert result.campaign.preview_text == "Preview line"
+    assert result.campaign.current_step == "review"
+    assert result.campaign.content_ready is True
+    assert result.campaign.contacts_ready is True
+    assert result.campaign.review_ready is True
+    assert result.client.id == "client_123"
+    assert result.client.email == "client_123@example.test"
+    assert result.slot.id == "slot_123"
+    assert result.slot.label == "Starter"
+    assert result.slot.max_emails == 500
+    assert result.slot.status == "assigned"
+    assert result.slot.limit_source == "campaign_slot"
+    assert result.can_send is False
+    assert result.warnings == [
+        'EMAIL_SENDING_ENABLED is not exactly "true"; real dispatch is disabled.'
+    ]
+
+
+def test_admin_summary_returns_recipients_summary() -> None:
+    repository = InMemoryCampaignRepository(
+        campaign_contacts={
+            ("client_123", "campaign_123", "contact_valid"),
+            ("client_123", "campaign_123", "contact_invalid"),
+            ("client_123", "campaign_123", "contact_suppressed"),
+        },
+    )
+    campaign = repository.add_campaign(campaign_id="campaign_123", client_id="client_123")
+    contacts = [
+        build_contact(contact_id="contact_valid", email="valid@example.test"),
+        build_contact(contact_id="contact_invalid", email="invalid-email"),
+        build_contact(contact_id="contact_suppressed", email="suppressed@example.test"),
+    ]
+    service = build_admin_service(
+        campaign_repository=repository,
+        contacts=contacts,
+        campaign_contacts={
+            ("client_123", campaign.id, "contact_valid"),
+            ("client_123", campaign.id, "contact_invalid"),
+            ("client_123", campaign.id, "contact_suppressed"),
+        },
+        suppression_records=[
+            SuppressionRecord(
+                id="suppression_1",
+                client_id="client_123",
+                email="suppressed@example.test",
+                reason="manual",
+                created_at=datetime.now(timezone.utc),
+            )
+        ],
+    )
+
+    result = service.get_campaign_summary(campaign.id)
+
+    assert result.recipients.total == 3
+    assert result.recipients.eligible == 1
+    assert result.recipients.invalid == 1
+    assert result.recipients.suppressed == 1
+    assert result.recipients.blocked == 2
+
+
+def test_admin_summary_aggregates_email_logs_simulated_and_queued() -> None:
+    repository = InMemoryCampaignRepository()
+    campaign = repository.add_campaign(campaign_id="campaign_123", client_id="client_123")
+    email_logs = InMemoryEmailLogRepository()
+    email_logs.create_email_log(
+        client_id="client_123",
+        campaign_id=campaign.id,
+        contact_id="contact_1",
+        status="simulated",
+    )
+    email_logs.create_email_log(
+        client_id="client_123",
+        campaign_id=campaign.id,
+        contact_id="contact_2",
+        status="queued",
+    )
+    email_logs.create_email_log(
+        client_id="client_123",
+        campaign_id=campaign.id,
+        contact_id="contact_3",
+        status="queued",
+    )
+    service = build_admin_service(
+        campaign_repository=repository,
+        email_log_repository=email_logs,
+    )
+
+    result = service.get_campaign_summary(campaign.id)
+
+    assert result.logs.simulated == 1
+    assert result.logs.queued == 2
+    assert result.logs.sent == 0
+    assert result.logs.provider_events_available is False
+
+
+def test_admin_summary_aggregates_blocked_sends() -> None:
+    repository = InMemoryCampaignRepository()
+    campaign = repository.add_campaign(campaign_id="campaign_123", client_id="client_123")
+    blocked_sends = InMemoryBlockedSendRepository()
+    blocked_sends.create_blocked_send(
+        client_id="client_123",
+        campaign_id=campaign.id,
+        contact_id="contact_2",
+        reason="Campaign has no associated contacts.",
+        decision="blocked",
+    )
+    blocked_sends.create_blocked_send(
+        client_id="client_123",
+        campaign_id=campaign.id,
+        contact_id="contact_1",
+        reason="Campaign content is not ready.",
+        decision="blocked",
+    )
+    service = build_admin_service(
+        campaign_repository=repository,
+        blocked_send_repository=blocked_sends,
+    )
+
+    result = service.get_campaign_summary(campaign.id)
+
+    assert result.blocked_sends.total == 2
+    assert len(result.blocked_sends.latest) == 2
+    assert result.blocked_sends.latest[0].campaign_name == "Launch campaign"
+    assert {item.contact_id for item in result.blocked_sends.latest} == {
+        "contact_1",
+        "contact_2",
+    }
+
+
 def test_admin_review_returns_not_ready_when_content_or_contacts_are_missing() -> None:
     repository = InMemoryCampaignRepository()
     campaign = repository.add_campaign(
@@ -390,6 +570,56 @@ def test_admin_review_returns_not_ready_when_content_or_contacts_are_missing() -
     assert result.allowed_to_send is False
     assert result.review_ready is False
     assert "Campaign content is not ready." in result.blocking_errors
+    assert "Campaign has no associated contacts." in result.blocking_errors
+
+
+def test_admin_review_not_ready_when_content_ready_is_false() -> None:
+    repository = InMemoryCampaignRepository(
+        campaign_contacts={("client_123", "campaign_123", "contact_1")},
+    )
+    campaign = repository.add_campaign(
+        campaign_id="campaign_123",
+        client_id="client_123",
+        status="ready",
+        subject="Launch",
+        body_html="",
+    )
+    contact = build_contact(contact_id="contact_1", email="one@example.test")
+    service = build_admin_service(
+        campaign_repository=repository,
+        contacts=[contact],
+        campaign_contacts={("client_123", campaign.id, contact.id)},
+    )
+
+    result = service.review_campaign(campaign.id)
+
+    assert result.allowed_to_send is False
+    assert result.can_send_when_enabled is False
+    assert result.content_ready is False
+    assert result.contacts_ready is True
+    assert result.review_ready is False
+    assert "Campaign content is not ready." in result.blocking_errors
+
+
+def test_admin_review_not_ready_when_contacts_ready_is_false() -> None:
+    repository = InMemoryCampaignRepository()
+    campaign = repository.add_campaign(
+        campaign_id="campaign_123",
+        client_id="client_123",
+        status="ready",
+        subject="Launch",
+        body_html="<p>Hello</p>",
+        content_ready=True,
+    )
+    service = build_admin_service(campaign_repository=repository)
+
+    result = service.review_campaign(campaign.id)
+
+    assert result.allowed_to_send is False
+    assert result.can_send_when_enabled is False
+    assert result.content_ready is True
+    assert result.contacts_ready is False
+    assert result.review_ready is False
     assert "Campaign has no associated contacts." in result.blocking_errors
 
 
@@ -416,8 +646,11 @@ def test_admin_review_can_be_ready_with_email_sending_disabled() -> None:
 
     result = service.review_campaign(campaign.id)
 
-    assert result.allowed_to_send is True
+    assert result.allowed_to_send is False
+    assert result.can_send_when_enabled is True
+    assert result.sending_enabled is False
     assert result.review_ready is True
+    assert result.current_step == "review"
     assert result.warnings == [
         'EMAIL_SENDING_ENABLED is not exactly "true"; real dispatch is disabled.'
     ]

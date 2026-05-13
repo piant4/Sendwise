@@ -72,8 +72,8 @@ Admin request notes:
 | `GET /client/me` | Read current client context. | Client portal. | Active client account. | Auth context. | Client profile and access summary. | `401`, `403`. | `implemented` |
 | `GET /client/overview` | Read client overview summary. | Client portal. | Active client account. | Auth context. | Client dashboard summary. | `401`, `403`. | `implemented` |
 | `GET /client/campaigns` | List campaigns owned by the authenticated client. | Client portal. | Active client account. | Filters, pagination. | Client-scoped campaign summaries. | `401`, `403`. | `implemented` |
-| `GET /client/campaigns/{campaign_id}` | Read own campaign detail. | Client portal. | Active client account. | `campaign_id`. | Campaign detail if owned by caller's client. | `401`, `403`, `404`. | `stub` |
-| `GET /client/campaigns/{campaign_id}/stats` | Read own campaign stats. | Client portal. | Active client account. | `campaign_id`. | Campaign stats if owned by caller's client. | `401`, `403`, `404`. | `stub` |
+| `GET /client/campaigns/{campaign_id}` | Read own campaign detail. | Client portal. | Active client account. | `campaign_id`. | Client-scoped campaign read model with readiness, recipient counts, log counts, and blocked sends. | `401`, `403`, `404`. | `implemented` |
+| `GET /client/campaigns/{campaign_id}/stats` | Read own campaign stats. | Client portal. | Active client account. | `campaign_id`. | DB-backed campaign metrics only; unsupported provider metrics stay `0` with unavailable source metadata. | `401`, `403`, `404`. | `implemented` |
 | `GET /client/usage` | Read own usage. | Client portal. | Active client account. | Date range. | Client-scoped usage records. | `401`, `403`. | `implemented` |
 | `GET /client/blocked-sends` | Read own blocked sends. | Client portal. | Active client account. | Filters. | Client-scoped blocked-send records. | `401`, `403`. | `implemented` |
 
@@ -112,12 +112,13 @@ These are the V1 product endpoints for the only operational campaign flow. Entri
 | `POST /admin/campaigns` | Create a new admin-managed campaign draft. | Admin dashboard. | Platform admin. | Selected `client_id`, setup fields. | Created draft campaign. | `400`, `401`, `403`, `404`, `409`, `422`. | `implemented` |
 | `POST /admin/clients/{client_id}/campaigns` | Shortcut to create a campaign from a client context. | Admin dashboard. | Platform admin. | Setup fields. | Created draft campaign already scoped to the client. | `400`, `401`, `403`, `404`, `409`, `422`. | `implemented` |
 | `GET /admin/campaigns/{campaign_id}` | Read admin campaign detail. | Admin dashboard. | Platform admin. | `campaign_id`. | Campaign detail. | `401`, `403`, `404`. | `implemented` |
+| `GET /admin/campaigns/{campaign_id}/summary` | Read final admin campaign summary without dispatching. | Admin dashboard. | Platform admin. | `campaign_id`. | Campaign, client, slot, recipient, log, blocked-send, and sendability summary. | `401`, `403`, `404`. | `implemented` |
 | `PATCH /admin/campaigns/{campaign_id}` | Update allowed campaign setup fields. | Admin dashboard. | Platform admin. | Partial setup fields. | Updated campaign. | `400`, `401`, `403`, `404`, `409`, `422`. | `implemented` |
 | `POST /admin/campaigns/{campaign_id}/select-slot` | Assign a slot to a campaign. | Admin dashboard. | Platform admin. | `slot_id`. | Slot assignment summary. | `400`, `401`, `403`, `404`, `409`, `422`. | `implemented` |
 | `POST /admin/campaigns/{campaign_id}/content` | Save content or apply a template into campaign content fields. | Admin dashboard. | Platform admin. | `subject`, `preview_text`, `body_html`, `body_text`, optional template reference. | Updated campaign content state. | `400`, `401`, `403`, `404`, `409`, `422`. | `implemented` |
 | `POST /admin/campaigns/{campaign_id}/contacts` | Import or associate contacts for the campaign. | Admin dashboard. | Platform admin. | Structured contact payload. | Import summary and validation preview. | `400`, `401`, `403`, `404`, `409`, `422`. | `implemented` |
 | `GET /admin/campaigns/{campaign_id}/contacts` | Read contacts associated with the campaign. | Admin dashboard. | Platform admin. | `campaign_id`. | Campaign contact list and summary. | `401`, `403`, `404`. | `implemented` |
-| `POST /admin/campaigns/{campaign_id}/review` | Build final review payload without dispatching. | Admin dashboard. | Platform admin. | `campaign_id`. | Warnings, blocking errors, counts, readiness, slot limit. | `400`, `401`, `403`, `404`, `409`, `422`. | `implemented` |
+| `POST /admin/campaigns/{campaign_id}/review` | Build final review payload without dispatching. | Admin dashboard. | Platform admin. | `campaign_id`. | Stable readiness/sendability payload including kill-switch state, warnings, blocking errors, counts, current step, and slot limit. | `400`, `401`, `403`, `404`, `409`, `422`. | `implemented` |
 | `POST /admin/campaigns/{campaign_id}/simulate-send` | Request backend simulation from the admin flow. | Admin dashboard. | Platform admin. | `campaign_id`. | Simulation result. | `400`, `401`, `403`, `404`, `409`, `423`. | `implemented` |
 | `POST /admin/campaigns/{campaign_id}/send` | Request controlled send from the admin flow. | Admin dashboard. | Platform admin. | `campaign_id`. | Blocked, failed, or queued send result. | `400`, `401`, `403`, `404`, `409`, `423`. | `implemented` |
 
@@ -137,8 +138,8 @@ These are the V1 client-facing campaign routes. They are read-only and scoped by
 | Endpoint | Purpose | Allowed caller | Required access | High-level input | High-level output | Main errors | Status |
 |---|---|---|---|---|---|---|---|
 | `GET /client/campaigns` | List own campaigns. | Client portal. | Active client account. | Filters. | Campaign summaries. | `401`, `403`. | `implemented` |
-| `GET /client/campaigns/{campaign_id}` | Read own campaign detail. | Client portal. | Active client account. | `campaign_id`. | Full client-scoped campaign detail. | `401`, `403`, `404`. | `stub` |
-| `GET /client/campaigns/{campaign_id}/stats` | Read own campaign stats. | Client portal. | Active client account. | `campaign_id`. | Send counts and delivery metrics when available. | `401`, `403`, `404`. | `stub` |
+| `GET /client/campaigns/{campaign_id}` | Read own campaign detail. | Client portal. | Active client account. | `campaign_id`. | Full client-scoped campaign read model with available DB-backed metrics. | `401`, `403`, `404`. | `implemented` |
+| `GET /client/campaigns/{campaign_id}/stats` | Read own campaign stats. | Client portal. | Active client account. | `campaign_id`. | Send counts and delivery metrics only when backed by Business DB data. | `401`, `403`, `404`. | `implemented` |
 | `GET /client/campaigns/{campaign_id}/events` | Read own campaign timeline and delivery events when available. | Client portal. | Active client account. | `campaign_id`, filters. | Client-scoped event list. | `401`, `403`, `404`. | `future` |
 | `GET /client/blocked-sends` | Read own blocked sends. | Client portal. | Active client account. | Filters. | Client-scoped blocked-send records. | `401`, `403`. | `implemented` |
 | `GET /client/usage` | Read own usage. | Client portal. | Active client account. | Date range. | Client-scoped usage records. | `401`, `403`. | `implemented` |

@@ -6,6 +6,9 @@ from typing import Optional
 from fastapi import Depends, HTTPException, status
 
 from app.core.config import Settings, get_settings
+from app.repositories.blocked_sends import BlockedSendRepository, get_blocked_send_repository
+from app.repositories.campaign_slots import CampaignSlotRepository, get_campaign_slot_repository
+from app.repositories.campaigns import CampaignRepository, get_campaign_repository
 from app.repositories.client_access import ClientAccessRecord
 from app.repositories.clients import (
     AdminBlockedSendRecord,
@@ -18,6 +21,12 @@ from app.repositories.clients import (
     ClientRepository,
     ClientUsageRecord,
     get_client_repository,
+)
+from app.repositories.contacts import ContactRepository, PostgresContactRepository
+from app.repositories.email_logs import EmailLogRepository, get_email_log_repository
+from app.repositories.suppression_list import (
+    SuppressionListRepository,
+    get_suppression_list_repository,
 )
 from app.schemas.clients import (
     AdminBlockedSendItem,
@@ -52,7 +61,16 @@ from app.schemas.clients import (
     ClientUser,
 )
 from app.schemas.blocked_sends import BlockedSend
-from app.schemas.campaigns import Campaign
+from app.schemas.campaigns import (
+    Campaign,
+    CampaignBlockedSendsSummary,
+    CampaignLogsSummary,
+    CampaignRecipientsSummary,
+    CampaignSlotSummary,
+    CampaignSummaryItem,
+    ClientCampaignDetailResponse,
+    ClientCampaignStatsResponse,
+)
 from app.schemas.common import CampaignStatus
 from app.schemas.usage import ApiUsage
 
@@ -73,6 +91,7 @@ CLIENTS_NEAR_LIMIT_LIMIT = 5
 RECENT_CAMPAIGNS_LIMIT = 5
 RECENT_USAGE_LIMIT = 5
 RECENT_BLOCKED_SENDS_LIMIT = 5
+CAMPAIGN_BLOCKED_SENDS_LATEST_LIMIT = 5
 
 
 def _build_client_name(client: ClientRecord) -> str:
@@ -189,9 +208,21 @@ class ClientsService:
         self,
         repository: ClientRepository,
         settings: Optional[Settings] = None,
+        campaign_repository: CampaignRepository | None = None,
+        campaign_slot_repository: CampaignSlotRepository | None = None,
+        contact_repository: ContactRepository | None = None,
+        suppression_list_repository: SuppressionListRepository | None = None,
+        blocked_send_repository: BlockedSendRepository | None = None,
+        email_log_repository: EmailLogRepository | None = None,
     ) -> None:
         self._repository = repository
         self._settings = settings or get_settings()
+        self._campaign_repository = campaign_repository
+        self._campaign_slot_repository = campaign_slot_repository
+        self._contact_repository = contact_repository
+        self._suppression_list_repository = suppression_list_repository
+        self._blocked_send_repository = blocked_send_repository
+        self._email_log_repository = email_log_repository
 
     def list_clients(self) -> list[ClientRecord]:
         return self._repository.list_clients()
@@ -456,6 +487,49 @@ class ClientsService:
             self._build_client_campaign(campaign)
             for campaign in self._repository.list_client_campaigns(client_id)
         ]
+
+    def get_client_campaign_detail(
+        self,
+        *,
+        client_id: str,
+        portal_slug: str,
+        campaign_id: str,
+        client_access_service,
+    ) -> ClientCampaignDetailResponse:
+        self._require_active_client_access(
+            client_id=client_id,
+            portal_slug=portal_slug,
+            client_access_service=client_access_service,
+        )
+        return self._build_client_campaign_read_model(
+            client_id=client_id,
+            campaign_id=campaign_id,
+        )
+
+    def get_client_campaign_stats(
+        self,
+        *,
+        client_id: str,
+        portal_slug: str,
+        campaign_id: str,
+        client_access_service,
+    ) -> ClientCampaignStatsResponse:
+        self._require_active_client_access(
+            client_id=client_id,
+            portal_slug=portal_slug,
+            client_access_service=client_access_service,
+        )
+        detail = self._build_client_campaign_read_model(
+            client_id=client_id,
+            campaign_id=campaign_id,
+        )
+        return ClientCampaignStatsResponse(
+            campaign_id=detail.campaign.id,
+            client_id=detail.campaign.client_id,
+            recipients=detail.recipients,
+            logs=detail.logs,
+            blocked_sends=detail.blocked_sends,
+        )
 
     def list_client_usage(
         self,
@@ -743,6 +817,224 @@ class ClientsService:
             updated_at=campaign.updated_at,
         )
 
+    def _build_client_campaign_read_model(
+        self,
+        *,
+        client_id: str,
+        campaign_id: str,
+    ) -> ClientCampaignDetailResponse:
+        campaign = self._require_client_campaign_record(
+            client_id=client_id,
+            campaign_id=campaign_id,
+        )
+        client = self.get_client_by_id(client_id)
+        contacts = self._require_contact_repository().list_campaign_contacts(
+            client_id=client_id,
+            campaign_id=campaign_id,
+        )
+        suppressed_emails = self._require_suppression_list_repository().list_suppressed_emails_for_campaign(
+            client_id=client_id,
+            emails=[contact.email for contact in contacts],
+        )
+        recipients = self._build_campaign_recipients_summary(
+            contacts=contacts,
+            suppressed_emails=suppressed_emails,
+        )
+        slot_repository = self._campaign_slot_repository
+        slot = None
+        if campaign.campaign_slot_id and slot_repository is not None:
+            slot = slot_repository.get_by_id(
+                client_id=client_id,
+                slot_id=campaign.campaign_slot_id,
+            )
+
+        return ClientCampaignDetailResponse(
+            campaign=CampaignSummaryItem(
+                id=campaign.id,
+                client_id=campaign.client_id,
+                name=campaign.name,
+                status=campaign.status,
+                subject=campaign.subject,
+                preview_text=campaign.preview_text,
+                current_step=campaign.current_step,
+                content_ready=campaign.content_ready,
+                contacts_ready=campaign.contacts_ready,
+                review_ready=campaign.review_ready,
+            ),
+            slot=CampaignSlotSummary(
+                id=campaign.campaign_slot_id,
+                label=slot.label if slot is not None else None,
+                max_emails=slot.max_emails if slot is not None else client.email_limit_per_campaign,
+                status=slot.status if slot is not None else (
+                    "legacy" if client.email_limit_per_campaign is not None else None
+                ),
+                limit_source="campaign_slot" if slot is not None else "legacy_client_limit",
+            ),
+            recipients=recipients,
+            logs=self._build_campaign_logs_summary(
+                client_id=client_id,
+                campaign_id=campaign_id,
+            ),
+            blocked_sends=self._build_campaign_blocked_sends_summary(
+                client_id=client_id,
+                campaign_id=campaign_id,
+                campaign_name=campaign.name,
+            ),
+        )
+
+    def _require_client_campaign_record(
+        self,
+        *,
+        client_id: str,
+        campaign_id: str,
+    ) -> ClientCampaignRecord:
+        if self._campaign_repository is not None:
+            campaign = self._campaign_repository.get_by_id(
+                campaign_id=campaign_id,
+                client_id=client_id,
+            )
+            if campaign is not None:
+                return ClientCampaignRecord(
+                    id=campaign.id,
+                    client_id=campaign.client_id,
+                    name=campaign.name,
+                    status=campaign.status,
+                    subject=campaign.subject,
+                    campaign_slot_id=campaign.campaign_slot_id,
+                    preview_text=campaign.preview_text,
+                    body_html=campaign.body_html,
+                    body_text=campaign.body_text,
+                    content_ready=campaign.content_ready,
+                    contacts_ready=campaign.contacts_ready,
+                    review_ready=campaign.review_ready,
+                    current_step=campaign.current_step,
+                    created_at=campaign.created_at,
+                    updated_at=campaign.updated_at,
+                )
+
+        for campaign in self._repository.list_client_campaigns(client_id):
+            if campaign.id == campaign_id:
+                return campaign
+
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Campaign not found.",
+        )
+
+    def _build_campaign_recipients_summary(
+        self,
+        *,
+        contacts,
+        suppressed_emails: set[str],
+    ) -> CampaignRecipientsSummary:
+        total = len(contacts)
+        eligible = 0
+        invalid = 0
+        suppressed = 0
+
+        for contact in contacts:
+            normalized_email = contact.email.strip().lower()
+            is_valid = "@" in contact.email and "." in contact.email.rsplit("@", 1)[-1]
+            is_suppressed = (
+                contact.status.strip().lower() == "suppressed"
+                or normalized_email in suppressed_emails
+            )
+
+            if not is_valid:
+                invalid += 1
+            if is_suppressed:
+                suppressed += 1
+            if is_valid and contact.status.strip().lower() == "sendable" and not is_suppressed:
+                eligible += 1
+
+        return CampaignRecipientsSummary(
+            total=total,
+            eligible=eligible,
+            invalid=invalid,
+            suppressed=suppressed,
+            blocked=max(total - eligible, 0),
+        )
+
+    def _build_campaign_logs_summary(
+        self,
+        *,
+        client_id: str,
+        campaign_id: str,
+    ) -> CampaignLogsSummary:
+        status_counts = self._require_email_log_repository().get_campaign_status_counts(
+            client_id=client_id,
+            campaign_id=campaign_id,
+        )
+        return CampaignLogsSummary(
+            simulated=status_counts.get("simulated", 0),
+            queued=status_counts.get("queued", 0),
+            sent=status_counts.get("sent", 0) + status_counts.get("dispatched", 0),
+            opened=status_counts.get("opened", 0),
+            clicked=status_counts.get("clicked", 0),
+            bounced=status_counts.get("bounced", 0),
+            complained=status_counts.get("complained", 0)
+            + status_counts.get("spam", 0),
+            unsubscribed=status_counts.get("unsubscribed", 0),
+            provider_events_available=False,
+        )
+
+    def _build_campaign_blocked_sends_summary(
+        self,
+        *,
+        client_id: str,
+        campaign_id: str,
+        campaign_name: str,
+    ) -> CampaignBlockedSendsSummary:
+        repository = self._require_blocked_send_repository()
+        latest = [
+            BlockedSend(
+                id=record.id,
+                client_id=record.client_id,
+                campaign_id=record.campaign_id,
+                campaign_name=campaign_name,
+                contact_id=record.contact_id,
+                reason=record.reason,
+                decision=record.decision,
+                created_at=record.created_at,
+            )
+            for record in repository.list_recent_by_campaign(
+                client_id=client_id,
+                campaign_id=campaign_id,
+                limit=CAMPAIGN_BLOCKED_SENDS_LATEST_LIMIT,
+            )
+        ]
+        return CampaignBlockedSendsSummary(
+            total=repository.count_by_campaign(
+                client_id=client_id,
+                campaign_id=campaign_id,
+            ),
+            latest=latest,
+        )
+
+    def _require_contact_repository(self) -> ContactRepository:
+        if self._contact_repository is None:
+            raise RuntimeError("Contact repository is required for client campaign reads.")
+        return self._contact_repository
+
+    def _require_suppression_list_repository(self) -> SuppressionListRepository:
+        if self._suppression_list_repository is None:
+            raise RuntimeError(
+                "Suppression list repository is required for client campaign reads."
+            )
+        return self._suppression_list_repository
+
+    def _require_blocked_send_repository(self) -> BlockedSendRepository:
+        if self._blocked_send_repository is None:
+            raise RuntimeError(
+                "Blocked send repository is required for client campaign reads."
+            )
+        return self._blocked_send_repository
+
+    def _require_email_log_repository(self) -> EmailLogRepository:
+        if self._email_log_repository is None:
+            raise RuntimeError("Email log repository is required for client campaign reads.")
+        return self._email_log_repository
+
     def _build_client_usage(self, entry: ClientUsageRecord) -> ApiUsage:
         return ApiUsage(
             id=entry.id,
@@ -907,4 +1199,13 @@ def get_clients_service(
     repository: ClientRepository = Depends(get_client_repository),
     settings: Settings = Depends(get_settings),
 ) -> ClientsService:
-    return ClientsService(repository, settings=settings)
+    return ClientsService(
+        repository,
+        settings=settings,
+        campaign_repository=get_campaign_repository(),
+        campaign_slot_repository=get_campaign_slot_repository(),
+        contact_repository=PostgresContactRepository(settings),
+        suppression_list_repository=get_suppression_list_repository(),
+        blocked_send_repository=get_blocked_send_repository(),
+        email_log_repository=get_email_log_repository(),
+    )

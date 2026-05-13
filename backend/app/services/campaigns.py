@@ -5,7 +5,7 @@ from fastapi import HTTPException, status
 
 from app.core.auth import AuthenticatedUser
 from app.core.config import Settings, get_settings
-from app.guard.deliverability_guard import DeliverabilityGuard, SendDecision
+from app.guard.deliverability_guard import DeliverabilityGuard, GuardResult, SendDecision
 from app.integrations.listmonk.client import (
     ListmonkClient,
     ListmonkError,
@@ -49,7 +49,14 @@ from app.schemas.campaigns import (
     AdminCampaignDetail,
     AdminCampaignContactPayload,
     AdminCampaignReviewResponse,
+    AdminCampaignSummaryResponse,
     AdminCampaignSlotAssignmentResponse,
+    CampaignBlockedSendsSummary,
+    CampaignClientSummary,
+    CampaignLogsSummary,
+    CampaignRecipientsSummary,
+    CampaignSlotSummary,
+    CampaignSummaryItem,
 )
 from app.schemas.common import CampaignStatus
 from app.services.campaign_slots import (
@@ -71,6 +78,7 @@ EDITABLE_CAMPAIGN_STATUSES = {
     CampaignStatus.paused.value,
 }
 NON_WRITABLE_CLIENT_STATUSES = {"blocked", "archived", "suspended"}
+BLOCKED_SENDS_LATEST_LIMIT = 5
 
 
 @dataclass(frozen=True)
@@ -132,6 +140,22 @@ class CampaignContactsSummary:
     contacts_ready: bool
     contacts: list[AdminCampaignContactItem]
 
+    @property
+    def blocked(self) -> int:
+        return max(self.total - self.eligible, 0)
+
+
+@dataclass(frozen=True)
+class CampaignEvaluation:
+    content_ready: bool
+    contacts_ready: bool
+    review_ready: bool
+    can_send_when_enabled: bool
+    can_send: bool
+    warnings: list[str]
+    blocking_errors: list[str]
+    guard_result: GuardResult
+
 
 @dataclass(frozen=True)
 class AdminCampaignService:
@@ -143,6 +167,8 @@ class AdminCampaignService:
     campaign_slot_repository: CampaignSlotRepository
     contact_repository: ContactRepository
     suppression_list_repository: SuppressionListRepository
+    blocked_send_repository: BlockedSendRepository
+    email_log_repository: EmailLogRepository
 
     def get_campaign_record(self, campaign_id: str) -> CampaignRecord:
         campaign = self.repository.get_by_id(campaign_id=campaign_id)
@@ -157,6 +183,61 @@ class AdminCampaignService:
         campaign = self.get_campaign_record(campaign_id)
         client = self._get_client(campaign.client_id)
         return self._build_detail(campaign=campaign, client=client)
+
+    def get_campaign_summary(self, campaign_id: str) -> AdminCampaignSummaryResponse:
+        campaign = self.get_campaign_record(campaign_id)
+        client = self._get_client(campaign.client_id)
+        contacts = self.contact_repository.list_campaign_contacts(
+            client_id=campaign.client_id,
+            campaign_id=campaign.id,
+        )
+        suppressed_emails = self.suppression_list_repository.list_suppressed_emails_for_campaign(
+            client_id=campaign.client_id,
+            emails=[contact.email for contact in contacts],
+        )
+        slot = self._get_campaign_slot(campaign=campaign)
+        contact_summary = self._summarize_campaign_contacts(
+            campaign=campaign,
+            contacts=contacts,
+            suppressed_emails=suppressed_emails,
+        )
+        evaluation = self._evaluate_campaign(
+            campaign=campaign,
+            client=client,
+            contacts=contacts,
+            suppressed_emails=suppressed_emails,
+            slot=slot,
+            contact_summary=contact_summary,
+        )
+        return AdminCampaignSummaryResponse(
+            campaign=self._build_campaign_summary_item(
+                campaign=campaign,
+                evaluation=evaluation,
+            ),
+            client=CampaignClientSummary(
+                id=client.id,
+                email=client.email,
+                personal_name=client.personal_name,
+                status=client.status,
+            ),
+            slot=self._build_campaign_slot_summary(
+                campaign=campaign,
+                client=client,
+                slot=slot,
+                evaluation=evaluation,
+            ),
+            recipients=self._build_campaign_recipients_summary(contact_summary),
+            logs=self._build_campaign_logs_summary(
+                client_id=campaign.client_id,
+                campaign_id=campaign.id,
+            ),
+            blocked_sends=self._build_campaign_blocked_sends_summary(
+                campaign=campaign,
+            ),
+            can_send=evaluation.can_send,
+            blocking_errors=evaluation.blocking_errors,
+            warnings=evaluation.warnings,
+        )
 
     def get_campaign_contacts(self, campaign_id: str) -> AdminCampaignContactsResponse:
         campaign = self.get_campaign_record(campaign_id)
@@ -431,79 +512,32 @@ class AdminCampaignService:
 
     def review_campaign(self, campaign_id: str) -> AdminCampaignReviewResponse:
         campaign = self.get_campaign_record(campaign_id)
-        client = self._get_client(campaign.client_id)
-        contacts = self.contact_repository.list_campaign_contacts(
-            client_id=campaign.client_id,
-            campaign_id=campaign.id,
-        )
-        suppressed_emails = self.suppression_list_repository.list_suppressed_emails_for_campaign(
-            client_id=campaign.client_id,
-            emails=[contact.email for contact in contacts],
-        )
-        slot = None
-        if campaign.campaign_slot_id:
-            slot = self.campaign_slot_repository.get_by_id(
-                client_id=campaign.client_id,
-                slot_id=campaign.campaign_slot_id,
-            )
-
-        content_ready = self._content_ready(
-            subject=campaign.subject,
-            body_html=campaign.body_html,
-        )
-        contact_summary = self._summarize_campaign_contacts(
-            campaign=campaign,
-            contacts=contacts,
-            suppressed_emails=suppressed_emails,
-        )
-        contacts_ready = contact_summary.contacts_ready
-        active_campaign_count = self._count_active_campaigns(client.id)
-        guard_result = self.guard.authorize_campaign_dispatch(
-            email_sending_enabled=True,
-            client=client,
-            campaign=self._to_client_campaign_record(campaign),
-            slot=slot,
-            contacts=contacts,
-            suppressed_emails=suppressed_emails,
-            active_campaign_count=active_campaign_count,
-        )
-
-        blocking_errors: list[str] = []
-        warnings: list[str] = []
-        if not content_ready:
-            blocking_errors.append("Campaign content is not ready.")
-        if not contacts_ready:
-            blocking_errors.append("Campaign has no associated contacts.")
-        if not guard_result.allowed and guard_result.reason not in blocking_errors:
-            blocking_errors.append(guard_result.reason)
-        if not self.settings.email_sending_enabled:
-            warnings.append(
-                'EMAIL_SENDING_ENABLED is not exactly "true"; real dispatch is disabled.'
-            )
-
-        review_ready = content_ready and contacts_ready and guard_result.allowed
+        summary = self.get_campaign_summary(campaign_id)
         updated = self.repository.update_campaign(
             client_id=campaign.client_id,
             campaign_id=campaign.id,
-            content_ready=content_ready,
-            contacts_ready=contacts_ready,
-            review_ready=review_ready,
+            content_ready=summary.campaign.content_ready,
+            contacts_ready=summary.campaign.contacts_ready,
+            review_ready=summary.campaign.review_ready,
             current_step="review",
         )
 
         return AdminCampaignReviewResponse(
             campaign_id=updated.id,
             client_id=updated.client_id,
-            allowed_to_send=review_ready,
-            warnings=warnings,
-            blocking_errors=blocking_errors,
-            eligible_contact_count=guard_result.eligible_contact_count,
-            blocked_contact_count=guard_result.blocked_contact_count,
-            slot_limit=guard_result.limit_value,
-            limit_source=guard_result.limit_source,
+            allowed_to_send=summary.can_send,
+            can_send_when_enabled=summary.campaign.review_ready,
+            sending_enabled=self.settings.email_sending_enabled,
+            warnings=summary.warnings,
+            blocking_errors=summary.blocking_errors,
+            eligible_contact_count=summary.recipients.eligible,
+            blocked_contact_count=summary.recipients.blocked,
+            slot_limit=summary.slot.max_emails,
+            limit_source=summary.slot.limit_source,
             content_ready=updated.content_ready,
             contacts_ready=updated.contacts_ready,
             review_ready=updated.review_ready,
+            current_step=updated.current_step,
         )
 
     def _get_client(self, client_id: str) -> ClientRecord:
@@ -523,6 +557,19 @@ class AdminCampaignService:
                 detail=f"Client status {client.status} does not allow campaign writes.",
             )
         return client
+
+    def _get_campaign_slot(
+        self,
+        *,
+        campaign: CampaignRecord,
+    ):
+        if not campaign.campaign_slot_id:
+            return None
+
+        return self.campaign_slot_repository.get_by_id(
+            client_id=campaign.client_id,
+            slot_id=campaign.campaign_slot_id,
+        )
 
     def _build_detail(
         self,
@@ -661,6 +708,168 @@ class AdminCampaignService:
             eligible=eligible,
             contacts_ready=eligible > 0,
             contacts=items,
+        )
+
+    def _evaluate_campaign(
+        self,
+        *,
+        campaign: CampaignRecord,
+        client: ClientRecord,
+        contacts: list[ContactRecord],
+        suppressed_emails: set[str],
+        slot,
+        contact_summary: CampaignContactsSummary,
+    ) -> CampaignEvaluation:
+        content_ready = self._content_ready(
+            subject=campaign.subject,
+            body_html=campaign.body_html,
+        )
+        contacts_ready = contact_summary.contacts_ready
+        active_campaign_count = self._count_active_campaigns(client.id)
+        guard_result = self.guard.authorize_campaign_dispatch(
+            email_sending_enabled=True,
+            client=client,
+            campaign=self._to_client_campaign_record(campaign),
+            slot=slot,
+            contacts=contacts,
+            suppressed_emails=suppressed_emails,
+            active_campaign_count=active_campaign_count,
+        )
+
+        blocking_errors: list[str] = []
+        if not content_ready:
+            blocking_errors.append("Campaign content is not ready.")
+        if not contacts_ready:
+            blocking_errors.append("Campaign has no associated contacts.")
+        if not guard_result.allowed and guard_result.reason not in blocking_errors:
+            blocking_errors.append(guard_result.reason)
+
+        warnings: list[str] = []
+        if not self.settings.email_sending_enabled:
+            warnings.append(
+                'EMAIL_SENDING_ENABLED is not exactly "true"; real dispatch is disabled.'
+            )
+
+        can_send_when_enabled = content_ready and contacts_ready and guard_result.allowed
+        return CampaignEvaluation(
+            content_ready=content_ready,
+            contacts_ready=contacts_ready,
+            review_ready=can_send_when_enabled,
+            can_send_when_enabled=can_send_when_enabled,
+            can_send=can_send_when_enabled and self.settings.email_sending_enabled,
+            warnings=warnings,
+            blocking_errors=blocking_errors,
+            guard_result=guard_result,
+        )
+
+    def _build_campaign_summary_item(
+        self,
+        *,
+        campaign: CampaignRecord,
+        evaluation: CampaignEvaluation,
+    ) -> CampaignSummaryItem:
+        return CampaignSummaryItem(
+            id=campaign.id,
+            client_id=campaign.client_id,
+            name=campaign.name,
+            status=campaign.status,
+            subject=campaign.subject,
+            preview_text=campaign.preview_text,
+            current_step=campaign.current_step,
+            content_ready=evaluation.content_ready,
+            contacts_ready=evaluation.contacts_ready,
+            review_ready=evaluation.review_ready,
+        )
+
+    def _build_campaign_slot_summary(
+        self,
+        *,
+        campaign: CampaignRecord,
+        client: ClientRecord,
+        slot,
+        evaluation: CampaignEvaluation,
+    ) -> CampaignSlotSummary:
+        if slot is not None:
+            return CampaignSlotSummary(
+                id=slot.id,
+                label=slot.label,
+                max_emails=evaluation.guard_result.limit_value,
+                status=slot.status,
+                limit_source=evaluation.guard_result.limit_source,
+            )
+
+        return CampaignSlotSummary(
+            id=campaign.campaign_slot_id,
+            label=None,
+            max_emails=evaluation.guard_result.limit_value,
+            status="legacy" if client.email_limit_per_campaign is not None else None,
+            limit_source=evaluation.guard_result.limit_source,
+        )
+
+    def _build_campaign_recipients_summary(
+        self,
+        contact_summary: CampaignContactsSummary,
+    ) -> CampaignRecipientsSummary:
+        return CampaignRecipientsSummary(
+            total=contact_summary.total,
+            eligible=contact_summary.eligible,
+            invalid=contact_summary.invalid,
+            suppressed=contact_summary.suppressed,
+            blocked=contact_summary.blocked,
+        )
+
+    def _build_campaign_logs_summary(
+        self,
+        *,
+        client_id: str,
+        campaign_id: str,
+    ) -> CampaignLogsSummary:
+        status_counts = self.email_log_repository.get_campaign_status_counts(
+            client_id=client_id,
+            campaign_id=campaign_id,
+        )
+        return CampaignLogsSummary(
+            simulated=status_counts.get("simulated", 0),
+            queued=status_counts.get("queued", 0),
+            sent=status_counts.get("sent", 0) + status_counts.get("dispatched", 0),
+            opened=status_counts.get("opened", 0),
+            clicked=status_counts.get("clicked", 0),
+            bounced=status_counts.get("bounced", 0),
+            complained=status_counts.get("complained", 0)
+            + status_counts.get("spam", 0),
+            unsubscribed=status_counts.get("unsubscribed", 0),
+            provider_events_available=False,
+        )
+
+    def _build_campaign_blocked_sends_summary(
+        self,
+        *,
+        campaign: CampaignRecord,
+    ) -> CampaignBlockedSendsSummary:
+        total = self.blocked_send_repository.count_by_campaign(
+            client_id=campaign.client_id,
+            campaign_id=campaign.id,
+        )
+        latest = [
+            {
+                "id": record.id,
+                "client_id": record.client_id,
+                "campaign_id": record.campaign_id,
+                "campaign_name": campaign.name,
+                "contact_id": record.contact_id,
+                "reason": record.reason,
+                "decision": record.decision,
+                "created_at": record.created_at,
+            }
+            for record in self.blocked_send_repository.list_recent_by_campaign(
+                client_id=campaign.client_id,
+                campaign_id=campaign.id,
+                limit=BLOCKED_SENDS_LATEST_LIMIT,
+            )
+        ]
+        return CampaignBlockedSendsSummary(
+            total=total,
+            latest=latest,
         )
 
     def _count_active_campaigns(self, client_id: str) -> int:
@@ -1274,6 +1483,8 @@ def get_admin_campaign_service() -> AdminCampaignService:
         campaign_slot_repository=get_campaign_slot_repository(),
         contact_repository=PostgresContactRepository(settings),
         suppression_list_repository=get_suppression_list_repository(),
+        blocked_send_repository=get_blocked_send_repository(),
+        email_log_repository=get_email_log_repository(),
     )
 
 

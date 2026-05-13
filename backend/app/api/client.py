@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends
 from app.api import auth as auth_api
 from app.core.auth import AuthenticatedUser, require_client
 from app.schemas.blocked_sends import BlockedSend
-from app.schemas.campaigns import Campaign
+from app.schemas.campaigns import Campaign, ClientCampaignDetailResponse, ClientCampaignStatsResponse
 from app.schemas.clients import ClientContext, ClientOverviewSummary
 from app.schemas.usage import ApiUsage
 from app.services.client_access import ClientAccessService, get_client_access_service
@@ -60,18 +60,34 @@ def list_campaigns(
     )
 
 
-@client_router.get("/campaigns/{campaign_id}")
+@client_router.get("/campaigns/{campaign_id}", response_model=ClientCampaignDetailResponse)
 def get_campaign(
-    campaign_id: str, _current_user: AuthenticatedUser = Depends(require_client)
-) -> dict[str, str]:
-    return stub_response(f"GET /client/campaigns/{campaign_id}")
+    campaign_id: str,
+    current_user: AuthenticatedUser = Depends(require_client),
+    clients_service: ClientsService = Depends(get_clients_service),
+    client_access_service: ClientAccessService = Depends(get_client_access_service),
+) -> ClientCampaignDetailResponse:
+    return clients_service.get_client_campaign_detail(
+        client_id=current_user.client_id or "",
+        portal_slug=current_user.portal_slug or "",
+        campaign_id=campaign_id,
+        client_access_service=client_access_service,
+    )
 
 
-@client_router.get("/campaigns/{campaign_id}/stats")
+@client_router.get("/campaigns/{campaign_id}/stats", response_model=ClientCampaignStatsResponse)
 def get_campaign_stats(
-    campaign_id: str, _current_user: AuthenticatedUser = Depends(require_client)
-) -> dict[str, str]:
-    return stub_response(f"GET /client/campaigns/{campaign_id}/stats")
+    campaign_id: str,
+    current_user: AuthenticatedUser = Depends(require_client),
+    clients_service: ClientsService = Depends(get_clients_service),
+    client_access_service: ClientAccessService = Depends(get_client_access_service),
+) -> ClientCampaignStatsResponse:
+    return clients_service.get_client_campaign_stats(
+        client_id=current_user.client_id or "",
+        portal_slug=current_user.portal_slug or "",
+        campaign_id=campaign_id,
+        client_access_service=client_access_service,
+    )
 
 
 @client_router.get("/usage", response_model=list[ApiUsage])

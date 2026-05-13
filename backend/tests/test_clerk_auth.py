@@ -12,6 +12,9 @@ from fastapi.testclient import TestClient
 from app.core.auth import get_jwks_client
 from app.core.config import get_settings
 from app.main import app
+from app.repositories.blocked_sends import InMemoryBlockedSendRepository
+from app.repositories.campaign_slots import InMemoryCampaignSlotRepository
+from app.repositories.campaigns import InMemoryCampaignRepository
 from app.repositories.auth_users import _build_auth_user_repository
 from app.repositories.client_access import ClientAccessRecord, ClientAccessRepository
 from app.repositories.clients import (
@@ -20,6 +23,9 @@ from app.repositories.clients import (
     ClientRecord,
     ClientRepository,
 )
+from app.repositories.contacts import InMemoryContactRepository
+from app.repositories.email_logs import InMemoryEmailLogRepository
+from app.repositories.suppression_list import InMemorySuppressionListRepository
 from app.services.auth import AccountDeletionService, ClerkUserDeletionGateway, get_account_deletion_service
 from app.services.client_access import (
     ClerkInvitationGateway,
@@ -90,6 +96,14 @@ class FakeClientCampaignRecord:
     subject: Optional[str]
     created_at: datetime
     updated_at: datetime
+    campaign_slot_id: Optional[str] = None
+    preview_text: Optional[str] = None
+    body_html: Optional[str] = None
+    body_text: Optional[str] = None
+    content_ready: bool = False
+    contacts_ready: bool = False
+    review_ready: bool = False
+    current_step: str = "setup"
 
 
 @dataclass
@@ -748,6 +762,14 @@ def build_client_campaign_record(
     name: str,
     status: str,
     subject: Optional[str],
+    campaign_slot_id: Optional[str] = None,
+    preview_text: Optional[str] = None,
+    body_html: Optional[str] = None,
+    body_text: Optional[str] = None,
+    content_ready: bool = False,
+    contacts_ready: bool = False,
+    review_ready: bool = False,
+    current_step: str = "setup",
     created_at: Optional[datetime] = None,
     updated_at: Optional[datetime] = None,
 ) -> FakeClientCampaignRecord:
@@ -759,6 +781,14 @@ def build_client_campaign_record(
         name=name,
         status=status,
         subject=subject,
+        campaign_slot_id=campaign_slot_id,
+        preview_text=preview_text,
+        body_html=body_html,
+        body_text=body_text,
+        content_ready=content_ready,
+        contacts_ready=contacts_ready,
+        review_ready=review_ready,
+        current_step=current_step,
         created_at=created,
         updated_at=updated,
     )
@@ -816,6 +846,12 @@ def install_test_dependencies(
     client_campaign_records: Optional[list[FakeClientCampaignRecord]] = None,
     client_usage_records: Optional[list[FakeClientUsageRecord]] = None,
     client_blocked_send_records: Optional[list[FakeClientBlockedSendRecord]] = None,
+    campaign_repository: InMemoryCampaignRepository | None = None,
+    campaign_slot_repository: InMemoryCampaignSlotRepository | None = None,
+    contact_repository: InMemoryContactRepository | None = None,
+    suppression_list_repository: InMemorySuppressionListRepository | None = None,
+    blocked_send_repository: InMemoryBlockedSendRepository | None = None,
+    email_log_repository: InMemoryEmailLogRepository | None = None,
     database_available: bool = True,
     invitation_gateway: Optional[FakeClerkInvitationGateway] = None,
     deletion_gateway: Optional[FakeClerkUserDeletionGateway] = None,
@@ -839,7 +875,16 @@ def install_test_dependencies(
     gateway = invitation_gateway or FakeClerkInvitationGateway()
     clerk_user_deletion_gateway = deletion_gateway or FakeClerkUserDeletionGateway()
     settings = get_settings()
-    clients_service = ClientsService(client_repository, settings=settings)
+    clients_service = ClientsService(
+        client_repository,
+        settings=settings,
+        campaign_repository=campaign_repository,
+        campaign_slot_repository=campaign_slot_repository,
+        contact_repository=contact_repository,
+        suppression_list_repository=suppression_list_repository,
+        blocked_send_repository=blocked_send_repository,
+        email_log_repository=email_log_repository,
+    )
     client_access_service = ClientAccessService(
         repository=client_access_repository,
         client_repository=client_repository,
@@ -2566,3 +2611,302 @@ def test_client_dashboard_endpoints_are_backend_owned_and_client_scoped(
         "decision",
         "created_at",
     } <= blocked_sends[0].keys()
+
+
+def test_client_campaign_detail_is_scoped_to_authenticated_client(
+    client: TestClient,
+    signing_keypair: rsa.RSAPrivateKey,
+) -> None:
+    client_record = build_client_record(
+        client_id="client_alpha",
+        email="alpha@example.test",
+        personal_name="Alpha",
+        email_limit_per_campaign=1500,
+    )
+    beta_record = build_client_record(
+        client_id="client_beta",
+        email="beta@example.test",
+        personal_name="Beta",
+    )
+    campaign_repository = InMemoryCampaignRepository()
+    campaign_repository.add_campaign(
+        campaign_id="campaign_alpha",
+        client_id=client_record.id,
+        name="Alpha Campaign",
+        status="ready",
+        subject="Alpha Subject",
+        preview_text="Alpha Preview",
+        body_html="<p>Hello</p>",
+        body_text="Hello",
+        content_ready=True,
+        contacts_ready=True,
+        review_ready=False,
+        current_step="review",
+        campaign_slot_id="slot_alpha",
+    )
+    campaign_repository.add_campaign(
+        campaign_id="campaign_beta",
+        client_id=beta_record.id,
+        name="Beta Campaign",
+        status="ready",
+        subject="Beta Subject",
+    )
+    campaign_slot_repository = InMemoryCampaignSlotRepository()
+    campaign_slot_repository.add_slot(
+        slot_id="slot_alpha",
+        client_id=client_record.id,
+        label="Starter",
+        max_emails=250,
+        status="assigned",
+        assigned_campaign_id="campaign_alpha",
+    )
+    contact_repository = InMemoryContactRepository()
+    contact_repository.add_contact(
+        contact_id="contact_alpha_ok",
+        client_id=client_record.id,
+        email="one@example.test",
+        status="sendable",
+    )
+    contact_repository.add_contact(
+        contact_id="contact_alpha_invalid",
+        client_id=client_record.id,
+        email="invalid-email",
+        status="sendable",
+    )
+    contact_repository.add_contact(
+        contact_id="contact_beta",
+        client_id=beta_record.id,
+        email="beta@example.test",
+        status="sendable",
+    )
+    contact_repository.attach_contact_to_campaign(
+        client_id=client_record.id,
+        campaign_id="campaign_alpha",
+        contact_id="contact_alpha_ok",
+    )
+    contact_repository.attach_contact_to_campaign(
+        client_id=client_record.id,
+        campaign_id="campaign_alpha",
+        contact_id="contact_alpha_invalid",
+    )
+    contact_repository.attach_contact_to_campaign(
+        client_id=beta_record.id,
+        campaign_id="campaign_beta",
+        contact_id="contact_beta",
+    )
+    email_log_repository = InMemoryEmailLogRepository()
+    email_log_repository.create_email_log(
+        client_id=client_record.id,
+        campaign_id="campaign_alpha",
+        contact_id="contact_alpha_ok",
+        status="simulated",
+    )
+    email_log_repository.create_email_log(
+        client_id=client_record.id,
+        campaign_id="campaign_alpha",
+        contact_id="contact_alpha_ok",
+        status="queued",
+    )
+    blocked_send_repository = InMemoryBlockedSendRepository()
+    blocked_send_repository.create_blocked_send(
+        client_id=client_record.id,
+        campaign_id="campaign_alpha",
+        contact_id="contact_alpha_invalid",
+        reason="Campaign contains non-sendable contacts and partial dispatch is not supported.",
+        decision="blocked",
+    )
+    install_test_dependencies(
+        client_records=[client_record, beta_record],
+        access_records=[
+            build_access_record(
+                client_id=client_record.id,
+                email=client_record.email,
+                portal_slug="a" * 32,
+            ),
+            build_access_record(
+                access_id="access_beta",
+                client_id=beta_record.id,
+                email=beta_record.email,
+                clerk_user_id="user_beta",
+                portal_slug="b" * 32,
+            ),
+        ],
+        campaign_repository=campaign_repository,
+        campaign_slot_repository=campaign_slot_repository,
+        contact_repository=contact_repository,
+        suppression_list_repository=InMemorySuppressionListRepository(),
+        blocked_send_repository=blocked_send_repository,
+        email_log_repository=email_log_repository,
+    )
+    token = make_token(signing_keypair, clerk_user_id="user_client")
+
+    response = client.get("/client/campaigns/campaign_alpha", headers=auth_header(token))
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["campaign"]["id"] == "campaign_alpha"
+    assert payload["campaign"]["client_id"] == client_record.id
+    assert payload["campaign"]["preview_text"] == "Alpha Preview"
+    assert payload["slot"] == {
+        "id": "slot_alpha",
+        "label": "Starter",
+        "max_emails": 250,
+        "status": "assigned",
+        "limit_source": "campaign_slot",
+    }
+    assert payload["recipients"] == {
+        "total": 2,
+        "eligible": 1,
+        "invalid": 1,
+        "suppressed": 0,
+        "blocked": 1,
+    }
+    assert payload["logs"]["simulated"] == 1
+    assert payload["logs"]["queued"] == 1
+    assert payload["blocked_sends"]["total"] == 1
+    assert payload["blocked_sends"]["latest"][0]["campaign_name"] == "Alpha Campaign"
+
+
+def test_client_cross_client_campaign_detail_is_denied(
+    client: TestClient,
+    signing_keypair: rsa.RSAPrivateKey,
+) -> None:
+    client_record = build_client_record(
+        client_id="client_alpha",
+        email="alpha@example.test",
+        personal_name="Alpha",
+    )
+    beta_record = build_client_record(
+        client_id="client_beta",
+        email="beta@example.test",
+        personal_name="Beta",
+    )
+    campaign_repository = InMemoryCampaignRepository()
+    campaign_repository.add_campaign(
+        campaign_id="campaign_beta",
+        client_id=beta_record.id,
+        name="Beta Campaign",
+        status="ready",
+        subject="Beta Subject",
+    )
+    install_test_dependencies(
+        client_records=[client_record, beta_record],
+        access_records=[
+            build_access_record(
+                client_id=client_record.id,
+                email=client_record.email,
+                portal_slug="a" * 32,
+            ),
+            build_access_record(
+                access_id="access_beta",
+                client_id=beta_record.id,
+                email=beta_record.email,
+                clerk_user_id="user_beta",
+                portal_slug="b" * 32,
+            ),
+        ],
+        campaign_repository=campaign_repository,
+        contact_repository=InMemoryContactRepository(),
+        suppression_list_repository=InMemorySuppressionListRepository(),
+        blocked_send_repository=InMemoryBlockedSendRepository(),
+        email_log_repository=InMemoryEmailLogRepository(),
+    )
+    token = make_token(signing_keypair, clerk_user_id="user_client")
+
+    response = client.get("/client/campaigns/campaign_beta", headers=auth_header(token))
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Campaign not found."
+
+
+def test_client_campaign_stats_return_only_db_backed_metrics(
+    client: TestClient,
+    signing_keypair: rsa.RSAPrivateKey,
+) -> None:
+    client_record = build_client_record(
+        client_id="client_alpha",
+        email="alpha@example.test",
+        personal_name="Alpha",
+    )
+    campaign_repository = InMemoryCampaignRepository()
+    campaign_repository.add_campaign(
+        campaign_id="campaign_alpha",
+        client_id=client_record.id,
+        name="Alpha Campaign",
+        status="running",
+        subject="Alpha Subject",
+    )
+    contact_repository = InMemoryContactRepository()
+    contact_repository.add_contact(
+        contact_id="contact_alpha_ok",
+        client_id=client_record.id,
+        email="one@example.test",
+        status="sendable",
+    )
+    contact_repository.attach_contact_to_campaign(
+        client_id=client_record.id,
+        campaign_id="campaign_alpha",
+        contact_id="contact_alpha_ok",
+    )
+    email_log_repository = InMemoryEmailLogRepository()
+    email_log_repository.create_email_log(
+        client_id=client_record.id,
+        campaign_id="campaign_alpha",
+        contact_id="contact_alpha_ok",
+        status="simulated",
+    )
+    email_log_repository.create_email_log(
+        client_id=client_record.id,
+        campaign_id="campaign_alpha",
+        contact_id="contact_alpha_ok",
+        status="queued",
+    )
+    blocked_send_repository = InMemoryBlockedSendRepository()
+    blocked_send_repository.create_blocked_send(
+        client_id=client_record.id,
+        campaign_id="campaign_alpha",
+        contact_id="contact_alpha_ok",
+        reason="Previous dispatch blocked.",
+        decision="blocked",
+    )
+    install_test_dependencies(
+        client_records=[client_record],
+        access_records=[
+            build_access_record(
+                client_id=client_record.id,
+                email=client_record.email,
+                portal_slug="a" * 32,
+            )
+        ],
+        campaign_repository=campaign_repository,
+        contact_repository=contact_repository,
+        suppression_list_repository=InMemorySuppressionListRepository(),
+        blocked_send_repository=blocked_send_repository,
+        email_log_repository=email_log_repository,
+    )
+    token = make_token(signing_keypair, clerk_user_id="user_client")
+
+    response = client.get(
+        "/client/campaigns/campaign_alpha/stats",
+        headers=auth_header(token),
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["campaign_id"] == "campaign_alpha"
+    assert payload["client_id"] == client_record.id
+    assert payload["recipients"] == {
+        "total": 1,
+        "eligible": 1,
+        "invalid": 0,
+        "suppressed": 0,
+        "blocked": 0,
+    }
+    assert payload["logs"]["simulated"] == 1
+    assert payload["logs"]["queued"] == 1
+    assert payload["logs"]["sent"] == 0
+    assert payload["logs"]["opened"] == 0
+    assert payload["logs"]["clicked"] == 0
+    assert payload["logs"]["complained"] == 0
+    assert payload["logs"]["provider_events_available"] is False
+    assert payload["blocked_sends"]["total"] == 1

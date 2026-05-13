@@ -90,6 +90,14 @@ class EmailLogRepository:
             body=body,
         )
 
+    def get_campaign_status_counts(
+        self,
+        *,
+        client_id: str,
+        campaign_id: str,
+    ) -> dict[str, int]:
+        raise NotImplementedError
+
 
 class PostgresEmailLogRepository(EmailLogRepository):
     def __init__(self, settings: Settings) -> None:
@@ -144,6 +152,29 @@ class PostgresEmailLogRepository(EmailLogRepository):
 
         return EmailLogRecord.model_validate(row)
 
+    def get_campaign_status_counts(
+        self,
+        *,
+        client_id: str,
+        campaign_id: str,
+    ) -> dict[str, int]:
+        query = """
+            SELECT
+                status,
+                COUNT(*)::int AS total
+            FROM email_logs
+            WHERE client_id::text = %s
+                AND campaign_id::text = %s
+            GROUP BY status
+        """
+
+        with postgres_connection(self._settings) as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(query, (client_id, campaign_id))
+                rows = cursor.fetchall()
+
+        return {str(row["status"]): int(row["total"]) for row in rows}
+
 
 class InMemoryEmailLogRepository(EmailLogRepository):
     def __init__(self) -> None:
@@ -178,6 +209,19 @@ class InMemoryEmailLogRepository(EmailLogRepository):
             for record in self._records
             if record.campaign_id == campaign_id
         ]
+
+    def get_campaign_status_counts(
+        self,
+        *,
+        client_id: str,
+        campaign_id: str,
+    ) -> dict[str, int]:
+        counts: dict[str, int] = {}
+        for record in self._records:
+            if record.client_id != client_id or record.campaign_id != campaign_id:
+                continue
+            counts[record.status] = counts.get(record.status, 0) + 1
+        return counts
 
 
 def get_email_log_repository() -> EmailLogRepository:

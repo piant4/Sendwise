@@ -1,6 +1,17 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, status
 
 from app.core.auth import AuthenticatedUser, require_platform_admin
+from app.integrations.listmonk.client import ListmonkError
+from app.schemas.campaigns import (
+    AdminCampaignContentRequest,
+    AdminCampaignCreateRequest,
+    AdminCampaignDetail,
+    AdminCampaignReviewResponse,
+    AdminCampaignSelectSlotRequest,
+    AdminCampaignSlotAssignmentResponse,
+    AdminCampaignUpdateRequest,
+    AdminClientCampaignCreateRequest,
+)
 from app.schemas.clients import (
     AdminBlockedSendItem,
     AdminCampaignSummary,
@@ -15,6 +26,16 @@ from app.schemas.clients import (
 )
 from app.services.client_access import ClientAccessService, get_client_access_service
 from app.services.clients import ClientsService, build_client_schema, get_clients_service
+from app.services.campaigns import (
+    AdminCampaignService,
+    CampaignDispatchService,
+    get_admin_campaign_service,
+    get_campaign_dispatch_service,
+)
+from app.services.send_simulation import (
+    SendSimulationService,
+    get_send_simulation_service,
+)
 
 router = APIRouter(
     prefix="/admin",
@@ -162,6 +183,24 @@ def list_client_campaigns(
     return stub_response(f"GET /admin/clients/{client_id}/campaigns")
 
 
+@router.post(
+    "/clients/{client_id}/campaigns",
+    response_model=AdminCampaignDetail,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_client_campaign(
+    client_id: str,
+    payload: AdminClientCampaignCreateRequest,
+    _current_user: AuthenticatedUser = Depends(require_platform_admin),
+    campaign_service: AdminCampaignService = Depends(get_admin_campaign_service),
+) -> AdminCampaignDetail:
+    return campaign_service.create_campaign(
+        client_id=client_id,
+        name=payload.name,
+        subject=payload.subject,
+    )
+
+
 @router.get("/clients/{client_id}/usage")
 def get_client_usage(
     client_id: str,
@@ -197,6 +236,23 @@ def list_campaigns(
     return clients_service.list_admin_campaigns()
 
 
+@router.post(
+    "/campaigns",
+    response_model=AdminCampaignDetail,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_campaign(
+    payload: AdminCampaignCreateRequest,
+    _current_user: AuthenticatedUser = Depends(require_platform_admin),
+    campaign_service: AdminCampaignService = Depends(get_admin_campaign_service),
+) -> AdminCampaignDetail:
+    return campaign_service.create_campaign(
+        client_id=payload.client_id,
+        name=payload.name,
+        subject=payload.subject,
+    )
+
+
 @router.get("/email-limits", response_model=AdminEmailLimitsResponse)
 def list_email_limits(
     _current_user: AuthenticatedUser = Depends(require_platform_admin),
@@ -208,12 +264,128 @@ def list_email_limits(
     )
 
 
-@router.get("/campaigns/{campaign_id}")
+@router.get("/campaigns/{campaign_id}", response_model=AdminCampaignDetail)
 def get_campaign(
     campaign_id: str,
     _current_user: AuthenticatedUser = Depends(require_platform_admin),
-) -> dict[str, str]:
-    return stub_response(f"GET /admin/campaigns/{campaign_id}")
+    campaign_service: AdminCampaignService = Depends(get_admin_campaign_service),
+) -> AdminCampaignDetail:
+    return campaign_service.get_campaign_detail(campaign_id)
+
+
+@router.patch("/campaigns/{campaign_id}", response_model=AdminCampaignDetail)
+def update_campaign(
+    campaign_id: str,
+    payload: AdminCampaignUpdateRequest,
+    _current_user: AuthenticatedUser = Depends(require_platform_admin),
+    campaign_service: AdminCampaignService = Depends(get_admin_campaign_service),
+) -> AdminCampaignDetail:
+    return campaign_service.update_campaign(
+        campaign_id=campaign_id,
+        name=payload.name,
+        subject=payload.subject,
+        status_value=payload.status,
+        current_step=payload.current_step,
+    )
+
+
+@router.post(
+    "/campaigns/{campaign_id}/select-slot",
+    response_model=AdminCampaignSlotAssignmentResponse,
+)
+def select_campaign_slot(
+    campaign_id: str,
+    payload: AdminCampaignSelectSlotRequest,
+    _current_user: AuthenticatedUser = Depends(require_platform_admin),
+    campaign_service: AdminCampaignService = Depends(get_admin_campaign_service),
+) -> AdminCampaignSlotAssignmentResponse:
+    return campaign_service.select_slot(
+        campaign_id=campaign_id,
+        slot_id=payload.slot_id,
+    )
+
+
+@router.post("/campaigns/{campaign_id}/content", response_model=AdminCampaignDetail)
+def update_campaign_content(
+    campaign_id: str,
+    payload: AdminCampaignContentRequest,
+    _current_user: AuthenticatedUser = Depends(require_platform_admin),
+    campaign_service: AdminCampaignService = Depends(get_admin_campaign_service),
+) -> AdminCampaignDetail:
+    return campaign_service.update_campaign_content(
+        campaign_id=campaign_id,
+        subject=payload.subject,
+        preview_text=payload.preview_text,
+        body_html=payload.body_html,
+        body_text=payload.body_text,
+        current_step=payload.current_step,
+    )
+
+
+@router.post("/campaigns/{campaign_id}/review", response_model=AdminCampaignReviewResponse)
+def review_campaign(
+    campaign_id: str,
+    _current_user: AuthenticatedUser = Depends(require_platform_admin),
+    campaign_service: AdminCampaignService = Depends(get_admin_campaign_service),
+) -> AdminCampaignReviewResponse:
+    return campaign_service.review_campaign(campaign_id)
+
+
+@router.post("/campaigns/{campaign_id}/simulate-send")
+def simulate_send_campaign(
+    campaign_id: str,
+    current_user: AuthenticatedUser = Depends(require_platform_admin),
+    campaign_service: AdminCampaignService = Depends(get_admin_campaign_service),
+    send_simulation_service: SendSimulationService = Depends(
+        get_send_simulation_service
+    ),
+) -> dict[str, object]:
+    campaign_service.get_campaign_record(campaign_id)
+    try:
+        return send_simulation_service.simulate_campaign_send(campaign_id, current_user)
+    except ListmonkError as error:
+        return {
+            "status": "simulation_failed",
+            "mode": "simulation",
+            "campaign_id": campaign_id,
+            "decision": "authorized",
+            "reason": str(error),
+            "listmonk_dispatched": False,
+            "real_send_attempted": False,
+            "email_logs_created": 0,
+        }
+
+
+@router.post("/campaigns/{campaign_id}/send")
+def send_campaign(
+    campaign_id: str,
+    current_user: AuthenticatedUser = Depends(require_platform_admin),
+    campaign_service: AdminCampaignService = Depends(get_admin_campaign_service),
+    campaign_dispatch_service: CampaignDispatchService = Depends(
+        get_campaign_dispatch_service
+    ),
+) -> dict[str, object]:
+    campaign_service.get_campaign_record(campaign_id)
+    try:
+        return campaign_dispatch_service.send_campaign(campaign_id, current_user)
+    except ListmonkError as error:
+        return {
+            "status": "dispatch_failed",
+            "mode": "controlled_dev",
+            "campaign_id": campaign_id,
+            "allowed": False,
+            "decision": "authorized",
+            "reason": str(error),
+            "code": "listmonk_dispatch_failed",
+            "severity": "error",
+            "dispatch_attempted": False,
+            "real_send_attempted": False,
+            "listmonk_prepared": False,
+            "listmonk_dispatched": False,
+            "content_ready": False,
+            "email_logs_created": 0,
+            "email_logs_updated": 0,
+        }
 
 
 @router.post("/campaigns/{campaign_id}/pause")

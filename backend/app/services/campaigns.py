@@ -1,6 +1,8 @@
 from dataclasses import dataclass
 from typing import Any
 
+from fastapi import HTTPException, status
+
 from app.core.auth import AuthenticatedUser
 from app.core.config import Settings, get_settings
 from app.guard.deliverability_guard import DeliverabilityGuard, SendDecision
@@ -14,6 +16,7 @@ from app.repositories.campaign_slots import (
     get_campaign_slot_repository,
 )
 from app.repositories.campaigns import (
+    CampaignRecord,
     CampaignRepository,
     get_campaign_repository,
 )
@@ -34,12 +37,31 @@ from app.repositories.suppression_list import (
     SuppressionListRepository,
     get_suppression_list_repository,
 )
+from app.schemas.campaigns import (
+    AdminCampaignDetail,
+    AdminCampaignReviewResponse,
+    AdminCampaignSlotAssignmentResponse,
+)
+from app.schemas.common import CampaignStatus
+from app.services.campaign_slots import (
+    CampaignSlotConflictError,
+    CampaignSlotService,
+    get_campaign_slot_service,
+)
 from app.services.listmonk_mappings import (
     ENTITY_TYPE_CAMPAIGN,
     LISTMONK_TYPE_CAMPAIGN,
     ListmonkMappingConflictError,
     ListmonkMappingService,
 )
+
+ALLOWED_CAMPAIGN_STEPS = {"setup", "content", "recipients", "review", "send"}
+EDITABLE_CAMPAIGN_STATUSES = {
+    CampaignStatus.draft.value,
+    CampaignStatus.ready.value,
+    CampaignStatus.paused.value,
+}
+NON_WRITABLE_CLIENT_STATUSES = {"blocked", "archived", "suspended"}
 
 
 @dataclass(frozen=True)
@@ -86,6 +108,365 @@ class CampaignStateService:
             campaign_id=campaign_id,
             contacts_ready=contacts_ready,
         )
+
+
+@dataclass(frozen=True)
+class AdminCampaignService:
+    settings: Settings
+    guard: DeliverabilityGuard
+    repository: CampaignRepository
+    client_repository: ClientRepository
+    campaign_slot_service: CampaignSlotService
+    campaign_slot_repository: CampaignSlotRepository
+    contact_repository: ContactRepository
+    suppression_list_repository: SuppressionListRepository
+
+    def get_campaign_record(self, campaign_id: str) -> CampaignRecord:
+        campaign = self.repository.get_by_id(campaign_id=campaign_id)
+        if campaign is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Campaign not found.",
+            )
+        return campaign
+
+    def get_campaign_detail(self, campaign_id: str) -> AdminCampaignDetail:
+        campaign = self.get_campaign_record(campaign_id)
+        client = self._get_client(campaign.client_id)
+        return self._build_detail(campaign=campaign, client=client)
+
+    def create_campaign(
+        self,
+        *,
+        client_id: str,
+        name: str,
+        subject: str,
+    ) -> AdminCampaignDetail:
+        client = self._get_writable_client(client_id)
+        campaign = self.repository.create_campaign(
+            client_id=client.id,
+            name=self._require_text(name, field_label="name"),
+            status=CampaignStatus.draft.value,
+            subject=self._require_text(subject, field_label="subject"),
+            content_ready=False,
+            contacts_ready=False,
+            review_ready=False,
+            current_step="setup",
+        )
+        return self._build_detail(campaign=campaign, client=client)
+
+    def update_campaign(
+        self,
+        *,
+        campaign_id: str,
+        name: str | None = None,
+        subject: str | None = None,
+        status_value: str | None = None,
+        current_step: str | None = None,
+    ) -> AdminCampaignDetail:
+        campaign = self.get_campaign_record(campaign_id)
+        client = self._get_writable_client(campaign.client_id)
+
+        next_name = campaign.name if name is None else self._require_text(
+            name,
+            field_label="name",
+        )
+        next_subject = (
+            campaign.subject
+            if subject is None
+            else self._normalize_optional_text(subject)
+        )
+        next_status = campaign.status
+        if status_value is not None:
+            normalized_status = status_value.strip().lower()
+            if normalized_status not in EDITABLE_CAMPAIGN_STATUSES:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail="Campaign status is not editable through this endpoint.",
+                )
+            next_status = normalized_status
+
+        next_step = campaign.current_step
+        if current_step is not None:
+            next_step = self._validate_step(current_step)
+
+        updated = self.repository.update_campaign(
+            client_id=campaign.client_id,
+            campaign_id=campaign.id,
+            name=next_name,
+            status=next_status,
+            subject=next_subject,
+            content_ready=self._content_ready(
+                subject=next_subject,
+                body_html=campaign.body_html,
+            ),
+            review_ready=False,
+            current_step=next_step,
+        )
+        return self._build_detail(campaign=updated, client=client)
+
+    def update_campaign_content(
+        self,
+        *,
+        campaign_id: str,
+        subject: str | None,
+        preview_text: str | None,
+        body_html: str | None,
+        body_text: str | None,
+        current_step: str | None,
+    ) -> AdminCampaignDetail:
+        campaign = self.get_campaign_record(campaign_id)
+        client = self._get_writable_client(campaign.client_id)
+
+        next_subject = (
+            campaign.subject
+            if subject is None
+            else self._normalize_optional_text(subject)
+        )
+        next_preview_text = (
+            campaign.preview_text
+            if preview_text is None
+            else self._normalize_optional_text(preview_text)
+        )
+        next_body_html = (
+            campaign.body_html
+            if body_html is None
+            else self._normalize_optional_text(body_html)
+        )
+        next_body_text = (
+            campaign.body_text
+            if body_text is None
+            else self._normalize_optional_text(body_text)
+        )
+        next_step = (
+            self._validate_step(current_step)
+            if current_step is not None
+            else "content"
+        )
+
+        updated = self.repository.update_campaign(
+            client_id=campaign.client_id,
+            campaign_id=campaign.id,
+            subject=next_subject,
+            preview_text=next_preview_text,
+            body_html=next_body_html,
+            body_text=next_body_text,
+            content_ready=self._content_ready(
+                subject=next_subject,
+                body_html=next_body_html,
+            ),
+            review_ready=False,
+            current_step=next_step,
+        )
+        return self._build_detail(campaign=updated, client=client)
+
+    def select_slot(
+        self,
+        *,
+        campaign_id: str,
+        slot_id: str,
+    ) -> AdminCampaignSlotAssignmentResponse:
+        campaign = self.get_campaign_record(campaign_id)
+        self._get_writable_client(campaign.client_id)
+
+        try:
+            slot = self.campaign_slot_service.assign_slot(
+                client_id=campaign.client_id,
+                campaign_id=campaign.id,
+                slot_id=slot_id,
+            )
+        except CampaignSlotConflictError as error:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=str(error),
+            ) from error
+
+        updated_campaign = self.repository.update_campaign(
+            client_id=campaign.client_id,
+            campaign_id=campaign.id,
+            review_ready=False,
+        )
+        return AdminCampaignSlotAssignmentResponse(
+            campaign_id=updated_campaign.id,
+            client_id=updated_campaign.client_id,
+            campaign_slot_id=slot.id,
+            slot_status=slot.status,
+            slot_max_emails=slot.max_emails,
+            review_ready=updated_campaign.review_ready,
+        )
+
+    def review_campaign(self, campaign_id: str) -> AdminCampaignReviewResponse:
+        campaign = self.get_campaign_record(campaign_id)
+        client = self._get_client(campaign.client_id)
+        contacts = self.contact_repository.list_campaign_contacts(
+            client_id=campaign.client_id,
+            campaign_id=campaign.id,
+        )
+        suppressed_emails = self.suppression_list_repository.list_suppressed_emails_for_campaign(
+            client_id=campaign.client_id,
+            emails=[contact.email for contact in contacts],
+        )
+        slot = None
+        if campaign.campaign_slot_id:
+            slot = self.campaign_slot_repository.get_by_id(
+                client_id=campaign.client_id,
+                slot_id=campaign.campaign_slot_id,
+            )
+
+        content_ready = self._content_ready(
+            subject=campaign.subject,
+            body_html=campaign.body_html,
+        )
+        contacts_ready = self.repository.has_contacts(
+            client_id=campaign.client_id,
+            campaign_id=campaign.id,
+        )
+        active_campaign_count = self._count_active_campaigns(client.id)
+        guard_result = self.guard.authorize_campaign_dispatch(
+            email_sending_enabled=True,
+            client=client,
+            campaign=self._to_client_campaign_record(campaign),
+            slot=slot,
+            contacts=contacts,
+            suppressed_emails=suppressed_emails,
+            active_campaign_count=active_campaign_count,
+        )
+
+        blocking_errors: list[str] = []
+        warnings: list[str] = []
+        if not content_ready:
+            blocking_errors.append("Campaign content is not ready.")
+        if not contacts_ready:
+            blocking_errors.append("Campaign has no associated contacts.")
+        if not guard_result.allowed and guard_result.reason not in blocking_errors:
+            blocking_errors.append(guard_result.reason)
+        if not self.settings.email_sending_enabled:
+            warnings.append(
+                'EMAIL_SENDING_ENABLED is not exactly "true"; real dispatch is disabled.'
+            )
+
+        review_ready = content_ready and contacts_ready and guard_result.allowed
+        updated = self.repository.update_campaign(
+            client_id=campaign.client_id,
+            campaign_id=campaign.id,
+            content_ready=content_ready,
+            contacts_ready=contacts_ready,
+            review_ready=review_ready,
+            current_step="review",
+        )
+
+        return AdminCampaignReviewResponse(
+            campaign_id=updated.id,
+            client_id=updated.client_id,
+            allowed_to_send=review_ready,
+            warnings=warnings,
+            blocking_errors=blocking_errors,
+            eligible_contact_count=guard_result.eligible_contact_count,
+            blocked_contact_count=guard_result.blocked_contact_count,
+            slot_limit=guard_result.limit_value,
+            limit_source=guard_result.limit_source,
+            content_ready=updated.content_ready,
+            contacts_ready=updated.contacts_ready,
+            review_ready=updated.review_ready,
+        )
+
+    def _get_client(self, client_id: str) -> ClientRecord:
+        client = self.client_repository.get_by_id(client_id)
+        if client is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Client not found.",
+            )
+        return client
+
+    def _get_writable_client(self, client_id: str) -> ClientRecord:
+        client = self._get_client(client_id)
+        if client.status.lower() in NON_WRITABLE_CLIENT_STATUSES:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"Client status {client.status} does not allow campaign writes.",
+            )
+        return client
+
+    def _build_detail(
+        self,
+        *,
+        campaign: CampaignRecord,
+        client: ClientRecord,
+    ) -> AdminCampaignDetail:
+        client_name = client.personal_name or client.email
+        return AdminCampaignDetail(
+            campaign_id=campaign.id,
+            client_id=campaign.client_id,
+            client_name=client_name,
+            client_status=client.status,
+            name=campaign.name,
+            status=campaign.status,
+            subject=campaign.subject,
+            preview_text=campaign.preview_text,
+            body_html=campaign.body_html,
+            body_text=campaign.body_text,
+            current_step=campaign.current_step,
+            campaign_slot_id=campaign.campaign_slot_id,
+            content_ready=campaign.content_ready,
+            contacts_ready=campaign.contacts_ready,
+            review_ready=campaign.review_ready,
+            created_at=campaign.created_at,
+            updated_at=campaign.updated_at,
+        )
+
+    def _count_active_campaigns(self, client_id: str) -> int:
+        return sum(
+            1
+            for campaign in self.repository.list_by_client(client_id)
+            if campaign.status.lower() in self.guard.SENDABLE_CAMPAIGN_STATUSES
+        )
+
+    def _to_client_campaign_record(self, campaign: CampaignRecord) -> ClientCampaignRecord:
+        return ClientCampaignRecord(
+            id=campaign.id,
+            client_id=campaign.client_id,
+            name=campaign.name,
+            status=campaign.status,
+            subject=campaign.subject,
+            campaign_slot_id=campaign.campaign_slot_id,
+            preview_text=campaign.preview_text,
+            body_html=campaign.body_html,
+            body_text=campaign.body_text,
+            content_ready=campaign.content_ready,
+            contacts_ready=campaign.contacts_ready,
+            review_ready=campaign.review_ready,
+            current_step=campaign.current_step,
+            created_at=campaign.created_at,
+            updated_at=campaign.updated_at,
+        )
+
+    def _content_ready(self, *, subject: str | None, body_html: str | None) -> bool:
+        return bool((subject or "").strip() and (body_html or "").strip())
+
+    def _require_text(self, value: str, *, field_label: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"{field_label} is required.",
+            )
+        return normalized
+
+    def _normalize_optional_text(self, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
+
+    def _validate_step(self, value: str) -> str:
+        normalized = value.strip().lower()
+        if normalized not in ALLOWED_CAMPAIGN_STEPS:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Campaign current_step is invalid.",
+            )
+        return normalized
 
 
 @dataclass(frozen=True)
@@ -625,6 +1006,20 @@ def build_listmonk_client(settings: Settings) -> ListmonkClient:
 
 def get_campaign_state_service() -> CampaignStateService:
     return CampaignStateService(repository=get_campaign_repository())
+
+
+def get_admin_campaign_service() -> AdminCampaignService:
+    settings = get_settings()
+    return AdminCampaignService(
+        settings=settings,
+        guard=DeliverabilityGuard(),
+        repository=get_campaign_repository(),
+        client_repository=PostgresClientRepository(settings),
+        campaign_slot_service=get_campaign_slot_service(),
+        campaign_slot_repository=get_campaign_slot_repository(),
+        contact_repository=PostgresContactRepository(settings),
+        suppression_list_repository=get_suppression_list_repository(),
+    )
 
 
 def get_campaign_dispatch_service() -> CampaignDispatchService:

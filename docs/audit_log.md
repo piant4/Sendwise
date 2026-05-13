@@ -2039,6 +2039,42 @@ Scope confirmation:
 - No frontend UI flow was implemented.
 - No real AI, CSV import, slot persistence, SES rollout, worker, or new integration was implemented.
 
+## Milestone 10.7 Completion — Backend API admin campaign wizard
+
+Date: 2026-05-13
+Branch: develop
+
+Verified state:
+- Implemented admin-managed campaign write endpoints under `/admin/campaigns` for create, detail, patch, content save, slot selection, review, simulate-send, and send.
+- Implemented shortcut `POST /admin/clients/{client_id}/campaigns`.
+- Admin create now requires explicit `client_id`, validates Business DB client existence, and rejects non-writable client statuses `blocked`, `archived`, and `suspended`.
+- Admin content updates persist `subject`, `preview_text`, `body_html`, and `body_text`, and recompute `content_ready` in Business PostgreSQL.
+- Admin review now runs backend preflight without treating `EMAIL_SENDING_ENABLED=false` as a review failure; readiness and real dispatch remain distinct.
+- Admin simulate/send wrappers now reuse the existing simulation and dispatch services from the namespaced admin contract.
+- Client campaign routes remain read-only; no client write endpoint was added.
+- Generic `/campaigns/*` runtime routes remain available as legacy/internal technical surfaces.
+
+Known limits:
+- No frontend wizard was implemented.
+- No contacts import endpoint was added in this milestone.
+- No AI, provider events, SES, or worker flow was implemented.
+
+Checks referenced:
+- `docker run --rm -v "$PWD/backend:/app" -v "$PWD/templates/dist:/templates/dist:ro" -w /app sendwise-backend python -m pytest tests`
+- `cd templates && npm run build`
+- `cd frontend && npm run lint`
+- `cd frontend && npm run build`
+- `bash scripts/audit.sh`
+- `bash scripts/smoke_test.sh`
+- `docker compose config`
+- `docker compose -f docker-compose.yml -f docker-compose.dev.yml config`
+- `git diff --check`
+
+Scope confirmation:
+- No frontend code was changed.
+- No auth flow, onboarding, provider event, SES, AI, or Docker production behavior was changed.
+- No broad refactor or legacy route removal was performed.
+
 ## Milestone 0.9E.2 Completion — Real Clerk Mapped Users Verification
 
 Date: 2026-05-08

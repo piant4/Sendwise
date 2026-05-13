@@ -38,6 +38,23 @@ def _map_campaign_row(row: Optional[dict[str, Any]]) -> Optional[CampaignRecord]
 
 
 class CampaignRepository:
+    def create_campaign(
+        self,
+        *,
+        client_id: str,
+        name: str,
+        status: str,
+        subject: str | None,
+        preview_text: str | None = None,
+        body_html: str | None = None,
+        body_text: str | None = None,
+        content_ready: bool = False,
+        contacts_ready: bool = False,
+        review_ready: bool = False,
+        current_step: str = "setup",
+    ) -> CampaignRecord:
+        raise NotImplementedError
+
     def get_by_id(
         self,
         *,
@@ -66,6 +83,8 @@ class CampaignRepository:
         *,
         client_id: str,
         campaign_id: str,
+        name: object = _UNSET,
+        status: object = _UNSET,
         subject: object = _UNSET,
         preview_text: object = _UNSET,
         body_html: object = _UNSET,
@@ -90,6 +109,77 @@ class CampaignRepository:
 class PostgresCampaignRepository(CampaignRepository):
     def __init__(self, settings: Settings) -> None:
         self._settings = settings
+
+    def create_campaign(
+        self,
+        *,
+        client_id: str,
+        name: str,
+        status: str,
+        subject: str | None,
+        preview_text: str | None = None,
+        body_html: str | None = None,
+        body_text: str | None = None,
+        content_ready: bool = False,
+        contacts_ready: bool = False,
+        review_ready: bool = False,
+        current_step: str = "setup",
+    ) -> CampaignRecord:
+        query = """
+            INSERT INTO campaigns (
+                client_id,
+                name,
+                status,
+                subject,
+                preview_text,
+                body_html,
+                body_text,
+                content_ready,
+                contacts_ready,
+                review_ready,
+                current_step
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            RETURNING
+                id::text AS id,
+                client_id::text AS client_id,
+                name,
+                status,
+                subject,
+                campaign_slot_id::text AS campaign_slot_id,
+                preview_text,
+                body_html,
+                body_text,
+                content_ready,
+                contacts_ready,
+                review_ready,
+                current_step,
+                created_at,
+                updated_at
+        """
+
+        with postgres_connection(self._settings) as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    query,
+                    (
+                        client_id,
+                        name,
+                        status,
+                        subject,
+                        preview_text,
+                        body_html,
+                        body_text,
+                        content_ready,
+                        contacts_ready,
+                        review_ready,
+                        current_step,
+                    ),
+                )
+                row = cursor.fetchone()
+            connection.commit()
+
+        return CampaignRecord.model_validate(row)
 
     def get_by_id(
         self,
@@ -236,6 +326,8 @@ class PostgresCampaignRepository(CampaignRepository):
         *,
         client_id: str,
         campaign_id: str,
+        name: object = _UNSET,
+        status: object = _UNSET,
         subject: object = _UNSET,
         preview_text: object = _UNSET,
         body_html: object = _UNSET,
@@ -249,6 +341,8 @@ class PostgresCampaignRepository(CampaignRepository):
         assignments: list[str] = []
         parameters: list[Any] = []
         fields = (
+            ("name", name),
+            ("status", status),
             ("subject", subject),
             ("preview_text", preview_text),
             ("body_html", body_html),
@@ -355,6 +449,35 @@ class InMemoryCampaignRepository(CampaignRepository):
             return None
         return campaign
 
+    def create_campaign(
+        self,
+        *,
+        client_id: str,
+        name: str,
+        status: str,
+        subject: str | None,
+        preview_text: str | None = None,
+        body_html: str | None = None,
+        body_text: str | None = None,
+        content_ready: bool = False,
+        contacts_ready: bool = False,
+        review_ready: bool = False,
+        current_step: str = "setup",
+    ) -> CampaignRecord:
+        return self.add_campaign(
+            client_id=client_id,
+            name=name,
+            status=status,
+            subject=subject,
+            preview_text=preview_text,
+            body_html=body_html,
+            body_text=body_text,
+            content_ready=content_ready,
+            contacts_ready=contacts_ready,
+            review_ready=review_ready,
+            current_step=current_step,
+        )
+
     def list_by_client(self, client_id: str) -> list[CampaignRecord]:
         return [
             campaign
@@ -383,6 +506,8 @@ class InMemoryCampaignRepository(CampaignRepository):
         *,
         client_id: str,
         campaign_id: str,
+        name: object = _UNSET,
+        status: object = _UNSET,
         subject: object = _UNSET,
         preview_text: object = _UNSET,
         body_html: object = _UNSET,
@@ -401,6 +526,8 @@ class InMemoryCampaignRepository(CampaignRepository):
             "updated_at": datetime.now(timezone.utc),
         }
         for field_name, value in (
+            ("name", name),
+            ("status", status),
             ("subject", subject),
             ("preview_text", preview_text),
             ("body_html", body_html),

@@ -61,7 +61,7 @@ Admin request notes:
 | `GET /admin/campaigns` | List all campaigns. | Admin dashboard. | Platform admin. | Filters, pagination. | Campaign summaries. | `401`, `403`. | `implemented` |
 | `GET /admin/email-limits` | Read current limit overview based on legacy fields and usage summaries. | Admin dashboard. | Platform admin. | None. | Limit dashboard summary. | `401`, `403`. | `implemented` |
 | `GET /admin/blocked-sends` | View blocked sends across clients. | Admin dashboard. | Platform admin. | Filters. | Blocked send records. | `401`, `403`. | `implemented` |
-| `GET /admin/campaigns/{campaign_id}` | Read campaign detail. | Admin dashboard. | Platform admin. | `campaign_id`. | Campaign detail. | `401`, `403`, `404`. | `stub` |
+| `GET /admin/campaigns/{campaign_id}` | Read campaign detail. | Admin dashboard. | Platform admin. | `campaign_id`. | Campaign detail. | `401`, `403`, `404`. | `implemented` |
 | `POST /admin/campaigns/{campaign_id}/pause` | Pause campaign. | Admin dashboard. | Platform admin. | `campaign_id`, reason. | Updated campaign state. | `401`, `403`, `404`, `409`. | `stub` |
 | `POST /admin/campaigns/{campaign_id}/resume` | Resume campaign. | Admin dashboard. | Platform admin. | `campaign_id`, reason. | Updated campaign state. | `401`, `403`, `404`, `409`. | `stub` |
 
@@ -85,7 +85,7 @@ Current contract note:
 
 ## Campaign Runtime Endpoints Current
 
-These are backend-owned technical routes currently present in the runtime before the final admin namespaced contract is implemented.
+These are backend-owned technical routes currently present in the runtime as legacy/internal compatibility surfaces beside the product-facing admin namespace.
 
 | Endpoint | Purpose | Allowed caller | Required access | High-level input | High-level output | Main errors | Status |
 |---|---|---|---|---|---|---|---|
@@ -99,27 +99,27 @@ Current runtime notes:
 
 - real dispatch still depends on `EMAIL_SENDING_ENABLED=true`
 - send remains fail-closed outside controlled runtime/provider conditions
-- current generic routes do not define the final product ownership model
+- current generic routes do not define the final product ownership model and are not the recommended frontend path
 - final V1 product contract remains admin-managed for campaign write actions
 
 ## Admin-Managed Campaign API Proposed
 
-These are the planned V1 product endpoints for the only operational campaign flow. They are not implemented by this milestone unless explicitly marked otherwise.
+These are the V1 product endpoints for the only operational campaign flow. Entries still marked `planned` remain out of scope for this milestone.
 
 | Endpoint | Purpose | Allowed caller | Required access | High-level input | High-level output | Main errors | Status |
 |---|---|---|---|---|---|---|---|
 | `GET /admin/campaigns` | List campaigns across clients. | Admin dashboard. | Platform admin. | Filters, pagination. | Campaign summaries. | `401`, `403`. | `implemented` |
-| `POST /admin/campaigns` | Create a new admin-managed campaign draft. | Admin dashboard. | Platform admin. | Selected `client_id`, setup fields. | Created draft campaign. | `400`, `401`, `403`, `404`, `409`, `422`. | `planned` |
-| `POST /admin/clients/{client_id}/campaigns` | Shortcut to create a campaign from a client context. | Admin dashboard. | Platform admin. | Setup fields. | Created draft campaign already scoped to the client. | `400`, `401`, `403`, `404`, `409`, `422`. | `planned` |
-| `GET /admin/campaigns/{campaign_id}` | Read admin campaign detail. | Admin dashboard. | Platform admin. | `campaign_id`. | Campaign detail. | `401`, `403`, `404`. | `stub` |
-| `PATCH /admin/campaigns/{campaign_id}` | Update allowed campaign setup fields. | Admin dashboard. | Platform admin. | Partial setup fields. | Updated campaign. | `400`, `401`, `403`, `404`, `409`, `422`. | `planned` |
-| `POST /admin/campaigns/{campaign_id}/select-slot` | Assign a slot to a campaign. | Admin dashboard. | Platform admin. | `slot_id`. | Slot assignment summary. | `400`, `401`, `403`, `404`, `409`, `422`. | `planned` |
-| `POST /admin/campaigns/{campaign_id}/content` | Save content or apply a template into campaign content fields. | Admin dashboard. | Platform admin. | `subject`, `preview_text`, `body_html`, `body_text`, optional template reference. | Updated campaign content state. | `400`, `401`, `403`, `404`, `409`, `422`. | `planned` |
+| `POST /admin/campaigns` | Create a new admin-managed campaign draft. | Admin dashboard. | Platform admin. | Selected `client_id`, setup fields. | Created draft campaign. | `400`, `401`, `403`, `404`, `409`, `422`. | `implemented` |
+| `POST /admin/clients/{client_id}/campaigns` | Shortcut to create a campaign from a client context. | Admin dashboard. | Platform admin. | Setup fields. | Created draft campaign already scoped to the client. | `400`, `401`, `403`, `404`, `409`, `422`. | `implemented` |
+| `GET /admin/campaigns/{campaign_id}` | Read admin campaign detail. | Admin dashboard. | Platform admin. | `campaign_id`. | Campaign detail. | `401`, `403`, `404`. | `implemented` |
+| `PATCH /admin/campaigns/{campaign_id}` | Update allowed campaign setup fields. | Admin dashboard. | Platform admin. | Partial setup fields. | Updated campaign. | `400`, `401`, `403`, `404`, `409`, `422`. | `implemented` |
+| `POST /admin/campaigns/{campaign_id}/select-slot` | Assign a slot to a campaign. | Admin dashboard. | Platform admin. | `slot_id`. | Slot assignment summary. | `400`, `401`, `403`, `404`, `409`, `422`. | `implemented` |
+| `POST /admin/campaigns/{campaign_id}/content` | Save content or apply a template into campaign content fields. | Admin dashboard. | Platform admin. | `subject`, `preview_text`, `body_html`, `body_text`, optional template reference. | Updated campaign content state. | `400`, `401`, `403`, `404`, `409`, `422`. | `implemented` |
 | `POST /admin/campaigns/{campaign_id}/contacts/import` | Import or associate contacts for the campaign. | Admin dashboard. | Platform admin. | CSV or structured contact payload. | Import summary and validation preview. | `400`, `401`, `403`, `404`, `409`, `413`, `422`. | `planned` |
 | `GET /admin/campaigns/{campaign_id}/contacts` | Read contacts associated with the campaign. | Admin dashboard. | Platform admin. | `campaign_id`. | Campaign contact list and summary. | `401`, `403`, `404`. | `planned` |
-| `POST /admin/campaigns/{campaign_id}/review` | Build final review payload without dispatching. | Admin dashboard. | Platform admin. | `campaign_id`. | Warnings, blocking errors, counts, readiness, slot limit. | `400`, `401`, `403`, `404`, `409`, `422`. | `planned` |
-| `POST /admin/campaigns/{campaign_id}/simulate-send` | Request backend simulation from the admin flow. | Admin dashboard. | Platform admin. | `campaign_id`. | Simulation result. | `400`, `401`, `403`, `404`, `409`, `423`. | `planned` |
-| `POST /admin/campaigns/{campaign_id}/send` | Request controlled send from the admin flow. | Admin dashboard. | Platform admin. | `campaign_id`. | Blocked, failed, or queued send result. | `400`, `401`, `403`, `404`, `409`, `423`. | `planned` |
+| `POST /admin/campaigns/{campaign_id}/review` | Build final review payload without dispatching. | Admin dashboard. | Platform admin. | `campaign_id`. | Warnings, blocking errors, counts, readiness, slot limit. | `400`, `401`, `403`, `404`, `409`, `422`. | `implemented` |
+| `POST /admin/campaigns/{campaign_id}/simulate-send` | Request backend simulation from the admin flow. | Admin dashboard. | Platform admin. | `campaign_id`. | Simulation result. | `400`, `401`, `403`, `404`, `409`, `423`. | `implemented` |
+| `POST /admin/campaigns/{campaign_id}/send` | Request controlled send from the admin flow. | Admin dashboard. | Platform admin. | `campaign_id`. | Blocked, failed, or queued send result. | `400`, `401`, `403`, `404`, `409`, `423`. | `implemented` |
 
 Admin-managed contract notes:
 

@@ -2230,3 +2230,33 @@ Checks referenced:
 
 Scope confirmation:
 - No secrets, local env files, frontend files, auth flow, n8n, AI, worker, or dashboard UI were changed.
+
+## Milestone 12.1 - Live SES Validation Preflight
+
+Date: 2026-05-13
+Branch: develop
+
+Verified state:
+- Live SES dispatch was not attempted because the local runtime remained fail-closed: `EMAIL_SENDING_ENABLED=false`, `EMAIL_PROVIDER=mailpit`, no SES SMTP credentials, no `AWS_SES_REGION`, no single-recipient allowlist, and `BACKEND_PUBLIC_URL=http://localhost:8000`.
+- listmonk was running with dev SMTP pointed at Mailpit, not SES.
+- Business PostgreSQL had no clients, campaigns, contacts, campaign-contact rows, or email logs available for a one-recipient controlled send target.
+- `scripts/validate_ses_readiness.sh` was tightened to fail when `AWS_SES_REGION` is missing, runtime environment is not allowed, allowed-recipient enforcement is disabled, `REAL_SEND_MAX_RECIPIENTS` is not `1`, or the allowlist does not contain exactly one recipient.
+
+Checks executed:
+- `bash -n scripts/validate_ses_readiness.sh`
+- `scripts/validate_ses_readiness.sh` against current local env, which failed safely.
+- `scripts/validate_ses_readiness.sh` against dummy non-secret SES-shaped env, which passed without printing secrets.
+- `bash scripts/audit.sh`
+- `bash scripts/smoke_test.sh`
+- `docker compose config`
+- `docker compose -f docker-compose.yml -f docker-compose.dev.yml config`
+- `bash scripts/apply_migrations.sh`
+- `docker run --rm ... sendwise-backend python -m pytest tests`
+- Docker Node temp-copy `npm run lint`
+- Docker Node temp-copy `npm run build`
+- `git diff --check`
+
+Result:
+- Milestone 12.1 is blocked by external/local runtime configuration and missing target data, not by the send service.
+- No fake delivery, open, click, or provider metrics were added.
+- No secrets or local env files were committed.

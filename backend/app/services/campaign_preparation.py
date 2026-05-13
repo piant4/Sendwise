@@ -161,18 +161,33 @@ class CampaignPreparationService:
         client: Any | None,
     ) -> dict[str, Any]:
         subject = (campaign.subject or "").strip() or f"Sendwise draft {campaign.id}"
-        preview_text = f"Technical preview for campaign {campaign.name}."
-        body = (
-            f"<p>This is the Sendwise technical preview for <strong>{campaign.name}</strong>.</p>"
-            f"<p>Subject: {subject}</p>"
-            "<p>No real email was sent. This HTML exists for campaign preparation "
-            "and simulation only.</p>"
-        )
         client_name = self._resolve_client_name(client)
         unsubscribe_url = build_unsubscribe_url(
             settings=self.settings,
             campaign_id=campaign.id,
             client_id=campaign.client_id,
+        )
+        if campaign.content_ready and (campaign.body_html or "").strip():
+            return {
+                "template_name": "campaign_business_db",
+                "content_ready": True,
+                "reason": None,
+                "subject": subject,
+                "preview_text": (campaign.preview_text or "").strip(),
+                "body": str(campaign.body_html),
+                "body_text": campaign.body_text,
+                "unsubscribe_url": unsubscribe_url,
+                "client_name": client_name,
+            }
+
+        preview_text = (campaign.preview_text or "").strip() or (
+            f"Technical preview for campaign {campaign.name}."
+        )
+        body = (
+            f"<p>This is the Sendwise technical preview for <strong>{campaign.name}</strong>.</p>"
+            f"<p>Subject: {subject}</p>"
+            "<p>No real email was sent. This HTML exists for campaign preparation "
+            "and simulation only.</p>"
         )
         try:
             rendered = self.template_renderer.render(
@@ -191,17 +206,19 @@ class CampaignPreparationService:
                 "subject": subject,
                 "preview_text": preview_text,
                 "body": "",
+                "body_text": campaign.body_text,
                 "unsubscribe_url": unsubscribe_url,
                 "client_name": client_name,
             }
 
         return {
             "template_name": rendered.template_name,
-            "content_ready": True,
-            "reason": None,
+            "content_ready": False,
+            "reason": "Campaign content is not ready in Business DB.",
             "subject": rendered.subject,
             "preview_text": rendered.preview_text,
             "body": rendered.body,
+            "body_text": campaign.body_text,
             "unsubscribe_url": rendered.unsubscribe_url,
             "client_name": rendered.client_name,
         }
@@ -239,6 +256,14 @@ class CampaignPreparationService:
                     name=campaign.name,
                     status=campaign.status,
                     subject=campaign.subject,
+                    campaign_slot_id=campaign.campaign_slot_id,
+                    preview_text=campaign.preview_text,
+                    body_html=campaign.body_html,
+                    body_text=campaign.body_text,
+                    content_ready=campaign.content_ready,
+                    contacts_ready=campaign.contacts_ready,
+                    review_ready=campaign.review_ready,
+                    current_step=campaign.current_step,
                     created_at=campaign.created_at,
                     updated_at=campaign.updated_at,
                 )

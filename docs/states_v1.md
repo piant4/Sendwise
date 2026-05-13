@@ -95,6 +95,9 @@ Rules:
 - `recipients` owns recipient import/selection and deduped association.
 - `review` owns preflight analysis and warnings.
 - `send` is an action step, not a trust boundary; backend still rechecks.
+- `current_step`, `content_ready`, `contacts_ready`, and `review_ready` are now persisted on `campaigns`.
+- `content_ready=true` requires persisted `body_html` in Business PostgreSQL for real dispatch.
+- `contacts_ready` may be refreshed from persisted `campaign_contacts`, but Guard still performs the final eligibility check.
 
 ## Contact Sendability
 

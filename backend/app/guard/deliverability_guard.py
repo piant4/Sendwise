@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import Mapping, Sequence
 
+from app.repositories.campaign_slots import CampaignSlotRecord
 from app.repositories.clients import ClientCampaignRecord, ClientRecord
 from app.repositories.contacts import ContactRecord
 
@@ -24,6 +25,8 @@ class GuardResult:
     blocked_contact_count: int = 0
     blocked_reasons: Mapping[str, int] | None = None
     diagnostic: str = "Dispatch authorized by Deliverability Guard."
+    limit_source: str | None = None
+    limit_value: int | None = None
 
     @property
     def allowed(self) -> bool:
@@ -42,6 +45,8 @@ class GuardResult:
             "blocked_contact_count": self.blocked_contact_count,
             "blocked_reasons": dict(self.blocked_reasons or {}),
             "diagnostic": self.diagnostic,
+            "limit_source": self.limit_source,
+            "limit_value": self.limit_value,
         }
 
 
@@ -82,6 +87,7 @@ class DeliverabilityGuard:
         email_sending_enabled: bool,
         client: ClientRecord | None,
         campaign: ClientCampaignRecord | None,
+        slot: CampaignSlotRecord | None,
         contacts: Sequence[ContactRecord],
         suppressed_emails: set[str],
         active_campaign_count: int | None,
@@ -186,18 +192,35 @@ class DeliverabilityGuard:
             suppressed_emails=suppressed_emails,
         )
         blocked_count = len(contacts) - eligible_count
+        limit_source, limit_value, invalid_limit_result = self._resolve_limit(
+            client=client,
+            campaign=campaign,
+            slot=slot,
+        )
+        if invalid_limit_result is not None:
+            return invalid_limit_result
 
-        if client.email_limit_per_campaign is not None and eligible_count > client.email_limit_per_campaign:
+        if limit_value is not None and eligible_count > limit_value:
             return self._blocked(
-                code="email_limit_per_campaign_exceeded",
-                reason="Campaign eligible contact count exceeds email_limit_per_campaign.",
+                code=(
+                    "campaign_slot_limit_exceeded"
+                    if limit_source == "campaign_slot"
+                    else "email_limit_per_campaign_exceeded"
+                ),
+                reason=(
+                    "Campaign eligible contact count exceeds campaign slot max_emails."
+                    if limit_source == "campaign_slot"
+                    else "Campaign eligible contact count exceeds email_limit_per_campaign."
+                ),
                 severity="error",
                 client_id=client.id,
                 campaign_id=campaign.id,
                 eligible_contact_count=eligible_count,
                 blocked_contact_count=blocked_count,
                 blocked_reasons=blocked_reasons,
-                diagnostic="Guard blocked before listmonk because client campaign email limit would be exceeded.",
+                diagnostic="Guard blocked before listmonk because the campaign email limit would be exceeded.",
+                limit_source=limit_source,
+                limit_value=limit_value,
             )
 
         if eligible_count == 0:
@@ -211,6 +234,8 @@ class DeliverabilityGuard:
                 blocked_contact_count=blocked_count,
                 blocked_reasons=blocked_reasons,
                 diagnostic="All campaign contacts were non-sendable.",
+                limit_source=limit_source,
+                limit_value=limit_value,
             )
 
         if blocked_count > 0:
@@ -224,6 +249,8 @@ class DeliverabilityGuard:
                 blocked_contact_count=blocked_count,
                 blocked_reasons=blocked_reasons,
                 diagnostic="Guard blocked to avoid sending listmonk's full campaign list.",
+                limit_source=limit_source,
+                limit_value=limit_value,
             )
 
         return GuardResult(
@@ -237,6 +264,8 @@ class DeliverabilityGuard:
             blocked_contact_count=0,
             blocked_reasons={},
             diagnostic="Client, campaign, contact, suppression, and limit checks passed.",
+            limit_source=limit_source,
+            limit_value=limit_value,
         )
 
     def can_send_to_contact(self, *_args: object, **_kwargs: object) -> GuardResult:
@@ -316,6 +345,8 @@ class DeliverabilityGuard:
         blocked_contact_count: int = 0,
         blocked_reasons: Mapping[str, int] | None = None,
         diagnostic: str,
+        limit_source: str | None = None,
+        limit_value: int | None = None,
     ) -> GuardResult:
         return GuardResult(
             decision=SendDecision.BLOCKED,
@@ -328,4 +359,62 @@ class DeliverabilityGuard:
             blocked_contact_count=blocked_contact_count,
             blocked_reasons=blocked_reasons or {},
             diagnostic=diagnostic,
+            limit_source=limit_source,
+            limit_value=limit_value,
         )
+
+    def _resolve_limit(
+        self,
+        *,
+        client: ClientRecord,
+        campaign: ClientCampaignRecord,
+        slot: CampaignSlotRecord | None,
+    ) -> tuple[str, int | None, GuardResult | None]:
+        if campaign.campaign_slot_id:
+            if slot is None:
+                return (
+                    "campaign_slot",
+                    None,
+                    self._blocked(
+                        code="campaign_slot_not_found",
+                        reason="Campaign slot was not found in Business DB for this campaign.",
+                        severity="error",
+                        client_id=client.id,
+                        campaign_id=campaign.id,
+                        diagnostic="campaign.campaign_slot_id is set but no scoped slot was found.",
+                        limit_source="campaign_slot",
+                    ),
+                )
+            if slot.status == "archived":
+                return (
+                    "campaign_slot",
+                    slot.max_emails,
+                    self._blocked(
+                        code="campaign_slot_archived",
+                        reason="Archived campaign slots cannot authorize dispatch.",
+                        severity="error",
+                        client_id=client.id,
+                        campaign_id=campaign.id,
+                        diagnostic="campaign slot is archived and cannot be used for dispatch.",
+                        limit_source="campaign_slot",
+                        limit_value=slot.max_emails,
+                    ),
+                )
+            if slot.assigned_campaign_id and slot.assigned_campaign_id != campaign.id:
+                return (
+                    "campaign_slot",
+                    slot.max_emails,
+                    self._blocked(
+                        code="campaign_slot_assigned_elsewhere",
+                        reason="Campaign slot is assigned to a different campaign.",
+                        severity="error",
+                        client_id=client.id,
+                        campaign_id=campaign.id,
+                        diagnostic="campaign slot assignment does not match campaign.id.",
+                        limit_source="campaign_slot",
+                        limit_value=slot.max_emails,
+                    ),
+                )
+            return "campaign_slot", slot.max_emails, None
+
+        return "legacy_client_limit", client.email_limit_per_campaign, None

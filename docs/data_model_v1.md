@@ -21,6 +21,7 @@ Current audited tables in `db/init.sql`:
 - `clients`
 - `client_access`
 - `campaigns`
+- `campaign_slots`
 - `contacts`
 - `campaign_contacts`
 - `email_logs`
@@ -32,10 +33,7 @@ Current audited tables in `db/init.sql`:
 
 Current audited gaps:
 
-- no `campaign_slots` table
 - no `email_templates` table
-- no persisted campaign wizard flags
-- no persisted `preview_text`, `body_html`, or `body_text` on `campaigns`
 - no persisted review snapshot or preflight result table
 
 ## States
@@ -130,34 +128,29 @@ Current verified fields:
 - `name`
 - `status`
 - `subject`
+- `campaign_slot_id`
+- `preview_text`
+- `body_html`
+- `body_text`
+- `content_ready`
+- `contacts_ready`
+- `review_ready`
+- `current_step`
 - `created_at`
 - `updated_at`
 
 Current audited limitations:
-- no persisted wizard step
-- no `content_ready`
-- no `contacts_ready`
-- no `review_ready`
-- no `preview_text`
-- no `body_html`
-- no `body_text`
-- no `slot_id`
-- no per-campaign limit field
+- no per-campaign review snapshot table
+- no dedicated product template entity yet
+- technical template rendering remains a legacy fallback and does not make campaign content product-ready by itself
 
 Recommended additions for self-service V1 contract:
-- `current_step`
-- `content_ready`
-- `contacts_ready`
-- `review_ready`
-- `preview_text`
-- `body_html`
-- `body_text`
-- `assigned_slot_id`
 - optional `review_snapshot` or separate review persistence later
 
-Fallback option:
-- `campaigns.email_limit` is acceptable only as a temporary fallback if `campaign_slots` cannot land yet
-- recommended choice remains `campaign_slots`
+Current verified self-service compatibility:
+- `campaign_slot_id` links a campaign to `campaign_slots` when assigned
+- `clients.email_limit_per_campaign` remains the legacy fallback when no slot is linked
+- `max_campaigns` remains the legacy active-campaign-count compatibility check
 
 ### contacts
 
@@ -283,11 +276,11 @@ Contract rule:
 
 ### campaign_slots
 
-Status: recommended contract, not implemented.
+Status: implemented persistence.
 
 Purpose: Admin-owned capacity slots assigned one-to-one to campaigns for per-campaign custom limits.
 
-Recommended fields:
+Current verified fields:
 - `id`
 - `client_id`
 - `label`
@@ -297,22 +290,22 @@ Recommended fields:
 - `created_at`
 - `updated_at`
 
-Recommended statuses:
+Current verified statuses:
 - `available`
 - `assigned`
 - `used`
 - `archived`
 
-Recommended rules:
+Current verified rules:
 - only admin creates, edits, or archives slots
-- client may view assignable slots but not mutate slot policy
-- one campaign uses one slot
+- client selection flow remains future work
+- one slot can be assigned to at most one campaign
 - Guard applies `campaign_slots.max_emails`
 - `clients.email_limit_per_campaign` remains fallback/legacy until migration completes
 
-Recommended V1 choice:
-- preferred: `campaign_slots`
-- acceptable fallback if delivery pressure is high: temporary `campaigns.email_limit`
+Current V1 choice:
+- `campaign_slots` is the implemented source for per-campaign custom limit when linked
+- `campaigns.email_limit` was not introduced
 
 ### email_templates
 

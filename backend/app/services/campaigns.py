@@ -9,6 +9,14 @@ from app.integrations.listmonk.client import (
     ListmonkError,
     extract_listmonk_id,
 )
+from app.repositories.campaign_slots import (
+    CampaignSlotRepository,
+    get_campaign_slot_repository,
+)
+from app.repositories.campaigns import (
+    CampaignRepository,
+    get_campaign_repository,
+)
 from app.repositories.blocked_sends import (
     BlockedSendRepository,
     get_blocked_send_repository,
@@ -35,12 +43,59 @@ from app.services.listmonk_mappings import (
 
 
 @dataclass(frozen=True)
+class CampaignStateService:
+    repository: CampaignRepository
+
+    def update_campaign_content(
+        self,
+        *,
+        client_id: str,
+        campaign_id: str,
+        subject: str | None,
+        preview_text: str | None,
+        body_html: str | None,
+        body_text: str | None,
+        content_ready: bool,
+        review_ready: bool,
+        current_step: str,
+    ) -> Any:
+        return self.repository.update_campaign(
+            client_id=client_id,
+            campaign_id=campaign_id,
+            subject=subject,
+            preview_text=preview_text,
+            body_html=body_html,
+            body_text=body_text,
+            content_ready=content_ready,
+            review_ready=review_ready,
+            current_step=current_step,
+        )
+
+    def refresh_contacts_ready(
+        self,
+        *,
+        client_id: str,
+        campaign_id: str,
+    ) -> Any:
+        contacts_ready = self.repository.has_contacts(
+            client_id=client_id,
+            campaign_id=campaign_id,
+        )
+        return self.repository.update_campaign(
+            client_id=client_id,
+            campaign_id=campaign_id,
+            contacts_ready=contacts_ready,
+        )
+
+
+@dataclass(frozen=True)
 class CampaignDispatchService:
     settings: Settings
     guard: DeliverabilityGuard
     listmonk_client: ListmonkClient
     mapping_service: ListmonkMappingService | None = None
     client_repository: ClientRepository | None = None
+    campaign_slot_repository: CampaignSlotRepository | None = None
     contact_repository: ContactRepository | None = None
     suppression_list_repository: SuppressionListRepository | None = None
     blocked_send_repository: BlockedSendRepository | None = None
@@ -88,6 +143,7 @@ class CampaignDispatchService:
         contacts = []
         suppressed_emails: set[str] = set()
         active_campaign_count: int | None = None
+        slot = None
         if client is not None and campaign is not None:
             contacts = contact_repository.list_campaign_contacts(
                 client_id=client.id,
@@ -101,11 +157,20 @@ class CampaignDispatchService:
                 client_id=client.id,
                 client_repository=client_repository,
             )
+            if (
+                campaign.campaign_slot_id
+                and self.campaign_slot_repository is not None
+            ):
+                slot = self.campaign_slot_repository.get_by_id(
+                    client_id=client.id,
+                    slot_id=campaign.campaign_slot_id,
+                )
 
         guard_result = self.guard.authorize_campaign_dispatch(
             email_sending_enabled=self.settings.email_sending_enabled,
             client=client,
             campaign=campaign,
+            slot=slot,
             contacts=contacts,
             suppressed_emails=suppressed_emails,
             active_campaign_count=active_campaign_count,
@@ -278,6 +343,8 @@ class CampaignDispatchService:
             "blocked_contact_count": guard_result.blocked_contact_count,
             "blocked_reasons": dict(guard_result.blocked_reasons or {}),
             "diagnostic": guard_result.diagnostic,
+            "limit_source": guard_result.limit_source,
+            "limit_value": guard_result.limit_value,
             "guard": guard_result.to_dict(),
             "dispatch_attempted": True,
             "real_send_attempted": True,
@@ -323,6 +390,14 @@ class CampaignDispatchService:
                     name=campaign.name,
                     status=campaign.status,
                     subject=campaign.subject,
+                    campaign_slot_id=campaign.campaign_slot_id,
+                    preview_text=campaign.preview_text,
+                    body_html=campaign.body_html,
+                    body_text=campaign.body_text,
+                    content_ready=campaign.content_ready,
+                    contacts_ready=campaign.contacts_ready,
+                    review_ready=campaign.review_ready,
+                    current_step=campaign.current_step,
                     created_at=campaign.created_at,
                     updated_at=campaign.updated_at,
                 )
@@ -399,6 +474,8 @@ class CampaignDispatchService:
             "blocked_contact_count": guard_result.blocked_contact_count,
             "blocked_reasons": dict(guard_result.blocked_reasons or {}),
             "diagnostic": guard_result.diagnostic,
+            "limit_source": guard_result.limit_source,
+            "limit_value": guard_result.limit_value,
             "guard": guard_result.to_dict(),
             "dispatch_attempted": False,
             "real_send_attempted": False,
@@ -457,6 +534,8 @@ class CampaignDispatchService:
                 "blocked_contact_count": 0,
                 "blocked_reasons": {},
                 "diagnostic": reason,
+                "limit_source": None,
+                "limit_value": None,
             }
             decision_value = decision
             default_client_id = client_id
@@ -476,6 +555,8 @@ class CampaignDispatchService:
             "severity": severity,
             "eligible_contact_count": eligible_contact_count,
             "blocked_contact_count": blocked_contact_count,
+            "limit_source": guard_payload.get("limit_source"),
+            "limit_value": guard_payload.get("limit_value"),
             "guard": guard_payload,
             "dispatch_attempted": False,
             "real_send_attempted": False,
@@ -517,6 +598,8 @@ class CampaignDispatchService:
             "blocked_contact_count": guard_result.blocked_contact_count,
             "blocked_reasons": dict(guard_result.blocked_reasons or {}),
             "diagnostic": guard_result.diagnostic,
+            "limit_source": guard_result.limit_source,
+            "limit_value": guard_result.limit_value,
             "guard": guard_result.to_dict(),
             "dispatch_attempted": dispatch_attempted,
             "real_send_attempted": dispatch_attempted,
@@ -540,6 +623,10 @@ def build_listmonk_client(settings: Settings) -> ListmonkClient:
     )
 
 
+def get_campaign_state_service() -> CampaignStateService:
+    return CampaignStateService(repository=get_campaign_repository())
+
+
 def get_campaign_dispatch_service() -> CampaignDispatchService:
     settings = get_settings()
     mapping_repository = get_listmonk_mapping_repository()
@@ -551,6 +638,7 @@ def get_campaign_dispatch_service() -> CampaignDispatchService:
         listmonk_client=build_listmonk_client(settings),
         mapping_service=ListmonkMappingService(mapping_repository),
         client_repository=PostgresClientRepository(settings),
+        campaign_slot_repository=get_campaign_slot_repository(),
         contact_repository=PostgresContactRepository(settings),
         suppression_list_repository=get_suppression_list_repository(),
         blocked_send_repository=get_blocked_send_repository(),

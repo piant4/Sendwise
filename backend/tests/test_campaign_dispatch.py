@@ -11,6 +11,7 @@ from app.guard.deliverability_guard import DeliverabilityGuard
 from app.integrations.listmonk.client import ListmonkClient, ListmonkError
 from app.repositories.blocked_sends import InMemoryBlockedSendRepository
 from app.main import app
+from app.repositories.campaign_slots import InMemoryCampaignSlotRepository
 from app.repositories.clients import ClientCampaignRecord, ClientRecord
 from app.repositories.contacts import ContactRecord, InMemoryContactRepository
 from app.repositories.email_logs import InMemoryEmailLogRepository
@@ -99,6 +100,7 @@ def build_campaign(
     client_id: str = "client_123",
     subject: str = "Launch",
     status: str = "ready",
+    campaign_slot_id: str | None = None,
 ) -> ClientCampaignRecord:
     now = datetime.now(timezone.utc)
     return ClientCampaignRecord(
@@ -107,6 +109,7 @@ def build_campaign(
         name="Launch campaign",
         status=status,
         subject=subject,
+        campaign_slot_id=campaign_slot_id,
         created_at=now,
         updated_at=now,
     )
@@ -161,6 +164,7 @@ def build_dispatch_service(
     clients: list[ClientRecord] | None = None,
     contact_repository: InMemoryContactRepository | None = None,
     suppression_repository: InMemorySuppressionListRepository | None = None,
+    campaign_slot_repository: InMemoryCampaignSlotRepository | None = None,
     preparation_service: FakePreparationService | None = None,
 ) -> CampaignDispatchService:
     selected_campaigns = [build_campaign()] if campaigns is None else campaigns
@@ -183,6 +187,7 @@ def build_dispatch_service(
             selected_campaigns,
             selected_clients,
         ),
+        campaign_slot_repository=campaign_slot_repository,
         contact_repository=selected_contact_repository,
         suppression_list_repository=suppression_repository
         or InMemorySuppressionListRepository(),
@@ -428,6 +433,166 @@ def test_email_limit_per_campaign_blocks_oversized_batch() -> None:
     assert result["status"] == "blocked"
     assert result["code"] == "email_limit_per_campaign_exceeded"
     assert result["eligible_contact_count"] == 2
+    assert fake_listmonk.sent_campaign_ids == []
+
+
+def test_campaign_slot_limit_overrides_legacy_client_limit() -> None:
+    fake_listmonk = FakeListmonkClient()
+    contact_repository = InMemoryContactRepository(
+        contacts=[
+            build_contact(contact_id="contact_1", email="one@example.test"),
+            build_contact(contact_id="contact_2", email="two@example.test"),
+        ],
+        campaign_contacts={
+            ("client_123", "campaign_123", "contact_1"),
+            ("client_123", "campaign_123", "contact_2"),
+        },
+    )
+    slot_repository = InMemoryCampaignSlotRepository()
+    slot = slot_repository.add_slot(
+        slot_id="slot_123",
+        client_id="client_123",
+        label="Starter",
+        max_emails=5,
+        status="assigned",
+        assigned_campaign_id="campaign_123",
+    )
+    service = build_dispatch_service(
+        fake_listmonk=fake_listmonk,
+        clients=[build_client(email_limit_per_campaign=1)],
+        campaigns=[build_campaign(campaign_slot_id=slot.id)],
+        contact_repository=contact_repository,
+        campaign_slot_repository=slot_repository,
+        preparation_service=FakePreparationService(content_ready=True),
+    )
+
+    result = service.send_campaign("campaign_123")
+
+    assert result["status"] == "queued"
+    assert result["limit_source"] == "campaign_slot"
+    assert result["limit_value"] == 5
+    assert result["guard"]["limit_source"] == "campaign_slot"
+    assert result["guard"]["limit_value"] == 5
+
+
+def test_campaign_without_slot_uses_legacy_client_limit() -> None:
+    fake_listmonk = FakeListmonkClient()
+    contact_repository = InMemoryContactRepository(
+        contacts=[
+            build_contact(contact_id="contact_1", email="one@example.test"),
+            build_contact(contact_id="contact_2", email="two@example.test"),
+        ],
+        campaign_contacts={
+            ("client_123", "campaign_123", "contact_1"),
+            ("client_123", "campaign_123", "contact_2"),
+        },
+    )
+    service = build_dispatch_service(
+        fake_listmonk=fake_listmonk,
+        clients=[build_client(email_limit_per_campaign=5)],
+        contact_repository=contact_repository,
+        preparation_service=FakePreparationService(content_ready=True),
+    )
+
+    result = service.send_campaign("campaign_123")
+
+    assert result["status"] == "queued"
+    assert result["limit_source"] == "legacy_client_limit"
+    assert result["limit_value"] == 5
+
+
+def test_campaign_slot_limit_block_persists_blocked_send() -> None:
+    fake_listmonk = FakeListmonkClient()
+    blocked_send_repository = InMemoryBlockedSendRepository()
+    contact_repository = InMemoryContactRepository(
+        contacts=[
+            build_contact(contact_id="contact_1", email="one@example.test"),
+            build_contact(contact_id="contact_2", email="two@example.test"),
+        ],
+        campaign_contacts={
+            ("client_123", "campaign_123", "contact_1"),
+            ("client_123", "campaign_123", "contact_2"),
+        },
+    )
+    slot_repository = InMemoryCampaignSlotRepository()
+    slot_repository.add_slot(
+        slot_id="slot_123",
+        client_id="client_123",
+        label="Starter",
+        max_emails=1,
+        status="assigned",
+        assigned_campaign_id="campaign_123",
+    )
+    service = build_dispatch_service(
+        fake_listmonk=fake_listmonk,
+        clients=[build_client(email_limit_per_campaign=99)],
+        campaigns=[build_campaign(campaign_slot_id="slot_123")],
+        contact_repository=contact_repository,
+        campaign_slot_repository=slot_repository,
+        blocked_send_repository=blocked_send_repository,
+        preparation_service=FakePreparationService(content_ready=True),
+    )
+
+    result = service.send_campaign("campaign_123")
+
+    assert result["status"] == "blocked"
+    assert result["code"] == "campaign_slot_limit_exceeded"
+    assert result["limit_source"] == "campaign_slot"
+    assert result["eligible_contact_count"] == 2
+    blocked_sends = blocked_send_repository.list_by_campaign("campaign_123")
+    assert len(blocked_sends) == 1
+    assert blocked_sends[0].reason == f'{result["code"]}: {result["reason"]}'
+
+
+def test_cross_client_slot_lookup_is_blocked() -> None:
+    fake_listmonk = FakeListmonkClient()
+    slot_repository = InMemoryCampaignSlotRepository()
+    slot_repository.add_slot(
+        slot_id="slot_beta",
+        client_id="client_beta",
+        label="Other",
+        max_emails=10,
+        status="assigned",
+        assigned_campaign_id="campaign_beta",
+    )
+    service = build_dispatch_service(
+        fake_listmonk=fake_listmonk,
+        campaigns=[build_campaign(campaign_slot_id="slot_beta")],
+        campaign_slot_repository=slot_repository,
+        preparation_service=FakePreparationService(content_ready=True),
+    )
+
+    result = service.send_campaign("campaign_123")
+
+    assert result["status"] == "blocked"
+    assert result["code"] == "campaign_slot_not_found"
+    assert result["limit_source"] == "campaign_slot"
+    assert fake_listmonk.sent_campaign_ids == []
+
+
+def test_archived_campaign_slot_blocks_dispatch() -> None:
+    fake_listmonk = FakeListmonkClient()
+    slot_repository = InMemoryCampaignSlotRepository()
+    slot_repository.add_slot(
+        slot_id="slot_123",
+        client_id="client_123",
+        label="Starter",
+        max_emails=10,
+        status="archived",
+        assigned_campaign_id="campaign_123",
+    )
+    service = build_dispatch_service(
+        fake_listmonk=fake_listmonk,
+        campaigns=[build_campaign(campaign_slot_id="slot_123")],
+        campaign_slot_repository=slot_repository,
+        preparation_service=FakePreparationService(content_ready=True),
+    )
+
+    result = service.send_campaign("campaign_123")
+
+    assert result["status"] == "blocked"
+    assert result["code"] == "campaign_slot_archived"
+    assert result["limit_source"] == "campaign_slot"
     assert fake_listmonk.sent_campaign_ids == []
 
 

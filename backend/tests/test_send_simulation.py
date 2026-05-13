@@ -7,6 +7,7 @@ from app.api.campaigns import get_send_simulation_service
 from app.core.auth import AuthenticatedUser, require_active_user
 from app.guard.deliverability_guard import DeliverabilityGuard
 from app.main import app
+from app.repositories.campaign_slots import InMemoryCampaignSlotRepository
 from app.repositories.blocked_sends import InMemoryBlockedSendRepository
 from app.repositories.clients import ClientCampaignRecord, ClientRecord
 from app.repositories.contacts import ContactRecord, InMemoryContactRepository
@@ -80,6 +81,7 @@ def build_campaign(
     campaign_id: str = "campaign_123",
     client_id: str = "client_123",
     status: str = "ready",
+    campaign_slot_id: str | None = None,
 ) -> ClientCampaignRecord:
     now = datetime.now(timezone.utc)
     return ClientCampaignRecord(
@@ -88,6 +90,7 @@ def build_campaign(
         name="Launch campaign",
         status=status,
         subject="Launch",
+        campaign_slot_id=campaign_slot_id,
         created_at=now,
         updated_at=now,
     )
@@ -127,6 +130,7 @@ def build_service(
     client: ClientRecord | None = None,
     contacts: list[ContactRecord] | None = None,
     campaign_contacts: set[tuple[str, str, str]] | None = None,
+    campaign_slot_repository: InMemoryCampaignSlotRepository | None = None,
     blocked_send_repository: InMemoryBlockedSendRepository | None = None,
     email_log_repository: InMemoryEmailLogRepository | None = None,
     preparation_service: FakePreparationService | None = None,
@@ -142,6 +146,7 @@ def build_service(
             [selected_campaign],
             [client or build_client()],
         ),
+        campaign_slot_repository=campaign_slot_repository,
         contact_repository=InMemoryContactRepository(
             contacts=selected_contacts,
             campaign_contacts=campaign_contacts

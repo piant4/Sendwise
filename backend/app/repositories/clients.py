@@ -31,6 +31,14 @@ class AdminCampaignRecord(BaseModel):
     name: str
     status: str
     subject: Optional[str] = None
+    campaign_slot_id: Optional[str] = None
+    preview_text: Optional[str] = None
+    body_html: Optional[str] = None
+    body_text: Optional[str] = None
+    content_ready: bool = False
+    contacts_ready: bool = False
+    review_ready: bool = False
+    current_step: str = "setup"
     created_at: datetime
     updated_at: datetime
     blocked_sends_count: int = 0
@@ -42,6 +50,14 @@ class ClientCampaignRecord(BaseModel):
     name: str
     status: str
     subject: Optional[str] = None
+    campaign_slot_id: Optional[str] = None
+    preview_text: Optional[str] = None
+    body_html: Optional[str] = None
+    body_text: Optional[str] = None
+    content_ready: bool = False
+    contacts_ready: bool = False
+    review_ready: bool = False
+    current_step: str = "setup"
     created_at: datetime
     updated_at: datetime
 
@@ -385,6 +401,14 @@ class PostgresClientRepository(ClientRepository):
                 campaigns.name,
                 campaigns.status,
                 campaigns.subject,
+                campaigns.campaign_slot_id::text AS campaign_slot_id,
+                campaigns.preview_text,
+                campaigns.body_html,
+                campaigns.body_text,
+                campaigns.content_ready,
+                campaigns.contacts_ready,
+                campaigns.review_ready,
+                campaigns.current_step,
                 campaigns.created_at,
                 campaigns.updated_at,
                 COALESCE(blocked_campaigns.blocked_sends_count, 0) AS blocked_sends_count
@@ -418,6 +442,14 @@ class PostgresClientRepository(ClientRepository):
                 name,
                 status,
                 subject,
+                campaign_slot_id::text AS campaign_slot_id,
+                preview_text,
+                body_html,
+                body_text,
+                content_ready,
+                contacts_ready,
+                review_ready,
+                current_step,
                 created_at,
                 updated_at
             FROM campaigns
@@ -630,6 +662,9 @@ class PostgresClientRepository(ClientRepository):
             "DELETE FROM api_usage WHERE client_id::text = %s",
             "DELETE FROM suppression_list WHERE client_id::text = %s",
             "DELETE FROM listmonk_mappings WHERE client_id::text = %s",
+            "UPDATE campaign_slots SET assigned_campaign_id = NULL, updated_at = NOW() WHERE client_id::text = %s",
+            "UPDATE campaigns SET campaign_slot_id = NULL, updated_at = NOW() WHERE client_id::text = %s",
+            "DELETE FROM campaign_slots WHERE client_id::text = %s",
             "DELETE FROM campaigns WHERE client_id::text = %s",
             "DELETE FROM contacts WHERE client_id::text = %s",
         )

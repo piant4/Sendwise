@@ -6,6 +6,10 @@ from typing import Any
 from app.core.auth import AuthenticatedUser
 from app.core.config import get_settings
 from app.guard.deliverability_guard import DeliverabilityGuard, SendDecision
+from app.repositories.campaign_slots import (
+    CampaignSlotRepository,
+    get_campaign_slot_repository,
+)
 from app.repositories.blocked_sends import (
     BlockedSendRepository,
     get_blocked_send_repository,
@@ -32,6 +36,7 @@ from app.repositories.suppression_list import (
 class SendSimulationService:
     guard: DeliverabilityGuard
     client_repository: ClientRepository
+    campaign_slot_repository: CampaignSlotRepository | None
     contact_repository: ContactRepository
     suppression_list_repository: SuppressionListRepository
     blocked_send_repository: BlockedSendRepository
@@ -51,6 +56,7 @@ class SendSimulationService:
         contacts: list[ContactRecord] = []
         suppressed_emails: set[str] = set()
         active_campaign_count: int | None = None
+        slot = None
         if client is not None and campaign is not None:
             contacts = self.contact_repository.list_campaign_contacts(
                 client_id=client.id,
@@ -63,11 +69,20 @@ class SendSimulationService:
                 )
             )
             active_campaign_count = self._count_active_campaigns(client_id=client.id)
+            if (
+                campaign.campaign_slot_id
+                and self.campaign_slot_repository is not None
+            ):
+                slot = self.campaign_slot_repository.get_by_id(
+                    client_id=client.id,
+                    slot_id=campaign.campaign_slot_id,
+                )
 
         guard_result = self.guard.authorize_campaign_dispatch(
             email_sending_enabled=True,
             client=client,
             campaign=campaign,
+            slot=slot,
             contacts=contacts,
             suppressed_emails=suppressed_emails,
             active_campaign_count=active_campaign_count,
@@ -133,6 +148,8 @@ class SendSimulationService:
             "client_id": campaign.client_id,
             "decision": guard_result.decision,
             "reason": "Campaign dispatch simulated; no real email was sent.",
+            "limit_source": guard_result.limit_source,
+            "limit_value": guard_result.limit_value,
             "guard": guard_result.to_dict(),
             "listmonk_prepared": preparation is not None,
             "listmonk_dispatched": False,
@@ -186,6 +203,14 @@ class SendSimulationService:
                     name=campaign.name,
                     status=campaign.status,
                     subject=campaign.subject,
+                    campaign_slot_id=campaign.campaign_slot_id,
+                    preview_text=campaign.preview_text,
+                    body_html=campaign.body_html,
+                    body_text=campaign.body_text,
+                    content_ready=campaign.content_ready,
+                    contacts_ready=campaign.contacts_ready,
+                    review_ready=campaign.review_ready,
+                    current_step=campaign.current_step,
                     created_at=campaign.created_at,
                     updated_at=campaign.updated_at,
                 )
@@ -231,6 +256,8 @@ class SendSimulationService:
             "blocked_contact_count": guard_result.blocked_contact_count,
             "blocked_reasons": dict(guard_result.blocked_reasons or {}),
             "diagnostic": guard_result.diagnostic,
+            "limit_source": guard_result.limit_source,
+            "limit_value": guard_result.limit_value,
             "guard": guard_result.to_dict(),
             "listmonk_prepared": False,
             "listmonk_dispatched": False,
@@ -259,6 +286,8 @@ class SendSimulationService:
             "client_id": client_id,
             "decision": guard_result.decision,
             "reason": reason,
+            "limit_source": guard_result.limit_source,
+            "limit_value": guard_result.limit_value,
             "guard": guard_result.to_dict(),
             "preparation": preparation,
             "listmonk_prepared": False,
@@ -275,6 +304,7 @@ def get_send_simulation_service() -> SendSimulationService:
     return SendSimulationService(
         guard=DeliverabilityGuard(),
         client_repository=PostgresClientRepository(settings),
+        campaign_slot_repository=get_campaign_slot_repository(),
         contact_repository=PostgresContactRepository(settings),
         suppression_list_repository=get_suppression_list_repository(),
         blocked_send_repository=get_blocked_send_repository(),

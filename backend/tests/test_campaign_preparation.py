@@ -106,6 +106,10 @@ def build_campaign(
     campaign_id: str = "campaign_123",
     client_id: str = "client_123",
     subject: str | None = "Launch",
+    preview_text: str | None = "Preview",
+    body_html: str | None = "<html><body><p>Persisted body.</p></body></html>",
+    body_text: str | None = "Persisted body.",
+    content_ready: bool = True,
 ) -> ClientCampaignRecord:
     now = datetime.now(timezone.utc)
     return ClientCampaignRecord(
@@ -114,6 +118,10 @@ def build_campaign(
         name="Launch campaign",
         status="draft",
         subject=subject,
+        preview_text=preview_text,
+        body_html=body_html,
+        body_text=body_text,
+        content_ready=content_ready,
         created_at=now,
         updated_at=now,
     )
@@ -207,12 +215,10 @@ def test_prepare_campaign_creates_list_subscribers_campaign_and_mappings() -> No
     assert created_payload["content_type"] == "html"
     assert created_payload["tags"] == ["sendwise", "content_ready:true"]
     assert created_payload["from_email"] == "sender@example.test"
-    assert created_payload["body"].startswith("<!doctype html>")
-    assert "Launch campaign" in created_payload["body"]
-    assert "unsubscribe" in created_payload["body"].lower()
+    assert created_payload["body"] == "<html><body><p>Persisted body.</p></body></html>"
     assert result["content"]["body"] == created_payload["body"]
-    assert result["content"]["template_name"] == "campaign"
-    assert result["content"]["preview_text"] == "Technical preview for campaign Launch campaign."
+    assert result["content"]["template_name"] == "campaign_business_db"
+    assert result["content"]["preview_text"] == "Preview"
     mapping_types = {
         (mapping.entity_type, mapping.entity_id, mapping.listmonk_type)
         for mapping in repository.list_by_client("client_123")
@@ -290,6 +296,28 @@ def test_prepare_campaign_skips_error_contacts_in_batch_summary() -> None:
     assert result["contact_summary"]["skipped_count"] == 1
     assert result["contact_summary"]["failed_count"] == 0
     assert len(fake_listmonk.created_subscribers) == 1
+
+
+def test_prepare_campaign_uses_technical_fallback_but_marks_content_not_ready() -> None:
+    service, fake_listmonk, _repository = build_preparation_service(
+        campaign=build_campaign(
+            body_html=None,
+            body_text=None,
+            preview_text=None,
+            content_ready=False,
+        )
+    )
+
+    result = service.prepare_campaign("campaign_123")
+
+    assert result["status"] == "synced"
+    assert result["content_ready"] is False
+    assert result["content"]["content_ready"] is False
+    assert result["content"]["reason"] == "Campaign content is not ready in Business DB."
+    assert fake_listmonk.created_campaign_payloads[0]["tags"] == [
+        "sendwise",
+        "content_ready:false",
+    ]
 
 
 def test_sync_listmonk_endpoint_uses_backend_preparation_without_sending() -> None:

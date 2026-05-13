@@ -1926,6 +1926,33 @@ Scope confirmation:
 - No `client_access` persistence was implemented.
 - No Clerk invitation API, admin invite flow, onboarding endpoint, public signup, custom password form, custom 2FA, real listmonk, real sending, AI, n8n, Celery, Keycloak, Metabase, Postal, Rspamd, or Budibase was implemented.
 
+## Milestone 10.8 Completion — Admin Campaign Recipients API
+
+Date: 2026-05-13
+Branch: develop
+
+Verified state:
+- Added `GET /admin/campaigns/{campaign_id}/contacts` for platform-admin recipient reads scoped by `campaign.client_id`.
+- Added `POST /admin/campaigns/{campaign_id}/contacts` for platform-admin JSON batch import/association.
+- Contact import now normalizes email with trim/lowercase, rejects invalid email syntax, deduplicates within payload, reuses existing contacts by `client_id + email`, and attaches contacts idempotently to `campaign_contacts`.
+- Recipient summary now reports `total`, `valid`, `invalid`, `suppressed`, `unsubscribed`, `blacklisted`, `bounced`, `eligible`, and per-contact blocked reasons.
+- `contacts_ready` is refreshed from recipient eligibility for the admin recipients flow and `review_ready` is invalidated when recipient associations change.
+- Client campaign routes remain read-only; no client contacts write surface was added.
+- Recipients import does not call listmonk, does not create `email_logs`, does not create `blocked_sends`, and does not trigger send or simulation side effects.
+
+Known limits:
+- CSV file upload/import was not implemented in this milestone.
+- No DB unique constraint was added to `campaign_contacts`; idempotency remains enforced application-side.
+- Contact classification uses current `contacts.status` plus `suppression_list`; separate boolean fields for unsubscribe/blacklist/bounce do not exist in the current schema.
+
+Checks referenced:
+- `docker run --rm -v "$PWD/backend:/app" -v "$PWD/templates/dist:/templates/dist:ro" -w /app sendwise-backend python -m pytest tests/test_admin_campaigns.py -q`
+
+Scope confirmation:
+- No frontend code was changed.
+- No auth flow, onboarding, provider events, SES, AI, Mailpit dispatch path, or Docker production behavior was changed.
+- No broad refactor or legacy route removal was performed.
+
 ## Milestone 10.6.5 - Campaign Contract Realignment
 
 Date: 2026-05-13

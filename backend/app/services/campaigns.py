@@ -30,7 +30,11 @@ from app.repositories.clients import (
     ClientRepository,
     PostgresClientRepository,
 )
-from app.repositories.contacts import ContactRepository, PostgresContactRepository
+from app.repositories.contacts import (
+    ContactRecord,
+    ContactRepository,
+    PostgresContactRepository,
+)
 from app.repositories.email_logs import EmailLogRepository, get_email_log_repository
 from app.repositories.listmonk_mappings import get_listmonk_mapping_repository
 from app.repositories.suppression_list import (
@@ -38,7 +42,12 @@ from app.repositories.suppression_list import (
     get_suppression_list_repository,
 )
 from app.schemas.campaigns import (
+    AdminCampaignContactError,
+    AdminCampaignContactItem,
+    AdminCampaignContactsImportResponse,
+    AdminCampaignContactsResponse,
     AdminCampaignDetail,
+    AdminCampaignContactPayload,
     AdminCampaignReviewResponse,
     AdminCampaignSlotAssignmentResponse,
 )
@@ -111,6 +120,20 @@ class CampaignStateService:
 
 
 @dataclass(frozen=True)
+class CampaignContactsSummary:
+    total: int
+    valid: int
+    invalid: int
+    suppressed: int
+    unsubscribed: int
+    blacklisted: int
+    bounced: int
+    eligible: int
+    contacts_ready: bool
+    contacts: list[AdminCampaignContactItem]
+
+
+@dataclass(frozen=True)
 class AdminCampaignService:
     settings: Settings
     guard: DeliverabilityGuard
@@ -134,6 +157,24 @@ class AdminCampaignService:
         campaign = self.get_campaign_record(campaign_id)
         client = self._get_client(campaign.client_id)
         return self._build_detail(campaign=campaign, client=client)
+
+    def get_campaign_contacts(self, campaign_id: str) -> AdminCampaignContactsResponse:
+        campaign = self.get_campaign_record(campaign_id)
+        summary = self._summarize_campaign_contacts(campaign=campaign)
+        return AdminCampaignContactsResponse(
+            campaign_id=campaign.id,
+            client_id=campaign.client_id,
+            total=summary.total,
+            valid=summary.valid,
+            invalid=summary.invalid,
+            suppressed=summary.suppressed,
+            unsubscribed=summary.unsubscribed,
+            blacklisted=summary.blacklisted,
+            bounced=summary.bounced,
+            eligible=summary.eligible,
+            contacts_ready=summary.contacts_ready,
+            contacts=summary.contacts,
+        )
 
     def create_campaign(
         self,
@@ -260,6 +301,99 @@ class AdminCampaignService:
         )
         return self._build_detail(campaign=updated, client=client)
 
+    def add_campaign_contacts(
+        self,
+        *,
+        campaign_id: str,
+        contacts: list[AdminCampaignContactPayload],
+    ) -> AdminCampaignContactsImportResponse:
+        campaign = self.get_campaign_record(campaign_id)
+        self._get_writable_client(campaign.client_id)
+
+        received = len(contacts)
+        created_contacts = 0
+        reused_contacts = 0
+        attached_contacts = 0
+        duplicate_contacts = 0
+        invalid_contacts = 0
+        errors: list[AdminCampaignContactError] = []
+        seen_emails: set[str] = set()
+
+        for payload in contacts:
+            normalized_email = self._normalize_email(payload.email)
+            if not normalized_email:
+                invalid_contacts += 1
+                errors.append(
+                    AdminCampaignContactError(
+                        email=payload.email,
+                        reason="email_required",
+                    )
+                )
+                continue
+
+            if normalized_email in seen_emails:
+                duplicate_contacts += 1
+                continue
+            seen_emails.add(normalized_email)
+
+            if not self._looks_like_email(normalized_email):
+                invalid_contacts += 1
+                errors.append(
+                    AdminCampaignContactError(
+                        email=normalized_email,
+                        reason="invalid_email",
+                    )
+                )
+                continue
+
+            contact = self.contact_repository.get_by_client_email(
+                client_id=campaign.client_id,
+                email=normalized_email,
+            )
+            if contact is None:
+                contact = self.contact_repository.create_contact(
+                    client_id=campaign.client_id,
+                    email=normalized_email,
+                    status=self.guard.SENDABLE_CONTACT_STATUS,
+                )
+                created_contacts += 1
+            else:
+                reused_contacts += 1
+
+            was_attached = self.contact_repository.attach_contact_to_campaign(
+                client_id=campaign.client_id,
+                campaign_id=campaign.id,
+                contact_id=contact.id,
+            )
+            if was_attached:
+                attached_contacts += 1
+                continue
+
+            duplicate_contacts += 1
+
+        summary = self._summarize_campaign_contacts(campaign=campaign)
+        if campaign.contacts_ready != summary.contacts_ready or attached_contacts > 0:
+            self.repository.update_campaign(
+                client_id=campaign.client_id,
+                campaign_id=campaign.id,
+                contacts_ready=summary.contacts_ready,
+                review_ready=False if attached_contacts > 0 else campaign.review_ready,
+                current_step="recipients" if attached_contacts > 0 else campaign.current_step,
+            )
+
+        return AdminCampaignContactsImportResponse(
+            campaign_id=campaign.id,
+            client_id=campaign.client_id,
+            received=received,
+            created_contacts=created_contacts,
+            reused_contacts=reused_contacts,
+            attached_contacts=attached_contacts,
+            duplicate_contacts=duplicate_contacts,
+            invalid_contacts=invalid_contacts,
+            contacts_ready=summary.contacts_ready,
+            errors=errors,
+        )
+
     def select_slot(
         self,
         *,
@@ -317,10 +451,12 @@ class AdminCampaignService:
             subject=campaign.subject,
             body_html=campaign.body_html,
         )
-        contacts_ready = self.repository.has_contacts(
-            client_id=campaign.client_id,
-            campaign_id=campaign.id,
+        contact_summary = self._summarize_campaign_contacts(
+            campaign=campaign,
+            contacts=contacts,
+            suppressed_emails=suppressed_emails,
         )
+        contacts_ready = contact_summary.contacts_ready
         active_campaign_count = self._count_active_campaigns(client.id)
         guard_result = self.guard.authorize_campaign_dispatch(
             email_sending_enabled=True,
@@ -415,6 +551,118 @@ class AdminCampaignService:
             updated_at=campaign.updated_at,
         )
 
+    def _summarize_campaign_contacts(
+        self,
+        *,
+        campaign: CampaignRecord,
+        contacts: list[ContactRecord] | None = None,
+        suppressed_emails: set[str] | None = None,
+    ) -> CampaignContactsSummary:
+        campaign_contacts = (
+            contacts
+            if contacts is not None
+            else self.contact_repository.list_campaign_contacts(
+                client_id=campaign.client_id,
+                campaign_id=campaign.id,
+            )
+        )
+        suppressed = suppressed_emails
+        if suppressed is None:
+            suppressed = self.suppression_list_repository.list_suppressed_emails_for_campaign(
+                client_id=campaign.client_id,
+                emails=[contact.email for contact in campaign_contacts],
+            )
+
+        items: list[AdminCampaignContactItem] = []
+        valid = 0
+        invalid = 0
+        suppressed_count = 0
+        unsubscribed = 0
+        blacklisted = 0
+        bounced = 0
+        eligible = 0
+
+        for contact in campaign_contacts:
+            blocked_reasons: list[str] = []
+            normalized_email = self._normalize_email(contact.email)
+            contact_status = contact.status.strip().lower()
+            is_valid = self._looks_like_email(contact.email)
+            is_suppressed = (
+                contact_status == "suppressed"
+                or normalized_email in suppressed
+            )
+            is_unsubscribed = contact_status == "unsubscribed"
+            is_blacklisted = contact_status == "blacklisted"
+            is_bounced = contact_status == "bounced"
+
+            if is_valid:
+                valid += 1
+            else:
+                invalid += 1
+                blocked_reasons.append("invalid_email")
+
+            if is_suppressed:
+                suppressed_count += 1
+                if contact_status == "suppressed":
+                    blocked_reasons.append("suppressed")
+                if normalized_email in suppressed:
+                    blocked_reasons.append("suppression_list")
+
+            if is_unsubscribed:
+                unsubscribed += 1
+                blocked_reasons.append("unsubscribed")
+
+            if is_blacklisted:
+                blacklisted += 1
+                blocked_reasons.append("blacklisted")
+
+            if is_bounced:
+                bounced += 1
+                blocked_reasons.append("bounced")
+
+            if contact_status != self.guard.SENDABLE_CONTACT_STATUS:
+                if (
+                    contact_status
+                    and contact_status
+                    not in {"suppressed", "unsubscribed", "blacklisted", "bounced"}
+                ):
+                    blocked_reasons.append(f"contact_{contact_status}")
+            is_eligible = (
+                is_valid
+                and contact_status == self.guard.SENDABLE_CONTACT_STATUS
+                and not is_suppressed
+            )
+            if is_eligible:
+                eligible += 1
+
+            items.append(
+                AdminCampaignContactItem(
+                    contact_id=contact.id,
+                    email=contact.email,
+                    status=contact.status,
+                    is_valid=is_valid,
+                    is_eligible=is_eligible,
+                    blocked_reasons=blocked_reasons,
+                )
+            )
+
+        total = self.contact_repository.count_campaign_contacts(
+            client_id=campaign.client_id,
+            campaign_id=campaign.id,
+        )
+        return CampaignContactsSummary(
+            total=total,
+            valid=valid,
+            invalid=invalid,
+            suppressed=suppressed_count,
+            unsubscribed=unsubscribed,
+            blacklisted=blacklisted,
+            bounced=bounced,
+            eligible=eligible,
+            contacts_ready=eligible > 0,
+            contacts=items,
+        )
+
     def _count_active_campaigns(self, client_id: str) -> int:
         return sum(
             1
@@ -443,6 +691,13 @@ class AdminCampaignService:
 
     def _content_ready(self, *, subject: str | None, body_html: str | None) -> bool:
         return bool((subject or "").strip() and (body_html or "").strip())
+
+    def _normalize_email(self, email: str) -> str:
+        return email.strip().lower()
+
+    def _looks_like_email(self, email: str) -> bool:
+        value = email.strip()
+        return "@" in value and "." in value.rsplit("@", 1)[-1]
 
     def _require_text(self, value: str, *, field_label: str) -> str:
         normalized = value.strip()

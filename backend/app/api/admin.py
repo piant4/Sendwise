@@ -3,6 +3,9 @@ from fastapi import APIRouter, Depends, status
 from app.core.auth import AuthenticatedUser, require_platform_admin
 from app.integrations.listmonk.client import ListmonkError
 from app.schemas.campaigns import (
+    AdminCampaignContactsImportRequest,
+    AdminCampaignContactsImportResponse,
+    AdminCampaignContactsResponse,
     AdminCampaignContentRequest,
     AdminCampaignCreateRequest,
     AdminCampaignDetail,
@@ -319,6 +322,34 @@ def update_campaign_content(
         body_html=payload.body_html,
         body_text=payload.body_text,
         current_step=payload.current_step,
+    )
+
+
+@router.get(
+    "/campaigns/{campaign_id}/contacts",
+    response_model=AdminCampaignContactsResponse,
+)
+def get_campaign_contacts(
+    campaign_id: str,
+    _current_user: AuthenticatedUser = Depends(require_platform_admin),
+    campaign_service: AdminCampaignService = Depends(get_admin_campaign_service),
+) -> AdminCampaignContactsResponse:
+    return campaign_service.get_campaign_contacts(campaign_id)
+
+
+@router.post(
+    "/campaigns/{campaign_id}/contacts",
+    response_model=AdminCampaignContactsImportResponse,
+)
+def add_campaign_contacts(
+    campaign_id: str,
+    payload: AdminCampaignContactsImportRequest,
+    _current_user: AuthenticatedUser = Depends(require_platform_admin),
+    campaign_service: AdminCampaignService = Depends(get_admin_campaign_service),
+) -> AdminCampaignContactsImportResponse:
+    return campaign_service.add_campaign_contacts(
+        campaign_id=campaign_id,
+        contacts=payload.contacts,
     )
 
 

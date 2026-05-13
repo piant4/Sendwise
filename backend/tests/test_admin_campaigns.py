@@ -14,7 +14,11 @@ from app.repositories.clients import ClientCampaignRecord, ClientRecord
 from app.repositories.contacts import ContactRecord, InMemoryContactRepository
 from app.repositories.email_logs import InMemoryEmailLogRepository
 from app.repositories.listmonk_mappings import InMemoryListmonkMappingRepository
-from app.repositories.suppression_list import InMemorySuppressionListRepository
+from app.repositories.suppression_list import (
+    InMemorySuppressionListRepository,
+    SuppressionRecord,
+)
+from app.schemas.campaigns import AdminCampaignContactPayload
 from app.services.campaign_slots import CampaignSlotService
 from app.services.campaigns import (
     AdminCampaignService,
@@ -164,6 +168,7 @@ def build_admin_service(
     clients: list[ClientRecord] | None = None,
     contacts: list[ContactRecord] | None = None,
     campaign_contacts: set[tuple[str, str, str]] | None = None,
+    suppression_records: list[SuppressionRecord] | None = None,
 ) -> AdminCampaignService:
     repository = campaign_repository or InMemoryCampaignRepository()
     slots = slot_repository or InMemoryCampaignSlotRepository()
@@ -181,7 +186,9 @@ def build_admin_service(
             contacts=contacts or [],
             campaign_contacts=campaign_contacts or set(),
         ),
-        suppression_list_repository=InMemorySuppressionListRepository(),
+        suppression_list_repository=InMemorySuppressionListRepository(
+            records=suppression_records or []
+        ),
     )
 
 
@@ -523,6 +530,262 @@ def test_admin_send_passes_guard_and_respects_email_sending_disabled() -> None:
     assert fake_listmonk.sent_campaign_ids == []
 
 
+def test_admin_add_contacts_endpoint_attaches_valid_contacts_and_sets_flags() -> None:
+    repository = InMemoryCampaignRepository()
+    campaign = repository.add_campaign(
+        campaign_id="campaign_123",
+        client_id="client_123",
+        review_ready=True,
+    )
+    admin_service = build_admin_service(campaign_repository=repository)
+
+    app.dependency_overrides[require_platform_admin] = build_admin_user
+    app.dependency_overrides[get_admin_campaign_service] = lambda: admin_service
+
+    try:
+        response = TestClient(app).post(
+            f"/admin/campaigns/{campaign.id}/contacts",
+            json={
+                "contacts": [
+                    {"email": "One@Example.test", "metadata": {}},
+                    {"email": " two@example.test ", "metadata": {}},
+                ]
+            },
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["received"] == 2
+    assert payload["created_contacts"] == 2
+    assert payload["reused_contacts"] == 0
+    assert payload["attached_contacts"] == 2
+    assert payload["duplicate_contacts"] == 0
+    assert payload["invalid_contacts"] == 0
+    assert payload["contacts_ready"] is True
+
+    updated = repository.get_by_id(campaign_id=campaign.id, client_id=campaign.client_id)
+    assert updated is not None
+    assert updated.contacts_ready is True
+    assert updated.review_ready is False
+
+
+def test_admin_add_contacts_normalizes_email_and_reuses_existing_client_contact() -> None:
+    repository = InMemoryCampaignRepository()
+    campaign = repository.add_campaign(campaign_id="campaign_123", client_id="client_123")
+    existing = build_contact(
+        contact_id="contact_existing",
+        client_id="client_123",
+        email="person@example.test",
+    )
+    service = build_admin_service(
+        campaign_repository=repository,
+        contacts=[existing],
+    )
+
+    result = service.add_campaign_contacts(
+        campaign_id=campaign.id,
+        contacts=[
+            AdminCampaignContactPayload(email="  PERSON@example.test  "),
+        ],
+    )
+
+    assert result.created_contacts == 0
+    assert result.reused_contacts == 1
+    assert result.attached_contacts == 1
+    attached_contacts = service.contact_repository.list_campaign_contacts(
+        client_id=campaign.client_id,
+        campaign_id=campaign.id,
+    )
+    assert [contact.id for contact in attached_contacts] == [existing.id]
+
+
+def test_admin_add_contacts_rejects_invalid_email_without_creating_contact() -> None:
+    repository = InMemoryCampaignRepository()
+    campaign = repository.add_campaign(campaign_id="campaign_123", client_id="client_123")
+    service = build_admin_service(campaign_repository=repository)
+
+    result = service.add_campaign_contacts(
+        campaign_id=campaign.id,
+        contacts=[
+            AdminCampaignContactPayload(email="not-an-email"),
+        ],
+    )
+
+    assert result.created_contacts == 0
+    assert result.reused_contacts == 0
+    assert result.attached_contacts == 0
+    assert result.invalid_contacts == 1
+    assert result.contacts_ready is False
+    assert result.errors[0].reason == "invalid_email"
+    assert service.contact_repository.count_campaign_contacts(
+        client_id=campaign.client_id,
+        campaign_id=campaign.id,
+    ) == 0
+
+
+def test_admin_add_contacts_deduplicates_payload_and_existing_association() -> None:
+    repository = InMemoryCampaignRepository(
+        campaign_contacts={("client_123", "campaign_123", "contact_1")},
+    )
+    campaign = repository.add_campaign(campaign_id="campaign_123", client_id="client_123")
+    existing = build_contact(
+        contact_id="contact_1",
+        client_id="client_123",
+        email="person@example.test",
+    )
+    service = build_admin_service(
+        campaign_repository=repository,
+        contacts=[existing],
+        campaign_contacts={("client_123", campaign.id, existing.id)},
+    )
+
+    result = service.add_campaign_contacts(
+        campaign_id=campaign.id,
+        contacts=[
+            AdminCampaignContactPayload(email="person@example.test"),
+            AdminCampaignContactPayload(email="PERSON@example.test"),
+        ],
+    )
+
+    assert result.created_contacts == 0
+    assert result.reused_contacts == 1
+    assert result.attached_contacts == 0
+    assert result.duplicate_contacts == 2
+    assert service.contact_repository.count_campaign_contacts(
+        client_id=campaign.client_id,
+        campaign_id=campaign.id,
+    ) == 1
+
+
+def test_admin_add_contacts_does_not_reuse_cross_client_contact() -> None:
+    repository = InMemoryCampaignRepository()
+    campaign = repository.add_campaign(campaign_id="campaign_123", client_id="client_123")
+    foreign_contact = build_contact(
+        contact_id="contact_foreign",
+        client_id="client_999",
+        email="person@example.test",
+    )
+    service = build_admin_service(
+        campaign_repository=repository,
+        contacts=[foreign_contact],
+    )
+
+    result = service.add_campaign_contacts(
+        campaign_id=campaign.id,
+        contacts=[
+            AdminCampaignContactPayload(email="person@example.test"),
+        ],
+    )
+
+    assert result.created_contacts == 1
+    assert result.reused_contacts == 0
+    assert result.attached_contacts == 1
+    attached_contacts = service.contact_repository.list_campaign_contacts(
+        client_id=campaign.client_id,
+        campaign_id=campaign.id,
+    )
+    assert len(attached_contacts) == 1
+    assert attached_contacts[0].client_id == campaign.client_id
+    assert attached_contacts[0].id != foreign_contact.id
+
+
+def test_admin_get_campaign_contacts_summary_classifies_contacts() -> None:
+    repository = InMemoryCampaignRepository(
+        campaign_contacts={
+            ("client_123", "campaign_123", "contact_valid"),
+            ("client_123", "campaign_123", "contact_invalid"),
+            ("client_123", "campaign_123", "contact_suppressed"),
+            ("client_123", "campaign_123", "contact_unsubscribed"),
+            ("client_123", "campaign_123", "contact_blacklisted"),
+            ("client_123", "campaign_123", "contact_bounced"),
+        },
+    )
+    campaign = repository.add_campaign(campaign_id="campaign_123", client_id="client_123")
+    contacts = [
+        build_contact(
+            contact_id="contact_valid",
+            email="valid@example.test",
+            status="sendable",
+        ),
+        build_contact(
+            contact_id="contact_invalid",
+            email="invalid-email",
+            status="sendable",
+        ),
+        build_contact(
+            contact_id="contact_suppressed",
+            email="suppressed@example.test",
+            status="sendable",
+        ),
+        build_contact(
+            contact_id="contact_unsubscribed",
+            email="unsubscribed@example.test",
+            status="unsubscribed",
+        ),
+        build_contact(
+            contact_id="contact_blacklisted",
+            email="blacklisted@example.test",
+            status="blacklisted",
+        ),
+        build_contact(
+            contact_id="contact_bounced",
+            email="bounced@example.test",
+            status="bounced",
+        ),
+    ]
+    admin_service = build_admin_service(
+        campaign_repository=repository,
+        contacts=contacts,
+        campaign_contacts={
+            ("client_123", campaign.id, "contact_valid"),
+            ("client_123", campaign.id, "contact_invalid"),
+            ("client_123", campaign.id, "contact_suppressed"),
+            ("client_123", campaign.id, "contact_unsubscribed"),
+            ("client_123", campaign.id, "contact_blacklisted"),
+            ("client_123", campaign.id, "contact_bounced"),
+        },
+        suppression_records=[
+            SuppressionRecord(
+                id="suppression_1",
+                client_id="client_123",
+                email="suppressed@example.test",
+                reason="manual",
+                created_at=datetime.now(timezone.utc),
+            )
+        ],
+    )
+
+    app.dependency_overrides[require_platform_admin] = build_admin_user
+    app.dependency_overrides[get_admin_campaign_service] = lambda: admin_service
+
+    try:
+        response = TestClient(app).get(f"/admin/campaigns/{campaign.id}/contacts")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["campaign_id"] == campaign.id
+    assert payload["client_id"] == campaign.client_id
+    assert payload["total"] == 6
+    assert payload["valid"] == 5
+    assert payload["invalid"] == 1
+    assert payload["suppressed"] == 1
+    assert payload["unsubscribed"] == 1
+    assert payload["blacklisted"] == 1
+    assert payload["bounced"] == 1
+    assert payload["eligible"] == 1
+    assert payload["contacts_ready"] is True
+    invalid_row = next(
+        row for row in payload["contacts"] if row["contact_id"] == "contact_invalid"
+    )
+    assert invalid_row["is_valid"] is False
+    assert invalid_row["is_eligible"] is False
+    assert "invalid_email" in invalid_row["blocked_reasons"]
+
+
 def test_client_campaign_routes_remain_read_only() -> None:
     client = TestClient(app, raise_server_exceptions=False)
 
@@ -532,3 +795,7 @@ def test_client_campaign_routes_remain_read_only() -> None:
     assert client.post("/client/campaigns/campaign_123/simulate-send").status_code == 404
     assert client.post("/client/campaigns/campaign_123/content").status_code == 404
     assert client.post("/client/campaigns/campaign_123/select-slot").status_code == 404
+    assert client.post("/client/campaigns/campaign_123/contacts").status_code == 404
+    assert client.post("/client/campaigns/campaign_123/contacts/import").status_code == 404
+    assert client.delete("/client/campaigns/campaign_123/contacts/contact_123").status_code == 404
+    assert client.patch("/client/campaigns/campaign_123/contacts/contact_123").status_code == 404

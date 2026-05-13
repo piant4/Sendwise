@@ -2,7 +2,7 @@ from datetime import datetime
 
 from typing import Optional
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.schemas.common import CampaignStats, CampaignStatus
 
@@ -100,3 +100,58 @@ class AdminCampaignReviewResponse(BaseModel):
     content_ready: bool
     contacts_ready: bool
     review_ready: bool
+
+
+class AdminCampaignContactPayload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    email: str
+    metadata: dict[str, object] = Field(default_factory=dict)
+
+
+class AdminCampaignContactsImportRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    contacts: list[AdminCampaignContactPayload]
+
+
+class AdminCampaignContactError(BaseModel):
+    email: str
+    reason: str
+
+
+class AdminCampaignContactItem(BaseModel):
+    contact_id: str
+    email: str
+    status: str
+    is_valid: bool
+    is_eligible: bool
+    blocked_reasons: list[str]
+
+
+class AdminCampaignContactsResponse(BaseModel):
+    campaign_id: str
+    client_id: str
+    total: int
+    valid: int
+    invalid: int
+    suppressed: int
+    unsubscribed: int
+    blacklisted: int
+    bounced: int
+    eligible: int
+    contacts_ready: bool
+    contacts: list[AdminCampaignContactItem]
+
+
+class AdminCampaignContactsImportResponse(BaseModel):
+    campaign_id: str
+    client_id: str
+    received: int
+    created_contacts: int
+    reused_contacts: int
+    attached_contacts: int
+    duplicate_contacts: int
+    invalid_contacts: int
+    contacts_ready: bool
+    errors: list[AdminCampaignContactError]

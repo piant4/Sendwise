@@ -312,7 +312,11 @@ export default async function AdminCampaignsPage() {
                     <article key={campaign.id} className="admin-record-row">
                       <div className="admin-record-row__primary">
                         <div className="admin-record-row__copy">
-                          <strong>{campaign.name}</strong>
+                          <strong>
+                            <Link href={`/admin/campaigns/${campaign.id}`}>
+                              {campaign.name}
+                            </Link>
+                          </strong>
                           <span>
                             {campaign.clientName} / {campaign.clientEmail}
                           </span>

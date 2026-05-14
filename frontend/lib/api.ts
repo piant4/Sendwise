@@ -2,8 +2,10 @@ import type {
   AdminBlockedSendItem,
   AdminCampaignCreateInput,
   AdminCampaignDetail,
+  AdminCampaignContentInput,
   AdminCampaignReadinessSummary,
   AdminCampaignSummary,
+  AdminCampaignUpdateInput,
   AdminClientInviteResponse,
   AdminClientUpdateInput,
   AdminEmailLimitsResponse,
@@ -572,6 +574,62 @@ async function fetchAdminCampaignSummary(
 ): Promise<AdminCampaignSummaryApiResponse> {
   return apiGet<AdminCampaignSummaryApiResponse>(
     `/admin/campaigns/${campaignId}/summary`,
+    accessToken,
+  );
+}
+
+async function fetchAdminCampaignDetail(
+  campaignId: string,
+  accessToken?: string | null,
+): Promise<AdminCampaignDetailApiResponse> {
+  return apiGet<AdminCampaignDetailApiResponse>(
+    `/admin/campaigns/${campaignId}`,
+    accessToken,
+  );
+}
+
+async function patchAdminCampaign(
+  campaignId: string,
+  payload: AdminCampaignUpdateInput,
+  accessToken?: string | null,
+): Promise<AdminCampaignDetailApiResponse> {
+  return apiPatch<
+    AdminCampaignDetailApiResponse,
+    {
+      name?: string;
+      subject?: string | null;
+    }
+  >(
+    `/admin/campaigns/${campaignId}`,
+    {
+      name: payload.name,
+      subject: payload.subject,
+    },
+    accessToken,
+  );
+}
+
+async function postAdminCampaignContent(
+  campaignId: string,
+  payload: AdminCampaignContentInput,
+  accessToken?: string | null,
+): Promise<AdminCampaignDetailApiResponse> {
+  return apiPost<
+    AdminCampaignDetailApiResponse,
+    {
+      subject?: string | null;
+      preview_text?: string | null;
+      body_html?: string | null;
+      body_text?: string | null;
+    }
+  >(
+    `/admin/campaigns/${campaignId}/content`,
+    {
+      subject: payload.subject,
+      preview_text: payload.previewText,
+      body_html: payload.bodyHtml,
+      body_text: payload.bodyText,
+    },
     accessToken,
   );
 }
@@ -1249,6 +1307,38 @@ export function getAdminCampaignSummary(
   assertAdminBackendEnabled(`/admin/campaigns/${campaignId}/summary`);
   return fetchAdminCampaignSummary(campaignId, accessToken).then(
     mapAdminCampaignReadinessSummary,
+  );
+}
+
+export function getAdminCampaignDetail(
+  campaignId: string,
+  accessToken?: string | null,
+): Promise<AdminCampaignDetail> {
+  assertAdminBackendEnabled(`/admin/campaigns/${campaignId}`);
+  return fetchAdminCampaignDetail(campaignId, accessToken).then(
+    mapAdminCampaignDetail,
+  );
+}
+
+export function updateAdminCampaign(
+  campaignId: string,
+  payload: AdminCampaignUpdateInput,
+  accessToken?: string | null,
+): Promise<AdminCampaignDetail> {
+  assertAdminBackendEnabled(`/admin/campaigns/${campaignId}`);
+  return patchAdminCampaign(campaignId, payload, accessToken).then(
+    mapAdminCampaignDetail,
+  );
+}
+
+export function updateAdminCampaignContent(
+  campaignId: string,
+  payload: AdminCampaignContentInput,
+  accessToken?: string | null,
+): Promise<AdminCampaignDetail> {
+  assertAdminBackendEnabled(`/admin/campaigns/${campaignId}/content`);
+  return postAdminCampaignContent(campaignId, payload, accessToken).then(
+    mapAdminCampaignDetail,
   );
 }
 

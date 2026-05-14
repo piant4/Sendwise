@@ -83,7 +83,7 @@ export function AdminCampaignCreateWizard({
 
     try {
       const token = await getToken();
-      await createAdminCampaign(
+      const createdCampaign = await createAdminCampaign(
         {
           clientId,
           name: name.trim(),
@@ -91,7 +91,7 @@ export function AdminCampaignCreateWizard({
         },
         token,
       );
-      router.push("/admin/campaigns");
+      router.push(`/admin/campaigns/${createdCampaign.campaignId}`);
       router.refresh();
     } catch (error) {
       setErrorMessage(getSafeCreateErrorMessage(error));

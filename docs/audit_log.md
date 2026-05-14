@@ -1,5 +1,39 @@
 # Audit Log
 
+## Milestone 14.3 - Admin Campaign Setup Flow
+
+Contract audit:
+- Existing admin detail route was absent in the frontend; `/admin/campaigns/[campaignId]` was created.
+- Existing admin campaign list already consumed `GET /admin/campaigns` and `GET /admin/campaigns/{campaign_id}/summary`.
+- Existing frontend API boundary now exposes `GET /admin/campaigns/{campaign_id}`, `PATCH /admin/campaigns/{campaign_id}`, and `POST /admin/campaigns/{campaign_id}/content`.
+- Backend already implements admin detail, summary, setup patch, content update, contacts read/import, and review endpoints. No backend endpoint, service, repository, or schema change was needed.
+
+Implemented:
+- Added a product-ready admin campaign detail/setup page showing campaign identity, client, subject, status, current step, readiness checklist, provider runtime/safety state, recipient summary, backend-backed log counts, blocked/attention states, and collapsed technical details.
+- Added a minimal setup edit form for campaign name, subject, preview text, HTML body, and plain-text body using only existing backend contracts.
+- After create success, the admin now lands on `/admin/campaigns/{campaign_id}` when the backend returns `campaign_id`.
+- Campaign names in the admin campaign overview now link to the detail/setup route.
+
+Known limits:
+- Contacts import and review workflows are not implemented in this minimal setup screen; they are shown as pending UI actions rather than invented as a new wizard.
+- No send, simulate-send, SES live validation, Deliverability Guard, Docker/env, n8n, listmonk, or DB schema changes were made.
+- No fake delivered/open/click metrics were added; queued and sent-attempted remain distinct from delivery.
+
+Verification:
+- `git diff --check` passed.
+- Frontend lint passed through the existing local Docker builder image with current changed frontend folders mounted.
+- Frontend production build passed through the existing local Docker builder image with current changed frontend folders mounted.
+- `docker compose config` passed with a Docker warning about unreadable `C:\Users\Jacop\.docker\config.json`.
+- `docker compose -f docker-compose.yml -f docker-compose.dev.yml config` passed with the same Docker warning.
+- Frontend direct-listmonk scan returned no matches.
+- Touched frontend fake delivery/open/click claim scan found only existing type/helper field names and honest SES copy; no fake delivery claims were added.
+- Secret/env scan of non-ignored repo files returned no matches.
+
+Checks not run:
+- Native PowerShell `npm run lint` and `npm run build` could not run because `npm` is not installed or not on PATH in the current PowerShell environment; Docker builder checks were used instead.
+- `bash scripts/audit.sh` and `bash scripts/smoke_test.sh` could not run because WSL has no installed Linux distribution.
+- Backend tests and migrations were not run because no backend code or schema was changed.
+
 ## Milestone 14.2 - Admin Create Campaign Flow
 
 Date: 2026-05-14

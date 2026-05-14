@@ -294,6 +294,18 @@ export interface AdminCampaignCreateInput {
   subject: string;
 }
 
+export interface AdminCampaignUpdateInput {
+  name?: string;
+  subject?: string | null;
+}
+
+export interface AdminCampaignContentInput {
+  subject?: string | null;
+  previewText?: string | null;
+  bodyHtml?: string | null;
+  bodyText?: string | null;
+}
+
 export interface AdminCampaignDetail {
   campaignId: string;
   clientId: string;

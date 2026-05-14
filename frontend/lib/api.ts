@@ -587,6 +587,25 @@ async function postAdminClientCampaign(
   >(`/admin/clients/${clientId}/campaigns`, payload, accessToken);
 }
 
+async function postAdminCampaign(
+  payload: AdminCampaignCreateInput,
+  accessToken?: string | null,
+): Promise<AdminCampaignDetailApiResponse> {
+  return apiPost<AdminCampaignDetailApiResponse, {
+    client_id: string;
+    name: string;
+    subject: string;
+  }>(
+    "/admin/campaigns",
+    {
+      client_id: payload.clientId,
+      name: payload.name,
+      subject: payload.subject,
+    },
+    accessToken,
+  );
+}
+
 async function fetchAdminBlockedSends(
   accessToken?: string | null,
 ): Promise<AdminBlockedSendApiItem[]> {
@@ -1246,6 +1265,14 @@ export function createAdminClientCampaign(
     },
     accessToken,
   ).then(mapAdminCampaignDetail);
+}
+
+export function createAdminCampaign(
+  payload: AdminCampaignCreateInput,
+  accessToken?: string | null,
+): Promise<AdminCampaignDetail> {
+  assertAdminBackendEnabled("/admin/campaigns");
+  return postAdminCampaign(payload, accessToken).then(mapAdminCampaignDetail);
 }
 
 export function getAdminBlockedSends(

@@ -1,12 +1,12 @@
 "use client";
 
 import { useAuth } from "@clerk/nextjs";
-import { ArrowLeft, ArrowRight, Check, Loader2 } from "lucide-react";
+import { ArrowLeft, Check, Loader2 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { type FormEvent, useMemo, useState } from "react";
 import {
-  createAdminClientCampaign,
+  createAdminCampaign,
   isApiError,
 } from "../../lib/api";
 import type { Client } from "../../types";
@@ -15,8 +15,6 @@ import { Button } from "../ui/button";
 interface AdminCampaignCreateWizardProps {
   clients: Client[];
 }
-
-type Step = 1 | 2 | 3;
 
 function getClientDisplayName(client: Client): string {
   return client.personal_name || client.name || client.email;
@@ -57,7 +55,6 @@ export function AdminCampaignCreateWizard({
 }: AdminCampaignCreateWizardProps) {
   const router = useRouter();
   const { getToken } = useAuth();
-  const [step, setStep] = useState<Step>(1);
   const [clientId, setClientId] = useState(clients[0]?.id ?? "");
   const [name, setName] = useState("");
   const [subject, setSubject] = useState("");
@@ -68,24 +65,6 @@ export function AdminCampaignCreateWizard({
     () => clients.find((client) => client.id === clientId) ?? null,
     [clientId, clients],
   );
-  const canContinueFromClient = Boolean(clientId);
-  const canContinueFromDetails = Boolean(name.trim() && subject.trim());
-
-  function goToNextStep() {
-    setErrorMessage(null);
-
-    if (step === 1 && !canContinueFromClient) {
-      setErrorMessage("Seleziona un cliente prima di continuare.");
-      return;
-    }
-
-    if (step === 2 && !canContinueFromDetails) {
-      setErrorMessage("Nome campagna e oggetto sono obbligatori.");
-      return;
-    }
-
-    setStep((currentStep) => Math.min(currentStep + 1, 3) as Step);
-  }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -104,7 +83,7 @@ export function AdminCampaignCreateWizard({
 
     try {
       const token = await getToken();
-      await createAdminClientCampaign(
+      await createAdminCampaign(
         {
           clientId,
           name: name.trim(),
@@ -150,38 +129,12 @@ export function AdminCampaignCreateWizard({
       <div className="admin-clients-card__intro">
         <div>
           <p className="admin-surface__eyebrow">Creazione campagna</p>
-          <h2 className="admin-clients-card__title">
-            {step === 1
-              ? "Cliente"
-              : step === 2
-                ? "Dettagli campagna"
-                : "Riepilogo"}
-          </h2>
+          <h2 className="admin-clients-card__title">Bozza campagna</h2>
           <p className="admin-clients-card__description">
             La campagna verra creata come bozza sicura. Invio, provider e
             destinatari restano governati dal backend.
           </p>
         </div>
-      </div>
-
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 20 }}>
-        {[
-          { value: 1, label: "Cliente" },
-          { value: 2, label: "Dettagli campagna" },
-          { value: 3, label: "Riepilogo" },
-        ].map((item) => (
-          <span
-            key={item.value}
-            className="admin-record-chip"
-            style={{
-              background:
-                step === item.value ? "var(--sw-primary)" : "rgba(93, 118, 78, 0.12)",
-              color: step === item.value ? "var(--sw-surface)" : "var(--sw-primary)",
-            }}
-          >
-            {item.value}. {item.label}
-          </span>
-        ))}
       </div>
 
       {errorMessage ? (
@@ -191,70 +144,52 @@ export function AdminCampaignCreateWizard({
       ) : null}
 
       <div className="admin-clients-form">
-        {step === 1 ? (
-          <label className="admin-clients-form__field">
-            <span>Cliente</span>
-            <select
-              className="admin-clients-form__input"
-              disabled={isSubmitting}
-              onChange={(event) => setClientId(event.target.value)}
-              required
-              value={clientId}
-            >
-              {clients.map((client) => (
-                <option key={client.id} value={client.id}>
-                  {getClientDisplayName(client)} - {client.email}
-                </option>
-              ))}
-            </select>
-          </label>
-        ) : null}
-
-        {step === 2 ? (
-          <>
-            <label className="admin-clients-form__field">
-              <span>Nome campagna</span>
-              <input
-                className="admin-clients-form__input"
-                disabled={isSubmitting}
-                onChange={(event) => setName(event.target.value)}
-                required
-                value={name}
-              />
-            </label>
-            <label className="admin-clients-form__field">
-              <span>Oggetto</span>
-              <input
-                className="admin-clients-form__input"
-                disabled={isSubmitting}
-                onChange={(event) => setSubject(event.target.value)}
-                required
-                value={subject}
-              />
-            </label>
-          </>
-        ) : null}
-
-        {step === 3 ? (
-          <dl className="admin-record-grid">
-            <div>
-              <dt>Cliente</dt>
-              <dd>{selectedClient ? getClientDisplayName(selectedClient) : "-"}</dd>
-            </div>
-            <div>
-              <dt>Campagna</dt>
-              <dd>{name.trim() || "-"}</dd>
-            </div>
-            <div>
-              <dt>Oggetto</dt>
-              <dd>{subject.trim() || "-"}</dd>
-            </div>
-            <div>
-              <dt>Stato iniziale</dt>
-              <dd>Bozza backend</dd>
-            </div>
-          </dl>
-        ) : null}
+        <label className="admin-clients-form__field">
+          <span>Cliente</span>
+          <select
+            className="admin-clients-form__input"
+            disabled={isSubmitting}
+            onChange={(event) => setClientId(event.target.value)}
+            required
+            value={clientId}
+          >
+            {clients.map((client) => (
+              <option key={client.id} value={client.id}>
+                {getClientDisplayName(client)} - {client.email}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="admin-clients-form__field">
+          <span>Nome campagna</span>
+          <input
+            className="admin-clients-form__input"
+            disabled={isSubmitting}
+            onChange={(event) => setName(event.target.value)}
+            required
+            value={name}
+          />
+        </label>
+        <label className="admin-clients-form__field">
+          <span>Oggetto</span>
+          <input
+            className="admin-clients-form__input"
+            disabled={isSubmitting}
+            onChange={(event) => setSubject(event.target.value)}
+            required
+            value={subject}
+          />
+        </label>
+        <dl className="admin-record-grid">
+          <div>
+            <dt>Cliente</dt>
+            <dd>{selectedClient ? getClientDisplayName(selectedClient) : "-"}</dd>
+          </div>
+          <div>
+            <dt>Stato iniziale</dt>
+            <dd>Bozza backend</dd>
+          </div>
+        </dl>
       </div>
 
       <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginTop: 22 }}>
@@ -269,45 +204,19 @@ export function AdminCampaignCreateWizard({
             Annulla
           </Link>
         </Button>
-        {step > 1 ? (
-          <Button
-            type="button"
-            variant="outline"
-            size="lg"
-            className="admin-topbar-action admin-topbar-action--secondary"
-            disabled={isSubmitting}
-            onClick={() => setStep((currentStep) => (currentStep - 1) as Step)}
-          >
-            <ArrowLeft aria-hidden="true" className="admin-topbar-action__icon" />
-            Indietro
-          </Button>
-        ) : null}
-        {step < 3 ? (
-          <Button
-            type="button"
-            size="lg"
-            className="admin-topbar-action admin-topbar-action--primary"
-            disabled={isSubmitting}
-            onClick={goToNextStep}
-          >
-            Avanti
-            <ArrowRight aria-hidden="true" className="admin-topbar-action__icon" />
-          </Button>
-        ) : (
-          <Button
-            type="submit"
-            size="lg"
-            className="admin-topbar-action admin-topbar-action--primary"
-            disabled={isSubmitting}
-          >
-            {isSubmitting ? (
-              <Loader2 aria-hidden="true" className="admin-topbar-action__icon" />
-            ) : (
-              <Check aria-hidden="true" className="admin-topbar-action__icon" />
-            )}
-            {isSubmitting ? "Creazione..." : "Crea bozza"}
-          </Button>
-        )}
+        <Button
+          type="submit"
+          size="lg"
+          className="admin-topbar-action admin-topbar-action--primary"
+          disabled={isSubmitting}
+        >
+          {isSubmitting ? (
+            <Loader2 aria-hidden="true" className="admin-topbar-action__icon" />
+          ) : (
+            <Check aria-hidden="true" className="admin-topbar-action__icon" />
+          )}
+          {isSubmitting ? "Creazione..." : "Crea bozza"}
+        </Button>
       </div>
     </form>
   );

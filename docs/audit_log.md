@@ -1,5 +1,26 @@
 # Audit Log
 
+## Milestone 14.2 - Admin Create Campaign Flow
+
+Date: 2026-05-14
+
+Implemented:
+- Audited the backend campaign creation contract before frontend changes: `POST /admin/campaigns` accepts `client_id`, `name`, and `subject`; `POST /admin/clients/{client_id}/campaigns` accepts `name` and `subject`; both require platform admin auth and return `AdminCampaignDetail`.
+- Kept the admin `Nuova campagna` CTA enabled and routed to `/admin/campaigns/new`.
+- Replaced the staged wizard UI with a minimal create form using only backend-required fields: client, campaign name, and subject.
+- Added the `/admin/campaigns` API wrapper in `frontend/lib/api.ts` and kept all creation traffic behind the frontend API boundary.
+- Kept the client campaign UI read-only; no client create campaign CTA was added.
+- The success path redirects back to the campaign list and refreshes server data; submit is disabled while pending and backend errors are surfaced clearly.
+
+Files touched:
+- `frontend/components/admin/AdminCampaignCreateWizard.tsx`
+- `frontend/lib/api.ts`
+- `docs/audit_log.md`
+
+Known limits:
+- SES live validation remains pending.
+- Creation only creates a draft/not-ready campaign; no send action, dispatch flow, provider claim, direct listmonk call, fake metric, backend schema change, or backend endpoint change was added.
+
 ## Milestone 15 - Admin Campaign Creation Wizard And Campaign Index Simplification
 
 Date: 2026-05-14

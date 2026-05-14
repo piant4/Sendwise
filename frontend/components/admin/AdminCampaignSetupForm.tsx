@@ -1,7 +1,7 @@
 "use client";
 
 import { useAuth } from "@clerk/nextjs";
-import { Loader2, Save } from "lucide-react";
+import { AlertCircle, Loader2, Save } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { type FormEvent, useState } from "react";
 import {
@@ -140,11 +140,11 @@ export function AdminCampaignSetupForm({
     <form className="admin-clients-card" onSubmit={handleSubmit}>
       <div className="admin-clients-card__intro">
         <div>
-          <p className="admin-surface__eyebrow">Configurazione</p>
-          <h2 className="admin-clients-card__title">Setup campagna</h2>
+          <p className="admin-surface__eyebrow">Setup base</p>
+          <h2 className="admin-clients-card__title">Configurazione e contenuto</h2>
           <p className="admin-clients-card__description">
-            Modifica solo i campi supportati dal backend. La prontezza resta calcolata
-            dalle risposte API.
+            Salva i campi supportati dal backend. La prontezza resta letta dalle
+            risposte API.
           </p>
         </div>
       </div>
@@ -160,7 +160,14 @@ export function AdminCampaignSetupForm({
         </p>
       ) : null}
 
-      <div className="admin-clients-form">
+      {!campaign.contentReady ? (
+        <p className="admin-clients-feedback" role="status">
+          <AlertCircle aria-hidden="true" size={16} /> Contenuto non ancora pronto
+          secondo il backend.
+        </p>
+      ) : null}
+
+      <div className="admin-clients-form" id="setup-base">
         <label className="admin-clients-form__field">
           <span>Nome campagna</span>
           <input
@@ -180,6 +187,13 @@ export function AdminCampaignSetupForm({
             value={subject}
           />
         </label>
+      </div>
+
+      <div className="admin-clients-form" id="content" style={{ marginTop: 18 }}>
+        <div>
+          <p className="admin-surface__eyebrow">Contenuto</p>
+          <h3 className="admin-clients-card__title">Email campagna</h3>
+        </div>
         <label className="admin-clients-form__field">
           <span>Preview text</span>
           <input
@@ -223,7 +237,7 @@ export function AdminCampaignSetupForm({
           ) : (
             <Save aria-hidden="true" className="admin-topbar-action__icon" />
           )}
-          {isSubmitting ? "Salvataggio..." : "Salva setup"}
+          {isSubmitting ? "Salvataggio..." : "Salva configurazione"}
         </Button>
       </div>
     </form>

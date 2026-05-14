@@ -149,8 +149,8 @@ export function AdminCampaignContactsPanel({
           <p className="admin-surface__eyebrow">Destinatari</p>
           <h2 className="admin-clients-card__title">Contatti campagna</h2>
           <p className="admin-clients-card__description">
-            Associa indirizzi email alla campagna usando solo il contratto backend
-            disponibile. Import CSV e selezione avanzata restano non disponibili.
+            Aggiungi gli indirizzi alla campagna. Import CSV resta disabilitato
+            finche non e disponibile nel flusso backend.
           </p>
         </div>
         <StatusBadge

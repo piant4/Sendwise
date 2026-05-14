@@ -1,5 +1,45 @@
 # Audit Log
 
+## Milestone 14.6 - Campaign Setup UX Final Pass
+
+Date: 2026-05-14
+
+Implemented:
+- Polished `/admin/campaigns/[campaignId]` into a guided setup flow: Setup, Contenuto, Destinatari, Review.
+- Added a frontend-only setup progress component driven by backend campaign fields: `current_step`, `content_ready`, `contacts_ready`, `review_ready`, and backend recipient summaries when available.
+- Reworked the page hierarchy with a campaign header, status badge, back link, compact readiness/runtime/recipient summary strip, ordered wizard body, and collapsed technical details at the bottom.
+- Normalized CTA copy to `Salva configurazione`, `Aggiungi destinatari`, `Esegui review`, and disabled `Import CSV non ancora disponibile`.
+- Consolidated repeated runtime/provider/readiness copy into one primary summary plus panel-local hints.
+
+Files touched:
+- `frontend/app/admin/campaigns/[campaignId]/page.tsx`
+- `frontend/components/admin/AdminCampaignSetupForm.tsx`
+- `frontend/components/admin/AdminCampaignContactsPanel.tsx`
+- `frontend/components/admin/AdminCampaignReviewPanel.tsx`
+- `frontend/components/admin/AdminCampaignSetupProgress.tsx`
+- `docs/audit_log.md`
+
+Known limits:
+- SES live validation remains pending.
+- Import CSV, advanced selection, send, simulate-send, dispatch, AI generation, provider event creation, and SES enablement remain out of scope.
+
+Verification:
+- `git diff --check` passed.
+- Native `npm run lint` and `npm run build` were attempted but PowerShell could not find `npm`; Docker builder checks were used instead.
+- Docker frontend builder `npm run lint` passed with mounted frontend source directories.
+- Docker frontend builder `npm run build` passed with mounted frontend source directories.
+- `bash scripts/audit.sh` passed through Git Bash login shell.
+- `bash scripts/smoke_test.sh` passed through Git Bash login shell.
+- Direct `bash scripts/audit.sh` / `bash scripts/smoke_test.sh` through PowerShell failed because WSL has no installed Linux distribution; Git Bash reruns passed.
+- `docker compose config` passed with Docker warning about unreadable `C:\Users\Jacop\.docker\config.json`.
+- `docker compose -f docker-compose.yml -f docker-compose.dev.yml config` passed with the same Docker warning.
+- Frontend direct-listmonk scan returned no matches.
+- Touched frontend fake delivery/open/click claim scan found only existing helper field names and honest SES copy; no fake delivery claims were added.
+- Env/secret config diff scan found no `.env`, `.env.example`, Docker Compose, or local config changes.
+
+Scope confirmation:
+- No backend code, dispatch logic, database schema, API contract, Docker/env config, n8n, direct frontend listmonk access, send CTA, simulate-send CTA, or fake metrics were changed.
+
 ## Milestone 14.4 - Campaign Contacts Attach UI
 
 Contract audit:

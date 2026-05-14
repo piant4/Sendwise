@@ -14,9 +14,7 @@ import type {
   AdminCampaignReviewResult,
 } from "../../types";
 import {
-  getProviderEventsLabel,
   getReadableBackendReason,
-  getRuntimeSafetyItems,
 } from "../shared/campaignUi";
 import { Button } from "../ui/button";
 import { StatusBadge } from "../ui/StatusBadge";
@@ -57,10 +55,6 @@ function getSafeReviewErrorMessage(error: unknown): string {
   return "Non e stato possibile eseguire la review. Riprova.";
 }
 
-function yesNo(value: boolean): string {
-  return value ? "Si" : "No";
-}
-
 function getLatestReviewState(
   campaign: AdminCampaignDetail,
   result: AdminCampaignReviewResult | null,
@@ -89,7 +83,10 @@ export function AdminCampaignReviewPanel({
     ...(reviewResult?.blockingErrors ?? summary?.blockingErrors ?? []),
     ...(reviewResult?.warnings ?? summary?.warnings ?? []),
   ].map(getReadableBackendReason);
-  const runtimeItems = summary ? getRuntimeSafetyItems(summary.runtime) : [];
+  const eligibleContactCount =
+    reviewResult?.eligibleContactCount ?? summary?.recipients.eligible ?? 0;
+  const blockedContactCount =
+    reviewResult?.blockedContactCount ?? summary?.recipients.blocked ?? 0;
 
   async function handleReview() {
     if (isSubmitting) {
@@ -118,8 +115,7 @@ export function AdminCampaignReviewPanel({
           <p className="admin-surface__eyebrow">Review</p>
           <h2 className="admin-clients-card__title">Verifica campagna</h2>
           <p className="admin-clients-card__description">
-            Esegue solo la review backend. La pagina mostra la risposta API senza
-            abilitare invii o simulazioni.
+            Esegue solo la review backend e aggiorna lo stato di prontezza.
           </p>
         </div>
         <StatusBadge
@@ -143,84 +139,39 @@ export function AdminCampaignReviewPanel({
           Review eseguita dal backend. Stato aggiornato dalla risposta API.
         </p>
       ) : null}
+      {!state.reviewReady ? (
+        <p className="admin-record-row__note">
+          Review non pronta: completa setup, contenuto e destinatari, poi riesegui
+          la verifica backend.
+        </p>
+      ) : null}
 
       <dl className="admin-record-grid">
         <div>
-          <dt>content_ready</dt>
-          <dd>{yesNo(state.contentReady)}</dd>
+          <dt>Contenuto</dt>
+          <dd>{state.contentReady ? "Pronto" : "Da completare"}</dd>
         </div>
         <div>
-          <dt>contacts_ready</dt>
-          <dd>{yesNo(state.contactsReady)}</dd>
+          <dt>Destinatari</dt>
+          <dd>{state.contactsReady ? "Pronti" : "Non pronti"}</dd>
         </div>
         <div>
-          <dt>review_ready</dt>
-          <dd>{yesNo(state.reviewReady)}</dd>
+          <dt>Review</dt>
+          <dd>{state.reviewReady ? "Pronta" : "In attesa"}</dd>
         </div>
         <div>
-          <dt>current_step</dt>
+          <dt>Step backend</dt>
           <dd>{state.currentStep}</dd>
         </div>
         <div>
-          <dt>send allowed</dt>
-          <dd>
-            {reviewResult
-              ? yesNo(reviewResult.allowedToSend)
-              : summary
-                ? yesNo(summary.canSend)
-                : "Non disponibile"}
-          </dd>
+          <dt>Contatti idonei</dt>
+          <dd>{eligibleContactCount.toLocaleString("it-IT")}</dd>
         </div>
         <div>
-          <dt>send when enabled</dt>
-          <dd>
-            {reviewResult
-              ? yesNo(reviewResult.canSendWhenEnabled)
-              : summary
-                ? yesNo(summary.campaign.reviewReady)
-                : "Non disponibile"}
-          </dd>
-        </div>
-        <div>
-          <dt>EMAIL_SENDING_ENABLED</dt>
-          <dd>
-            {reviewResult
-              ? yesNo(reviewResult.sendingEnabled)
-              : summary
-                ? yesNo(summary.runtime.emailSendingEnabled)
-                : "Non disponibile"}
-          </dd>
-        </div>
-        <div>
-          <dt>Provider events</dt>
-          <dd>{summary ? getProviderEventsLabel(summary.logs) : "Non disponibile"}</dd>
+          <dt>Contatti bloccati</dt>
+          <dd>{blockedContactCount.toLocaleString("it-IT")}</dd>
         </div>
       </dl>
-
-      {summary ? (
-        <dl className="admin-record-grid" style={{ marginTop: 16 }}>
-          {runtimeItems.map((item) => (
-            <div key={item.label}>
-              <dt>{item.label}</dt>
-              <dd>{item.value}</dd>
-            </div>
-          ))}
-          <div>
-            <dt>Contatti idonei</dt>
-            <dd>
-              {(reviewResult?.eligibleContactCount ?? summary.recipients.eligible)
-                .toLocaleString("it-IT")}
-            </dd>
-          </div>
-          <div>
-            <dt>Contatti bloccati</dt>
-            <dd>
-              {(reviewResult?.blockedContactCount ?? summary.recipients.blocked)
-                .toLocaleString("it-IT")}
-            </dd>
-          </div>
-        </dl>
-      ) : null}
 
       {reviewReasons.length > 0 ? (
         <ul className="admin-record-row__note">

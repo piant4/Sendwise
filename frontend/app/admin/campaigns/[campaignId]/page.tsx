@@ -5,17 +5,16 @@ import { redirect } from "next/navigation";
 import { AdminCampaignContactsPanel } from "../../../../components/admin/AdminCampaignContactsPanel";
 import { AdminCampaignReviewPanel } from "../../../../components/admin/AdminCampaignReviewPanel";
 import { AdminCampaignSetupForm } from "../../../../components/admin/AdminCampaignSetupForm";
-import { AdminSurface } from "../../../../components/admin/AdminSurface";
+import { AdminCampaignSetupProgress } from "../../../../components/admin/AdminCampaignSetupProgress";
 import {
   formatCampaignCount,
-  getCampaignLogStatItems,
-  getCampaignReadinessItems,
   getCampaignReadinessLabel,
   getCampaignStatusLabel,
   getCampaignStatusVariant,
   getProviderEventsDetail,
   getProviderEventsLabel,
   getReadableBackendReason,
+  getRecipientEmptyState,
   getRecipientSummaryItems,
   getRuntimeSafetyItems,
 } from "../../../../components/shared/campaignUi";
@@ -71,16 +70,14 @@ function getStepLabel(step: string): string {
   }
 }
 
-function getSetupLabel(campaign: AdminCampaignDetail): string {
-  return campaign.name.trim() && campaign.subject?.trim()
-    ? "Pronta"
-    : "Non pronta";
-}
-
-function buildAttentionItems(summary: AdminCampaignReadinessSummary): string[] {
+function buildAttentionItems(
+  campaign: AdminCampaignDetail,
+  summary: AdminCampaignReadinessSummary,
+): string[] {
   const backendReasons = [...summary.blockingErrors, ...summary.warnings].map(
     getReadableBackendReason,
   );
+  const recipientState = getRecipientEmptyState(summary.recipients);
   const runtimeAttention = getRuntimeSafetyItems(summary.runtime)
     .map((item) => item.value)
     .filter((item) =>
@@ -94,85 +91,109 @@ function buildAttentionItems(summary: AdminCampaignReadinessSummary): string[] {
 
   return Array.from(
     new Set([
+      campaign.contentReady ? null : "Contenuto non ancora pronto",
+      campaign.contactsReady ? null : "Destinatari non ancora pronti",
+      campaign.reviewReady ? null : "Review non pronta",
+      recipientState,
       ...runtimeAttention,
       ...backendReasons.map((reason) => reason.label),
-      summary.recipients.total === 0 ? "Nessun contatto associato" : null,
       summary.logs.providerEventsAvailable ? null : getProviderEventsLabel(summary.logs),
     ].filter((item): item is string => Boolean(item))),
   );
 }
 
-function renderSummarySections(summary: AdminCampaignReadinessSummary) {
+function renderSummaryStrip(
+  campaign: AdminCampaignDetail,
+  summary: AdminCampaignReadinessSummary,
+) {
+  const runtimeItems = getRuntimeSafetyItems(summary.runtime);
+  const runtimeLabel = runtimeItems.map((item) => item.value).join(" / ");
+  const attentionItems = buildAttentionItems(campaign, summary);
+
+  return (
+    <section className="admin-clients-card" aria-label="Sintesi campagna">
+      <div className="admin-clients-card__intro">
+        <div>
+          <p className="admin-surface__eyebrow">Sintesi operativa</p>
+          <h2 className="admin-clients-card__title">Prontezza setup</h2>
+        </div>
+        <StatusBadge
+          label={getCampaignReadinessLabel(summary.campaign)}
+          variant={summary.canSend ? "success" : "neutral"}
+        />
+      </div>
+      <dl className="admin-record-grid" style={{ marginTop: 18 }}>
+        <div>
+          <dt>Readiness</dt>
+          <dd>{getCampaignReadinessLabel(summary.campaign)}</dd>
+        </div>
+        <div>
+          <dt>Destinatari idonei</dt>
+          <dd>{formatCampaignCount(summary.recipients.eligible)}</dd>
+        </div>
+        <div>
+          <dt>Destinatari bloccati</dt>
+          <dd>{formatCampaignCount(summary.recipients.blocked)}</dd>
+        </div>
+        <div>
+          <dt>Sicurezza runtime</dt>
+          <dd>{runtimeLabel || "Non disponibile"}</dd>
+        </div>
+      </dl>
+      {attentionItems.length > 0 ? (
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 16 }}>
+          {attentionItems.map((item) => (
+            <span key={item} className="admin-record-chip">
+              {item}
+            </span>
+          ))}
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function renderTechnicalDetails(summary: AdminCampaignReadinessSummary) {
   const checklistItems = [
     {
       label: "Setup",
-      value:
-        summary.campaign.name.trim() && summary.campaign.subject?.trim()
-          ? "Pronta"
-          : "Non pronta",
+      value: summary.campaign.currentStep === "setup" ? "Step attuale" : "Base presente",
     },
-    ...getCampaignReadinessItems(summary.campaign).map((item) => {
-      const isContactsStep = item.label === "Destinatari";
-      let reason = "";
-
-      if (isContactsStep && summary.recipients.total === 0) {
-        reason = "Nessun contatto";
-      } else if (isContactsStep && summary.recipients.eligible === 0) {
-        reason = "Nessun idoneo";
-      }
-
-      return {
-        href: isContactsStep ? "#destinatari" : null,
-        label: isContactsStep ? "Destinatari" : item.label,
-        value:
-          item.value === "Pronto" || item.value === "Presenti" || item.value === "Approvata"
-            ? "Pronta"
-            : reason || "Non pronta",
-      };
-    }),
+    {
+      label: "Contenuto",
+      value: summary.campaign.contentReady ? "Pronto" : "Non pronto",
+    },
+    {
+      label: "Destinatari",
+      value: summary.campaign.contactsReady ? "Pronti" : "Non pronti",
+    },
+    {
+      label: "Review",
+      value: summary.campaign.reviewReady ? "Pronta" : "In attesa",
+    },
   ];
   const runtimeItems = getRuntimeSafetyItems(summary.runtime);
-  const attentionItems = buildAttentionItems(summary);
   const technicalReasons = [...summary.blockingErrors, ...summary.warnings].map(
     getReadableBackendReason,
   );
 
   return (
-    <>
-      <AdminSurface
-        title="Checklist"
-        description="Prontezza letta dai campi backend della campagna."
-        aside={<StatusBadge label={getCampaignReadinessLabel(summary.campaign)} />}
-      >
+    <details className="admin-clients-card">
+      <summary>
+        <span className="admin-surface__eyebrow">Dettagli tecnici admin</span>
+      </summary>
+      <div style={{ display: "grid", gap: 18, marginTop: 18 }}>
         <dl className="admin-record-grid">
           {checklistItems.map((item) => (
-            <div key={item.label}>
-              <dt>{item.label}</dt>
-              <dd>
-                {"href" in item && item.href ? (
-                  <a href={item.href}>{item.value}</a>
-                ) : (
-                  item.value
-                )}
-              </dd>
-            </div>
-          ))}
-        </dl>
-      </AdminSurface>
-
-      <AdminSurface
-        title="Destinatari e metriche"
-        description="Conteggi disponibili dal modello di lettura operativo."
-        aside={<span className="admin-surface__eyebrow">Dati verificati</span>}
-      >
-        <dl className="admin-record-grid">
-          {getRecipientSummaryItems(summary.recipients).map((item) => (
             <div key={item.label}>
               <dt>{item.label}</dt>
               <dd>{item.value}</dd>
             </div>
           ))}
-          {getCampaignLogStatItems(summary.logs).map((item) => (
+        </dl>
+
+        <dl className="admin-record-grid">
+          {getRecipientSummaryItems(summary.recipients).map((item) => (
             <div key={item.label}>
               <dt>{item.label}</dt>
               <dd>{item.value}</dd>
@@ -186,13 +207,7 @@ function renderSummarySections(summary: AdminCampaignReadinessSummary) {
         <p className="admin-record-row__note">
           {getProviderEventsLabel(summary.logs)}. {getProviderEventsDetail(summary.logs)}
         </p>
-      </AdminSurface>
 
-      <AdminSurface
-        title="Sicurezza invio"
-        description="Stato runtime esposto dal backend; nessun invio parte da questa pagina."
-        aside={<StatusBadge label={summary.canSend ? "Pronta" : "Non pronta"} />}
-      >
         <dl className="admin-record-grid">
           {runtimeItems.map((item) => (
             <div key={item.label}>
@@ -204,61 +219,27 @@ function renderSummarySections(summary: AdminCampaignReadinessSummary) {
             <dt>Review backend</dt>
             <dd>{summary.campaign.reviewReady ? "Pronta" : "Non pronta"}</dd>
           </div>
-        </dl>
-        {attentionItems.length > 0 ? (
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 16 }}>
-            {attentionItems.map((item) => (
-              <span key={item} className="admin-record-chip">
-                {item}
-              </span>
-            ))}
+          <div>
+            <dt>Campaign ID</dt>
+            <dd>{summary.campaign.id}</dd>
           </div>
+          <div>
+            <dt>Client ID</dt>
+            <dd>{summary.client.id}</dd>
+          </div>
+        </dl>
+        {technicalReasons.length > 0 ? (
+          <ul className="admin-record-row__note">
+            {technicalReasons.map((reason) => (
+              <li key={reason.raw}>
+                {reason.label}
+                {reason.isKnown ? "" : `: ${reason.raw}`}
+              </li>
+            ))}
+          </ul>
         ) : null}
-        <details className="admin-record-row__note">
-          <summary>Dettagli tecnici admin</summary>
-          <dl className="admin-record-grid" style={{ marginTop: 12 }}>
-            <div>
-              <dt>Campaign ID</dt>
-              <dd>{summary.campaign.id}</dd>
-            </div>
-            <div>
-              <dt>Client ID</dt>
-              <dd>{summary.client.id}</dd>
-            </div>
-            <div>
-              <dt>Provider</dt>
-              <dd>{summary.runtime.providerModeLabel}</dd>
-            </div>
-          </dl>
-          {technicalReasons.length > 0 ? (
-            <ul>
-              {technicalReasons.map((reason) => (
-                <li key={reason.raw}>
-                  {reason.label}
-                  {reason.isKnown ? "" : `: ${reason.raw}`}
-                </li>
-              ))}
-            </ul>
-          ) : null}
-        </details>
-      </AdminSurface>
-
-      <AdminSurface
-        title="Azioni non incluse"
-        description="Questa schermata resta concentrata sul setup minimo della bozza."
-      >
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
-          <button className="admin-clients-form__submit" disabled type="button">
-            Aggiunta destinatari avanzata non ancora disponibile
-          </button>
-          <span className="admin-record-chip">
-            {summary.runtime.emailSendingEnabled
-              ? "Invio non gestito da questa schermata"
-              : "Invio reale disattivato"}
-          </span>
-        </div>
-      </AdminSurface>
-    </>
+      </div>
+    </details>
   );
 }
 
@@ -330,17 +311,33 @@ export default async function AdminCampaignDetailPage({
                 : "Dettaglio campagna non disponibile"}
             </p>
           </div>
-          <Button
-            asChild
-            variant="outline"
-            size="lg"
-            className="admin-topbar-action admin-topbar-action--secondary"
+          <div
+            style={{
+              alignItems: "center",
+              display: "flex",
+              flexWrap: "wrap",
+              gap: 10,
+              justifyContent: "flex-end",
+            }}
           >
-            <Link href="/admin/campaigns">
-              <ArrowLeft aria-hidden="true" className="admin-topbar-action__icon" />
-              Torna alle campagne
-            </Link>
-          </Button>
+            {"campaign" in result ? (
+              <StatusBadge
+                label={getCampaignStatusLabel(result.campaign.status)}
+                variant={getCampaignStatusVariant(result.campaign.status)}
+              />
+            ) : null}
+            <Button
+              asChild
+              variant="outline"
+              size="lg"
+              className="admin-topbar-action admin-topbar-action--secondary"
+            >
+              <Link href="/admin/campaigns">
+                <ArrowLeft aria-hidden="true" className="admin-topbar-action__icon" />
+                Torna alle campagne
+              </Link>
+            </Button>
+          </div>
         </header>
 
         {"errorMessage" in result ? (
@@ -362,8 +359,8 @@ export default async function AdminCampaignDetailPage({
                   value: getStepLabel(result.campaign.currentStep),
                 },
                 {
-                  label: "Setup",
-                  value: getSetupLabel(result.campaign),
+                  label: "Cliente",
+                  value: result.campaign.clientName,
                 },
                 {
                   label: "Aggiornata",
@@ -377,37 +374,45 @@ export default async function AdminCampaignDetailPage({
               ))}
             </section>
 
-            <div className="admin-record-row">
-              <div className="admin-record-row__primary">
-                <div className="admin-record-row__copy">
-                  <strong>{result.campaign.name}</strong>
-                  <span>{result.campaign.clientName}</span>
-                  <span>{result.campaign.subject || "Oggetto non disponibile"}</span>
-                </div>
-                <StatusBadge
-                  label={getCampaignStatusLabel(result.campaign.status)}
-                  variant={getCampaignStatusVariant(result.campaign.status)}
+            {result.summary instanceof Error ? null : (
+              renderSummaryStrip(result.campaign, result.summary)
+            )}
+
+            <div
+              style={{
+                alignItems: "start",
+                display: "flex",
+                flexWrap: "wrap",
+                gap: 20,
+              }}
+            >
+              <div style={{ flex: "1 1 260px", minWidth: 0 }}>
+                <AdminCampaignSetupProgress
+                  campaign={result.campaign}
+                  contacts={result.contacts instanceof Error ? null : result.contacts}
+                  summary={result.summary instanceof Error ? null : result.summary}
+                />
+              </div>
+              <div style={{ display: "grid", flex: "999 1 520px", gap: 20, minWidth: 0 }}>
+                <AdminCampaignSetupForm campaign={result.campaign} />
+
+                <AdminCampaignContactsPanel
+                  campaignId={result.campaign.campaignId}
+                  contacts={result.contacts instanceof Error ? null : result.contacts}
+                  errorMessage={
+                    result.contacts instanceof Error ? result.contacts.message : null
+                  }
+                />
+
+                <AdminCampaignReviewPanel
+                  campaign={result.campaign}
+                  summary={result.summary instanceof Error ? null : result.summary}
+                  errorMessage={
+                    result.summary instanceof Error ? result.summary.message : null
+                  }
                 />
               </div>
             </div>
-
-            <AdminCampaignSetupForm campaign={result.campaign} />
-
-            <AdminCampaignContactsPanel
-              campaignId={result.campaign.campaignId}
-              contacts={result.contacts instanceof Error ? null : result.contacts}
-              errorMessage={
-                result.contacts instanceof Error ? result.contacts.message : null
-              }
-            />
-
-            <AdminCampaignReviewPanel
-              campaign={result.campaign}
-              summary={result.summary instanceof Error ? null : result.summary}
-              errorMessage={
-                result.summary instanceof Error ? result.summary.message : null
-              }
-            />
 
             {result.summary instanceof Error ? (
               <section className="admin-clients-card">
@@ -416,7 +421,7 @@ export default async function AdminCampaignDetailPage({
                 </p>
               </section>
             ) : (
-              renderSummarySections(result.summary)
+              renderTechnicalDetails(result.summary)
             )}
           </>
         )}

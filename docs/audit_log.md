@@ -2258,6 +2258,32 @@ Checks referenced:
 Scope confirmation:
 - No send/dispatch behavior, database schema, SES enablement, secret response fields, fake metrics, direct frontend listmonk access, or broad refactor was added.
 
+## Milestone 14 - Campaign Detail Polish And Client Stats UX
+
+Date: 2026-05-14
+Branch: develop
+
+Implemented state:
+- Polished the admin campaign list/detail-style row UI with clearer campaign status, readiness, send safety, provider runtime, recipient summary, blocked reasons, and DB/provider-backed stat wording.
+- Polished the client campaign list/detail-style row UI with plain-language status, recipient stats, provider-events state, blocked-send state, and empty/unavailable states without exposing internal provider IDs or listmonk IDs.
+- Added a small frontend-only campaign UI helper for shared status labels, readiness copy, recipient summaries, provider event labels, runtime safety copy, and honest log stat labels.
+
+Files touched:
+- `frontend/app/admin/campaigns/page.tsx`
+- `frontend/app/c/[portalSlug]/campaigns/page.tsx`
+- `frontend/components/shared/campaignUi.ts`
+- `docs/audit_log.md`
+
+Known limits:
+- SES live validation 12.1 remains pending; the UI does not claim SES delivery validation.
+- Full regression tests are intentionally pending for the later validation pass.
+
+Scope confirmation:
+- No backend send/dispatch logic, backend services, DB schema, n8n files, direct frontend listmonk access, local env files, secrets, fake metrics, or optimistic provider stats were added.
+
+Checks referenced:
+- Full regression intentionally not run in this task per instruction.
+
 ## Milestone 12.1 - Live SES Validation Preflight
 
 Date: 2026-05-13

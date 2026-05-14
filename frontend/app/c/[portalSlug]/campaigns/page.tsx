@@ -1,11 +1,20 @@
 import { DashboardErrorState } from "../../../../components/dashboard/DashboardErrorState";
 import { ClientPageHeader } from "../../../../components/client/ClientPageHeader";
 import { ClientSurface } from "../../../../components/client/ClientSurface";
+import { formatDateTimeLabel } from "../../../../components/client/clientStatus";
 import {
-  formatDateTimeLabel,
+  formatCampaignCount,
+  getCampaignLogStatItems,
+  getCampaignReadinessLabel,
   getCampaignStatusLabel,
   getCampaignStatusVariant,
-} from "../../../../components/client/clientStatus";
+  getProviderEventsDetail,
+  getProviderEventsLabel,
+  getRecipientEmptyState,
+  getRecipientSummaryItems,
+  getRuntimeSafetyItems,
+  getSesPendingWarning,
+} from "../../../../components/shared/campaignUi";
 import { StatusBadge } from "../../../../components/ui/StatusBadge";
 import {
   getClientCampaignDetail,
@@ -14,7 +23,6 @@ import {
 } from "../../../../lib/api";
 import type {
   Campaign,
-  CampaignLogsSummary,
   CampaignReadModel,
   ClientCampaignStatsReadModel,
 } from "../../../../types";
@@ -41,30 +49,6 @@ function buildCampaignStats(campaigns: Campaign[]) {
   };
 }
 
-function formatCount(value: number): string {
-  return value.toLocaleString("it-IT");
-}
-
-function buildProviderEventsLabel(logs: CampaignLogsSummary): string {
-  if (logs.providerEventsAvailable) {
-    return "Eventi provider disponibili";
-  }
-
-  if (
-    logs.queued === 0 &&
-    logs.sent === 0 &&
-    logs.opened === 0 &&
-    logs.clicked === 0 &&
-    logs.bounced === 0 &&
-    logs.complained === 0 &&
-    logs.unsubscribed === 0
-  ) {
-    return "Nessun evento provider ancora registrato";
-  }
-
-  return "Metriche provider non ancora disponibili";
-}
-
 async function loadCampaignReadModels(
   campaigns: Campaign[],
   accessToken: string | null,
@@ -87,13 +71,77 @@ async function loadCampaignReadModels(
           campaign.id,
           error instanceof Error
             ? error
-            : new Error("Read model campagna non disponibile."),
+            : new Error("Dati campagna non disponibili."),
         ] as const;
       }
     }),
   );
 
   return Object.fromEntries(entries);
+}
+
+function renderClientCampaignReadModel(
+  detail: CampaignReadModel,
+  backendStats: ClientCampaignStatsReadModel,
+) {
+  const recipientEmptyState = getRecipientEmptyState(detail.recipients);
+  const latestBlock = backendStats.blockedSends.latest[0];
+  const runtimeItems = getRuntimeSafetyItems(detail.runtime).filter(
+    (item) => item.label !== "Eventi provider",
+  );
+  const sesPendingWarning = getSesPendingWarning(detail.runtime);
+
+  return (
+    <>
+      <div className="client-detail-grid">
+        <div>
+          <span>Prontezza</span>
+          <strong>{getCampaignReadinessLabel(detail.campaign)}</strong>
+        </div>
+        {getRecipientSummaryItems(detail.recipients)
+          .filter((item) => ["Totali", "Idonei", "Bloccati"].includes(item.label))
+          .map((item) => (
+            <div key={item.label}>
+              <span>{item.label}</span>
+              <strong>{item.value}</strong>
+            </div>
+          ))}
+        <div>
+          <span>Eventi provider</span>
+          <strong>{getProviderEventsLabel(backendStats.logs)}</strong>
+        </div>
+        {runtimeItems.map((item) => (
+          <div key={item.label}>
+            <span>{item.label}</span>
+            <strong>{item.value}</strong>
+          </div>
+        ))}
+        {getCampaignLogStatItems(backendStats.logs).map((item) => (
+          <div key={item.label}>
+            <span>{item.label}</span>
+            <strong>{item.value}</strong>
+          </div>
+        ))}
+        <div>
+          <span>Invii bloccati</span>
+          <strong>{formatCampaignCount(backendStats.blockedSends.total)}</strong>
+        </div>
+      </div>
+
+      {recipientEmptyState ? (
+        <p className="client-row__support">{recipientEmptyState}</p>
+      ) : null}
+      <p className="client-row__support">
+        {getProviderEventsDetail(backendStats.logs)}
+      </p>
+      {sesPendingWarning ? (
+        <p className="client-row__support">{sesPendingWarning}</p>
+      ) : null}
+      {latestBlock ? (
+        <p className="client-row__support">Ultimo blocco: {latestBlock.reason}</p>
+      ) : null}
+    </>
+  );
 }
 
 export default async function ClientCampaignsPage({
@@ -129,18 +177,18 @@ export default async function ClientCampaignsPage({
       <section className="client-page-shell">
         <ClientPageHeader
           title="Campagne"
-          description="Elenco aggiornato delle campagne visibili nel tuo workspace, con stato reale, soggetto e ultime date utili."
-          actions={<StatusBadge label="Dati reali" variant="success" />}
+          description="Stato, destinatari e metriche disponibili per le tue campagne. Le consegne e gli eventi appaiono solo quando il backend riceve dati provider."
+          actions={<StatusBadge label="Dati backend" variant="success" />}
         />
 
         <section className="client-page-stat-grid" aria-label="Statistiche campagne">
           {[
-            { label: "Campagne totali", value: stats.total.toLocaleString() },
-            { label: "Attive", value: stats.active.toLocaleString() },
-            { label: "In corso", value: stats.running.toLocaleString() },
+            { label: "Campagne totali", value: formatCampaignCount(stats.total) },
+            { label: "Pronte / in corso", value: formatCampaignCount(stats.active) },
+            { label: "In corso", value: formatCampaignCount(stats.running) },
             {
               label: "Bloccate o in errore",
-              value: stats.blockedOrFailed.toLocaleString(),
+              value: formatCampaignCount(stats.blockedOrFailed),
             },
           ].map((stat) => (
             <article key={stat.label} className="client-page-stat-card">
@@ -152,142 +200,67 @@ export default async function ClientCampaignsPage({
 
         <ClientSurface
           title="Elenco campagne"
-          description="Ogni riga mostra le informazioni operative oggi disponibili per il cliente, senza statistiche inventate."
+          description="Vista cliente con soli dati backend disponibili, senza ID tecnici o metriche simulate."
           aside={
             <span className="client-surface__eyebrow">
-              {result.campaigns.length.toLocaleString()} elementi
+              {formatCampaignCount(result.campaigns.length)} elementi
             </span>
           }
         >
           {result.campaigns.length > 0 ? (
             <div className="client-list">
-              {result.campaigns.map((campaign) => (
-                <article key={campaign.id} className="client-row">
-                  <div className="client-row__header">
-                    <div className="client-row__copy">
-                      <strong className="client-row__title">{campaign.name}</strong>
-                      <span className="client-row__meta">
-                        Aggiornata {formatDateTimeLabel(campaign.updated_at)}
-                      </span>
-                    </div>
-                    <StatusBadge
-                      label={getCampaignStatusLabel(campaign.status)}
-                      variant={getCampaignStatusVariant(campaign.status)}
-                    />
-                  </div>
-                  <div className="client-detail-grid">
-                    <div>
-                      <span>Soggetto</span>
-                      <strong>
-                        {campaign.subject?.trim()
-                          ? campaign.subject
-                          : "Oggetto non disponibile"}
-                      </strong>
-                    </div>
-                    <div>
-                      <span>Creata</span>
-                      <strong>{formatDateTimeLabel(campaign.created_at)}</strong>
-                    </div>
-                    <div>
-                      <span>Ultimo aggiornamento</span>
-                      <strong>{formatDateTimeLabel(campaign.updated_at)}</strong>
-                    </div>
-                  </div>
+              {result.campaigns.map((campaign) => {
+                const readModel = result.campaignReadModels[campaign.id];
 
-                  {(() => {
-                    const readModel = result.campaignReadModels[campaign.id];
+                return (
+                  <article key={campaign.id} className="client-row">
+                    <div className="client-row__header">
+                      <div className="client-row__copy">
+                        <strong className="client-row__title">{campaign.name}</strong>
+                        <span className="client-row__meta">
+                          Aggiornata {formatDateTimeLabel(campaign.updated_at)}
+                        </span>
+                      </div>
+                      <StatusBadge
+                        label={getCampaignStatusLabel(campaign.status)}
+                        variant={getCampaignStatusVariant(campaign.status)}
+                      />
+                    </div>
 
-                    if (!readModel || readModel instanceof Error) {
-                      return (
-                        <p className="client-row__support">
-                          Read model backend non disponibile:{" "}
-                          {readModel?.message ?? "pending backend data"}.
-                        </p>
-                      );
-                    }
+                    <div className="client-detail-grid">
+                      <div>
+                        <span>Soggetto</span>
+                        <strong>
+                          {campaign.subject?.trim()
+                            ? campaign.subject
+                            : "Oggetto non disponibile"}
+                        </strong>
+                      </div>
+                      <div>
+                        <span>Creata</span>
+                        <strong>{formatDateTimeLabel(campaign.created_at)}</strong>
+                      </div>
+                      <div>
+                        <span>Ultimo aggiornamento</span>
+                        <strong>{formatDateTimeLabel(campaign.updated_at)}</strong>
+                      </div>
+                    </div>
 
-                    const { detail, stats: backendStats } = readModel;
-                    const noContacts = detail.recipients.total === 0;
-                    const noEligibleRecipients =
-                      detail.recipients.total > 0 && detail.recipients.eligible === 0;
-                    const allRecipientsBlocked =
-                      detail.recipients.total > 0 &&
-                      detail.recipients.blocked === detail.recipients.total;
-
-                    return (
-                      <>
-                        <div className="client-detail-grid">
-                          <div>
-                            <span>Readiness</span>
-                            <strong>
-                              Content {detail.campaign.contentReady ? "ok" : "pending"} ·
-                              Contatti {detail.campaign.contactsReady ? "ok" : "pending"} ·
-                              Review {detail.campaign.reviewReady ? "ok" : "pending"}
-                            </strong>
-                          </div>
-                          <div>
-                            <span>Destinatari</span>
-                            <strong>
-                              {formatCount(detail.recipients.eligible)} eleggibili /{" "}
-                              {formatCount(detail.recipients.total)} totali
-                            </strong>
-                          </div>
-                          <div>
-                            <span>Bloccati</span>
-                            <strong>
-                              {formatCount(detail.recipients.blocked)} totali ·{" "}
-                              {formatCount(detail.recipients.suppressed)} soppressi
-                            </strong>
-                          </div>
-                          <div>
-                            <span>Provider events</span>
-                            <strong>{buildProviderEventsLabel(backendStats.logs)}</strong>
-                          </div>
-                          <div>
-                            <span>Stats backend</span>
-                            <strong>
-                              queued {formatCount(backendStats.logs.queued)} · sent{" "}
-                              {formatCount(backendStats.logs.sent)} · bounce{" "}
-                              {formatCount(backendStats.logs.bounced)}
-                            </strong>
-                          </div>
-                          <div>
-                            <span>Invii bloccati</span>
-                            <strong>
-                              {formatCount(backendStats.blockedSends.total)} record
-                            </strong>
-                          </div>
-                        </div>
-                        {(noContacts || noEligibleRecipients || allRecipientsBlocked) && (
-                          <p className="client-row__support">
-                            {noContacts
-                              ? "Nessun contatto associato alla campagna."
-                              : noEligibleRecipients
-                                ? "Nessun destinatario eleggibile nei dati backend."
-                                : "Tutti i destinatari risultano bloccati nei dati backend."}
-                          </p>
-                        )}
-                        {!backendStats.logs.providerEventsAvailable && (
-                          <p className="client-row__support">
-                            Le metriche provider restano vuote finche il backend non
-                            registra eventi provider processati.
-                          </p>
-                        )}
-                        {backendStats.blockedSends.latest.length > 0 && (
-                          <p className="client-row__support">
-                            Ultimo blocco: {backendStats.blockedSends.latest[0].reason}
-                          </p>
-                        )}
-                      </>
-                    );
-                  })()}
-                </article>
-              ))}
+                    {!readModel || readModel instanceof Error ? (
+                      <p className="client-row__support">
+                        Dati campagna non disponibili:{" "}
+                        {readModel?.message ?? "read model pending"}.
+                      </p>
+                    ) : (
+                      renderClientCampaignReadModel(readModel.detail, readModel.stats)
+                    )}
+                  </article>
+                );
+              })}
             </div>
           ) : (
             <div className="client-empty-state">
-              Nessuna campagna disponibile in questo momento. Quando il backend
-              registrera nuove campagne, le vedrai qui.
+              Nessuna campagna disponibile in questo momento.
             </div>
           )}
         </ClientSurface>

@@ -1,6 +1,21 @@
 import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 import { AdminSurface } from "../../../components/admin/AdminSurface";
+import {
+  formatCampaignCount,
+  getBlockedReasonItems,
+  getCampaignLogStatItems,
+  getCampaignReadinessItems,
+  getCampaignReadinessLabel,
+  getCampaignStatusLabel,
+  getCampaignStatusVariant,
+  getProviderEventsDetail,
+  getProviderEventsLabel,
+  getRecipientEmptyState,
+  getRecipientSummaryItems,
+  getRuntimeSafetyItems,
+  getSesPendingWarning,
+} from "../../../components/shared/campaignUi";
 import { StatusBadge } from "../../../components/ui/StatusBadge";
 import {
   getAdminCampaigns,
@@ -10,10 +25,6 @@ import {
 import type {
   AdminCampaignReadinessSummary,
   AdminCampaignSummary,
-  CampaignLogsSummary,
-  CampaignRecipientsSummary,
-  CampaignStatus,
-  ProviderRuntimeSummary,
 } from "../../../types";
 
 export const dynamic = "force-dynamic";
@@ -31,42 +42,6 @@ function formatDateLabel(value: string): string {
   }).format(date);
 }
 
-function getCampaignStatusLabel(status: CampaignStatus): string {
-  switch (status) {
-    case "ready":
-      return "Pronta";
-    case "running":
-      return "In corso";
-    case "paused":
-      return "In pausa";
-    case "blocked":
-      return "Bloccata";
-    case "draft":
-      return "Bozza";
-    case "completed":
-      return "Completata";
-    case "failed":
-      return "Errore";
-    default:
-      return "Stato";
-  }
-}
-
-function getCampaignStatusVariant(status: CampaignStatus) {
-  switch (status) {
-    case "ready":
-    case "running":
-      return "success" as const;
-    case "paused":
-      return "warning" as const;
-    case "blocked":
-    case "failed":
-      return "danger" as const;
-    default:
-      return "neutral" as const;
-  }
-}
-
 function buildCampaignStats(campaigns: AdminCampaignSummary[]) {
   return {
     total: campaigns.length,
@@ -76,66 +51,6 @@ function buildCampaignStats(campaigns: AdminCampaignSummary[]) {
     blocked: campaigns.filter((campaign) => campaign.status === "blocked").length,
     missingSubject: campaigns.filter((campaign) => !campaign.subject).length,
   };
-}
-
-function formatCount(value: number): string {
-  return value.toLocaleString("it-IT");
-}
-
-function buildRecipientNotes(recipients: CampaignRecipientsSummary): string[] {
-  const notes = [
-    recipients.invalid > 0
-      ? `${formatCount(recipients.invalid)} email non valide`
-      : null,
-    recipients.suppressed > 0
-      ? `${formatCount(recipients.suppressed)} contatti soppressi`
-      : null,
-    recipients.blocked > 0 ? `${formatCount(recipients.blocked)} bloccati` : null,
-  ].filter((note): note is string => Boolean(note));
-
-  return notes.length > 0 ? notes : ["Nessun blocco destinatario nei dati backend."];
-}
-
-function buildProviderEventsLabel(logs: CampaignLogsSummary): string {
-  if (logs.providerEventsAvailable) {
-    return "Eventi provider disponibili";
-  }
-
-  if (
-    logs.queued === 0 &&
-    logs.sent === 0 &&
-    logs.opened === 0 &&
-    logs.clicked === 0 &&
-    logs.bounced === 0 &&
-    logs.complained === 0 &&
-    logs.unsubscribed === 0
-  ) {
-    return "Nessun evento provider ancora registrato";
-  }
-
-  return "Eventi provider non disponibili per questa campagna";
-}
-
-function buildRuntimeLabel(runtime?: ProviderRuntimeSummary | null): string {
-  if (!runtime) {
-    return "Provider mode unavailable";
-  }
-
-  return runtime.providerModeLabel || "Provider mode unavailable";
-}
-
-function buildSesValidationLabel(runtime?: ProviderRuntimeSummary | null): string {
-  if (!runtime) {
-    return "Provider mode unavailable";
-  }
-
-  if (runtime.sesLiveValidationStatus === "pending") {
-    return "SES configured but live validation pending";
-  }
-
-  return runtime.emailProvider === "ses"
-    ? "SES live validation pending"
-    : "Non richiesta per il provider corrente";
 }
 
 async function loadCampaignReadiness(
@@ -161,6 +76,89 @@ async function loadCampaignReadiness(
   );
 
   return Object.fromEntries(entries);
+}
+
+function renderAdminReadiness(readiness: AdminCampaignReadinessSummary) {
+  const blockedReasons = getBlockedReasonItems(readiness.recipients);
+  const recipientEmptyState = getRecipientEmptyState(readiness.recipients);
+  const sesPendingWarning = getSesPendingWarning(readiness.runtime);
+  const backendWarnings = [...readiness.blockingErrors, ...readiness.warnings];
+
+  return (
+    <>
+      <dl className="admin-record-grid">
+        <div>
+          <dt>Prontezza</dt>
+          <dd>{getCampaignReadinessLabel(readiness.campaign)}</dd>
+        </div>
+        {getCampaignReadinessItems(readiness.campaign).map((item) => (
+          <div key={item.label}>
+            <dt>{item.label}</dt>
+            <dd>{item.value}</dd>
+          </div>
+        ))}
+        <div>
+          <dt>Sicurezza invio</dt>
+          <dd>
+            {readiness.canSend
+              ? "Backend consente invio controllato"
+              : "Invio bloccato dal backend"}
+          </dd>
+        </div>
+        {getRuntimeSafetyItems(readiness.runtime).map((item) => (
+          <div key={item.label}>
+            <dt>{item.label}</dt>
+            <dd>{item.value}</dd>
+          </div>
+        ))}
+        <div>
+          <dt>Eventi provider</dt>
+          <dd>{getProviderEventsLabel(readiness.logs)}</dd>
+        </div>
+      </dl>
+
+      <dl className="admin-record-grid">
+        {getRecipientSummaryItems(readiness.recipients).map((item) => (
+          <div key={item.label}>
+            <dt>{item.label}</dt>
+            <dd>{item.value}</dd>
+          </div>
+        ))}
+        {getCampaignLogStatItems(readiness.logs).map((item) => (
+          <div key={item.label}>
+            <dt>{item.label}</dt>
+            <dd>{item.value}</dd>
+          </div>
+        ))}
+        <div>
+          <dt>Invii bloccati</dt>
+          <dd>{formatCampaignCount(readiness.blockedSends.total)}</dd>
+        </div>
+      </dl>
+
+      <p className="admin-record-row__note">
+        {blockedReasons.length > 0
+          ? `Motivi blocco destinatari: ${blockedReasons
+              .map((item) => `${item.label.toLowerCase()} ${item.value}`)
+              .join(", ")}.`
+          : "Nessun blocco destinatario esposto dal backend."}
+      </p>
+      {recipientEmptyState ? (
+        <p className="admin-record-row__note">{recipientEmptyState}</p>
+      ) : null}
+      <p className="admin-record-row__note">
+        {getProviderEventsDetail(readiness.logs)}
+      </p>
+      {sesPendingWarning ? (
+        <p className="admin-record-row__note">{sesPendingWarning}</p>
+      ) : null}
+      <p className="admin-record-row__note">
+        {backendWarnings.length > 0
+          ? backendWarnings.join(" / ")
+          : "Nessun warning dal backend."}
+      </p>
+    </>
+  );
 }
 
 export default async function AdminCampaignsPage() {
@@ -220,7 +218,7 @@ export default async function AdminCampaignsPage() {
             <section className="admin-page-stat-grid" aria-label="Statistiche campagne admin">
               {[
                 { label: "Campagne totali", value: stats?.total ?? 0 },
-                { label: "Ready / running", value: stats?.active ?? 0 },
+                { label: "Pronte / in corso", value: stats?.active ?? 0 },
                 { label: "Bloccate", value: stats?.blocked ?? 0 },
                 { label: "Oggetto mancante", value: stats?.missingSubject ?? 0 },
               ].map((stat) => (
@@ -233,7 +231,7 @@ export default async function AdminCampaignsPage() {
 
             <AdminSurface
               title="Panoramica campagne cliente"
-              description="Ogni riga mostra il cliente proprietario, lo stato reale del record e un piccolo segnale operativo disponibile nel DB."
+              description="Ogni riga mostra proprietario, prontezza, destinatari, sicurezza invio e metriche reali lette dai read model backend."
               aside={
                 <span className="admin-surface__eyebrow">
                   {result.campaigns.length.toLocaleString()} elementi
@@ -246,134 +244,66 @@ export default async function AdminCampaignsPage() {
                 </div>
               ) : (
                 <div className="admin-record-list">
-                  {result.campaigns.map((campaign) => (
-                    <article key={campaign.id} className="admin-record-row">
-                      <div className="admin-record-row__primary">
-                        <div className="admin-record-row__copy">
-                          <strong>{campaign.name}</strong>
-                          <span>{campaign.clientName}</span>
-                        </div>
-                        <StatusBadge
-                          label={getCampaignStatusLabel(campaign.status)}
-                          variant={getCampaignStatusVariant(campaign.status)}
-                        />
-                      </div>
+                  {result.campaigns.map((campaign) => {
+                    const readiness = result.campaignReadiness[campaign.id];
 
-                      <dl className="admin-record-grid">
-                        <div>
-                          <dt>Campaign ID</dt>
-                          <dd>{campaign.id}</dd>
+                    return (
+                      <article key={campaign.id} className="admin-record-row">
+                        <div className="admin-record-row__primary">
+                          <div className="admin-record-row__copy">
+                            <strong>{campaign.name}</strong>
+                            <span>
+                              {campaign.clientName} / {campaign.clientEmail}
+                            </span>
+                          </div>
+                          <StatusBadge
+                            label={getCampaignStatusLabel(campaign.status)}
+                            variant={getCampaignStatusVariant(campaign.status)}
+                          />
                         </div>
-                        <div>
-                          <dt>Client ID</dt>
-                          <dd>{campaign.clientId}</dd>
-                        </div>
-                        <div>
-                          <dt>Email cliente</dt>
-                          <dd>{campaign.clientEmail}</dd>
-                        </div>
-                        <div>
-                          <dt>Invii bloccati</dt>
-                          <dd>{campaign.blockedSendsCount.toLocaleString()}</dd>
-                        </div>
-                        <div>
-                          <dt>Creata</dt>
-                          <dd>{formatDateLabel(campaign.createdAt)}</dd>
-                        </div>
-                        <div>
-                          <dt>Aggiornata</dt>
-                          <dd>{formatDateLabel(campaign.updatedAt)}</dd>
-                        </div>
-                      </dl>
 
-                      <p className="admin-record-row__note">
-                        {campaign.subject ||
-                          "Oggetto non disponibile nel record corrente."}
-                      </p>
+                        <dl className="admin-record-grid">
+                          <div>
+                            <dt>Campaign ID</dt>
+                            <dd>{campaign.id}</dd>
+                          </div>
+                          <div>
+                            <dt>Client ID</dt>
+                            <dd>{campaign.clientId}</dd>
+                          </div>
+                          <div>
+                            <dt>Oggetto</dt>
+                            <dd>
+                              {campaign.subject?.trim()
+                                ? campaign.subject
+                                : "Oggetto non disponibile"}
+                            </dd>
+                          </div>
+                          <div>
+                            <dt>Creata</dt>
+                            <dd>{formatDateLabel(campaign.createdAt)}</dd>
+                          </div>
+                          <div>
+                            <dt>Aggiornata</dt>
+                            <dd>{formatDateLabel(campaign.updatedAt)}</dd>
+                          </div>
+                          <div>
+                            <dt>Blocchi registrati</dt>
+                            <dd>{formatCampaignCount(campaign.blockedSendsCount)}</dd>
+                          </div>
+                        </dl>
 
-                      {(() => {
-                        const readiness = result.campaignReadiness[campaign.id];
-
-                        if (!readiness || readiness instanceof Error) {
-                          return (
-                            <p className="admin-record-row__note">
-                              Read model backend non disponibile:{" "}
-                              {readiness?.message ?? "pending backend data"}.
-                            </p>
-                          );
-                        }
-
-                        return (
-                          <dl className="admin-record-grid">
-                            <div>
-                              <dt>Readiness</dt>
-                              <dd>
-                                Content {readiness.campaign.contentReady ? "ok" : "pending"} ·
-                                Contatti {readiness.campaign.contactsReady ? "ok" : "pending"} ·
-                                Review {readiness.campaign.reviewReady ? "ok" : "pending"}
-                              </dd>
-                            </div>
-                            <div>
-                              <dt>Send safety</dt>
-                              <dd>
-                                {readiness.canSend
-                                  ? "Backend consente invio controllato"
-                                  : "Bloccato dal backend"}
-                              </dd>
-                            </div>
-                            <div>
-                              <dt>Destinatari</dt>
-                              <dd>
-                                {formatCount(readiness.recipients.eligible)} eleggibili /{" "}
-                                {formatCount(readiness.recipients.total)} totali
-                              </dd>
-                            </div>
-                            <div>
-                              <dt>Blocked reasons</dt>
-                              <dd>{buildRecipientNotes(readiness.recipients).join(", ")}</dd>
-                            </div>
-                            <div>
-                              <dt>Provider events</dt>
-                              <dd>{buildProviderEventsLabel(readiness.logs)}</dd>
-                            </div>
-                            <div>
-                              <dt>Stats backend</dt>
-                              <dd>
-                                queued {formatCount(readiness.logs.queued)} · sent{" "}
-                                {formatCount(readiness.logs.sent)} · bounce{" "}
-                                {formatCount(readiness.logs.bounced)} · unsubscribe{" "}
-                                {formatCount(readiness.logs.unsubscribed)}
-                              </dd>
-                            </div>
-                            <div>
-                              <dt>Email sending</dt>
-                              <dd>
-                                {readiness.runtime.emailSendingEnabled
-                                  ? "Abilitato dal backend"
-                                  : "Sending disabled"}
-                              </dd>
-                            </div>
-                            <div>
-                              <dt>Provider mode</dt>
-                              <dd>{buildRuntimeLabel(readiness.runtime)}</dd>
-                            </div>
-                            <div>
-                              <dt>SES live validation</dt>
-                              <dd>{buildSesValidationLabel(readiness.runtime)}</dd>
-                            </div>
-                            <div>
-                              <dt>Warnings</dt>
-                              <dd>
-                                {[...readiness.blockingErrors, ...readiness.warnings].join(
-                                  " · ",
-                                ) || "Nessun warning dal backend."}
-                              </dd>
-                            </div>
-                          </dl>
-                        );
-                      })()}
-                    </article>
-                  ))}
+                        {!readiness || readiness instanceof Error ? (
+                          <p className="admin-record-row__note">
+                            Dati campagna non disponibili dal backend:{" "}
+                            {readiness?.message ?? "read model pending"}.
+                          </p>
+                        ) : (
+                          renderAdminReadiness(readiness)
+                        )}
+                      </article>
+                    );
+                  })}
                 </div>
               )}
             </AdminSurface>

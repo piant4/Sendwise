@@ -6,7 +6,9 @@ from typing import Any, Optional
 
 import jwt
 import pytest
+import httpx
 from cryptography.hazmat.primitives.asymmetric import rsa
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
 from app.core.auth import get_jwks_client
@@ -32,6 +34,7 @@ from app.services.client_access import (
     ClerkInvitationGateway,
     ClerkInvitationResult,
     ClientAccessService,
+    HttpClerkInvitationGateway,
     get_client_access_service,
 )
 from app.services.clients import ClientsService, get_clients_service
@@ -1877,6 +1880,7 @@ def test_platform_admin_can_create_invite_with_email_only(
     payload = response.json()
     assert payload["client"]["email"] == "solo.email@example.test"
     assert payload["client"]["personal_name"] is None
+    assert payload["client"]["name"] == "solo.email@example.test"
     assert "company_name" not in payload["client"]
     created_client = client_repository.get_by_id(payload["client"]["id"])
     created_access = access_repository.get_by_client_id(payload["client"]["id"])
@@ -1885,6 +1889,48 @@ def test_platform_admin_can_create_invite_with_email_only(
     assert created_access.email == "solo.email@example.test"
     assert "password" not in created_client.model_dump()
     assert "password" not in created_access.model_dump()
+
+
+def test_clerk_invite_requires_configured_secret(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("CLERK_SECRET_KEY", " ")
+    get_settings.cache_clear()
+    gateway = HttpClerkInvitationGateway(get_settings())
+
+    with pytest.raises(HTTPException) as error:
+        gateway.create_invitation(
+            email="client@example.test",
+            redirect_url="http://localhost:3000/auth/redirect",
+        )
+
+    assert error.value.status_code == 500
+    assert error.value.detail == "CLERK_SECRET_KEY is required for client invitations."
+
+
+def test_clerk_invite_failure_returns_controlled_backend_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("CLERK_SECRET_KEY", "configured-secret")
+    get_settings.cache_clear()
+
+    def fake_post(*args: object, **kwargs: object) -> httpx.Response:
+        return httpx.Response(401, json={"errors": [{"message": "bad secret"}]})
+
+    monkeypatch.setattr("app.services.client_access.httpx.post", fake_post)
+    gateway = HttpClerkInvitationGateway(get_settings())
+
+    with pytest.raises(HTTPException) as error:
+        gateway.create_invitation(
+            email="client@example.test",
+            redirect_url="http://localhost:3000/auth/redirect",
+        )
+
+    assert error.value.status_code == 502
+    assert (
+        error.value.detail
+        == "Backend Clerk credentials are invalid for client invitations."
+    )
 
 
 def test_platform_admin_invite_rejects_company_name_field(
@@ -1960,7 +2006,7 @@ def test_invite_endpoint_reuses_fixed_portal_slug_on_reinvite(
         status="invited",
         invitation_status="pending",
     )
-    _, access_repository, gateway, _ = install_test_dependencies(
+    client_repository, access_repository, gateway, _ = install_test_dependencies(
         client_records=[existing_client],
         access_records=[existing_access],
     )
@@ -1987,6 +2033,9 @@ def test_invite_endpoint_reuses_fixed_portal_slug_on_reinvite(
     updated_access = access_repository.get_by_client_id(existing_client.id)
     assert updated_access is not None
     assert updated_access.portal_slug == first_slug
+    assert [record.id for record in client_repository.list_clients()] == [
+        existing_client.id
+    ]
 
 
 def test_admin_client_detail_and_limits_update_work(

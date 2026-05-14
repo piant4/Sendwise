@@ -306,13 +306,16 @@ class PostgresClientRepository(ClientRepository):
         personal_name: Optional[str],
         status: str,
     ) -> ClientRecord:
-        query = """
-            INSERT INTO clients (
-                email,
-                personal_name,
-                status
-            )
-            VALUES (%s, %s, %s)
+        has_legacy_name_query = """
+            SELECT EXISTS (
+                SELECT 1
+                FROM pg_attribute
+                WHERE attrelid = 'clients'::regclass
+                    AND attname = 'name'
+                    AND NOT attisdropped
+            ) AS has_legacy_name
+        """
+        base_returning_clause = """
             RETURNING
                 id::text AS id,
                 email,
@@ -328,7 +331,42 @@ class PostgresClientRepository(ClientRepository):
 
         with postgres_connection(self._settings) as connection:
             with connection.cursor() as cursor:
-                cursor.execute(query, (email, personal_name, status))
+                cursor.execute(has_legacy_name_query)
+                schema_row = cursor.fetchone() or {}
+                has_legacy_name = bool(schema_row.get("has_legacy_name"))
+
+                if has_legacy_name:
+                    query = f"""
+                        INSERT INTO clients (
+                            email,
+                            personal_name,
+                            name,
+                            status
+                        )
+                        VALUES (%s, %s, %s, %s)
+                        {base_returning_clause}
+                    """
+                    cursor.execute(
+                        query,
+                        (
+                            email,
+                            personal_name,
+                            personal_name or email,
+                            status,
+                        ),
+                    )
+                else:
+                    query = f"""
+                        INSERT INTO clients (
+                            email,
+                            personal_name,
+                            status
+                        )
+                        VALUES (%s, %s, %s)
+                        {base_returning_clause}
+                    """
+                    cursor.execute(query, (email, personal_name, status))
+
                 row = cursor.fetchone()
             connection.commit()
 

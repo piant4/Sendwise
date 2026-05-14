@@ -33,6 +33,10 @@ function getSafeInviteErrorMessage(error: unknown): string {
       return "La sessione admin non e valida per creare un nuovo invito cliente.";
     }
 
+    if (error.status != null && error.status >= 500) {
+      return "Il backend Sendwise ha risposto con un errore controllato durante l'invito. Riprova o controlla i log backend.";
+    }
+
     if (error.detail.trim()) {
       return error.detail;
     }

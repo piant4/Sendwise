@@ -119,7 +119,7 @@ export function AdminCampaignReviewPanel({
           </p>
         </div>
         <StatusBadge
-          label={state.reviewReady ? "Review pronta" : "Review non pronta"}
+          label={state.reviewReady ? "Pronto" : "Non pronto"}
           variant={state.reviewReady ? "success" : "neutral"}
         />
       </div>
@@ -153,11 +153,11 @@ export function AdminCampaignReviewPanel({
         </div>
         <div>
           <dt>Destinatari</dt>
-          <dd>{state.contactsReady ? "Pronti" : "Non pronti"}</dd>
+          <dd>{state.contactsReady ? "Pronto" : "Non pronto"}</dd>
         </div>
         <div>
           <dt>Review</dt>
-          <dd>{state.reviewReady ? "Pronta" : "In attesa"}</dd>
+          <dd>{state.reviewReady ? "Pronto" : "Non pronto"}</dd>
         </div>
         <div>
           <dt>Step backend</dt>
@@ -191,7 +191,7 @@ export function AdminCampaignReviewPanel({
       <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginTop: 18 }}>
         <Button
           type="button"
-          size="lg"
+          size="default"
           className="admin-topbar-action admin-topbar-action--primary"
           disabled={isSubmitting}
           onClick={handleReview}

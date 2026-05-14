@@ -291,16 +291,22 @@ export default async function AdminCampaignDetailPage({
   return (
     <main className="shell">
       <section className="admin-page-shell">
-        <header
-          className="admin-page-header"
-          style={{
-            alignItems: "start",
-            display: "flex",
-            flexWrap: "wrap",
-            justifyContent: "space-between",
-          }}
-        >
+        <header className="admin-page-header">
           <div>
+            <Button
+              asChild
+              variant="ghost"
+              size="sm"
+              style={{
+                color: "var(--sw-text-muted)",
+                margin: "0 0 10px -8px",
+              }}
+            >
+              <Link href="/admin/campaigns">
+                <ArrowLeft aria-hidden="true" size={14} />
+                Torna alle campagne
+              </Link>
+            </Button>
             <p className="admin-surface__eyebrow">Admin / Campagne</p>
             <h1 className="admin-page-title">
               {"campaign" in result ? result.campaign.name : "Campagna"}
@@ -326,17 +332,6 @@ export default async function AdminCampaignDetailPage({
                 variant={getCampaignStatusVariant(result.campaign.status)}
               />
             ) : null}
-            <Button
-              asChild
-              variant="outline"
-              size="lg"
-              className="admin-topbar-action admin-topbar-action--secondary"
-            >
-              <Link href="/admin/campaigns">
-                <ArrowLeft aria-hidden="true" className="admin-topbar-action__icon" />
-                Torna alle campagne
-              </Link>
-            </Button>
           </div>
         </header>
 
@@ -378,22 +373,14 @@ export default async function AdminCampaignDetailPage({
               renderSummaryStrip(result.campaign, result.summary)
             )}
 
-            <div
-              style={{
-                alignItems: "start",
-                display: "flex",
-                flexWrap: "wrap",
-                gap: 20,
-              }}
-            >
-              <div style={{ flex: "1 1 260px", minWidth: 0 }}>
-                <AdminCampaignSetupProgress
-                  campaign={result.campaign}
-                  contacts={result.contacts instanceof Error ? null : result.contacts}
-                  summary={result.summary instanceof Error ? null : result.summary}
-                />
-              </div>
-              <div style={{ display: "grid", flex: "999 1 520px", gap: 20, minWidth: 0 }}>
+            <AdminCampaignSetupProgress
+              campaign={result.campaign}
+              contacts={result.contacts instanceof Error ? null : result.contacts}
+              summary={result.summary instanceof Error ? null : result.summary}
+            />
+
+            <div style={{ display: "grid", gap: 20, justifyItems: "center" }}>
+              <div style={{ display: "grid", gap: 20, maxWidth: 980, width: "100%" }}>
                 <AdminCampaignSetupForm campaign={result.campaign} />
 
                 <AdminCampaignContactsPanel

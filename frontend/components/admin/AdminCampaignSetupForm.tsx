@@ -228,7 +228,7 @@ export function AdminCampaignSetupForm({
       <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginTop: 22 }}>
         <Button
           type="submit"
-          size="lg"
+          size="default"
           className="admin-topbar-action admin-topbar-action--primary"
           disabled={isSubmitting}
         >

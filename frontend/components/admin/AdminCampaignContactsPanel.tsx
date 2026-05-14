@@ -154,7 +154,7 @@ export function AdminCampaignContactsPanel({
           </p>
         </div>
         <StatusBadge
-          label={contacts?.contactsReady ? "Pronti" : "Non pronti"}
+          label={contacts?.contactsReady ? "Pronto" : "Non pronto"}
           variant={contacts?.contactsReady ? "success" : "neutral"}
         />
       </div>
@@ -211,7 +211,7 @@ export function AdminCampaignContactsPanel({
         <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginTop: 14 }}>
           <Button
             type="submit"
-            size="lg"
+            size="default"
             className="admin-topbar-action admin-topbar-action--primary"
             disabled={isSubmitting || parsedEmails.length === 0}
           >
@@ -224,10 +224,14 @@ export function AdminCampaignContactsPanel({
           </Button>
           <Button
             type="button"
-            size="lg"
+            size="default"
             variant="outline"
             className="admin-topbar-action admin-topbar-action--secondary"
             disabled
+            style={{
+              background: "rgba(244, 246, 242, 0.82)",
+              color: "var(--sw-text-muted)",
+            }}
           >
             <Upload aria-hidden="true" className="admin-topbar-action__icon" />
             Import CSV non ancora disponibile

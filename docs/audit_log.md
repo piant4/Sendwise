@@ -2561,3 +2561,36 @@ Checks referenced:
 
 Scope confirmation:
 - No backend send/dispatch logic, DB schema, listmonk integration, n8n files, local env files, secrets, fake metrics, or direct frontend listmonk access were added.
+
+## Milestone 14.7 - Campaign Setup Buttons And Horizontal Stepper Polish
+
+Date: 2026-05-14
+Branch: develop
+
+Verified state:
+- Admin campaign setup now uses a horizontal four-step setup stepper for Setup, Contenuto, Destinatari, and Review instead of the previous sticky vertical guided setup card.
+- The stepper displays backend-owned readiness and current-step state only: `content_ready`, `contacts_ready`, `review_ready`, `current_step`, and the existing recipient summary when present.
+- The campaign back action is a compact secondary navigation control near the header breadcrumb/title instead of a large hero action.
+- Setup, contacts, review, and disabled CSV controls use consistent button sizing and page-level visual roles.
+
+Known limits:
+- SES live validation remains pending.
+- Import CSV remains disabled and no send, simulate-send, dispatch, or SES enablement control was added.
+
+Checks executed:
+- `git diff --check`
+- Docker frontend builder `npm run lint`
+- Docker frontend builder `npm run build`
+- `bash scripts/audit.sh` failed under WSL because no WSL distro is installed.
+- Git Bash `scripts/audit.sh`
+- `bash scripts/smoke_test.sh` failed under WSL because no WSL distro is installed.
+- Git Bash `scripts/smoke_test.sh`
+- `docker compose config`
+- `docker compose -f docker-compose.yml -f docker-compose.dev.yml config`
+- Frontend direct-listmonk scan
+- Touched-file fake delivered/open/click metric and send/dispatch wording scan
+- Changed-file env/secret/config scope scan
+
+Scope confirmation:
+- No backend, schema, API contract, send/dispatch, Deliverability Guard, listmonk integration, local env, or secret files were changed.
+- No fake delivered, open, click, click-rate, queued, sent-attempted, or provider-event metric claims were added.

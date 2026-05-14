@@ -13,8 +13,61 @@ export interface LabelValueItem {
   value: string;
 }
 
+export interface ReadableBackendReason {
+  label: string;
+  raw: string;
+  isKnown: boolean;
+}
+
+const BACKEND_REASON_LABELS: Array<[RegExp, string]> = [
+  [/^Campaign has no associated contacts\.$/i, "Nessun contatto associato"],
+  [/^Campaign has no eligible contacts to send\.$/i, "Nessun destinatario idoneo"],
+  [
+    /^EMAIL_SENDING_ENABLED is not exactly true; real dispatch is disabled\.$/i,
+    "Invio reale disattivato",
+  ],
+  [/all recipients blocked/i, "Tutti i destinatari sono bloccati"],
+  [/^Campaign content is not ready\.$/i, "Contenuto campagna da completare"],
+  [/^Campaign status .+ is not sendable\.$/i, "Stato campagna non inviabile"],
+  [/^Only ready or running campaigns may dispatch\.$/i, "Campagna non pronta all'invio"],
+  [/^Client max_campaigns limit is exceeded\.$/i, "Limite campagne cliente superato"],
+  [
+    /^Campaign eligible contact count exceeds email_limit_per_campaign\.$/i,
+    "Destinatari oltre il limite per campagna",
+  ],
+  [
+    /^Campaign eligible contact count exceeds campaign slot max_emails\.$/i,
+    "Destinatari oltre il limite dello slot",
+  ],
+  [
+    /^Campaign contains non-sendable contacts and partial dispatch is not supported\.$/i,
+    "Sono presenti destinatari non inviabili",
+  ],
+];
+
 export function formatCampaignCount(value: number): string {
   return value.toLocaleString("it-IT");
+}
+
+export function getReadableBackendReason(reason: string): ReadableBackendReason {
+  const normalizedReason = reason.trim();
+  const knownReason = BACKEND_REASON_LABELS.find(([pattern]) =>
+    pattern.test(normalizedReason),
+  );
+
+  if (knownReason) {
+    return {
+      label: knownReason[1],
+      raw: normalizedReason,
+      isKnown: true,
+    };
+  }
+
+  return {
+    label: "Verifica operativa richiesta",
+    raw: normalizedReason || "Reason non disponibile",
+    isKnown: false,
+  };
 }
 
 export function getCampaignStatusLabel(status: CampaignStatus): string {
@@ -113,7 +166,7 @@ export function getRecipientEmptyState(
   recipients: CampaignRecipientsSummary,
 ): string | null {
   if (recipients.total === 0) {
-    return "Nessun contatto associato alla campagna.";
+    return "Nessun contatto associato";
   }
 
   if (recipients.eligible === 0 && recipients.blocked === recipients.total) {
@@ -207,13 +260,6 @@ export function getRuntimeSafetyItems(
           : "SES configurato",
     });
   }
-
-  items.push({
-    label: "Eventi provider",
-    value: runtime.providerEventsAvailable
-      ? "Disponibili"
-      : "Eventi provider non ancora disponibili",
-  });
 
   return items;
 }

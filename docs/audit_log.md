@@ -1,5 +1,43 @@
 # Audit Log
 
+## Milestone 15 - Admin Campaign Creation Wizard And Campaign Index Simplification
+
+Date: 2026-05-14
+
+Implemented:
+- Added active `/admin/campaigns/new` admin campaign creation route.
+- Added a compact three-step campaign wizard: client selection, campaign details, and summary.
+- Wired campaign creation through the backend-backed `POST /admin/clients/{client_id}/campaigns` shortcut via `frontend/lib/api.ts`.
+- Simplified `/admin/campaigns` into a scannable campaign index with campaign name, client, subject, status, readiness, recipients, backend metrics, updated date, and compact warning chips.
+- Mapped known backend readiness/blocking reasons to product-friendly Italian labels and moved raw technical reason text into collapsed admin technical details.
+- Removed the disabled "Nuova campagna" state and the unavailable-creation copy.
+- Consolidated provider/event state so each campaign row renders one provider event label.
+
+Files touched:
+- `frontend/app/admin/campaigns/page.tsx`
+- `frontend/app/admin/campaigns/new/page.tsx`
+- `frontend/components/admin/AdminCampaignCreateWizard.tsx`
+- `frontend/components/shared/campaignUi.ts`
+- `frontend/lib/api.ts`
+- `frontend/types/index.ts`
+- `docs/audit_log.md`
+
+Verified:
+- `git diff --check` passed.
+- `docker run --rm sendwise-frontend-builder npm run lint` passed.
+- `docker compose build frontend` passed and completed Next.js production build/type check.
+- Scanned touched frontend files for direct listmonk calls and fake delivered/open/click-rate claims; no new direct listmonk calls or fake delivery claims found.
+- `bash scripts/audit.sh` passed via Git Bash login shell.
+- `bash scripts/smoke_test.sh` passed via Git Bash login shell.
+- `docker compose config` passed.
+
+Known limits:
+- SES live validation remains pending.
+- Sending remains disabled and no send/dispatch behavior was changed.
+- No database schema changes were made.
+- No backend code changes were made.
+- Admin create wizard uses only backend-supported fields: client, name, and subject.
+
 ## Milestone 14.1 - Campaign UI Repair And Create Campaign CTA
 
 Date: 2026-05-14

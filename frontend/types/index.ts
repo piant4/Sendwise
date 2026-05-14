@@ -288,6 +288,32 @@ export interface AdminCampaignSummary {
   blockedSendsCount: number;
 }
 
+export interface AdminCampaignCreateInput {
+  clientId: string;
+  name: string;
+  subject: string;
+}
+
+export interface AdminCampaignDetail {
+  campaignId: string;
+  clientId: string;
+  clientName: string;
+  clientStatus: string;
+  name: string;
+  status: CampaignStatus;
+  subject?: string | null;
+  previewText?: string | null;
+  bodyHtml?: string | null;
+  bodyText?: string | null;
+  currentStep: string;
+  campaignSlotId?: string | null;
+  contentReady: boolean;
+  contactsReady: boolean;
+  reviewReady: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface CampaignSummaryItem {
   id: string;
   clientId: string;

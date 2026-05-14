@@ -1,5 +1,7 @@
 import type {
   AdminBlockedSendItem,
+  AdminCampaignCreateInput,
+  AdminCampaignDetail,
   AdminCampaignReadinessSummary,
   AdminCampaignSummary,
   AdminClientInviteResponse,
@@ -145,6 +147,26 @@ interface AdminCampaignSummaryApiResponse extends CampaignReadModelApiResponse {
   can_send: boolean;
   blocking_errors: string[];
   warnings: string[];
+}
+
+interface AdminCampaignDetailApiResponse {
+  campaign_id: string;
+  client_id: string;
+  client_name: string;
+  client_status: string;
+  name: string;
+  status: Campaign["status"];
+  subject?: string | null;
+  preview_text?: string | null;
+  body_html?: string | null;
+  body_text?: string | null;
+  current_step: string;
+  campaign_slot_id?: string | null;
+  content_ready: boolean;
+  contacts_ready: boolean;
+  review_ready: boolean;
+  created_at: string;
+  updated_at: string;
 }
 
 interface ClientCampaignStatsApiResponse {
@@ -554,6 +576,17 @@ async function fetchAdminCampaignSummary(
   );
 }
 
+async function postAdminClientCampaign(
+  clientId: string,
+  payload: Omit<AdminCampaignCreateInput, "clientId">,
+  accessToken?: string | null,
+): Promise<AdminCampaignDetailApiResponse> {
+  return apiPost<
+    AdminCampaignDetailApiResponse,
+    Omit<AdminCampaignCreateInput, "clientId">
+  >(`/admin/clients/${clientId}/campaigns`, payload, accessToken);
+}
+
 async function fetchAdminBlockedSends(
   accessToken?: string | null,
 ): Promise<AdminBlockedSendApiItem[]> {
@@ -838,6 +871,30 @@ function mapAdminCampaignSummary(
     createdAt: payload.created_at,
     updatedAt: payload.updated_at,
     blockedSendsCount: payload.blocked_sends_count,
+  };
+}
+
+function mapAdminCampaignDetail(
+  payload: AdminCampaignDetailApiResponse,
+): AdminCampaignDetail {
+  return {
+    campaignId: payload.campaign_id,
+    clientId: payload.client_id,
+    clientName: payload.client_name,
+    clientStatus: payload.client_status,
+    name: payload.name,
+    status: payload.status,
+    subject: payload.subject ?? null,
+    previewText: payload.preview_text ?? null,
+    bodyHtml: payload.body_html ?? null,
+    bodyText: payload.body_text ?? null,
+    currentStep: payload.current_step,
+    campaignSlotId: payload.campaign_slot_id ?? null,
+    contentReady: payload.content_ready,
+    contactsReady: payload.contacts_ready,
+    reviewReady: payload.review_ready,
+    createdAt: payload.created_at,
+    updatedAt: payload.updated_at,
   };
 }
 
@@ -1174,6 +1231,21 @@ export function getAdminCampaignSummary(
   return fetchAdminCampaignSummary(campaignId, accessToken).then(
     mapAdminCampaignReadinessSummary,
   );
+}
+
+export function createAdminClientCampaign(
+  payload: AdminCampaignCreateInput,
+  accessToken?: string | null,
+): Promise<AdminCampaignDetail> {
+  assertAdminBackendEnabled(`/admin/clients/${payload.clientId}/campaigns`);
+  return postAdminClientCampaign(
+    payload.clientId,
+    {
+      name: payload.name,
+      subject: payload.subject,
+    },
+    accessToken,
+  ).then(mapAdminCampaignDetail);
 }
 
 export function getAdminBlockedSends(

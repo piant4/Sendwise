@@ -1,5 +1,39 @@
 # Audit Log
 
+## Milestone 14.1 - Campaign UI Repair And Create Campaign CTA
+
+Date: 2026-05-14
+Branch: develop
+
+Implemented state:
+- Repaired the admin and client campaign overview after screenshot review so campaigns render as product cards with clearer hierarchy for status, readiness, recipients, runtime safety, provider events, honest log counts, warnings, and compact blocked-recipient reasons.
+- Added the admin `Nuova campagna` CTA in the campaign page header. The CTA is disabled with the visible copy `Creazione campagna non ancora disponibile` because no existing frontend creation route/page is present in the current admin app.
+- Hid raw campaign/client IDs from the main admin overview and moved them into a native collapsed technical details section. The client campaign UI does not show raw IDs.
+- Removed duplicate/redundant provider/readiness presentation from the campaign overview and kept queued/sent-attempted/bounced/unsubscribed/blocked counts backend-backed only.
+
+Files touched:
+- `frontend/app/admin/campaigns/page.tsx`
+- `frontend/app/c/[portalSlug]/campaigns/page.tsx`
+- `frontend/components/shared/campaignUi.ts`
+- `docs/audit_log.md`
+
+Known limits:
+- SES live validation 12.1 remains pending; the UI does not claim SES delivery validation.
+- Campaign creation backend endpoints exist in the contract/backend, but no admin frontend creation route/page was present in this repair scope.
+
+Scope confirmation:
+- No backend dispatch logic, backend services, database schema, direct frontend listmonk access, send action, fake metric, local env file, or secret was changed.
+
+Checks run:
+- `git diff --check` passed.
+- Touched frontend file scan found no direct listmonk calls.
+- Touched frontend file scan found no fake delivered/open-rate/click-rate claims; `opened`/`clicked` remain only as zero-value provider-event presence checks in the shared helper.
+- Docker frontend builder `npm run lint` passed with the current touched frontend files and current API/type/mock boundary mounted into the builder image.
+- Docker frontend builder `npm run build` passed with the current touched frontend files and current API/type/mock boundary mounted into the builder image.
+- `bash scripts/audit.sh` passed through Git Bash login shell.
+- `bash scripts/smoke_test.sh` passed through Git Bash login shell.
+- `docker compose config` passed; Docker printed local config access warnings for `C:\Users\Jacop\.docker\config.json`.
+
 ## Initial Entry
 
 Date: 2026-05-05

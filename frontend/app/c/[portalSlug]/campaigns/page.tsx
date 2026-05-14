@@ -85,11 +85,13 @@ function renderClientCampaignReadModel(
   backendStats: ClientCampaignStatsReadModel,
 ) {
   const recipientEmptyState = getRecipientEmptyState(detail.recipients);
-  const latestBlock = backendStats.blockedSends.latest[0];
   const runtimeItems = getRuntimeSafetyItems(detail.runtime).filter(
     (item) => item.label !== "Eventi provider",
   );
   const sesPendingWarning = getSesPendingWarning(detail.runtime);
+  const attentionItems = [recipientEmptyState, sesPendingWarning].filter(
+    (item): item is string => Boolean(item),
+  );
 
   return (
     <>
@@ -110,6 +112,9 @@ function renderClientCampaignReadModel(
           <span>Eventi provider</span>
           <strong>{getProviderEventsLabel(backendStats.logs)}</strong>
         </div>
+      </div>
+
+      <div className="client-detail-grid">
         {runtimeItems.map((item) => (
           <div key={item.label}>
             <span>{item.label}</span>
@@ -128,17 +133,20 @@ function renderClientCampaignReadModel(
         </div>
       </div>
 
-      {recipientEmptyState ? (
-        <p className="client-row__support">{recipientEmptyState}</p>
+      {backendStats.logs.providerEventsAvailable ? (
+        <p className="client-row__support">
+          {getProviderEventsDetail(backendStats.logs)}
+        </p>
       ) : null}
-      <p className="client-row__support">
-        {getProviderEventsDetail(backendStats.logs)}
-      </p>
-      {sesPendingWarning ? (
-        <p className="client-row__support">{sesPendingWarning}</p>
-      ) : null}
-      {latestBlock ? (
-        <p className="client-row__support">Ultimo blocco: {latestBlock.reason}</p>
+      {attentionItems.length > 0 ? (
+        <div className="client-row__support">
+          <strong>Attenzione</strong>
+          <ul>
+            {attentionItems.map((item) => (
+              <li key={item}>{item}</li>
+            ))}
+          </ul>
+        </div>
       ) : null}
     </>
   );
@@ -177,8 +185,8 @@ export default async function ClientCampaignsPage({
       <section className="client-page-shell">
         <ClientPageHeader
           title="Campagne"
-          description="Stato, destinatari e metriche disponibili per le tue campagne. Le consegne e gli eventi appaiono solo quando il backend riceve dati provider."
-          actions={<StatusBadge label="Dati backend" variant="success" />}
+          description="Stato, destinatari e metriche disponibili per le tue campagne. Le consegne e gli eventi appaiono solo quando arrivano dati provider."
+          actions={<StatusBadge label="Metriche verificate" variant="success" />}
         />
 
         <section className="client-page-stat-grid" aria-label="Statistiche campagne">
@@ -200,7 +208,7 @@ export default async function ClientCampaignsPage({
 
         <ClientSurface
           title="Elenco campagne"
-          description="Vista cliente con soli dati backend disponibili, senza ID tecnici o metriche simulate."
+          description="Vista cliente con stato, destinatari e metriche disponibili senza ID tecnici o metriche simulate."
           aside={
             <span className="client-surface__eyebrow">
               {formatCampaignCount(result.campaigns.length)} elementi
@@ -249,7 +257,7 @@ export default async function ClientCampaignsPage({
                     {!readModel || readModel instanceof Error ? (
                       <p className="client-row__support">
                         Dati campagna non disponibili:{" "}
-                        {readModel?.message ?? "read model pending"}.
+                        {readModel?.message ?? "aggiornamento pending"}.
                       </p>
                     ) : (
                       renderClientCampaignReadModel(readModel.detail, readModel.stats)

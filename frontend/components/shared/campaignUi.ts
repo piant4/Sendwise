@@ -91,10 +91,10 @@ export function getCampaignReadinessLabel(
     .map((item) => item.label.toLowerCase());
 
   if (missing.length === 0) {
-    return "Campagna pronta nei dati backend";
+    return "Pronta";
   }
 
-  return `Campagna non pronta: ${missing.join(", ")}`;
+  return `Non pronta: ${missing.join(", ")}`;
 }
 
 export function getRecipientSummaryItems(
@@ -117,11 +117,11 @@ export function getRecipientEmptyState(
   }
 
   if (recipients.eligible === 0 && recipients.blocked === recipients.total) {
-    return "Tutti i destinatari sono bloccati dal Deliverability Guard.";
+    return "Tutti i destinatari sono bloccati.";
   }
 
   if (recipients.eligible === 0) {
-    return "Nessun destinatario idoneo nei dati backend.";
+    return "Nessun destinatario idoneo.";
   }
 
   return null;
@@ -142,12 +142,12 @@ export function getProviderEventsLabel(logs: CampaignLogsSummary): string {
     return "Eventi provider disponibili";
   }
 
-  return "Eventi provider non ancora disponibili";
+  return "Nessun evento provider registrato";
 }
 
 export function getProviderEventsDetail(logs: CampaignLogsSummary): string {
   if (logs.providerEventsAvailable) {
-    return "Le metriche evento usano solo dati provider gia processati.";
+    return "Le metriche evento usano solo dati provider processati.";
   }
 
   if (
@@ -162,7 +162,7 @@ export function getProviderEventsDetail(logs: CampaignLogsSummary): string {
     return "Nessun evento provider registrato.";
   }
 
-  return "Le metriche provider restano pending finche il backend non registra eventi processati.";
+  return "Le metriche provider restano pending finche non arrivano eventi processati.";
 }
 
 export function getCampaignLogStatItems(
@@ -187,7 +187,7 @@ export function getRuntimeSafetyItems(
     value: !runtime.emailSendingEnabled
       ? "Invio reale disattivato"
       : runtime.realSendAvailable
-        ? "Invio reale disponibile dal backend"
+        ? "Invio reale disponibile"
         : "Invio reale non disponibile",
   });
 
@@ -195,7 +195,7 @@ export function getRuntimeSafetyItems(
     label: "Ambiente",
     value: runtime.mailpitDevMode
       ? "Ambiente Mailpit/dev"
-      : runtime.providerModeLabel || "Runtime provider backend",
+      : runtime.providerModeLabel || "Provider non specificato",
   });
 
   if (runtime.emailProvider === "ses") {
@@ -203,7 +203,7 @@ export function getRuntimeSafetyItems(
       label: "SES",
       value:
         runtime.sesLiveValidationStatus === "pending"
-          ? "SES configurato, validazione live ancora pending"
+          ? "SES configurato, validazione live pending"
           : "SES configurato",
     });
   }
@@ -225,7 +225,7 @@ export function getSesPendingWarning(
     runtime.emailProvider === "ses" &&
     runtime.sesLiveValidationStatus === "pending"
   ) {
-    return "SES configurato, ma la validazione live 12.1 e ancora pending: non interpretare in coda o invio tentato come consegna.";
+    return "SES configurato, validazione live pending: non interpretare in coda o invio tentato come consegna.";
   }
 
   return null;

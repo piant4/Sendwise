@@ -1,4 +1,5 @@
 import { auth } from "@clerk/nextjs/server";
+import { PlusCircle } from "lucide-react";
 import { redirect } from "next/navigation";
 import { AdminSurface } from "../../../components/admin/AdminSurface";
 import {
@@ -16,6 +17,7 @@ import {
   getRuntimeSafetyItems,
   getSesPendingWarning,
 } from "../../../components/shared/campaignUi";
+import { Button } from "../../../components/ui/button";
 import { StatusBadge } from "../../../components/ui/StatusBadge";
 import {
   getAdminCampaigns,
@@ -83,6 +85,15 @@ function renderAdminReadiness(readiness: AdminCampaignReadinessSummary) {
   const recipientEmptyState = getRecipientEmptyState(readiness.recipients);
   const sesPendingWarning = getSesPendingWarning(readiness.runtime);
   const backendWarnings = [...readiness.blockingErrors, ...readiness.warnings];
+  const runtimeItems = getRuntimeSafetyItems(readiness.runtime);
+  const attentionItems = [
+    recipientEmptyState,
+    sesPendingWarning,
+    readiness.logs.providerEventsAvailable
+      ? null
+      : getProviderEventsDetail(readiness.logs),
+    ...backendWarnings,
+  ].filter((item): item is string => Boolean(item));
 
   return (
     <>
@@ -91,21 +102,15 @@ function renderAdminReadiness(readiness: AdminCampaignReadinessSummary) {
           <dt>Prontezza</dt>
           <dd>{getCampaignReadinessLabel(readiness.campaign)}</dd>
         </div>
-        {getCampaignReadinessItems(readiness.campaign).map((item) => (
-          <div key={item.label}>
-            <dt>{item.label}</dt>
-            <dd>{item.value}</dd>
-          </div>
-        ))}
         <div>
           <dt>Sicurezza invio</dt>
           <dd>
             {readiness.canSend
-              ? "Backend consente invio controllato"
-              : "Invio bloccato dal backend"}
+              ? "Invio controllato consentito"
+              : "Invio bloccato"}
           </dd>
         </div>
-        {getRuntimeSafetyItems(readiness.runtime).map((item) => (
+        {runtimeItems.map((item) => (
           <div key={item.label}>
             <dt>{item.label}</dt>
             <dd>{item.value}</dd>
@@ -118,12 +123,17 @@ function renderAdminReadiness(readiness: AdminCampaignReadinessSummary) {
       </dl>
 
       <dl className="admin-record-grid">
-        {getRecipientSummaryItems(readiness.recipients).map((item) => (
-          <div key={item.label}>
-            <dt>{item.label}</dt>
-            <dd>{item.value}</dd>
-          </div>
-        ))}
+        {getRecipientSummaryItems(readiness.recipients)
+          .filter((item) => ["Totali", "Idonei", "Bloccati"].includes(item.label))
+          .map((item) => (
+            <div key={item.label}>
+              <dt>{item.label}</dt>
+              <dd>{item.value}</dd>
+            </div>
+          ))}
+      </dl>
+
+      <dl className="admin-record-grid">
         {getCampaignLogStatItems(readiness.logs).map((item) => (
           <div key={item.label}>
             <dt>{item.label}</dt>
@@ -137,26 +147,67 @@ function renderAdminReadiness(readiness: AdminCampaignReadinessSummary) {
       </dl>
 
       <p className="admin-record-row__note">
-        {blockedReasons.length > 0
-          ? `Motivi blocco destinatari: ${blockedReasons
-              .map((item) => `${item.label.toLowerCase()} ${item.value}`)
-              .join(", ")}.`
-          : "Nessun blocco destinatario esposto dal backend."}
+        Prontezza:{" "}
+        {getCampaignReadinessItems(readiness.campaign)
+          .map((item) => `${item.label.toLowerCase()} ${item.value.toLowerCase()}`)
+          .join(", ")}
+        .
       </p>
-      {recipientEmptyState ? (
-        <p className="admin-record-row__note">{recipientEmptyState}</p>
+
+      {blockedReasons.length > 0 ? (
+        <dl className="admin-record-grid">
+          {blockedReasons.map((item) => (
+            <div key={item.label}>
+              <dt>{item.label}</dt>
+              <dd>{item.value}</dd>
+            </div>
+          ))}
+        </dl>
       ) : null}
+
+      {attentionItems.length > 0 ? (
+        <div className="admin-record-row__note">
+          <strong>Attenzione</strong>
+          <ul>
+            {attentionItems.map((item) => (
+              <li key={item}>{item}</li>
+            ))}
+          </ul>
+        </div>
+      ) : (
+        <p className="admin-record-row__note">Nessun avviso operativo.</p>
+      )}
+    </>
+  );
+}
+
+function renderCampaignBasics(campaign: AdminCampaignSummary) {
+  return (
+    <>
       <p className="admin-record-row__note">
-        {getProviderEventsDetail(readiness.logs)}
+        {campaign.subject?.trim()
+          ? `Oggetto: ${campaign.subject}.`
+          : "Oggetto non disponibile."}{" "}
+        Aggiornata {formatDateLabel(campaign.updatedAt)}. Creata{" "}
+        {formatDateLabel(campaign.createdAt)}.
       </p>
-      {sesPendingWarning ? (
-        <p className="admin-record-row__note">{sesPendingWarning}</p>
-      ) : null}
-      <p className="admin-record-row__note">
-        {backendWarnings.length > 0
-          ? backendWarnings.join(" / ")
-          : "Nessun warning dal backend."}
-      </p>
+      <details className="admin-record-row__note">
+        <summary>Dettagli tecnici</summary>
+        <dl className="admin-record-grid">
+          <div>
+            <dt>Campaign ID</dt>
+            <dd>{campaign.id}</dd>
+          </div>
+          <div>
+            <dt>Client ID</dt>
+            <dd>{campaign.clientId}</dd>
+          </div>
+          <div>
+            <dt>Blocchi registrati</dt>
+            <dd>{formatCampaignCount(campaign.blockedSendsCount)}</dd>
+          </div>
+        </dl>
+      </details>
     </>
   );
 }
@@ -196,7 +247,15 @@ export default async function AdminCampaignsPage() {
   return (
     <main className="shell">
       <section className="admin-page-shell">
-        <header className="admin-page-header">
+        <header
+          className="admin-page-header"
+          style={{
+            alignItems: "start",
+            display: "flex",
+            flexWrap: "wrap",
+            justifyContent: "space-between",
+          }}
+        >
           <div>
             <p className="admin-surface__eyebrow">Admin</p>
             <h1 className="admin-page-title">Campagne</h1>
@@ -204,6 +263,21 @@ export default async function AdminCampaignsPage() {
               Vista operativa cross-client letta dal backend business. Nessuna
               campagna viene inventata nel frontend.
             </p>
+          </div>
+          <div style={{ display: "grid", gap: 8, justifyItems: "end" }}>
+            <Button
+              type="button"
+              size="lg"
+              className="admin-topbar-action admin-topbar-action--primary"
+              disabled
+              title="Creazione campagna non ancora disponibile"
+            >
+              <PlusCircle aria-hidden="true" className="admin-topbar-action__icon" />
+              Nuova campagna
+            </Button>
+            <span className="admin-page-description" style={{ margin: 0 }}>
+              Creazione campagna non ancora disponibile
+            </span>
           </div>
         </header>
 
@@ -231,7 +305,7 @@ export default async function AdminCampaignsPage() {
 
             <AdminSurface
               title="Panoramica campagne cliente"
-              description="Ogni riga mostra proprietario, prontezza, destinatari, sicurezza invio e metriche reali lette dai read model backend."
+              description="Ogni scheda mostra proprietario, prontezza, destinatari, sicurezza invio e metriche disponibili senza stimare consegne."
               aside={
                 <span className="admin-surface__eyebrow">
                   {result.campaigns.length.toLocaleString()} elementi
@@ -253,7 +327,8 @@ export default async function AdminCampaignsPage() {
                           <div className="admin-record-row__copy">
                             <strong>{campaign.name}</strong>
                             <span>
-                              {campaign.clientName} / {campaign.clientEmail}
+                              {campaign.clientName} / {campaign.clientEmail} /{" "}
+                              Aggiornata {formatDateLabel(campaign.updatedAt)}
                             </span>
                           </div>
                           <StatusBadge
@@ -262,41 +337,12 @@ export default async function AdminCampaignsPage() {
                           />
                         </div>
 
-                        <dl className="admin-record-grid">
-                          <div>
-                            <dt>Campaign ID</dt>
-                            <dd>{campaign.id}</dd>
-                          </div>
-                          <div>
-                            <dt>Client ID</dt>
-                            <dd>{campaign.clientId}</dd>
-                          </div>
-                          <div>
-                            <dt>Oggetto</dt>
-                            <dd>
-                              {campaign.subject?.trim()
-                                ? campaign.subject
-                                : "Oggetto non disponibile"}
-                            </dd>
-                          </div>
-                          <div>
-                            <dt>Creata</dt>
-                            <dd>{formatDateLabel(campaign.createdAt)}</dd>
-                          </div>
-                          <div>
-                            <dt>Aggiornata</dt>
-                            <dd>{formatDateLabel(campaign.updatedAt)}</dd>
-                          </div>
-                          <div>
-                            <dt>Blocchi registrati</dt>
-                            <dd>{formatCampaignCount(campaign.blockedSendsCount)}</dd>
-                          </div>
-                        </dl>
+                        {renderCampaignBasics(campaign)}
 
                         {!readiness || readiness instanceof Error ? (
                           <p className="admin-record-row__note">
-                            Dati campagna non disponibili dal backend:{" "}
-                            {readiness?.message ?? "read model pending"}.
+                            Dati campagna non disponibili:{" "}
+                            {readiness?.message ?? "aggiornamento pending"}.
                           </p>
                         ) : (
                           renderAdminReadiness(readiness)

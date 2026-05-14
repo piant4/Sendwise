@@ -1,6 +1,9 @@
 import type {
   AdminBlockedSendItem,
   AdminCampaignCreateInput,
+  AdminCampaignContactsImportResult,
+  AdminCampaignContactsInput,
+  AdminCampaignContactsSummary,
   AdminCampaignDetail,
   AdminCampaignContentInput,
   AdminCampaignReadinessSummary,
@@ -169,6 +172,46 @@ interface AdminCampaignDetailApiResponse {
   review_ready: boolean;
   created_at: string;
   updated_at: string;
+}
+
+interface AdminCampaignContactApiItem {
+  contact_id: string;
+  email: string;
+  status: string;
+  is_valid: boolean;
+  is_eligible: boolean;
+  blocked_reasons: string[];
+}
+
+interface AdminCampaignContactsApiResponse {
+  campaign_id: string;
+  client_id: string;
+  total: number;
+  valid: number;
+  invalid: number;
+  suppressed: number;
+  unsubscribed: number;
+  blacklisted: number;
+  bounced: number;
+  eligible: number;
+  contacts_ready: boolean;
+  contacts: AdminCampaignContactApiItem[];
+}
+
+interface AdminCampaignContactsImportApiResponse {
+  campaign_id: string;
+  client_id: string;
+  received: number;
+  created_contacts: number;
+  reused_contacts: number;
+  attached_contacts: number;
+  duplicate_contacts: number;
+  invalid_contacts: number;
+  contacts_ready: boolean;
+  errors: {
+    email: string;
+    reason: string;
+  }[];
 }
 
 interface ClientCampaignStatsApiResponse {
@@ -588,6 +631,16 @@ async function fetchAdminCampaignDetail(
   );
 }
 
+async function fetchAdminCampaignContacts(
+  campaignId: string,
+  accessToken?: string | null,
+): Promise<AdminCampaignContactsApiResponse> {
+  return apiGet<AdminCampaignContactsApiResponse>(
+    `/admin/campaigns/${campaignId}/contacts`,
+    accessToken,
+  );
+}
+
 async function patchAdminCampaign(
   campaignId: string,
   payload: AdminCampaignUpdateInput,
@@ -629,6 +682,31 @@ async function postAdminCampaignContent(
       preview_text: payload.previewText,
       body_html: payload.bodyHtml,
       body_text: payload.bodyText,
+    },
+    accessToken,
+  );
+}
+
+async function postAdminCampaignContacts(
+  campaignId: string,
+  payload: AdminCampaignContactsInput,
+  accessToken?: string | null,
+): Promise<AdminCampaignContactsImportApiResponse> {
+  return apiPost<
+    AdminCampaignContactsImportApiResponse,
+    {
+      contacts: {
+        email: string;
+        metadata: Record<string, never>;
+      }[];
+    }
+  >(
+    `/admin/campaigns/${campaignId}/contacts`,
+    {
+      contacts: payload.emails.map((email) => ({
+        email,
+        metadata: {},
+      })),
     },
     accessToken,
   );
@@ -972,6 +1050,50 @@ function mapAdminCampaignDetail(
     reviewReady: payload.review_ready,
     createdAt: payload.created_at,
     updatedAt: payload.updated_at,
+  };
+}
+
+function mapAdminCampaignContacts(
+  payload: AdminCampaignContactsApiResponse,
+): AdminCampaignContactsSummary {
+  return {
+    campaignId: payload.campaign_id,
+    clientId: payload.client_id,
+    total: payload.total,
+    valid: payload.valid,
+    invalid: payload.invalid,
+    suppressed: payload.suppressed,
+    unsubscribed: payload.unsubscribed,
+    blacklisted: payload.blacklisted,
+    bounced: payload.bounced,
+    eligible: payload.eligible,
+    blocked: Math.max(payload.total - payload.eligible, 0),
+    contactsReady: payload.contacts_ready,
+    contacts: payload.contacts.map((contact) => ({
+      contactId: contact.contact_id,
+      email: contact.email,
+      status: contact.status,
+      isValid: contact.is_valid,
+      isEligible: contact.is_eligible,
+      blockedReasons: contact.blocked_reasons,
+    })),
+  };
+}
+
+function mapAdminCampaignContactsImportResult(
+  payload: AdminCampaignContactsImportApiResponse,
+): AdminCampaignContactsImportResult {
+  return {
+    campaignId: payload.campaign_id,
+    clientId: payload.client_id,
+    received: payload.received,
+    createdContacts: payload.created_contacts,
+    reusedContacts: payload.reused_contacts,
+    attachedContacts: payload.attached_contacts,
+    duplicateContacts: payload.duplicate_contacts,
+    invalidContacts: payload.invalid_contacts,
+    contactsReady: payload.contacts_ready,
+    errors: payload.errors,
   };
 }
 
@@ -1320,6 +1442,16 @@ export function getAdminCampaignDetail(
   );
 }
 
+export function getAdminCampaignContacts(
+  campaignId: string,
+  accessToken?: string | null,
+): Promise<AdminCampaignContactsSummary> {
+  assertAdminBackendEnabled(`/admin/campaigns/${campaignId}/contacts`);
+  return fetchAdminCampaignContacts(campaignId, accessToken).then(
+    mapAdminCampaignContacts,
+  );
+}
+
 export function updateAdminCampaign(
   campaignId: string,
   payload: AdminCampaignUpdateInput,
@@ -1339,6 +1471,17 @@ export function updateAdminCampaignContent(
   assertAdminBackendEnabled(`/admin/campaigns/${campaignId}/content`);
   return postAdminCampaignContent(campaignId, payload, accessToken).then(
     mapAdminCampaignDetail,
+  );
+}
+
+export function attachAdminCampaignContacts(
+  campaignId: string,
+  payload: AdminCampaignContactsInput,
+  accessToken?: string | null,
+): Promise<AdminCampaignContactsImportResult> {
+  assertAdminBackendEnabled(`/admin/campaigns/${campaignId}/contacts`);
+  return postAdminCampaignContacts(campaignId, payload, accessToken).then(
+    mapAdminCampaignContactsImportResult,
   );
 }
 

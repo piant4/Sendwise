@@ -2,6 +2,7 @@ import { auth } from "@clerk/nextjs/server";
 import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { AdminCampaignContactsPanel } from "../../../../components/admin/AdminCampaignContactsPanel";
 import { AdminCampaignSetupForm } from "../../../../components/admin/AdminCampaignSetupForm";
 import { AdminSurface } from "../../../../components/admin/AdminSurface";
 import {
@@ -21,10 +22,12 @@ import { Button } from "../../../../components/ui/button";
 import { StatusBadge } from "../../../../components/ui/StatusBadge";
 import {
   getAdminCampaignDetail,
+  getAdminCampaignContacts,
   getAdminCampaignSummary,
   isApiError,
 } from "../../../../lib/api";
 import type {
+  AdminCampaignContactsSummary,
   AdminCampaignDetail,
   AdminCampaignReadinessSummary,
 } from "../../../../types";
@@ -107,12 +110,25 @@ function renderSummarySections(summary: AdminCampaignReadinessSummary) {
           ? "Pronta"
           : "Non pronta",
     },
-    ...getCampaignReadinessItems(summary.campaign).map((item) => ({
-      label: item.label,
-      value: item.value === "Pronto" || item.value === "Presenti" || item.value === "Approvata"
-        ? "Pronta"
-        : "Non pronta",
-    })),
+    ...getCampaignReadinessItems(summary.campaign).map((item) => {
+      const isContactsStep = item.label === "Destinatari";
+      let reason = "";
+
+      if (isContactsStep && summary.recipients.total === 0) {
+        reason = "Nessun contatto";
+      } else if (isContactsStep && summary.recipients.eligible === 0) {
+        reason = "Nessun idoneo";
+      }
+
+      return {
+        href: isContactsStep ? "#destinatari" : null,
+        label: isContactsStep ? "Destinatari" : item.label,
+        value:
+          item.value === "Pronto" || item.value === "Presenti" || item.value === "Approvata"
+            ? "Pronta"
+            : reason || "Non pronta",
+      };
+    }),
   ];
   const runtimeItems = getRuntimeSafetyItems(summary.runtime);
   const attentionItems = buildAttentionItems(summary);
@@ -131,7 +147,13 @@ function renderSummarySections(summary: AdminCampaignReadinessSummary) {
           {checklistItems.map((item) => (
             <div key={item.label}>
               <dt>{item.label}</dt>
-              <dd>{item.value}</dd>
+              <dd>
+                {"href" in item && item.href ? (
+                  <a href={item.href}>{item.value}</a>
+                ) : (
+                  item.value
+                )}
+              </dd>
             </div>
           ))}
         </dl>
@@ -226,7 +248,7 @@ function renderSummarySections(summary: AdminCampaignReadinessSummary) {
       >
         <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
           <button className="admin-clients-form__submit" disabled type="button">
-            Import contatti non ancora disponibile
+            Aggiunta destinatari avanzata non ancora disponibile
           </button>
           <button className="admin-clients-form__submit" disabled type="button">
             Review non ancora disponibile
@@ -251,6 +273,7 @@ export default async function AdminCampaignDetailPage({
     | {
         campaign: AdminCampaignDetail;
         summary: AdminCampaignReadinessSummary | Error;
+        contacts: AdminCampaignContactsSummary | Error;
       }
     | {
         errorMessage: string;
@@ -265,8 +288,14 @@ export default async function AdminCampaignDetailPage({
           ? error
           : new Error("Sintesi campagna non disponibile."),
     );
+    const contacts = await getAdminCampaignContacts(campaignId, accessToken).catch(
+      (error) =>
+        error instanceof Error
+          ? error
+          : new Error("Destinatari campagna non disponibili."),
+    );
 
-    result = { campaign, summary };
+    result = { campaign, summary, contacts };
   } catch (error) {
     if (isApiError(error) && [401, 403].includes(error.status ?? 0)) {
       redirect("/auth/redirect");
@@ -365,6 +394,14 @@ export default async function AdminCampaignDetailPage({
             </div>
 
             <AdminCampaignSetupForm campaign={result.campaign} />
+
+            <AdminCampaignContactsPanel
+              campaignId={result.campaign.campaignId}
+              contacts={result.contacts instanceof Error ? null : result.contacts}
+              errorMessage={
+                result.contacts instanceof Error ? result.contacts.message : null
+              }
+            />
 
             {result.summary instanceof Error ? (
               <section className="admin-clients-card">

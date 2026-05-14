@@ -306,6 +306,51 @@ export interface AdminCampaignContentInput {
   bodyText?: string | null;
 }
 
+export interface AdminCampaignContact {
+  contactId: string;
+  email: string;
+  status: ContactStatus | string;
+  isValid: boolean;
+  isEligible: boolean;
+  blockedReasons: string[];
+}
+
+export interface AdminCampaignContactsSummary {
+  campaignId: string;
+  clientId: string;
+  total: number;
+  valid: number;
+  invalid: number;
+  suppressed: number;
+  unsubscribed: number;
+  blacklisted: number;
+  bounced: number;
+  eligible: number;
+  blocked: number;
+  contactsReady: boolean;
+  contacts: AdminCampaignContact[];
+}
+
+export interface AdminCampaignContactsInput {
+  emails: string[];
+}
+
+export interface AdminCampaignContactsImportResult {
+  campaignId: string;
+  clientId: string;
+  received: number;
+  createdContacts: number;
+  reusedContacts: number;
+  attachedContacts: number;
+  duplicateContacts: number;
+  invalidContacts: number;
+  contactsReady: boolean;
+  errors: {
+    email: string;
+    reason: string;
+  }[];
+}
+
 export interface AdminCampaignDetail {
   campaignId: string;
   clientId: string;

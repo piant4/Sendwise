@@ -1,5 +1,35 @@
 # Audit Log
 
+## Milestone 14.4 - Campaign Contacts Attach UI
+
+Contract audit:
+- `GET /admin/campaigns/{campaign_id}/contacts` returns campaign-scoped contact rows and summary counts: `total`, `valid`, `invalid`, `suppressed`, `unsubscribed`, `blacklisted`, `bounced`, `eligible`, `contacts_ready`, and per-contact `is_valid`, `is_eligible`, and `blocked_reasons`.
+- `POST /admin/campaigns/{campaign_id}/contacts` accepts `{ "contacts": [{ "email": string, "metadata": {} }] }` with extra fields forbidden by backend schema.
+- The backend normalizes email, rejects invalid syntax, deduplicates within the payload, reuses existing contacts by `client_id + email`, creates missing client-scoped contacts, and attaches them idempotently to `campaign_contacts`.
+- Contact membership reads and writes are scoped through the campaign's backend-owned `client_id`; no frontend-supplied trusted `client_id`, direct listmonk access, dispatch action, or schema change is involved.
+
+Implemented:
+- Added a backend-backed Destinatari panel on `/admin/campaigns/{campaignId}` showing existing contacts, eligible/blocked/invalid/suppressed/unsubscribed/bounced/blacklisted counts, backend `contacts_ready`, and empty/no-eligible/all-blocked states.
+- Added a minimal email textarea attach form that posts only the supported contact payload through `frontend/lib/api.ts`, prevents double submit, surfaces backend-safe errors, and refreshes the route after success.
+- Updated the setup checklist so the Destinatari step links to the contacts panel and reports no-contact/no-eligible reasons from backend summary state.
+- Left CSV import, advanced selection, review, send, simulate-send, SES enablement, and client-side contact management unavailable.
+
+Known limits:
+- CSV import is still not supported by the backend contract and remains disabled in the UI.
+- The panel does not claim send readiness; final sendability remains backend/Guard-owned and `EMAIL_SENDING_ENABLED` remains fail-closed by default.
+
+Verification:
+- `git diff --check` passed.
+- Frontend lint passed through the existing local Docker builder image with changed frontend source directories mounted.
+- Frontend production build passed through the existing local Docker builder image with changed frontend source directories mounted.
+- `bash scripts/audit.sh` passed through Git Bash login shell.
+- `bash scripts/smoke_test.sh` passed through Git Bash login shell.
+- `docker compose config` passed with a Docker warning about unreadable `C:\Users\Jacop\.docker\config.json`.
+- `docker compose -f docker-compose.yml -f docker-compose.dev.yml config` passed with the same Docker warning.
+- Frontend direct-listmonk scan returned no matches.
+- Touched frontend fake delivery/open/click claim scan found only existing type/helper field names; no fake delivery claims were added.
+- Secret/env scan of non-ignored repo files returned no matches.
+
 ## Milestone 14.3 - Admin Campaign Setup Flow
 
 Contract audit:

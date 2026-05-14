@@ -3,6 +3,7 @@ import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { AdminCampaignContactsPanel } from "../../../../components/admin/AdminCampaignContactsPanel";
+import { AdminCampaignReviewPanel } from "../../../../components/admin/AdminCampaignReviewPanel";
 import { AdminCampaignSetupForm } from "../../../../components/admin/AdminCampaignSetupForm";
 import { AdminSurface } from "../../../../components/admin/AdminSurface";
 import {
@@ -250,9 +251,6 @@ function renderSummarySections(summary: AdminCampaignReadinessSummary) {
           <button className="admin-clients-form__submit" disabled type="button">
             Aggiunta destinatari avanzata non ancora disponibile
           </button>
-          <button className="admin-clients-form__submit" disabled type="button">
-            Review non ancora disponibile
-          </button>
           <span className="admin-record-chip">
             {summary.runtime.emailSendingEnabled
               ? "Invio non gestito da questa schermata"
@@ -400,6 +398,14 @@ export default async function AdminCampaignDetailPage({
               contacts={result.contacts instanceof Error ? null : result.contacts}
               errorMessage={
                 result.contacts instanceof Error ? result.contacts.message : null
+              }
+            />
+
+            <AdminCampaignReviewPanel
+              campaign={result.campaign}
+              summary={result.summary instanceof Error ? null : result.summary}
+              errorMessage={
+                result.summary instanceof Error ? result.summary.message : null
               }
             />
 

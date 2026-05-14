@@ -7,6 +7,7 @@ import type {
   AdminCampaignDetail,
   AdminCampaignContentInput,
   AdminCampaignReadinessSummary,
+  AdminCampaignReviewResult,
   AdminCampaignSummary,
   AdminCampaignUpdateInput,
   AdminClientInviteResponse,
@@ -212,6 +213,24 @@ interface AdminCampaignContactsImportApiResponse {
     email: string;
     reason: string;
   }[];
+}
+
+interface AdminCampaignReviewApiResponse {
+  campaign_id: string;
+  client_id: string;
+  allowed_to_send: boolean;
+  can_send_when_enabled: boolean;
+  sending_enabled: boolean;
+  warnings: string[];
+  blocking_errors: string[];
+  eligible_contact_count: number;
+  blocked_contact_count: number;
+  slot_limit?: number | null;
+  limit_source?: string | null;
+  content_ready: boolean;
+  contacts_ready: boolean;
+  review_ready: boolean;
+  current_step: string;
 }
 
 interface ClientCampaignStatsApiResponse {
@@ -563,6 +582,16 @@ async function apiPost<TResponse, TPayload>(
   });
 }
 
+async function apiPostWithoutPayload<TResponse>(
+  path: string,
+  accessToken?: string | null,
+): Promise<TResponse> {
+  return apiRequest<TResponse>(path, {
+    method: "POST",
+    accessToken,
+  });
+}
+
 async function apiPatch<TResponse, TPayload>(
   path: string,
   payload: TPayload,
@@ -708,6 +737,16 @@ async function postAdminCampaignContacts(
         metadata: {},
       })),
     },
+    accessToken,
+  );
+}
+
+async function postAdminCampaignReview(
+  campaignId: string,
+  accessToken?: string | null,
+): Promise<AdminCampaignReviewApiResponse> {
+  return apiPostWithoutPayload<AdminCampaignReviewApiResponse>(
+    `/admin/campaigns/${campaignId}/review`,
     accessToken,
   );
 }
@@ -1097,6 +1136,28 @@ function mapAdminCampaignContactsImportResult(
   };
 }
 
+function mapAdminCampaignReviewResult(
+  payload: AdminCampaignReviewApiResponse,
+): AdminCampaignReviewResult {
+  return {
+    campaignId: payload.campaign_id,
+    clientId: payload.client_id,
+    allowedToSend: payload.allowed_to_send,
+    canSendWhenEnabled: payload.can_send_when_enabled,
+    sendingEnabled: payload.sending_enabled,
+    warnings: payload.warnings,
+    blockingErrors: payload.blocking_errors,
+    eligibleContactCount: payload.eligible_contact_count,
+    blockedContactCount: payload.blocked_contact_count,
+    slotLimit: payload.slot_limit ?? null,
+    limitSource: payload.limit_source ?? null,
+    contentReady: payload.content_ready,
+    contactsReady: payload.contacts_ready,
+    reviewReady: payload.review_ready,
+    currentStep: payload.current_step,
+  };
+}
+
 function mapCampaignSummaryItem(
   payload: CampaignReadModelApiResponse["campaign"],
 ): CampaignSummaryItem {
@@ -1482,6 +1543,16 @@ export function attachAdminCampaignContacts(
   assertAdminBackendEnabled(`/admin/campaigns/${campaignId}/contacts`);
   return postAdminCampaignContacts(campaignId, payload, accessToken).then(
     mapAdminCampaignContactsImportResult,
+  );
+}
+
+export function reviewAdminCampaign(
+  campaignId: string,
+  accessToken?: string | null,
+): Promise<AdminCampaignReviewResult> {
+  assertAdminBackendEnabled(`/admin/campaigns/${campaignId}/review`);
+  return postAdminCampaignReview(campaignId, accessToken).then(
+    mapAdminCampaignReviewResult,
   );
 }
 

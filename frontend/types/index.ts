@@ -351,6 +351,24 @@ export interface AdminCampaignContactsImportResult {
   }[];
 }
 
+export interface AdminCampaignReviewResult {
+  campaignId: string;
+  clientId: string;
+  allowedToSend: boolean;
+  canSendWhenEnabled: boolean;
+  sendingEnabled: boolean;
+  warnings: string[];
+  blockingErrors: string[];
+  eligibleContactCount: number;
+  blockedContactCount: number;
+  slotLimit?: number | null;
+  limitSource?: string | null;
+  contentReady: boolean;
+  contactsReady: boolean;
+  reviewReady: boolean;
+  currentStep: string;
+}
+
 export interface AdminCampaignDetail {
   campaignId: string;
   clientId: string;

@@ -5,6 +5,7 @@ from app.integrations.listmonk.client import ListmonkError
 from app.schemas.campaigns import (
     AdminCampaignContactsImportRequest,
     AdminCampaignContactsImportResponse,
+    AdminCampaignContactRemoveResponse,
     AdminCampaignContactsResponse,
     AdminCampaignContentRequest,
     AdminCampaignCreateRequest,
@@ -360,6 +361,22 @@ def add_campaign_contacts(
     return campaign_service.add_campaign_contacts(
         campaign_id=campaign_id,
         contacts=payload.contacts,
+    )
+
+
+@router.delete(
+    "/campaigns/{campaign_id}/contacts/{contact_id}",
+    response_model=AdminCampaignContactRemoveResponse,
+)
+def remove_campaign_contact(
+    campaign_id: str,
+    contact_id: str,
+    _current_user: AuthenticatedUser = Depends(require_platform_admin),
+    campaign_service: AdminCampaignService = Depends(get_admin_campaign_service),
+) -> AdminCampaignContactRemoveResponse:
+    return campaign_service.remove_campaign_contact(
+        campaign_id=campaign_id,
+        contact_id=contact_id,
     )
 
 

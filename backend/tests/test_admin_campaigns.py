@@ -1126,6 +1126,82 @@ def test_admin_get_campaign_contacts_summary_classifies_contacts() -> None:
     assert "invalid_email" in invalid_row["blocked_reasons"]
 
 
+def test_admin_remove_campaign_contact_detaches_association_only() -> None:
+    campaign_repository = InMemoryCampaignRepository()
+    campaign = campaign_repository.add_campaign(
+        contacts_ready=True,
+        review_ready=True,
+        current_step="review",
+    )
+    contact = build_contact(
+        contact_id="contact_1",
+        email="keep@example.test",
+        metadata={"nome": "Mario"},
+    )
+    service = build_admin_service(
+        campaign_repository=campaign_repository,
+        contacts=[contact],
+        campaign_contacts={("client_123", campaign.id, contact.id)},
+    )
+
+    result = service.remove_campaign_contact(
+        campaign_id=campaign.id,
+        contact_id=contact.id,
+    )
+
+    assert result.removed is True
+    assert result.contact_id == contact.id
+    assert result.contacts_ready is False
+    assert service.contact_repository.get_by_id(contact.id) is not None
+    assert service.contact_repository.count_campaign_contacts(
+        client_id=campaign.client_id,
+        campaign_id=campaign.id,
+    ) == 0
+
+    updated = service.repository.get_by_id(campaign_id=campaign.id)
+    assert updated is not None
+    assert updated.contacts_ready is False
+    assert updated.review_ready is False
+    assert updated.current_step == "recipients"
+
+
+def test_admin_remove_campaign_contact_endpoint_returns_backend_owned_state() -> None:
+    campaign_repository = InMemoryCampaignRepository()
+    campaign = campaign_repository.add_campaign(
+        contacts_ready=True,
+        review_ready=True,
+    )
+    contact = build_contact(
+        contact_id="contact_1",
+        email="remove@example.test",
+        metadata={"nome": "Giulia"},
+    )
+    admin_service = build_admin_service(
+        campaign_repository=campaign_repository,
+        contacts=[contact],
+        campaign_contacts={("client_123", campaign.id, contact.id)},
+    )
+
+    app.dependency_overrides[require_platform_admin] = build_admin_user
+    app.dependency_overrides[get_admin_campaign_service] = lambda: admin_service
+
+    try:
+        response = TestClient(app).delete(
+            f"/admin/campaigns/{campaign.id}/contacts/{contact.id}"
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["campaign_id"] == campaign.id
+    assert payload["client_id"] == campaign.client_id
+    assert payload["contact_id"] == contact.id
+    assert payload["removed"] is True
+    assert payload["contacts_ready"] is False
+    assert admin_service.contact_repository.get_by_id(contact.id) is not None
+
+
 def test_client_campaign_routes_remain_read_only() -> None:
     client = TestClient(app, raise_server_exceptions=False)
 

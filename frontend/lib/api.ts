@@ -2,6 +2,7 @@ import type {
   AdminBlockedSendItem,
   AdminCampaignCreateInput,
   AdminCampaignContactsImportResult,
+  AdminCampaignContactRemoveResult,
   AdminCampaignContactsInput,
   AdminCampaignContactsSummary,
   AdminCampaignDetail,
@@ -75,7 +76,7 @@ interface ApiErrorOptions {
 }
 
 interface ApiRequestOptions<TPayload> {
-  method?: "GET" | "POST" | "PATCH";
+  method?: "GET" | "POST" | "PATCH" | "DELETE";
   payload?: TPayload;
   accessToken?: string | null;
 }
@@ -220,6 +221,14 @@ interface AdminCampaignContactsImportApiResponse {
     email: string;
     reason: string;
   }[];
+}
+
+interface AdminCampaignContactRemoveApiResponse {
+  campaign_id: string;
+  client_id: string;
+  contact_id: string;
+  removed: boolean;
+  contacts_ready: boolean;
 }
 
 interface AdminCampaignReviewApiResponse {
@@ -649,6 +658,16 @@ async function apiPatch<TResponse, TPayload>(
   });
 }
 
+async function apiDelete<TResponse>(
+  path: string,
+  accessToken?: string | null,
+): Promise<TResponse> {
+  return apiRequest<TResponse>(path, {
+    method: "DELETE",
+    accessToken,
+  });
+}
+
 function assertBackendAuthRoutingEnabled(): void {
   if (!USE_MOCK_API) {
     return;
@@ -790,6 +809,17 @@ async function postAdminCampaignContacts(
         },
       })),
     },
+    accessToken,
+  );
+}
+
+async function deleteAdminCampaignContact(
+  campaignId: string,
+  contactId: string,
+  accessToken?: string | null,
+): Promise<AdminCampaignContactRemoveApiResponse> {
+  return apiDelete<AdminCampaignContactRemoveApiResponse>(
+    `/admin/campaigns/${campaignId}/contacts/${contactId}`,
     accessToken,
   );
 }
@@ -1190,6 +1220,18 @@ function mapAdminCampaignContactsImportResult(
     invalidContacts: payload.invalid_contacts,
     contactsReady: payload.contacts_ready,
     errors: payload.errors,
+  };
+}
+
+function mapAdminCampaignContactRemoveResult(
+  payload: AdminCampaignContactRemoveApiResponse,
+): AdminCampaignContactRemoveResult {
+  return {
+    campaignId: payload.campaign_id,
+    clientId: payload.client_id,
+    contactId: payload.contact_id,
+    removed: payload.removed,
+    contactsReady: payload.contacts_ready,
   };
 }
 
@@ -1600,6 +1642,17 @@ export function attachAdminCampaignContacts(
   assertAdminBackendEnabled(`/admin/campaigns/${campaignId}/contacts`);
   return postAdminCampaignContacts(campaignId, payload, accessToken).then(
     mapAdminCampaignContactsImportResult,
+  );
+}
+
+export function removeAdminCampaignContact(
+  campaignId: string,
+  contactId: string,
+  accessToken?: string | null,
+): Promise<AdminCampaignContactRemoveResult> {
+  assertAdminBackendEnabled(`/admin/campaigns/${campaignId}/contacts/${contactId}`);
+  return deleteAdminCampaignContact(campaignId, contactId, accessToken).then(
+    mapAdminCampaignContactRemoveResult,
   );
 }
 

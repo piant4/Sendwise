@@ -118,6 +118,7 @@ These are the V1 product endpoints for the only operational campaign flow. Entri
 | `POST /admin/campaigns/{campaign_id}/content` | Save content or apply a template into campaign content fields. | Admin dashboard. | Platform admin. | `subject`, `preview_text`, `body_html`, `body_text`, optional template reference. | Updated campaign content state. | `400`, `401`, `403`, `404`, `409`, `422`. | `implemented` |
 | `POST /admin/campaigns/{campaign_id}/contacts` | Import or associate contacts for the campaign. | Admin dashboard. | Platform admin. | Structured contact payload. | Import summary and validation preview. | `400`, `401`, `403`, `404`, `409`, `422`. | `implemented` |
 | `GET /admin/campaigns/{campaign_id}/contacts` | Read contacts associated with the campaign. | Admin dashboard. | Platform admin. | `campaign_id`. | Campaign contact list and summary. | `401`, `403`, `404`. | `implemented` |
+| `DELETE /admin/campaigns/{campaign_id}/contacts/{contact_id}` | Remove a contact association from the campaign without deleting the saved contact. | Admin dashboard. | Platform admin. | `campaign_id`, backend-owned `contact_id`. | Controlled detach result with backend-owned readiness. | `401`, `403`, `404`, `409`. | `implemented` |
 | `POST /admin/campaigns/{campaign_id}/review` | Build final review payload without dispatching. | Admin dashboard. | Platform admin. | `campaign_id`. | Stable readiness/sendability payload including kill-switch state, warnings, blocking errors, counts, current step, and slot limit. | `400`, `401`, `403`, `404`, `409`, `422`. | `implemented` |
 | `POST /admin/campaigns/{campaign_id}/simulate-send` | Request backend simulation from the admin flow. | Admin dashboard. | Platform admin. | `campaign_id`. | Simulation result. | `400`, `401`, `403`, `404`, `409`, `423`. | `implemented` |
 | `POST /admin/campaigns/{campaign_id}/send` | Request controlled send from the admin flow. | Admin dashboard. | Platform admin. | `campaign_id`. | Blocked, failed, or queued send result. | `400`, `401`, `403`, `404`, `409`, `423`. | `implemented` |
@@ -128,6 +129,7 @@ Admin-managed contract notes:
 - backend validates selected `client_id` and client status on every write action
 - admin may assign `campaign_slot_id`, save content, associate/import contacts, request review, simulate, and send
 - `POST /admin/campaigns/{campaign_id}/contacts` accepts `{ "contacts": [{ "email": string, "metadata": { "nome": string, "cognome"?: string } }] }`
+- `DELETE /admin/campaigns/{campaign_id}/contacts/{contact_id}` removes only the `campaign_contacts` association, keeps the underlying `contacts` row and suppression data untouched, and returns backend-owned `contacts_ready`
 - Guard remains mandatory for simulation and real dispatch
 - `EMAIL_SENDING_ENABLED` remains the real-dispatch kill switch
 - `EMAIL_PROVIDER=ses` adds a backend safety gate requiring explicit dev/staging runtime, complete SES SMTP env, public unsubscribe URL, review readiness, allowed recipients, and recipient max before listmonk dispatch

@@ -1,5 +1,36 @@
 # Audit Log
 
+## Milestone 16.9I - Remove Contact From Campaign UI
+
+Date: 2026-05-15
+Branch: develop
+
+Audit summary:
+- Reviewed admin campaign contact routes in `backend/app/api/admin.py`; only `GET /admin/campaigns/{campaign_id}/contacts` and `POST /admin/campaigns/{campaign_id}/contacts` existed, with no detach endpoint exposed.
+- Reviewed campaign contact repository/service behavior in `backend/app/repositories/contacts.py` and `backend/app/services/campaigns.py`; attach/list/count existed, but there was no association-only remove method, and `contacts_ready` remained backend-owned through campaign contact summary recomputation.
+- Reviewed frontend recipients rendering in `frontend/components/admin/AdminCampaignContactsPanel.tsx`; each row already used `contactId`, `email`, `metadata`, `status`, `isEligible`, and `blockedReasons`, but had no per-row action and already relied on `router.refresh()` after contact mutations.
+- Confirmed the safest removal identifier is `contact_id`, already present in the backend response and frontend mapped contact shape; no email-based ambiguity was introduced.
+
+Implemented:
+- Added `DELETE /admin/campaigns/{campaign_id}/contacts/{contact_id}` for platform-admin users only, backed by a repository detach method that deletes from `campaign_contacts` only and never removes the saved `contacts` row or suppression data.
+- Recomputed backend-owned `contacts_ready` after detach, reset review readiness, and returned a controlled JSON response without changing send, dispatch, SES, or listmonk behavior.
+- Added a frontend API wrapper and a subtle per-row remove button that appears on hover/focus on desktop and remains discoverable on touch layouts.
+- Replaced raw confirm behavior with an in-product confirmation modal using the requested copy, loading state, double-submit guard, controlled error handling, and `router.refresh()` on success.
+- Added targeted backend tests for association-only removal and endpoint behavior, and documented the new admin contract.
+
+Files touched:
+- `backend/app/api/admin.py`
+- `backend/app/repositories/contacts.py`
+- `backend/app/schemas/campaigns.py`
+- `backend/app/services/campaigns.py`
+- `backend/tests/test_admin_campaigns.py`
+- `frontend/app/globals.css`
+- `frontend/components/admin/AdminCampaignContactsPanel.tsx`
+- `frontend/lib/api.ts`
+- `frontend/types/index.ts`
+- `docs/api_contracts_v1.md`
+- `docs/audit_log.md`
+
 ## Milestone 16.9H - Fix Manual Contact Attach Visibility
 
 Date: 2026-05-15

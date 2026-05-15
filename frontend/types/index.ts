@@ -363,6 +363,14 @@ export interface AdminCampaignContactsImportResult {
   }[];
 }
 
+export interface AdminCampaignContactRemoveResult {
+  campaignId: string;
+  clientId: string;
+  contactId: string;
+  removed: boolean;
+  contactsReady: boolean;
+}
+
 export interface AdminCampaignReviewResult {
   campaignId: string;
   clientId: string;

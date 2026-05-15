@@ -85,6 +85,15 @@ class ContactRepository:
     ) -> int:
         raise NotImplementedError
 
+    def detach_contact_from_campaign(
+        self,
+        *,
+        client_id: str,
+        campaign_id: str,
+        contact_id: str,
+    ) -> bool:
+        raise NotImplementedError
+
     def update_status(
         self,
         *,
@@ -309,6 +318,28 @@ class PostgresContactRepository(ContactRepository):
 
         return int(row["total"]) if row is not None else 0
 
+    def detach_contact_from_campaign(
+        self,
+        *,
+        client_id: str,
+        campaign_id: str,
+        contact_id: str,
+    ) -> bool:
+        query = """
+            DELETE FROM campaign_contacts
+            WHERE client_id::text = %s
+                AND campaign_id::text = %s
+                AND contact_id::text = %s
+        """
+
+        with postgres_connection(self._settings) as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(query, (client_id, campaign_id, contact_id))
+                deleted = cursor.rowcount > 0
+            connection.commit()
+
+        return deleted
+
     def update_status(
         self,
         *,
@@ -470,6 +501,19 @@ class InMemoryContactRepository(ContactRepository):
                 and contact_id in self._contacts
             ]
         )
+
+    def detach_contact_from_campaign(
+        self,
+        *,
+        client_id: str,
+        campaign_id: str,
+        contact_id: str,
+    ) -> bool:
+        relation = (client_id, campaign_id, contact_id)
+        if relation not in self._campaign_contacts:
+            return False
+        self._campaign_contacts.remove(relation)
+        return True
 
     def add_contact(
         self,

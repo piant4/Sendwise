@@ -51,6 +51,7 @@ from app.schemas.campaigns import (
     AdminCampaignContactError,
     AdminCampaignContactItem,
     AdminCampaignContactsImportResponse,
+    AdminCampaignContactRemoveResponse,
     AdminCampaignContactsResponse,
     AdminCampaignDetail,
     AdminCampaignContactPayload,
@@ -536,6 +537,43 @@ class AdminCampaignService:
             invalid_contacts=invalid_contacts,
             contacts_ready=summary.contacts_ready,
             errors=errors,
+        )
+
+    def remove_campaign_contact(
+        self,
+        *,
+        campaign_id: str,
+        contact_id: str,
+    ) -> AdminCampaignContactRemoveResponse:
+        campaign = self.get_campaign_record(campaign_id)
+        self._get_writable_client(campaign.client_id)
+
+        was_removed = self.contact_repository.detach_contact_from_campaign(
+            client_id=campaign.client_id,
+            campaign_id=campaign.id,
+            contact_id=contact_id,
+        )
+        if not was_removed:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Campaign contact association not found.",
+            )
+
+        summary = self._summarize_campaign_contacts(campaign=campaign)
+        self.repository.update_campaign(
+            client_id=campaign.client_id,
+            campaign_id=campaign.id,
+            contacts_ready=summary.contacts_ready,
+            review_ready=False,
+            current_step="recipients",
+        )
+
+        return AdminCampaignContactRemoveResponse(
+            campaign_id=campaign.id,
+            client_id=campaign.client_id,
+            contact_id=contact_id,
+            removed=True,
+            contacts_ready=summary.contacts_ready,
         )
 
     def select_slot(

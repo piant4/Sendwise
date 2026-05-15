@@ -162,6 +162,14 @@ class AdminCampaignContactsImportResponse(BaseModel):
     errors: list[AdminCampaignContactError]
 
 
+class AdminCampaignContactRemoveResponse(BaseModel):
+    campaign_id: str
+    client_id: str
+    contact_id: str
+    removed: bool
+    contacts_ready: bool
+
+
 class CampaignSummaryItem(BaseModel):
     id: str
     client_id: str

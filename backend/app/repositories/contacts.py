@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from typing import Any, Optional
 from uuid import uuid4
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.core.config import Settings, get_settings
 from app.repositories.clients import postgres_connection
@@ -15,6 +15,7 @@ class ContactRecord(BaseModel):
     client_id: str
     email: str
     status: str
+    metadata: dict[str, Any] = Field(default_factory=dict)
     created_at: datetime
     updated_at: datetime
 
@@ -44,6 +45,7 @@ class ContactRepository:
         client_id: str,
         email: str,
         status: str = "sendable",
+        metadata: dict[str, Any] | None = None,
     ) -> ContactRecord:
         raise NotImplementedError
 
@@ -90,6 +92,14 @@ class ContactRepository:
     ) -> Optional[ContactRecord]:
         raise NotImplementedError
 
+    def update_metadata(
+        self,
+        *,
+        contact_id: str,
+        metadata: dict[str, Any],
+    ) -> Optional[ContactRecord]:
+        raise NotImplementedError
+
 
 class PostgresContactRepository(ContactRepository):
     def __init__(self, settings: Settings) -> None:
@@ -102,6 +112,7 @@ class PostgresContactRepository(ContactRepository):
                 client_id::text AS client_id,
                 email,
                 status,
+                metadata,
                 created_at,
                 updated_at
             FROM contacts
@@ -127,6 +138,7 @@ class PostgresContactRepository(ContactRepository):
                 client_id::text AS client_id,
                 email,
                 status,
+                metadata,
                 created_at,
                 updated_at
             FROM contacts
@@ -149,26 +161,29 @@ class PostgresContactRepository(ContactRepository):
         client_id: str,
         email: str,
         status: str = "sendable",
+        metadata: dict[str, Any] | None = None,
     ) -> ContactRecord:
         query = """
             INSERT INTO contacts (
                 client_id,
                 email,
-                status
+                status,
+                metadata
             )
-            VALUES (%s, %s, %s)
+            VALUES (%s, %s, %s, %s::jsonb)
             RETURNING
                 id::text AS id,
                 client_id::text AS client_id,
                 email,
                 status,
+                metadata,
                 created_at,
                 updated_at
         """
 
         with postgres_connection(self._settings) as connection:
             with connection.cursor() as cursor:
-                cursor.execute(query, (client_id, email, status))
+                cursor.execute(query, (client_id, email, status, metadata or {}))
                 row = cursor.fetchone()
             connection.commit()
 
@@ -209,6 +224,7 @@ class PostgresContactRepository(ContactRepository):
                 contacts.client_id::text AS client_id,
                 contacts.email,
                 contacts.status,
+                contacts.metadata,
                 contacts.created_at,
                 contacts.updated_at
             FROM campaign_contacts
@@ -306,6 +322,7 @@ class PostgresContactRepository(ContactRepository):
                 client_id::text AS client_id,
                 email,
                 status,
+                metadata,
                 created_at,
                 updated_at
         """
@@ -313,6 +330,36 @@ class PostgresContactRepository(ContactRepository):
         with postgres_connection(self._settings) as connection:
             with connection.cursor() as cursor:
                 cursor.execute(query, (status, contact_id))
+                row = cursor.fetchone()
+            connection.commit()
+
+        return _map_contact_row(row)
+
+    def update_metadata(
+        self,
+        *,
+        contact_id: str,
+        metadata: dict[str, Any],
+    ) -> Optional[ContactRecord]:
+        query = """
+            UPDATE contacts
+            SET
+                metadata = %s::jsonb,
+                updated_at = NOW()
+            WHERE id::text = %s
+            RETURNING
+                id::text AS id,
+                client_id::text AS client_id,
+                email,
+                status,
+                metadata,
+                created_at,
+                updated_at
+        """
+
+        with postgres_connection(self._settings) as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(query, (metadata, contact_id))
                 row = cursor.fetchone()
             connection.commit()
 
@@ -352,11 +399,13 @@ class InMemoryContactRepository(ContactRepository):
         client_id: str,
         email: str,
         status: str = "sendable",
+        metadata: dict[str, Any] | None = None,
     ) -> ContactRecord:
         return self.add_contact(
             client_id=client_id,
             email=email,
             status=status,
+            metadata=metadata,
         )
 
     def campaign_contact_exists(
@@ -425,6 +474,7 @@ class InMemoryContactRepository(ContactRepository):
         client_id: str = "client_123",
         email: str = "person@example.test",
         status: str = "sendable",
+        metadata: dict[str, Any] | None = None,
     ) -> ContactRecord:
         now = datetime.now(timezone.utc)
         contact = ContactRecord(
@@ -432,6 +482,7 @@ class InMemoryContactRepository(ContactRepository):
             client_id=client_id,
             email=email,
             status=status,
+            metadata=metadata or {},
             created_at=now,
             updated_at=now,
         )
@@ -450,6 +501,24 @@ class InMemoryContactRepository(ContactRepository):
         updated = existing.model_copy(
             update={
                 "status": status,
+                "updated_at": datetime.now(timezone.utc),
+            }
+        )
+        self._contacts[contact_id] = updated
+        return updated
+
+    def update_metadata(
+        self,
+        *,
+        contact_id: str,
+        metadata: dict[str, Any],
+    ) -> Optional[ContactRecord]:
+        existing = self._contacts.get(contact_id)
+        if existing is None:
+            return None
+        updated = existing.model_copy(
+            update={
+                "metadata": dict(metadata),
                 "updated_at": datetime.now(timezone.utc),
             }
         )

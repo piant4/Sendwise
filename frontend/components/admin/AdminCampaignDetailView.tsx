@@ -64,7 +64,7 @@ export function AdminCampaignDetailView({
 
   return (
     <div style={{ display: "grid", gap: 20 }}>
-      <section className="admin-clients-card campaign-panel campaign-panel--subtle">
+      <section className="admin-clients-card campaign-panel">
         <div
           className="admin-clients-card__intro"
           style={{ alignItems: "start", gap: 16, justifyContent: "space-between" }}

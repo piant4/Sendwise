@@ -80,13 +80,15 @@ export default async function AdminCampaignDetailPage({
   return (
     <main className="shell">
       <section className="admin-page-shell">
+        <div className="campaign-page-back">
+          <Link href="/admin/campaigns" className="campaign-back-link">
+            <ArrowLeft aria-hidden="true" size={14} />
+            Torna alle campagne
+          </Link>
+        </div>
         <header className="admin-page-header campaign-page-header">
           <div>
-            <Link href="/admin/campaigns" className="campaign-back-link">
-              <ArrowLeft aria-hidden="true" size={14} />
-              Torna alle campagne
-            </Link>
-            <p className="admin-surface__eyebrow" style={{ marginTop: 14 }}>
+            <p className="admin-surface__eyebrow">
               Campagne admin
             </p>
             <h1 className="admin-page-title">

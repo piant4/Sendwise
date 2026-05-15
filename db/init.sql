@@ -117,6 +117,7 @@ CREATE TABLE IF NOT EXISTS contacts (
     client_id UUID NOT NULL REFERENCES clients(id),
     email TEXT NOT NULL,
     status TEXT NOT NULL DEFAULT 'pending',
+    metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );

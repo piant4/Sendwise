@@ -1,14 +1,14 @@
 "use client";
 
 import { useAuth } from "@clerk/nextjs";
-import { FileUp, Loader2, Plus } from "lucide-react";
+import { FileUp, Loader2, Plus, X } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { type ChangeEvent, type DragEvent, type FormEvent, useMemo, useRef, useState } from "react";
-import {
-  attachAdminCampaignContacts,
-  isApiError,
-} from "../../lib/api";
-import type { AdminCampaignContactsSummary } from "../../types";
+import { type ChangeEvent, type DragEvent, type FormEvent, useRef, useState } from "react";
+import { attachAdminCampaignContacts, isApiError } from "../../lib/api";
+import type {
+  AdminCampaignContactInput,
+  AdminCampaignContactsSummary,
+} from "../../types";
 import { Button } from "../ui/button";
 import { StatusBadge } from "../ui/StatusBadge";
 
@@ -20,14 +20,131 @@ interface AdminCampaignContactsPanelProps {
   onContinue?: () => void;
 }
 
-function parseEmails(value: string): string[] {
-  return Array.from(
-    new Set(
-      (value.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi) ?? [])
-        .map((email) => email.trim().toLowerCase())
-        .filter(Boolean),
-    ),
-  );
+interface ParsedImportResult {
+  validContacts: AdminCampaignContactInput[];
+  invalidCount: number;
+  errors: string[];
+}
+
+interface ManualContactForm {
+  nome: string;
+  cognome: string;
+  email: string;
+}
+
+const EMAIL_PATTERN = /^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$/i;
+
+function normalizeEmail(value: string): string {
+  return value.trim().toLowerCase();
+}
+
+function isValidEmail(value: string): boolean {
+  return EMAIL_PATTERN.test(normalizeEmail(value));
+}
+
+function splitCsvLine(line: string): string[] {
+  const cells: string[] = [];
+  let current = "";
+  let inQuotes = false;
+
+  for (let index = 0; index < line.length; index += 1) {
+    const char = line[index];
+
+    if (char === "\"") {
+      if (inQuotes && line[index + 1] === "\"") {
+        current += "\"";
+        index += 1;
+      } else {
+        inQuotes = !inQuotes;
+      }
+      continue;
+    }
+
+    if (char === "," && !inQuotes) {
+      cells.push(current.trim());
+      current = "";
+      continue;
+    }
+
+    current += char;
+  }
+
+  cells.push(current.trim());
+  return cells.map((cell) => cell.replace(/^\uFEFF/, "").trim());
+}
+
+function parseCsvContacts(value: string): ParsedImportResult {
+  const rows = value
+    .split(/\r?\n/)
+    .map((row) => row.trim())
+    .filter(Boolean);
+
+  if (rows.length === 0) {
+    return {
+      validContacts: [],
+      invalidCount: 0,
+      errors: ["Il file non contiene righe importabili."],
+    };
+  }
+
+  const firstRow = splitCsvLine(rows[0]).map((cell) => cell.toLowerCase());
+  const hasHeaders = firstRow.some((cell) => ["email", "nome", "cognome"].includes(cell));
+  const rowOffset = hasHeaders ? 1 : 0;
+  const seenEmails = new Set<string>();
+  const validContacts: AdminCampaignContactInput[] = [];
+  const errors: string[] = [];
+  let invalidCount = 0;
+
+  const headerIndex = {
+    email: firstRow.indexOf("email"),
+    nome: firstRow.indexOf("nome"),
+    cognome: firstRow.indexOf("cognome"),
+  };
+
+  for (let index = rowOffset; index < rows.length; index += 1) {
+    const cells = splitCsvLine(rows[index]);
+    const lineNumber = index + 1;
+    const email = normalizeEmail(
+      hasHeaders
+        ? (headerIndex.email >= 0 ? cells[headerIndex.email] ?? "" : "")
+        : (cells[0] ?? ""),
+    );
+    const nome = hasHeaders
+      ? (headerIndex.nome >= 0 ? cells[headerIndex.nome] ?? "" : "").trim()
+      : (cells[1] ?? "").trim();
+    const cognome = hasHeaders
+      ? (headerIndex.cognome >= 0 ? cells[headerIndex.cognome] ?? "" : "").trim()
+      : (cells[2] ?? "").trim();
+
+    if (!email || !nome) {
+      invalidCount += 1;
+      errors.push(`Riga ${lineNumber}: email e nome sono obbligatori.`);
+      continue;
+    }
+
+    if (!isValidEmail(email)) {
+      invalidCount += 1;
+      errors.push(`Riga ${lineNumber}: email non valida (${email}).`);
+      continue;
+    }
+
+    if (seenEmails.has(email)) {
+      invalidCount += 1;
+      errors.push(`Riga ${lineNumber}: email duplicata (${email}).`);
+      continue;
+    }
+
+    seenEmails.add(email);
+    validContacts.push({
+      email,
+      metadata: {
+        nome,
+        ...(cognome ? { cognome } : {}),
+      },
+    });
+  }
+
+  return { validContacts, invalidCount, errors };
 }
 
 function getSafeContactsErrorMessage(error: unknown): string {
@@ -49,7 +166,7 @@ function getSafeContactsErrorMessage(error: unknown): string {
     }
 
     if (error.status === 422) {
-      return "Controlla gli indirizzi email prima di aggiungerli.";
+      return "Controlla email e nome prima di aggiungere i destinatari.";
     }
 
     if (error.detail.trim()) {
@@ -62,7 +179,7 @@ function getSafeContactsErrorMessage(error: unknown): string {
 
 function getContactsNotice(contacts: AdminCampaignContactsSummary | null): string {
   if (!contacts || contacts.total === 0) {
-    return "Aggiungi destinatari per continuare";
+    return "Aggiungi destinatari per continuare.";
   }
 
   if (contacts.eligible === 0 && contacts.blocked === contacts.total) {
@@ -99,6 +216,12 @@ async function readDroppedFiles(files: FileList | File[]): Promise<string> {
   return texts.join("\n");
 }
 
+const EMPTY_MANUAL_CONTACT: ManualContactForm = {
+  nome: "",
+  cognome: "",
+  email: "",
+};
+
 export function AdminCampaignContactsPanel({
   campaignId,
   contacts,
@@ -109,28 +232,46 @@ export function AdminCampaignContactsPanel({
   const router = useRouter();
   const { getToken } = useAuth();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const [rawEmails, setRawEmails] = useState("");
-  const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDropActive, setIsDropActive] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
+  const [isManualSubmitting, setIsManualSubmitting] = useState(false);
+  const [isManualModalOpen, setIsManualModalOpen] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
-  const parsedEmails = useMemo(() => parseEmails(rawEmails), [rawEmails]);
+  const [manualForm, setManualForm] = useState<ManualContactForm>(EMPTY_MANUAL_CONTACT);
+  const [manualFormError, setManualFormError] = useState<string | null>(null);
+  const [importDraft, setImportDraft] = useState<ParsedImportResult | null>(null);
+
+  async function submitContacts(payload: AdminCampaignContactInput[]) {
+    const token = await getToken();
+    const result = await attachAdminCampaignContacts(campaignId, { contacts: payload }, token);
+    const imported = result.createdContacts + result.reusedContacts;
+
+    setSuccessMessage(
+      `${result.attachedContacts.toLocaleString("it-IT")} destinatari associati. ${imported.toLocaleString("it-IT")} contatti validi elaborati dal backend.`,
+    );
+    setFormError(null);
+    router.refresh();
+    onContinue?.();
+    return result;
+  }
 
   async function appendFiles(files: FileList | File[]) {
     const text = await readDroppedFiles(files);
-    const extracted = parseEmails(text);
+    const parsed = parseCsvContacts(text);
 
-    if (extracted.length === 0) {
-      setFormError("Nessun indirizzo email valido trovato nel file selezionato.");
+    setImportDraft(parsed);
+    setFormError(null);
+    setSuccessMessage(null);
+
+    if (parsed.validContacts.length === 0) {
+      setFormError(parsed.errors[0] ?? "Nessun contatto valido trovato nel file selezionato.");
       return;
     }
 
-    setRawEmails((current) => {
-      const merged = parseEmails(`${current}\n${extracted.join("\n")}`);
-      return merged.join("\n");
-    });
-    setFormError(null);
-    setSuccessMessage(`${extracted.length.toLocaleString("it-IT")} indirizzi rilevati dal file.`);
+    setSuccessMessage(
+      `${parsed.validContacts.length.toLocaleString("it-IT")} contatti validi rilevati dal file.`,
+    );
   }
 
   async function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
@@ -153,44 +294,80 @@ export function AdminCampaignContactsPanel({
     await appendFiles(event.dataTransfer.files);
   }
 
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleImportSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    if (isSubmitting) {
+    if (isImporting) {
       return;
     }
 
-    if (parsedEmails.length === 0) {
-      setFormError("Inserisci almeno un indirizzo email.");
+    if (!importDraft || importDraft.validContacts.length === 0) {
+      setFormError("Seleziona un CSV valido prima di importare.");
       setSuccessMessage(null);
       return;
     }
 
-    setIsSubmitting(true);
+    setIsImporting(true);
     setFormError(null);
     setSuccessMessage(null);
 
     try {
-      const token = await getToken();
-      const result = await attachAdminCampaignContacts(
-        campaignId,
-        { emails: parsedEmails },
-        token,
-      );
-      const imported = result.createdContacts + result.reusedContacts;
-
-      setRawEmails("");
-      setSuccessMessage(
-        `${result.attachedContacts.toLocaleString("it-IT")} destinatari associati. ${imported.toLocaleString("it-IT")} contatti validi elaborati dal backend.`,
-      );
-      router.refresh();
-      onContinue?.();
+      await submitContacts(importDraft.validContacts);
+      setImportDraft(null);
     } catch (error) {
       setFormError(getSafeContactsErrorMessage(error));
     } finally {
-      setIsSubmitting(false);
+      setIsImporting(false);
     }
   }
+
+  async function handleManualSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (isManualSubmitting) {
+      return;
+    }
+
+    const nome = manualForm.nome.trim();
+    const cognome = manualForm.cognome.trim();
+    const email = normalizeEmail(manualForm.email);
+
+    if (!nome || !email) {
+      setManualFormError("Nome ed email sono obbligatori.");
+      return;
+    }
+
+    if (!isValidEmail(email)) {
+      setManualFormError("Inserisci un indirizzo email valido.");
+      return;
+    }
+
+    setIsManualSubmitting(true);
+    setManualFormError(null);
+    setFormError(null);
+    setSuccessMessage(null);
+
+    try {
+      await submitContacts([
+        {
+          email,
+          metadata: {
+            nome,
+            ...(cognome ? { cognome } : {}),
+          },
+        },
+      ]);
+      setManualForm(EMPTY_MANUAL_CONTACT);
+      setIsManualModalOpen(false);
+    } catch (error) {
+      setManualFormError(getSafeContactsErrorMessage(error));
+    } finally {
+      setIsManualSubmitting(false);
+    }
+  }
+
+  const importErrors = importDraft?.errors.slice(0, 5) ?? [];
+  const extraImportErrors = Math.max((importDraft?.errors.length ?? 0) - importErrors.length, 0);
 
   return (
     <section className="admin-clients-card campaign-panel" id="destinatari">
@@ -201,7 +378,7 @@ export function AdminCampaignContactsPanel({
             Destinatari
           </h2>
           <p className="admin-clients-card__description">
-            Trascina un file .csv/.txt o incolla gli indirizzi.
+            Aggiungi singoli contatti o importa un CSV con email, nome e cognome.
           </p>
         </div>
         <StatusBadge
@@ -234,99 +411,119 @@ export function AdminCampaignContactsPanel({
         </dl>
       ) : null}
 
-      <form onSubmit={handleSubmit} style={{ marginTop: 18 }}>
-        {formError ? (
-          <p className="admin-clients-feedback admin-clients-feedback--error" role="alert">
-            {formError}
-          </p>
-        ) : null}
-        {successMessage ? (
-          <p className="admin-clients-feedback admin-clients-feedback--success" role="status">
-            {successMessage}
-          </p>
-        ) : null}
+      {formError ? (
+        <p className="admin-clients-feedback admin-clients-feedback--error" role="alert" style={{ marginTop: 18 }}>
+          {formError}
+        </p>
+      ) : null}
+      {successMessage ? (
+        <p className="admin-clients-feedback admin-clients-feedback--success" role="status" style={{ marginTop: 18 }}>
+          {successMessage}
+        </p>
+      ) : null}
 
-        <label
-          onDragEnter={() => setIsDropActive(true)}
-          onDragLeave={() => setIsDropActive(false)}
-          onDragOver={(event) => {
-            event.preventDefault();
-            setIsDropActive(true);
-          }}
-          onDrop={handleDrop}
-          style={{
-            background: isDropActive ? "rgba(219, 234, 254, 0.78)" : "rgba(248, 252, 255, 0.82)",
-            border: isDropActive
-              ? "1px solid rgba(37, 99, 235, 0.35)"
-              : "1px dashed rgba(96, 165, 250, 0.36)",
-            borderRadius: 18,
-            cursor: "pointer",
-            display: "grid",
-            gap: 10,
-            marginBottom: 14,
-            padding: 18,
-          }}
-        >
-          <span
-            style={{
-              alignItems: "center",
-              color: "#2563eb",
-              display: "inline-flex",
-              fontWeight: 700,
-              gap: 8,
-            }}
-          >
-            <FileUp aria-hidden="true" size={18} />
-            Trascina qui `.csv` o `.txt`
-          </span>
-          <input
-            accept=".csv,.txt,text/csv,text/plain"
-            hidden
-            onChange={handleFileChange}
-            ref={fileInputRef}
-            type="file"
-          />
-          <span style={{ color: "#0f172a", fontWeight: 600 }}>Oppure clicca per selezionare un file</span>
-        </label>
-
-        <label className="campaign-field">
-          <span className="campaign-field__label">Email destinatari</span>
-          <textarea
-            className="campaign-textarea"
-            disabled={isSubmitting}
-            onChange={(event) => setRawEmails(event.target.value)}
-            placeholder="maria@example.com&#10;luca@example.com"
-            rows={6}
-            style={{ minHeight: 170 }}
-            value={rawEmails}
-          />
-        </label>
-
-        <div className="campaign-action-row" style={{ marginTop: 16 }}>
-          <Button
-            type="button"
-            variant="outline"
-            className="admin-topbar-action campaign-action campaign-action--secondary"
-            onClick={onBack}
-            style={{ minWidth: 148 }}
-          >
-            Indietro
-          </Button>
-          <Button
-            type="submit"
-            className="admin-topbar-action campaign-action campaign-action--primary"
-            disabled={isSubmitting || parsedEmails.length === 0}
-            style={{ minWidth: 190 }}
-          >
-            {isSubmitting ? (
-              <Loader2 aria-hidden="true" className="admin-topbar-action__icon" />
-            ) : (
+      <div className="campaign-contacts-layout">
+        <section className="campaign-contact-section">
+          <div className="campaign-contact-section__header">
+            <div>
+              <h3 className="campaign-contact-section__title">Aggiunta manuale</h3>
+              <p className="campaign-contact-section__description">
+                Inserisci un singolo destinatario con i campi richiesti.
+              </p>
+            </div>
+            <Button
+              type="button"
+              className="admin-topbar-action campaign-action campaign-action--primary"
+              onClick={() => {
+                setManualFormError(null);
+                setIsManualModalOpen(true);
+              }}
+            >
               <Plus aria-hidden="true" className="admin-topbar-action__icon" />
-            )}
-            {isSubmitting ? "Associazione..." : "Aggiungi destinatari"}
-          </Button>
-        </div>
-      </form>
+              Aggiungi contatto
+            </Button>
+          </div>
+        </section>
+
+        <form className="campaign-contact-section" onSubmit={handleImportSubmit}>
+          <div className="campaign-contact-section__header">
+            <div>
+              <h3 className="campaign-contact-section__title">Import CSV</h3>
+              <p className="campaign-contact-section__description">
+                Colonne supportate: email, nome, cognome.
+              </p>
+            </div>
+          </div>
+
+          <label
+            className={`campaign-contact-upload${isDropActive ? " campaign-contact-upload--active" : ""}`}
+            onClick={() => fileInputRef.current?.click()}
+            onDragEnter={() => setIsDropActive(true)}
+            onDragLeave={() => setIsDropActive(false)}
+            onDragOver={(event) => {
+              event.preventDefault();
+              setIsDropActive(true);
+            }}
+            onDrop={handleDrop}
+          >
+            <span className="campaign-contact-upload__icon">
+              <FileUp aria-hidden="true" size={18} />
+              Trascina qui il CSV
+            </span>
+            <input
+              accept=".csv,.txt,text/csv,text/plain"
+              hidden
+              onChange={handleFileChange}
+              ref={fileInputRef}
+              type="file"
+            />
+            <span className="campaign-contact-upload__label">Oppure seleziona un file</span>
+            <span className="campaign-contact-upload__hint">Formati: `email,nome,cognome` oppure righe con intestazioni.</span>
+          </label>
+
+          {importDraft ? (
+            <div className="campaign-contact-import-summary">
+              <div className="campaign-contact-import-summary__stats">
+                <strong>{importDraft.validContacts.length.toLocaleString("it-IT")} validi</strong>
+                <span>{importDraft.invalidCount.toLocaleString("it-IT")} righe non valide</span>
+              </div>
+              {importErrors.length > 0 ? (
+                <div className="campaign-contact-import-summary__errors" role="status">
+                  {importErrors.map((message) => (
+                    <span key={message}>{message}</span>
+                  ))}
+                  {extraImportErrors > 0 ? <span>Altre {extraImportErrors} righe richiedono correzione.</span> : null}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+
+          <div className="campaign-action-row" style={{ marginTop: 16 }}>
+            <Button
+              type="button"
+              variant="outline"
+              className="admin-topbar-action campaign-action campaign-action--secondary"
+              onClick={onBack}
+              style={{ minWidth: 148 }}
+            >
+              Indietro
+            </Button>
+            <Button
+              type="submit"
+              className="admin-topbar-action campaign-action campaign-action--primary"
+              disabled={isImporting || !importDraft || importDraft.validContacts.length === 0}
+              style={{ minWidth: 190 }}
+            >
+              {isImporting ? (
+                <Loader2 aria-hidden="true" className="admin-topbar-action__icon" />
+              ) : (
+                <Plus aria-hidden="true" className="admin-topbar-action__icon" />
+              )}
+              {isImporting ? "Importazione..." : "Importa contatti"}
+            </Button>
+          </div>
+        </form>
+      </div>
 
       {contacts && contacts.contacts.length > 0 ? (
         <div className="admin-record-list" style={{ marginTop: 18 }}>
@@ -349,6 +546,100 @@ export function AdminCampaignContactsPanel({
               </div>
             </article>
           ))}
+        </div>
+      ) : null}
+
+      {isManualModalOpen ? (
+        <div className="modal-backdrop" role="presentation" onClick={() => setIsManualModalOpen(false)}>
+          <div
+            className="invite-modal campaign-contact-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="campaign-contact-modal-title"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="invite-modal__header">
+              <div>
+                <p className="invite-modal__eyebrow">Destinatario</p>
+                <h3 id="campaign-contact-modal-title" className="invite-modal__title">
+                  Aggiungi contatto
+                </h3>
+              </div>
+              <button
+                type="button"
+                className="invite-modal__close"
+                aria-label="Chiudi"
+                onClick={() => setIsManualModalOpen(false)}
+              >
+                <X aria-hidden="true" />
+              </button>
+            </div>
+
+            <form className="invite-modal__form" onSubmit={handleManualSubmit}>
+              {manualFormError ? (
+                <p className="admin-clients-feedback admin-clients-feedback--error" role="alert">
+                  {manualFormError}
+                </p>
+              ) : null}
+
+              <label className="invite-modal__field">
+                <span>Nome</span>
+                <div className="invite-modal__input-shell">
+                  <input
+                    className="invite-modal__input"
+                    name="nome"
+                    onChange={(event) => setManualForm((current) => ({ ...current, nome: event.target.value }))}
+                    required
+                    value={manualForm.nome}
+                  />
+                </div>
+              </label>
+
+              <label className="invite-modal__field">
+                <span>Cognome</span>
+                <div className="invite-modal__input-shell">
+                  <input
+                    className="invite-modal__input"
+                    name="cognome"
+                    onChange={(event) => setManualForm((current) => ({ ...current, cognome: event.target.value }))}
+                    value={manualForm.cognome}
+                  />
+                </div>
+              </label>
+
+              <label className="invite-modal__field">
+                <span>Email</span>
+                <div className="invite-modal__input-shell">
+                  <input
+                    className="invite-modal__input"
+                    inputMode="email"
+                    name="email"
+                    onChange={(event) => setManualForm((current) => ({ ...current, email: event.target.value }))}
+                    required
+                    type="email"
+                    value={manualForm.email}
+                  />
+                </div>
+              </label>
+
+              <div className="invite-modal__actions">
+                <button
+                  type="button"
+                  className="invite-modal__button invite-modal__button--secondary"
+                  onClick={() => setIsManualModalOpen(false)}
+                >
+                  Annulla
+                </button>
+                <button
+                  type="submit"
+                  className="invite-modal__button invite-modal__button--primary"
+                  disabled={isManualSubmitting}
+                >
+                  {isManualSubmitting ? "Salvataggio..." : "Salva contatto"}
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
       ) : null}
     </section>

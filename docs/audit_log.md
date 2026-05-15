@@ -2814,3 +2814,41 @@ Checks result:
 Scope confirmation:
 - No backend, schema, API contract, auth model, send/dispatch flow, SES enablement, listmonk integration, Docker/env/config, or frontend API boundary behavior was changed.
 - No fake delivered, open, click, click-rate, queued, sent-attempted, or provider-event metric claims were added.
+
+## Milestone 16.9 - Contact Names And Compact Templates
+
+Date: 2026-05-15
+Branch: develop
+
+Verified state:
+- `POST /admin/campaigns/{campaign_id}/contacts` uses `{ "contacts": [{ "email": string, "metadata": { "nome": string, "cognome"?: string } }] }` and rejects rows missing `metadata.nome`.
+- Contact name metadata is now persisted in `contacts.metadata`, refreshed when an existing client contact is reused with newer `nome` / `cognome`, and sent to listmonk subscriber attributes as `attribs.nome` / `attribs.cognome`.
+- Campaign preparation converts only `{{nome}}` and `{{cognome}}` into listmonk subscriber attribute syntax and leaves unsubscribe token handling unchanged.
+- Unsupported unresolved `{{...}}` placeholders are blocked at save time with `Completa o rimuovi le variabili del template prima di salvare.`
+- Admin contacts UI now uses a manual contact modal plus CSV import, and template cards were compacted with corrected category badge styling.
+
+## Milestone 16.8B - Restore Campaign Header Blue Card
+
+Date: 2026-05-15
+Branch: develop
+
+Verified state:
+- The shared campaign page header for both detail and edit modes no longer uses the plain white override introduced during the review diagnostics cleanup; it now uses the existing light blue/azure campaign surface treatment with a subtle blue border and restrained shadow.
+- The `Torna alle campagne` action was moved outside and above the header card so the header can keep the blue treatment without reintroducing a pill-style control inside the card.
+- The read-only detail summary card was restored from `campaign-panel--subtle` to the existing `campaign-panel` treatment so the primary campaign summary surface is visually consistent with the campaign header direction.
+
+Checks executed:
+- `git diff --check`
+- `cd frontend && npm run lint`
+- `cd frontend && npm run build`
+- `bash scripts/audit.sh`
+- `bash scripts/smoke_test.sh`
+- `docker compose config`
+- `docker compose -f docker-compose.yml -f docker-compose.dev.yml config`
+- touched frontend file scan for direct listmonk calls
+- touched frontend file scan for fake delivered/open/click claims
+- changed file scan for env/secrets/config changes
+
+Scope confirmation:
+- No backend, schema, API contract, auth model, send/dispatch flow, SES enablement, listmonk integration, Docker/env/config, or frontend API boundary behavior was changed.
+- No fake delivered, open, click, click-rate, queued, sent-attempted, or provider-event metric claims were added.

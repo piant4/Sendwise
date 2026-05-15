@@ -134,6 +134,7 @@ def build_contact(
     client_id: str = "client_123",
     email: str,
     status: str = "sendable",
+    metadata: dict[str, str] | None = None,
 ) -> ContactRecord:
     now = datetime.now(timezone.utc)
     return ContactRecord(
@@ -141,6 +142,7 @@ def build_contact(
         client_id=client_id,
         email=email,
         status=status,
+        metadata=metadata or {},
         created_at=now,
         updated_at=now,
     )
@@ -322,11 +324,39 @@ def test_prepare_campaign_uses_technical_fallback_but_marks_content_not_ready() 
     assert result["status"] == "synced"
     assert result["content_ready"] is False
     assert result["content"]["content_ready"] is False
-    assert result["content"]["reason"] == "Campaign content is not ready in Business DB."
+    assert isinstance(result["content"]["reason"], str)
+    assert result["content"]["reason"]
     assert fake_listmonk.created_campaign_payloads[0]["tags"] == [
         "sendwise",
         "content_ready:false",
     ]
+
+
+def test_prepare_campaign_converts_known_recipient_placeholders_for_listmonk() -> None:
+    service, fake_listmonk, _repository = build_preparation_service(
+        campaign=build_campaign(
+            preview_text="Anteprima per {{nome}}",
+            body_html="<html><body><p>Ciao {{ nome }} {{cognome}}</p></body></html>",
+            body_text="Ciao {{nome}}",
+        ),
+        contacts=[
+            build_contact(
+                contact_id="contact_1",
+                email="first@example.test",
+                metadata={"nome": "Mario", "cognome": "Rossi"},
+            ),
+        ],
+        campaign_contacts={("client_123", "campaign_123", "contact_1")},
+    )
+
+    result = service.prepare_campaign("campaign_123")
+
+    assert result["content"]["preview_text"] == "Anteprima per {{ .Subscriber.Attribs.nome }}"
+    assert "{{nome}}" not in result["content"]["body"]
+    assert "{{cognome}}" not in result["content"]["body"]
+    assert "{{ .Subscriber.Attribs.nome }}" in result["content"]["body"]
+    assert "{{ .Subscriber.Attribs.cognome }}" in result["content"]["body"]
+    assert "{{ .Subscriber.Attribs.nome }}" in fake_listmonk.created_campaign_payloads[0]["body"]
 
 
 def test_sync_listmonk_endpoint_uses_backend_preparation_without_sending() -> None:

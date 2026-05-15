@@ -71,6 +71,7 @@ def build_contact(
     client_id: str = "client_123",
     email: str = "person@example.test",
     status: str = "sendable",
+    metadata: dict[str, str] | None = None,
 ) -> ContactRecord:
     now = datetime.now(timezone.utc)
     return ContactRecord(
@@ -78,6 +79,7 @@ def build_contact(
         client_id=client_id,
         email=email,
         status=status,
+        metadata=metadata or {},
         created_at=now,
         updated_at=now,
     )
@@ -106,7 +108,9 @@ def build_sync_service(
 
 
 def test_sync_contact_creates_client_list_subscriber_membership_and_mapping() -> None:
-    service, fake_listmonk, repository = build_sync_service()
+    service, fake_listmonk, repository = build_sync_service(
+        contact=build_contact(metadata={"nome": "Mario", "cognome": "Rossi"})
+    )
     token_service = UnsubscribeTokenService(settings=get_settings())
 
     result = service.sync_contact(contact_id="contact_123")
@@ -128,9 +132,11 @@ def test_sync_contact_creates_client_list_subscriber_membership_and_mapping() ->
     assert fake_listmonk.created_subscribers == [
         {
             "email": "person@example.test",
-            "name": "person@example.test",
+            "name": "Mario Rossi",
             "status": "enabled",
             "attribs": {
+                "nome": "Mario",
+                "cognome": "Rossi",
                 "sendwise_client_id": "client_123",
                 "sendwise_contact_id": "contact_123",
                 "sendwise_unsubscribe_token": token_service.generate_token(
@@ -163,6 +169,7 @@ def test_sync_contact_reuses_mapping_without_duplicate_subscriber() -> None:
         listmonk_subscriber_id="42",
     )
     service, fake_listmonk, _repository = build_sync_service(
+        contact=build_contact(metadata={"nome": "Mario", "cognome": "Rossi"}),
         mapping_repository=repository,
     )
 
@@ -178,9 +185,11 @@ def test_sync_contact_reuses_mapping_without_duplicate_subscriber() -> None:
             "42",
             {
                 "email": "person@example.test",
-                "name": "person@example.test",
+                "name": "Mario Rossi",
                 "status": "enabled",
                 "attribs": {
+                    "nome": "Mario",
+                    "cognome": "Rossi",
                     "sendwise_client_id": "client_123",
                     "sendwise_contact_id": "contact_123",
                     "sendwise_unsubscribe_token": token_service.generate_token(

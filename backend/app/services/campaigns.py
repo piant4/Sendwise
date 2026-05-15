@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from typing import Any
+import re
 from urllib.parse import urlsplit
 
 from fastapi import HTTPException, status
@@ -85,6 +86,9 @@ EDITABLE_CAMPAIGN_STATUSES = {
 }
 NON_WRITABLE_CLIENT_STATUSES = {"blocked", "archived", "suspended"}
 BLOCKED_SENDS_LATEST_LIMIT = 5
+CONTACT_METADATA_ALLOWED_KEYS = {"nome", "cognome"}
+RECIPIENT_TEMPLATE_PLACEHOLDERS = {"nome", "cognome"}
+TEMPLATE_PLACEHOLDER_PATTERN = re.compile(r"{{\s*([A-Za-z0-9_]+)\s*}}")
 
 
 def _prefer_provider_metric(
@@ -323,6 +327,7 @@ class AdminCampaignService:
             if subject is None
             else self._normalize_optional_text(subject)
         )
+        self._validate_template_placeholders(next_subject, allowed_placeholders=set())
         next_status = campaign.status
         if status_value is not None:
             normalized_status = status_value.strip().lower()
@@ -384,6 +389,19 @@ class AdminCampaignService:
             campaign.body_text
             if body_text is None
             else self._normalize_optional_text(body_text)
+        )
+        self._validate_template_placeholders(next_subject, allowed_placeholders=set())
+        self._validate_template_placeholders(
+            next_preview_text,
+            allowed_placeholders=RECIPIENT_TEMPLATE_PLACEHOLDERS,
+        )
+        self._validate_template_placeholders(
+            next_body_html,
+            allowed_placeholders=RECIPIENT_TEMPLATE_PLACEHOLDERS,
+        )
+        self._validate_template_placeholders(
+            next_body_text,
+            allowed_placeholders=RECIPIENT_TEMPLATE_PLACEHOLDERS,
         )
         next_step = (
             self._validate_step(current_step)
@@ -452,6 +470,18 @@ class AdminCampaignService:
                 )
                 continue
 
+            try:
+                normalized_metadata = self._normalize_contact_metadata(payload.metadata)
+            except HTTPException as error:
+                invalid_contacts += 1
+                errors.append(
+                    AdminCampaignContactError(
+                        email=normalized_email,
+                        reason=str(error.detail),
+                    )
+                )
+                continue
+
             contact = self.contact_repository.get_by_client_email(
                 client_id=campaign.client_id,
                 email=normalized_email,
@@ -461,9 +491,17 @@ class AdminCampaignService:
                     client_id=campaign.client_id,
                     email=normalized_email,
                     status=self.guard.SENDABLE_CONTACT_STATUS,
+                    metadata=normalized_metadata,
                 )
                 created_contacts += 1
             else:
+                if self._contact_metadata_changed(contact.metadata, normalized_metadata):
+                    updated_contact = self.contact_repository.update_metadata(
+                        contact_id=contact.id,
+                        metadata=normalized_metadata,
+                    )
+                    if updated_contact is not None:
+                        contact = updated_contact
                 reused_contacts += 1
 
             was_attached = self.contact_repository.attach_contact_to_campaign(
@@ -965,6 +1003,60 @@ class AdminCampaignService:
 
     def _normalize_email(self, email: str) -> str:
         return email.strip().lower()
+
+    def _normalize_contact_metadata(self, metadata: dict[str, object]) -> dict[str, str]:
+        normalized: dict[str, str] = {}
+        for key in CONTACT_METADATA_ALLOWED_KEYS:
+            raw_value = metadata.get(key)
+            if raw_value is None:
+                continue
+            value = str(raw_value).strip()
+            if value:
+                normalized[key] = value
+
+        if not normalized.get("nome"):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="nome_required",
+            )
+
+        return normalized
+
+    def _contact_metadata_changed(
+        self,
+        current: dict[str, Any] | None,
+        next_metadata: dict[str, str],
+    ) -> bool:
+        if not current:
+            return True
+        current_normalized = {
+            key: str(value).strip()
+            for key, value in current.items()
+            if key in CONTACT_METADATA_ALLOWED_KEYS and str(value).strip()
+        }
+        return current_normalized != next_metadata
+
+    def _validate_template_placeholders(
+        self,
+        value: str | None,
+        *,
+        allowed_placeholders: set[str],
+    ) -> None:
+        if not value:
+            return
+
+        placeholders = {
+            match.group(1).strip().lower()
+            for match in TEMPLATE_PLACEHOLDER_PATTERN.finditer(value)
+        }
+        unsupported = {
+            placeholder for placeholder in placeholders if placeholder not in allowed_placeholders
+        }
+        if unsupported:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Completa o rimuovi le variabili del template prima di salvare.",
+            )
 
     def _looks_like_email(self, email: str) -> bool:
         value = email.strip()

@@ -127,6 +127,7 @@ Admin-managed contract notes:
 - only admin selects `client_id`
 - backend validates selected `client_id` and client status on every write action
 - admin may assign `campaign_slot_id`, save content, associate/import contacts, request review, simulate, and send
+- `POST /admin/campaigns/{campaign_id}/contacts` accepts `{ "contacts": [{ "email": string, "metadata": { "nome": string, "cognome"?: string } }] }`
 - Guard remains mandatory for simulation and real dispatch
 - `EMAIL_SENDING_ENABLED` remains the real-dispatch kill switch
 - `EMAIL_PROVIDER=ses` adds a backend safety gate requiring explicit dev/staging runtime, complete SES SMTP env, public unsubscribe URL, review readiness, allowed recipients, and recipient max before listmonk dispatch

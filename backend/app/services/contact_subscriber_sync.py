@@ -316,18 +316,28 @@ class ContactSubscriberSyncService:
             return existing, False
 
     def _build_subscriber_patch_payload(self, contact: ContactRecord) -> dict[str, Any]:
+        nome = str(contact.metadata.get("nome") or "").strip()
+        cognome = str(contact.metadata.get("cognome") or "").strip()
+        display_name = " ".join(part for part in [nome, cognome] if part).strip() or contact.email
+
+        attribs = {
+            "sendwise_client_id": contact.client_id,
+            "sendwise_contact_id": contact.id,
+            LISTMONK_UNSUBSCRIBE_TOKEN_ATTR: self.unsubscribe_token_service.generate_token(
+                client_id=contact.client_id,
+                contact_id=contact.id,
+            ),
+        }
+        if nome:
+            attribs["nome"] = nome
+        if cognome:
+            attribs["cognome"] = cognome
+
         return {
             "email": contact.email,
-            "name": contact.email,
+            "name": display_name,
             "status": self._listmonk_status(contact.status),
-            "attribs": {
-                "sendwise_client_id": contact.client_id,
-                "sendwise_contact_id": contact.id,
-                LISTMONK_UNSUBSCRIBE_TOKEN_ATTR: self.unsubscribe_token_service.generate_token(
-                    client_id=contact.client_id,
-                    contact_id=contact.id,
-                ),
-            },
+            "attribs": attribs,
         }
 
     def _listmonk_status(self, contact_status: str) -> str:

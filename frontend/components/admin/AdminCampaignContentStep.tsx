@@ -60,6 +60,23 @@ function getSafeUpdateErrorMessage(error: unknown): string {
   return "Non e stato possibile salvare il contenuto. Riprova.";
 }
 
+const ALLOWED_RECIPIENT_PLACEHOLDERS = new Set(["nome", "cognome"]);
+const PLACEHOLDER_PATTERN = /{{\s*([A-Za-z0-9_]+)\s*}}/g;
+
+function collectUnsupportedPlaceholders(value: string, allowed: Set<string>): string[] {
+  const unsupported = new Set<string>();
+
+  for (const match of value.matchAll(PLACEHOLDER_PATTERN)) {
+    const key = match[1]?.trim().toLowerCase();
+    if (!key || allowed.has(key)) {
+      continue;
+    }
+    unsupported.add(key);
+  }
+
+  return Array.from(unsupported);
+}
+
 export function AdminCampaignContentStep({
   campaign,
   onBack,
@@ -105,10 +122,26 @@ export function AdminCampaignContentStep({
     const previewValue = normalizeText(previewText);
     const bodyHtmlValue = normalizeText(bodyHtml);
     const bodyTextValue = normalizeText(bodyText);
+    const unsupportedSubjectPlaceholders = collectUnsupportedPlaceholders(
+      normalizeText(campaign.subject),
+      new Set<string>(),
+    );
+    const unsupportedPlaceholders = [
+      ...unsupportedSubjectPlaceholders,
+      ...collectUnsupportedPlaceholders(previewValue, ALLOWED_RECIPIENT_PLACEHOLDERS),
+      ...collectUnsupportedPlaceholders(bodyHtmlValue, ALLOWED_RECIPIENT_PLACEHOLDERS),
+      ...collectUnsupportedPlaceholders(bodyTextValue, ALLOWED_RECIPIENT_PLACEHOLDERS),
+    ];
     const contentChanged =
       previewValue !== normalizeText(campaign.previewText) ||
       bodyHtmlValue !== normalizeText(campaign.bodyHtml) ||
       bodyTextValue !== normalizeText(campaign.bodyText);
+
+    if (unsupportedPlaceholders.length > 0) {
+      setErrorMessage("Completa o rimuovi le variabili del template prima di salvare.");
+      setSuccessMessage(null);
+      return;
+    }
 
     if (!contentChanged) {
       setSuccessMessage("Nessuna modifica da salvare.");

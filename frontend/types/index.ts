@@ -331,8 +331,16 @@ export interface AdminCampaignContactsSummary {
   contacts: AdminCampaignContact[];
 }
 
+export interface AdminCampaignContactInput {
+  email: string;
+  metadata: {
+    nome: string;
+    cognome?: string;
+  };
+}
+
 export interface AdminCampaignContactsInput {
-  emails: string[];
+  contacts: AdminCampaignContactInput[];
 }
 
 export interface AdminCampaignContactsImportResult {

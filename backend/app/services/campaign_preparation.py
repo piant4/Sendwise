@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Any
+import re
 
 from app.core.auth import AuthenticatedUser
 from app.core.config import Settings, get_settings
@@ -28,6 +29,11 @@ from app.services.template_renderer import (
     get_default_template_renderer,
 )
 from app.services.unsubscribe import UnsubscribeTokenService
+
+RECIPIENT_PLACEHOLDER_MAP = {
+    "nome": "{{ .Subscriber.Attribs.nome }}",
+    "cognome": "{{ .Subscriber.Attribs.cognome }}",
+}
 
 
 @dataclass(frozen=True)
@@ -170,7 +176,7 @@ class CampaignPreparationService:
         )
         if campaign.content_ready and (campaign.body_html or "").strip():
             rendered_body = ensure_unsubscribe_link(
-                str(campaign.body_html),
+                self._convert_recipient_placeholders(str(campaign.body_html)),
                 unsubscribe_url,
             )
             return {
@@ -178,9 +184,13 @@ class CampaignPreparationService:
                 "content_ready": True,
                 "reason": None,
                 "subject": subject,
-                "preview_text": (campaign.preview_text or "").strip(),
+                "preview_text": self._convert_recipient_placeholders(
+                    (campaign.preview_text or "").strip()
+                ),
                 "body": rendered_body,
-                "body_text": campaign.body_text,
+                "body_text": self._convert_recipient_placeholders(
+                    str(campaign.body_text or "")
+                ),
                 "unsubscribe_url": unsubscribe_url,
                 "client_name": client_name,
             }
@@ -227,6 +237,13 @@ class CampaignPreparationService:
             "unsubscribe_url": rendered.unsubscribe_url,
             "client_name": rendered.client_name,
         }
+
+    def _convert_recipient_placeholders(self, value: str) -> str:
+        def replacer(match: re.Match[str]) -> str:
+            key = match.group(1).strip().lower()
+            return RECIPIENT_PLACEHOLDER_MAP.get(key, match.group(0))
+
+        return re.sub(r"{{\s*([A-Za-z0-9_]+)\s*}}", replacer, value)
 
     def _resolve_client_name(self, client: Any | None) -> str:
         if client is None:

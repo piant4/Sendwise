@@ -726,15 +726,23 @@ async function postAdminCampaignContacts(
     {
       contacts: {
         email: string;
-        metadata: Record<string, never>;
+        metadata: {
+          nome: string;
+          cognome?: string;
+        };
       }[];
     }
   >(
     `/admin/campaigns/${campaignId}/contacts`,
     {
-      contacts: payload.emails.map((email) => ({
-        email,
-        metadata: {},
+      contacts: payload.contacts.map((contact) => ({
+        email: contact.email,
+        metadata: {
+          nome: contact.metadata.nome,
+          ...(contact.metadata.cognome
+            ? { cognome: contact.metadata.cognome }
+            : {}),
+        },
       })),
     },
     accessToken,

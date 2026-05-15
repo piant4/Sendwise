@@ -138,6 +138,7 @@ def build_contact(
     client_id: str = "client_123",
     email: str,
     status: str = "sendable",
+    metadata: dict[str, str] | None = None,
 ) -> ContactRecord:
     now = datetime.now(timezone.utc)
     return ContactRecord(
@@ -145,6 +146,7 @@ def build_contact(
         client_id=client_id,
         email=email,
         status=status,
+        metadata=metadata or {},
         created_at=now,
         updated_at=now,
     )
@@ -342,6 +344,26 @@ def test_admin_content_update_saves_fields_and_sets_content_ready() -> None:
     assert updated.content_ready is True
     assert updated.current_step == "review"
     assert updated.review_ready is False
+
+
+def test_admin_content_update_rejects_unsupported_template_placeholders() -> None:
+    repository = InMemoryCampaignRepository()
+    campaign = repository.add_campaign(campaign_id="campaign_123", client_id="client_123")
+    service = build_admin_service(campaign_repository=repository)
+
+    try:
+        service.update_campaign_content(
+            campaign_id=campaign.id,
+            subject="Updated subject",
+            preview_text="Preview line",
+            body_html="<p>Hello {{azienda}}</p>",
+            body_text="Hello",
+            current_step="content",
+        )
+    except Exception as error:
+        assert "Completa o rimuovi le variabili del template prima di salvare." in str(error)
+    else:
+        raise AssertionError("Expected unsupported placeholder validation")
 
 
 def test_admin_select_slot_assigns_valid_slot() -> None:
@@ -829,8 +851,8 @@ def test_admin_add_contacts_endpoint_attaches_valid_contacts_and_sets_flags() ->
             f"/admin/campaigns/{campaign.id}/contacts",
             json={
                 "contacts": [
-                    {"email": "One@Example.test", "metadata": {}},
-                    {"email": " two@example.test ", "metadata": {}},
+                    {"email": "One@Example.test", "metadata": {"nome": "One"}},
+                    {"email": " two@example.test ", "metadata": {"nome": "Two", "cognome": "Bianchi"}},
                 ]
             },
         )
@@ -869,7 +891,10 @@ def test_admin_add_contacts_normalizes_email_and_reuses_existing_client_contact(
     result = service.add_campaign_contacts(
         campaign_id=campaign.id,
         contacts=[
-            AdminCampaignContactPayload(email="  PERSON@example.test  "),
+            AdminCampaignContactPayload(
+                email="  PERSON@example.test  ",
+                metadata={"nome": "Mario", "cognome": "Rossi"},
+            ),
         ],
     )
 
@@ -881,6 +906,7 @@ def test_admin_add_contacts_normalizes_email_and_reuses_existing_client_contact(
         campaign_id=campaign.id,
     )
     assert [contact.id for contact in attached_contacts] == [existing.id]
+    assert attached_contacts[0].metadata == {"nome": "Mario", "cognome": "Rossi"}
 
 
 def test_admin_add_contacts_rejects_invalid_email_without_creating_contact() -> None:
@@ -907,6 +933,24 @@ def test_admin_add_contacts_rejects_invalid_email_without_creating_contact() -> 
     ) == 0
 
 
+def test_admin_add_contacts_requires_nome_metadata() -> None:
+    repository = InMemoryCampaignRepository()
+    campaign = repository.add_campaign(campaign_id="campaign_123", client_id="client_123")
+    service = build_admin_service(campaign_repository=repository)
+
+    result = service.add_campaign_contacts(
+        campaign_id=campaign.id,
+        contacts=[
+            AdminCampaignContactPayload(email="person@example.test", metadata={}),
+        ],
+    )
+
+    assert result.created_contacts == 0
+    assert result.attached_contacts == 0
+    assert result.invalid_contacts == 1
+    assert result.errors[0].reason == "nome_required"
+
+
 def test_admin_add_contacts_deduplicates_payload_and_existing_association() -> None:
     repository = InMemoryCampaignRepository(
         campaign_contacts={("client_123", "campaign_123", "contact_1")},
@@ -926,8 +970,14 @@ def test_admin_add_contacts_deduplicates_payload_and_existing_association() -> N
     result = service.add_campaign_contacts(
         campaign_id=campaign.id,
         contacts=[
-            AdminCampaignContactPayload(email="person@example.test"),
-            AdminCampaignContactPayload(email="PERSON@example.test"),
+            AdminCampaignContactPayload(
+                email="person@example.test",
+                metadata={"nome": "Mario"},
+            ),
+            AdminCampaignContactPayload(
+                email="PERSON@example.test",
+                metadata={"nome": "Mario"},
+            ),
         ],
     )
 
@@ -957,7 +1007,10 @@ def test_admin_add_contacts_does_not_reuse_cross_client_contact() -> None:
     result = service.add_campaign_contacts(
         campaign_id=campaign.id,
         contacts=[
-            AdminCampaignContactPayload(email="person@example.test"),
+            AdminCampaignContactPayload(
+                email="person@example.test",
+                metadata={"nome": "Mario"},
+            ),
         ],
     )
 

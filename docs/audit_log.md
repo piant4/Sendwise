@@ -1,5 +1,46 @@
 # Audit Log
 
+## Milestone 16.4 - Client UI Color And Dashboard Polish
+
+Date: 2026-05-15
+Branch: develop
+
+Verified state:
+- Completed a frontend-only cleanup pass on the client portal and admin campaign actions after the blue theme migration.
+- Replaced remaining green/olive interactive states in the touched sidebar, client heroes, client surfaces, and admin campaign action buttons with blue/azure accents.
+- Reworked the client dashboard into a compact operational summary centered on workspace status, active campaigns, campaigns needing attention, blocked sends, limits, and recent backend-backed records.
+- Reworked the client campaigns page into compact read-only campaign cards showing only campaign name, status, readiness, recipient counts, provider-event availability, and last update.
+- Reworked the client limits page to use product labels such as `Email per campagna`, `Campagne massime`, `Campagne visibili`, and `Ultimo aggiornamento`, with read-only capacity progress and no backend field-name exposure.
+- Added small visual status distributions based only on existing backend campaign counts. No trend line, fake rate, or invented provider metric was added.
+- Finalized admin campaign buttons so `Nuova campagna`, `Modifica campagna`, `Torna alle campagne`, `Apri`, and wizard actions use consistent blue primary and neutral secondary button treatment without link styling.
+
+Known limits:
+- The client portal still does not expose delivered/open/click metrics unless provider-backed data exists in the current backend responses.
+- No trend chart was added because the available client read models do not expose trustworthy time-series history for campaign states or provider events.
+- Some older green/olive treatments remain in out-of-scope admin clients/account/login areas that were not part of this milestone.
+
+Checks executed:
+- `git diff --check`
+- `cd frontend && npm run lint`
+- `cd frontend && npm run build`
+- `bash scripts/audit.sh`
+- `bash scripts/smoke_test.sh`
+- `docker compose config`
+- `docker compose -f docker-compose.yml -f docker-compose.dev.yml config`
+- frontend direct-listmonk scan
+- frontend direct Clerk backend API / secret usage scan within app/components/lib
+- touched-file fake delivered/open/click claim scan
+- changed-file backend/env/config scope scan
+
+Checks result:
+- All listed checks passed in this workspace.
+- Compose validation still prints existing repository environment values; no Docker, env, or secret file was modified by this milestone.
+- Direct listmonk, direct Clerk backend API/secret, fake metric, backend diff, and env/config diff scans returned no matches in the changed scope.
+
+Scope confirmation:
+- No backend code, schema, frontend API contract, auth behavior, send/dispatch logic, SES enablement, listmonk behavior, Docker/env/config file, or n8n integration was changed.
+- No fake delivered, open, click, click-rate, or trend data was added.
+
 ## Milestone 14.6 - Campaign Setup UX Final Pass
 
 Date: 2026-05-14

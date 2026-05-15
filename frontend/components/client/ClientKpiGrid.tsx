@@ -5,37 +5,48 @@ interface ClientKpiGridProps {
 }
 
 export function ClientKpiGrid({ summary }: ClientKpiGridProps) {
+  const campaignsNeedingAttention =
+    summary.campaigns.statusCounts.blocked + summary.campaigns.statusCounts.failed;
+  const pausedCampaigns = summary.campaigns.statusCounts.paused;
+  const remainingSlots =
+    typeof summary.limits.maxCampaigns === "number" && summary.limits.maxCampaigns > 0
+      ? Math.max(summary.limits.maxCampaigns - summary.campaigns.totalCampaigns, 0)
+      : null;
+
   const cards = [
     {
       title: "Campagne attive",
-      value: summary.campaigns.activeCampaigns.toLocaleString(),
+      value: summary.campaigns.activeCampaigns.toLocaleString("it-IT"),
       tone: "campaigns",
       emphasis: "primary",
-      detail: `${summary.campaigns.totalCampaigns.toLocaleString()} campagne totali visibili nel workspace cliente`,
+      detail: `${summary.campaigns.totalCampaigns.toLocaleString("it-IT")} visibili nel workspace`,
     },
     {
-      title: "In corso ora",
-      value: summary.campaigns.runningCampaigns.toLocaleString(),
+      title: "In corso",
+      value: summary.campaigns.runningCampaigns.toLocaleString("it-IT"),
       tone: "sent",
-      detail: `${summary.campaigns.statusCounts.ready.toLocaleString()} pronte e ${summary.campaigns.statusCounts.draft.toLocaleString()} bozze`,
+      detail: `${summary.campaigns.statusCounts.ready.toLocaleString("it-IT")} pronte e ${summary.campaigns.statusCounts.draft.toLocaleString("it-IT")} bozze`,
     },
     {
-      title: "Invii bloccati nel periodo",
-      value: summary.blockedSends.currentPeriodCount.toLocaleString(),
+      title: "Da seguire",
+      value: campaignsNeedingAttention.toLocaleString("it-IT"),
       tone: "blocked",
       detail:
-        summary.blockedSends.currentPeriodCount > 0
-          ? "Sono presenti segnalazioni da controllare nella timeline blocchi."
-          : "Nessun blocco registrato nel periodo corrente.",
+        pausedCampaigns > 0
+          ? `${pausedCampaigns.toLocaleString("it-IT")} campagne in pausa`
+          : "Nessuna pausa attiva",
     },
     {
-      title: "Record utilizzo registrati",
-      value: summary.usage.totalRecords.toLocaleString(),
+      title: "Capacita residua",
+      value:
+        remainingSlots === null
+          ? "n/d"
+          : remainingSlots.toLocaleString("it-IT"),
       tone: "limits",
       detail:
-        summary.usage.hasData
-          ? `${summary.usage.currentPeriodTotals.length.toLocaleString()} tipologie registrate nel periodo`
-          : "Nessun utilizzo registrato nel periodo corrente",
+        remainingSlots === null
+          ? "Campagne massime non configurate"
+          : "Slot campagne ancora disponibili",
     },
   ];
 

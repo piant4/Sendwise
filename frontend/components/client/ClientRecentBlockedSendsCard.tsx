@@ -17,17 +17,20 @@ export function ClientRecentBlockedSendsCard({
   return (
     <ClientSurface
       title="Blocchi recenti"
-      description="Gli ultimi stop registrati dal sistema per questo workspace, con motivazione e decisione applicata."
+      description="Ultimi stop registrati nel periodo."
       aside={
         <span className="client-surface__eyebrow">
-          {summary.blockedSends.recentBlockedSends.length.toLocaleString()} elementi
+          {summary.blockedSends.recentBlockedSends.length.toLocaleString("it-IT")} elementi
         </span>
       }
     >
       {summary.blockedSends.recentBlockedSends.length > 0 ? (
-        <div className="client-list">
+        <div className="client-list client-list--compact">
           {summary.blockedSends.recentBlockedSends.map((blockedSend) => (
-            <article key={blockedSend.id} className="client-row client-row--alert">
+            <article
+              key={blockedSend.id}
+              className="client-row client-row--alert client-row--compact"
+            >
               <div className="client-row__header">
                 <div className="client-row__copy">
                   <strong className="client-row__title">
@@ -44,7 +47,9 @@ export function ClientRecentBlockedSendsCard({
                   variant={getSendDecisionVariant(blockedSend.decision)}
                 />
               </div>
-              <p className="client-row__support">{blockedSend.reason}</p>
+              <p className="client-row__support client-note--compact">
+                {blockedSend.reason}
+              </p>
             </article>
           ))}
         </div>

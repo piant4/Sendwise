@@ -79,7 +79,7 @@ export function AdminCampaignDetailView({
             <Button
               asChild
               size="default"
-              className="admin-topbar-action admin-topbar-action--primary"
+              className="admin-topbar-action campaign-action campaign-action--primary"
             >
               <Link href={`/admin/campaigns/${campaign.campaignId}?mode=edit`}>
                 <PenSquare aria-hidden="true" className="admin-topbar-action__icon" />
@@ -205,9 +205,6 @@ export function AdminCampaignDetailView({
               <h2 className="admin-clients-card__title" style={{ color: "#0f172a" }}>
                 Sintesi operativa
               </h2>
-              <p className="admin-clients-card__description">
-                Stato backend, senza invio e senza metriche simulate.
-              </p>
             </div>
             <StatusBadge
               label={getCampaignReadinessLabel(summary.campaign)}

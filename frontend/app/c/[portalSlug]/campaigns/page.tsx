@@ -4,16 +4,9 @@ import { ClientSurface } from "../../../../components/client/ClientSurface";
 import { formatDateTimeLabel } from "../../../../components/client/clientStatus";
 import {
   formatCampaignCount,
-  getCampaignLogStatItems,
-  getCampaignReadinessLabel,
+  getCampaignReadinessShortLabel,
   getCampaignStatusLabel,
   getCampaignStatusVariant,
-  getProviderEventsDetail,
-  getProviderEventsLabel,
-  getRecipientEmptyState,
-  getRecipientSummaryItems,
-  getRuntimeSafetyItems,
-  getSesPendingWarning,
 } from "../../../../components/shared/campaignUi";
 import { StatusBadge } from "../../../../components/ui/StatusBadge";
 import {
@@ -36,15 +29,24 @@ interface ClientCampaignsPageProps {
   }>;
 }
 
-function buildCampaignStats(campaigns: Campaign[]) {
+interface CampaignStatusSummary {
+  total: number;
+  ready: number;
+  running: number;
+  blockedOrFailed: number;
+  draftOrPaused: number;
+}
+
+function buildCampaignStats(campaigns: Campaign[]): CampaignStatusSummary {
   return {
     total: campaigns.length,
-    active: campaigns.filter((campaign) =>
-      ["ready", "running"].includes(campaign.status),
-    ).length,
+    ready: campaigns.filter((campaign) => campaign.status === "ready").length,
     running: campaigns.filter((campaign) => campaign.status === "running").length,
     blockedOrFailed: campaigns.filter((campaign) =>
       ["blocked", "failed"].includes(campaign.status),
+    ).length,
+    draftOrPaused: campaigns.filter((campaign) =>
+      ["draft", "paused"].includes(campaign.status),
     ).length,
   };
 }
@@ -80,78 +82,6 @@ async function loadCampaignReadModels(
   return Object.fromEntries(entries);
 }
 
-function renderClientCampaignReadModel(
-  detail: CampaignReadModel,
-  backendStats: ClientCampaignStatsReadModel,
-) {
-  const recipientEmptyState = getRecipientEmptyState(detail.recipients);
-  const runtimeItems = getRuntimeSafetyItems(detail.runtime).filter(
-    (item) => item.label !== "Eventi provider",
-  );
-  const sesPendingWarning = getSesPendingWarning(detail.runtime);
-  const attentionItems = [recipientEmptyState, sesPendingWarning].filter(
-    (item): item is string => Boolean(item),
-  );
-
-  return (
-    <>
-      <div className="client-detail-grid">
-        <div>
-          <span>Prontezza</span>
-          <strong>{getCampaignReadinessLabel(detail.campaign)}</strong>
-        </div>
-        {getRecipientSummaryItems(detail.recipients)
-          .filter((item) => ["Totali", "Idonei", "Bloccati"].includes(item.label))
-          .map((item) => (
-            <div key={item.label}>
-              <span>{item.label}</span>
-              <strong>{item.value}</strong>
-            </div>
-          ))}
-        <div>
-          <span>Eventi provider</span>
-          <strong>{getProviderEventsLabel(backendStats.logs)}</strong>
-        </div>
-      </div>
-
-      <div className="client-detail-grid">
-        {runtimeItems.map((item) => (
-          <div key={item.label}>
-            <span>{item.label}</span>
-            <strong>{item.value}</strong>
-          </div>
-        ))}
-        {getCampaignLogStatItems(backendStats.logs).map((item) => (
-          <div key={item.label}>
-            <span>{item.label}</span>
-            <strong>{item.value}</strong>
-          </div>
-        ))}
-        <div>
-          <span>Invii bloccati</span>
-          <strong>{formatCampaignCount(backendStats.blockedSends.total)}</strong>
-        </div>
-      </div>
-
-      {backendStats.logs.providerEventsAvailable ? (
-        <p className="client-row__support">
-          {getProviderEventsDetail(backendStats.logs)}
-        </p>
-      ) : null}
-      {attentionItems.length > 0 ? (
-        <div className="client-row__support">
-          <strong>Attenzione</strong>
-          <ul>
-            {attentionItems.map((item) => (
-              <li key={item}>{item}</li>
-            ))}
-          </ul>
-        </div>
-      ) : null}
-    </>
-  );
-}
-
 export default async function ClientCampaignsPage({
   params,
 }: ClientCampaignsPageProps) {
@@ -172,27 +102,33 @@ export default async function ClientCampaignsPage({
     return (
       <DashboardErrorState
         title="Campagne"
-        description="Elenco campagne del cliente letto dal backend applicativo."
+        description="Elenco campagne cliente."
         errorMessage={result.errorMessage}
       />
     );
   }
 
   const stats = buildCampaignStats(result.campaigns);
+  const statusVisualItems = [
+    { label: "Pronte", value: stats.ready, tone: "ready" },
+    { label: "In corso", value: stats.running, tone: "running" },
+    { label: "Bozze / pausa", value: stats.draftOrPaused, tone: "paused" },
+    { label: "Bloccate / errore", value: stats.blockedOrFailed, tone: "attention" },
+  ].filter((item) => item.value > 0);
 
   return (
     <main className="shell">
       <section className="client-page-shell">
         <ClientPageHeader
           title="Campagne"
-          description="Stato, destinatari e metriche disponibili per le tue campagne. Le consegne e gli eventi appaiono solo quando arrivano dati provider."
-          actions={<StatusBadge label="Metriche verificate" variant="success" />}
+          description="Stato, readiness, destinatari ed eventi provider disponibili."
+          actions={<StatusBadge label="Dati reali" variant="success" />}
         />
 
-        <section className="client-page-stat-grid" aria-label="Statistiche campagne">
+        <section className="client-page-stat-grid" aria-label="Riepilogo campagne">
           {[
             { label: "Campagne totali", value: formatCampaignCount(stats.total) },
-            { label: "Pronte / in corso", value: formatCampaignCount(stats.active) },
+            { label: "Pronte", value: formatCampaignCount(stats.ready) },
             { label: "In corso", value: formatCampaignCount(stats.running) },
             {
               label: "Bloccate o in errore",
@@ -206,9 +142,43 @@ export default async function ClientCampaignsPage({
           ))}
         </section>
 
+        {statusVisualItems.length > 0 ? (
+          <ClientSurface
+            title="Distribuzione stati"
+            aside={
+              <span className="client-surface__eyebrow">
+                {formatCampaignCount(stats.total)} campagne
+              </span>
+            }
+          >
+            <div className="client-status-visual">
+              <div className="client-status-visual__bar" aria-hidden="true">
+                {statusVisualItems.map((item) => (
+                  <div
+                    key={item.label}
+                    className="client-status-visual__segment"
+                    data-tone={item.tone}
+                    style={{ width: `${(item.value / stats.total) * 100}%` }}
+                  />
+                ))}
+              </div>
+              <div className="client-status-visual__legend">
+                {statusVisualItems.map((item) => (
+                  <article
+                    key={item.label}
+                    className="client-status-visual__legend-item"
+                  >
+                    <span>{item.label}</span>
+                    <strong>{formatCampaignCount(item.value)}</strong>
+                  </article>
+                ))}
+              </div>
+            </div>
+          </ClientSurface>
+        ) : null}
+
         <ClientSurface
           title="Elenco campagne"
-          description="Vista cliente con stato, destinatari e metriche disponibili senza ID tecnici o metriche simulate."
           aside={
             <span className="client-surface__eyebrow">
               {formatCampaignCount(result.campaigns.length)} elementi
@@ -216,12 +186,12 @@ export default async function ClientCampaignsPage({
           }
         >
           {result.campaigns.length > 0 ? (
-            <div className="client-list">
+            <div className="client-list client-list--compact">
               {result.campaigns.map((campaign) => {
                 const readModel = result.campaignReadModels[campaign.id];
 
                 return (
-                  <article key={campaign.id} className="client-row">
+                  <article key={campaign.id} className="client-row client-row--compact">
                     <div className="client-row__header">
                       <div className="client-row__copy">
                         <strong className="client-row__title">{campaign.name}</strong>
@@ -235,32 +205,47 @@ export default async function ClientCampaignsPage({
                       />
                     </div>
 
-                    <div className="client-detail-grid">
-                      <div>
-                        <span>Soggetto</span>
-                        <strong>
-                          {campaign.subject?.trim()
-                            ? campaign.subject
-                            : "Oggetto non disponibile"}
-                        </strong>
-                      </div>
-                      <div>
-                        <span>Creata</span>
-                        <strong>{formatDateTimeLabel(campaign.created_at)}</strong>
-                      </div>
-                      <div>
-                        <span>Ultimo aggiornamento</span>
-                        <strong>{formatDateTimeLabel(campaign.updated_at)}</strong>
-                      </div>
-                    </div>
-
                     {!readModel || readModel instanceof Error ? (
-                      <p className="client-row__support">
-                        Dati campagna non disponibili:{" "}
-                        {readModel?.message ?? "aggiornamento pending"}.
+                      <p className="client-row__support client-note--compact">
+                        Dettagli campagna non disponibili.
                       </p>
                     ) : (
-                      renderClientCampaignReadModel(readModel.detail, readModel.stats)
+                      <>
+                        <div className="client-row__stats">
+                          <div className="client-row__stat">
+                            <span>Readiness</span>
+                            <strong>
+                              {getCampaignReadinessShortLabel(readModel.detail.campaign)}
+                            </strong>
+                          </div>
+                          <div className="client-row__stat">
+                            <span>Destinatari</span>
+                            <strong>
+                              {formatCampaignCount(readModel.detail.recipients.total)} totali
+                            </strong>
+                          </div>
+                          <div className="client-row__stat">
+                            <span>Idonei / bloccati</span>
+                            <strong>
+                              {formatCampaignCount(readModel.detail.recipients.eligible)} /{" "}
+                              {formatCampaignCount(readModel.detail.recipients.blocked)}
+                            </strong>
+                          </div>
+                          <div className="client-row__stat">
+                            <span>Eventi provider</span>
+                            <strong>
+                              {readModel.stats.logs.providerEventsAvailable
+                                ? "Disponibili"
+                                : "Non disponibili"}
+                            </strong>
+                          </div>
+                        </div>
+                        {!readModel.stats.logs.providerEventsAvailable ? (
+                          <p className="client-row__support client-note--compact">
+                            Nessun evento provider registrato.
+                          </p>
+                        ) : null}
+                      </>
                     )}
                   </article>
                 );

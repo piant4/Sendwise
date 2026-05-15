@@ -17,17 +17,17 @@ export function ClientRecentCampaignsCard({
   return (
     <ClientSurface
       title="Campagne recenti"
-      description="Le ultime campagne aggiornate, con stato reale, soggetto e date operative."
+      description="Ultimi aggiornamenti visibili."
       aside={
         <span className="client-surface__eyebrow">
-          {summary.campaigns.recentCampaigns.length.toLocaleString()} elementi
+          {summary.campaigns.recentCampaigns.length.toLocaleString("it-IT")} elementi
         </span>
       }
     >
       {summary.campaigns.recentCampaigns.length > 0 ? (
-        <div className="client-list">
+        <div className="client-list client-list--compact">
           {summary.campaigns.recentCampaigns.map((campaign) => (
-            <article key={campaign.id} className="client-row">
+            <article key={campaign.id} className="client-row client-row--compact">
               <div className="client-row__header">
                 <div className="client-row__copy">
                   <strong className="client-row__title">{campaign.name}</strong>
@@ -40,7 +40,7 @@ export function ClientRecentCampaignsCard({
                   variant={getCampaignStatusVariant(campaign.status)}
                 />
               </div>
-              <div className="client-row__footer">
+              <div className="client-row__summary">
                 <span>
                   {campaign.subject?.trim() ? campaign.subject : "Oggetto non disponibile"}
                 </span>

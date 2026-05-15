@@ -6,10 +6,7 @@ import {
   formatOptionalLimit,
 } from "../../../../components/client/clientStatus";
 import { StatusBadge } from "../../../../components/ui/StatusBadge";
-import {
-  getClientMe,
-  getClientOverviewSummary,
-} from "../../../../lib/api";
+import { getClientMe, getClientOverviewSummary } from "../../../../lib/api";
 import { requireClientPortalRequest } from "../portalPageData";
 
 export const dynamic = "force-dynamic";
@@ -38,7 +35,7 @@ function getCapacityVariant(ratio: number | null) {
 
 function getCapacityLabel(totalCampaigns: number, maxCampaigns?: number | null) {
   if (typeof maxCampaigns !== "number" || maxCampaigns <= 0) {
-    return "Capacita non configurata";
+    return "Limite non configurato";
   }
 
   const remaining = Math.max(maxCampaigns - totalCampaigns, 0);
@@ -48,10 +45,10 @@ function getCapacityLabel(totalCampaigns: number, maxCampaigns?: number | null) 
   }
 
   if (remaining === 1) {
-    return "Resta 1 slot campagna";
+    return "1 slot disponibile";
   }
 
-  return `Restano ${remaining.toLocaleString()} slot campagna`;
+  return `${remaining.toLocaleString("it-IT")} slot disponibili`;
 }
 
 export default async function ClientEmailLimitsPage({
@@ -74,7 +71,7 @@ export default async function ClientEmailLimitsPage({
     return (
       <DashboardErrorState
         title="Limiti email"
-        description="Limiti attivi del cliente letti dal backend applicativo."
+        description="Limiti cliente."
         errorMessage={result.errorMessage}
       />
     );
@@ -93,23 +90,23 @@ export default async function ClientEmailLimitsPage({
       <section className="client-page-shell">
         <ClientPageHeader
           title="Limiti email"
-          description="Questa vista mostra in sola lettura i limiti attualmente configurati per il tuo workspace e come si riflettono sulle campagne visibili."
+          description="Capacita attiva e campagne oggi visibili."
           actions={<StatusBadge label="Sola lettura" variant="neutral" />}
         />
 
         <section className="client-page-stat-grid" aria-label="Riepilogo limiti">
           {[
             {
-              label: "email_limit_per_campaign",
+              label: "Email per campagna",
               value: formatOptionalLimit(context.client.email_limit_per_campaign),
             },
             {
-              label: "max_campaigns",
+              label: "Campagne massime",
               value: formatOptionalLimit(maxCampaigns),
             },
             {
               label: "Campagne visibili",
-              value: campaignsInUse.toLocaleString(),
+              value: campaignsInUse.toLocaleString("it-IT"),
             },
             {
               label: "Ultimo aggiornamento",
@@ -125,32 +122,7 @@ export default async function ClientEmailLimitsPage({
 
         <div className="client-dashboard__content">
           <ClientSurface
-            title="Regole attive"
-            description="I limiti vengono applicati dal backend Sendwise. Se ti serve una modifica, va richiesta al team amministrativo."
-          >
-            <div className="client-fact-grid">
-              <article className="client-fact-card">
-                <span>Limite email per campagna</span>
-                <strong>{formatOptionalLimit(context.client.email_limit_per_campaign)}</strong>
-                <p>
-                  Numero massimo di email configurato per una singola campagna,
-                  quando presente.
-                </p>
-              </article>
-              <article className="client-fact-card">
-                <span>Massimo campagne</span>
-                <strong>{formatOptionalLimit(maxCampaigns)}</strong>
-                <p>
-                  Limite di campagne contemporaneamente presenti nel workspace
-                  cliente, quando configurato.
-                </p>
-              </article>
-            </div>
-          </ClientSurface>
-
-          <ClientSurface
-            title="Situazione attuale"
-            description="Confronto tra il numero di campagne oggi visibili e la capacita configurata."
+            title="Capacita campagne"
             aside={
               <StatusBadge
                 label={getCapacityLabel(campaignsInUse, maxCampaigns)}
@@ -161,18 +133,18 @@ export default async function ClientEmailLimitsPage({
             <div className="client-progress-panel">
               <div className="client-progress-panel__row">
                 <div>
-                  <span>Slot campagne occupati</span>
+                  <span>Occupazione slot</span>
                   <strong>
                     {typeof maxCampaigns === "number" && maxCampaigns > 0
-                      ? `${campaignsInUse.toLocaleString()} / ${maxCampaigns.toLocaleString()}`
-                      : `${campaignsInUse.toLocaleString()} campagne`}
+                      ? `${campaignsInUse.toLocaleString("it-IT")} / ${maxCampaigns.toLocaleString("it-IT")}`
+                      : `${campaignsInUse.toLocaleString("it-IT")} campagne`}
                   </strong>
                 </div>
-                {campaignUsageRatio !== null ? (
-                  <span>{Math.round(Math.min(campaignUsageRatio, 1) * 100)}%</span>
-                ) : (
-                  <span>n/d</span>
-                )}
+                <span>
+                  {campaignUsageRatio !== null
+                    ? `${Math.round(Math.min(campaignUsageRatio, 1) * 100)}%`
+                    : "n/d"}
+                </span>
               </div>
               <div className="client-progress" aria-hidden="true">
                 <div
@@ -185,13 +157,27 @@ export default async function ClientEmailLimitsPage({
                   }}
                 />
               </div>
-              <p className="client-note">
-                {campaignUsageRatio === null
-                  ? "Il limite massimo campagne non e configurato, quindi questa vista mostra solo il numero di campagne oggi disponibili."
-                  : campaignUsageRatio >= 0.8
-                    ? "Il numero di campagne visibili e vicino al limite configurato."
-                    : "La capacita campagne disponibile e ancora sotto soglia di attenzione."}
-              </p>
+            </div>
+          </ClientSurface>
+
+          <ClientSurface title="Dettaglio limiti">
+            <div className="client-fact-grid">
+              <article className="client-fact-card">
+                <span>Email per campagna</span>
+                <strong>{formatOptionalLimit(context.client.email_limit_per_campaign)}</strong>
+              </article>
+              <article className="client-fact-card">
+                <span>Campagne massime</span>
+                <strong>{formatOptionalLimit(maxCampaigns)}</strong>
+              </article>
+              <article className="client-fact-card">
+                <span>Campagne visibili</span>
+                <strong>{campaignsInUse.toLocaleString("it-IT")}</strong>
+              </article>
+              <article className="client-fact-card">
+                <span>Ultimo aggiornamento</span>
+                <strong>{formatDateTimeLabel(context.client.updated_at)}</strong>
+              </article>
             </div>
           </ClientSurface>
         </div>

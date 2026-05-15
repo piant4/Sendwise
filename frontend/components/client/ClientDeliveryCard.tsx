@@ -22,43 +22,39 @@ export function ClientDeliveryCard({ summary }: ClientDeliveryCardProps) {
   return (
     <div className="client-rail">
       <ClientSurface
-        title="Capacita e limiti"
-        description="Stato account, limiti attivi e spazio campagne oggi disponibile nel workspace cliente."
+        title="Capacita"
+        description="Limiti attivi e campagne oggi visibili."
       >
         <div className="client-fact-grid">
           <article className="client-fact-card">
             <span>Stato account</span>
             <strong>{getClientStatusLabel(summary.client.clientStatus)}</strong>
-            <p>Lo stato operativo del workspace e governato dal backend.</p>
           </article>
           <article className="client-fact-card">
-            <span>email_limit_per_campaign</span>
+            <span>Email per campagna</span>
             <strong>{formatOptionalLimit(summary.limits.emailLimitPerCampaign)}</strong>
-            <p>Limite per singola campagna, quando configurato.</p>
           </article>
           <article className="client-fact-card">
-            <span>max_campaigns</span>
+            <span>Campagne massime</span>
             <strong>{formatOptionalLimit(summary.limits.maxCampaigns)}</strong>
-            <p>Massimo numero di campagne disponibili per il cliente.</p>
           </article>
           <article className="client-fact-card">
-            <span>Campagne oggi visibili</span>
+            <span>Campagne visibili</span>
             <strong>{campaignsInUseLabel}</strong>
-            <p>Confronto diretto tra campagne presenti e capacita configurata.</p>
           </article>
         </div>
       </ClientSurface>
 
       <ClientSurface
         title="Utilizzo registrato"
-        description="Riepilogo onesto dei record di utilizzo visibili al cliente nel periodo corrente."
+        description="Solo record esposti dal backend."
       >
         {usageTotals.length > 0 ? (
           <div className="client-metric-list">
             {usageTotals.map((metric) => (
               <div key={metric.usageType} className="client-metric-item">
                 <span>{metric.usageType}</span>
-                <strong>{metric.totalQuantity.toLocaleString()}</strong>
+                <strong>{metric.totalQuantity.toLocaleString("it-IT")}</strong>
               </div>
             ))}
           </div>
@@ -68,9 +64,9 @@ export function ClientDeliveryCard({ summary }: ClientDeliveryCardProps) {
           </div>
         )}
         {recentUsage.length > 0 ? (
-          <div className="client-list">
+          <div className="client-list client-list--compact">
             {recentUsage.map((entry) => (
-              <article key={entry.id} className="client-row">
+              <article key={entry.id} className="client-row client-row--compact">
                 <div className="client-row__header">
                   <div className="client-row__copy">
                     <strong className="client-row__title">{entry.usage_type}</strong>
@@ -79,9 +75,9 @@ export function ClientDeliveryCard({ summary }: ClientDeliveryCardProps) {
                     </span>
                   </div>
                 </div>
-                <div className="client-row__footer">
-                  <span>{entry.quantity.toLocaleString()} unita</span>
-                  <span>Registrazione backend</span>
+                <div className="client-row__summary">
+                  <span>{entry.quantity.toLocaleString("it-IT")} unita</span>
+                  <span>Record periodo corrente</span>
                 </div>
               </article>
             ))}

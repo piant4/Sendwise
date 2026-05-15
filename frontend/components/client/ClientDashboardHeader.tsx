@@ -11,47 +11,59 @@ interface ClientDashboardHeaderProps {
   summary: ClientOverviewSummary;
 }
 
+function getCapacityRatio(totalCampaigns: number, maxCampaigns?: number | null) {
+  if (typeof maxCampaigns !== "number" || maxCampaigns <= 0) {
+    return null;
+  }
+
+  return totalCampaigns / maxCampaigns;
+}
+
 export function ClientDashboardHeader({
   summary,
 }: ClientDashboardHeaderProps) {
-  const campaignCapacityRatio =
-    typeof summary.limits.maxCampaigns === "number" && summary.limits.maxCampaigns > 0
-      ? summary.campaigns.totalCampaigns / summary.limits.maxCampaigns
-      : null;
+  const capacityRatio = getCapacityRatio(
+    summary.campaigns.totalCampaigns,
+    summary.limits.maxCampaigns,
+  );
+  const campaignsNeedingAttention =
+    summary.campaigns.statusCounts.blocked + summary.campaigns.statusCounts.failed;
+  const visualItems = [
+    { label: "Bozze", value: summary.campaigns.statusCounts.draft, tone: "draft" },
+    { label: "Pronte", value: summary.campaigns.statusCounts.ready, tone: "ready" },
+    { label: "In corso", value: summary.campaigns.statusCounts.running, tone: "running" },
+    { label: "In pausa", value: summary.campaigns.statusCounts.paused, tone: "paused" },
+    { label: "Da seguire", value: campaignsNeedingAttention, tone: "attention" },
+  ].filter((item) => item.value > 0);
 
   const health =
     summary.client.clientStatus !== "active"
       ? {
-          label: "Operativita limitata",
-          description:
-            "Lo stato account richiede attenzione prima di aumentare il volume operativo.",
+          label: getClientStatusLabel(summary.client.clientStatus),
+          detail: "Lo stato workspace limita l'operativita.",
           variant: getClientAccountVariant(summary.client.clientStatus),
         }
       : summary.client.accessStatus !== "active"
         ? {
-            label: "Accesso da verificare",
-            description:
-              "L'accesso cliente non risulta pienamente attivo e va verificato prima di nuove operazioni.",
+            label: getClientAccessStatusLabel(summary.client.accessStatus),
+            detail: "L'accesso va verificato prima di nuove attivita.",
             variant: "warning" as const,
           }
         : summary.blockedSends.currentPeriodCount > 0
           ? {
-              label: "Attenzione sui blocchi",
-              description:
-                "Sono presenti invii bloccati nel periodo corrente e conviene controllare le ultime segnalazioni.",
+              label: "Invii bloccati presenti",
+              detail: "Sono presenti blocchi nel periodo corrente.",
               variant: "warning" as const,
             }
-          : campaignCapacityRatio !== null && campaignCapacityRatio >= 0.8
+          : campaignsNeedingAttention > 0
             ? {
-                label: "Vicino al limite campagne",
-                description:
-                  "Il numero di campagne visibili e vicino alla capacita configurata per il workspace.",
+                label: "Campagne da seguire",
+                detail: "Alcune campagne richiedono una verifica operativa.",
                 variant: "warning" as const,
               }
             : {
                 label: "Operativita regolare",
-                description:
-                  "Lo stato attuale non mostra blocchi critici e la capacita campagne resta sotto controllo.",
+                detail: "Nessun blocco critico visibile nel riepilogo.",
                 variant: "success" as const,
               };
 
@@ -59,14 +71,11 @@ export function ClientDashboardHeader({
     <section className="client-hero">
       <div className="client-hero__copy">
         <div className="client-hero__headline">
-          <p className="client-hero__eyebrow">Riepilogo operativo</p>
-          <h2 className="client-hero__title">{health.label}</h2>
-          <p className="client-hero__lead">
-            {summary.client.name} e il contatto {summary.client.email}. Oggi vedi
-            campagne attive, blocchi rilevati e limiti configurati senza dettagli
-            interni superflui.
-          </p>
+          <p className="client-hero__eyebrow">Workspace cliente</p>
+          <h2 className="client-hero__title">{summary.client.name}</h2>
+          <p className="client-hero__lead">{health.detail}</p>
         </div>
+
         <div className="client-hero__status-row">
           <StatusBadge
             label={getClientStatusLabel(summary.client.clientStatus)}
@@ -78,27 +87,25 @@ export function ClientDashboardHeader({
           />
           <StatusBadge label={health.label} variant={health.variant} />
         </div>
+
         <div className="client-hero__facts">
           <article className="client-hero__fact">
             <span>Campagne attive</span>
-            <strong>{summary.campaigns.activeCampaigns.toLocaleString()}</strong>
+            <strong>{summary.campaigns.activeCampaigns.toLocaleString("it-IT")}</strong>
           </article>
           <article className="client-hero__fact">
-            <span>In corso ora</span>
-            <strong>{summary.campaigns.runningCampaigns.toLocaleString()}</strong>
+            <span>Da seguire</span>
+            <strong>{campaignsNeedingAttention.toLocaleString("it-IT")}</strong>
           </article>
           <article className="client-hero__fact">
-            <span>Blocchi nel periodo</span>
-            <strong>{summary.blockedSends.currentPeriodCount.toLocaleString()}</strong>
-          </article>
-          <article className="client-hero__fact">
-            <span>Slot campagne</span>
+            <span>Blocchi periodo</span>
             <strong>
-              {typeof summary.limits.maxCampaigns === "number" &&
-              summary.limits.maxCampaigns > 0
-                ? `${summary.campaigns.totalCampaigns.toLocaleString()} / ${summary.limits.maxCampaigns.toLocaleString()}`
-                : summary.campaigns.totalCampaigns.toLocaleString()}
+              {summary.blockedSends.currentPeriodCount.toLocaleString("it-IT")}
             </strong>
+          </article>
+          <article className="client-hero__fact">
+            <span>Campagne visibili</span>
+            <strong>{summary.campaigns.totalCampaigns.toLocaleString("it-IT")}</strong>
           </article>
         </div>
       </div>
@@ -109,8 +116,8 @@ export function ClientDashboardHeader({
           <strong>
             {typeof summary.limits.maxCampaigns === "number" &&
             summary.limits.maxCampaigns > 0
-              ? `${Math.round(Math.min(campaignCapacityRatio ?? 0, 1) * 100)}%`
-              : "n/d"}
+              ? `${summary.campaigns.totalCampaigns.toLocaleString("it-IT")} / ${summary.limits.maxCampaigns.toLocaleString("it-IT")}`
+              : summary.campaigns.totalCampaigns.toLocaleString("it-IT")}
           </strong>
         </div>
         <div className="client-progress" aria-hidden="true">
@@ -118,35 +125,46 @@ export function ClientDashboardHeader({
             className="client-progress__fill"
             style={{
               width:
-                campaignCapacityRatio !== null
-                  ? `${Math.max(8, Math.min(campaignCapacityRatio * 100, 100))}%`
+                capacityRatio !== null
+                  ? `${Math.max(8, Math.min(capacityRatio * 100, 100))}%`
                   : "18%",
             }}
           />
         </div>
-        <p className="client-hero__summary">{health.description}</p>
         <div className="client-fact-grid">
           <article className="client-fact-card">
-            <span>email_limit_per_campaign</span>
+            <span>Email per campagna</span>
             <strong>{formatOptionalLimit(summary.limits.emailLimitPerCampaign)}</strong>
-            <p>Soglia letta in sola visualizzazione dal backend.</p>
           </article>
           <article className="client-fact-card">
-            <span>max_campaigns</span>
+            <span>Campagne massime</span>
             <strong>{formatOptionalLimit(summary.limits.maxCampaigns)}</strong>
-            <p>Numero massimo di campagne configurato per il workspace.</p>
           </article>
         </div>
-        <div className="client-hero__meter-footer">
-          <span>
-            {summary.campaigns.totalCampaigns.toLocaleString()} campagne visibili
-          </span>
-          <span>
-            {summary.usage.hasData
-              ? `${summary.usage.totalRecords.toLocaleString()} record utilizzo disponibili`
-              : "Nessun utilizzo registrato nel periodo"}
-          </span>
-        </div>
+        {visualItems.length > 0 ? (
+          <div className="client-status-visual">
+            <div className="client-status-visual__bar" aria-hidden="true">
+              {visualItems.map((item) => (
+                <div
+                  key={item.label}
+                  className="client-status-visual__segment"
+                  data-tone={item.tone}
+                  style={{
+                    width: `${(item.value / summary.campaigns.totalCampaigns) * 100}%`,
+                  }}
+                />
+              ))}
+            </div>
+            <div className="client-status-visual__legend">
+              {visualItems.map((item) => (
+                <article key={item.label} className="client-status-visual__legend-item">
+                  <span>{item.label}</span>
+                  <strong>{item.value.toLocaleString("it-IT")}</strong>
+                </article>
+              ))}
+            </div>
+          </div>
+        ) : null}
       </div>
     </section>
   );

@@ -10,6 +10,7 @@ import {
   getCampaignStatusLabel,
   getCampaignStatusVariant,
 } from "../shared/campaignUi";
+import { Button } from "../ui/button";
 import { StatusBadge } from "../ui/StatusBadge";
 
 interface AdminCampaignCompactCardProps {
@@ -42,82 +43,72 @@ export function AdminCampaignCompactCard({
 
   return (
     <article className="admin-record-row">
-      <Link
-        href={`/admin/campaigns/${campaign.id}`}
+      <div
         style={{
-          color: "inherit",
-          display: "grid",
-          gap: 14,
-          textDecoration: "none",
+          alignItems: "start",
+          display: "flex",
+          gap: 16,
+          justifyContent: "space-between",
         }}
       >
+        <div className="admin-record-row__copy" style={{ gap: 8 }}>
+          <strong style={{ color: "#0f172a", fontSize: "1.05rem" }}>{campaign.name}</strong>
+          <span>
+            {campaign.clientName} / {campaign.clientEmail}
+          </span>
+        </div>
         <div
           style={{
-            alignItems: "start",
+            alignItems: "center",
             display: "flex",
-            gap: 16,
-            justifyContent: "space-between",
+            flexWrap: "wrap",
+            gap: 8,
+            justifyContent: "flex-end",
           }}
         >
-          <div className="admin-record-row__copy" style={{ gap: 8 }}>
-            <strong style={{ color: "#0f172a", fontSize: "1.05rem" }}>{campaign.name}</strong>
-            <span>
-              {campaign.clientName} / {campaign.clientEmail}
-            </span>
-          </div>
-          <div
-            style={{
-              alignItems: "center",
-              display: "flex",
-              flexWrap: "wrap",
-              gap: 8,
-              justifyContent: "flex-end",
-            }}
+          <StatusBadge
+            label={getCampaignStatusLabel(campaign.status)}
+            variant={getCampaignStatusVariant(campaign.status)}
+          />
+          <Button
+            asChild
+            variant="outline"
+            size="sm"
+            className="admin-topbar-action campaign-action campaign-action--secondary"
           >
-            <StatusBadge
-              label={getCampaignStatusLabel(campaign.status)}
-              variant={getCampaignStatusVariant(campaign.status)}
-            />
-            <span
-              style={{
-                alignItems: "center",
-                color: "#2563eb",
-                display: "inline-flex",
-                fontSize: 12,
-                fontWeight: 700,
-                gap: 6,
-              }}
-            >
-              Apri <ChevronRight aria-hidden="true" size={16} />
-            </span>
-          </div>
+            <Link href={`/admin/campaigns/${campaign.id}`}>
+              Apri
+              <ChevronRight aria-hidden="true" className="admin-topbar-action__icon" />
+            </Link>
+          </Button>
         </div>
+      </div>
 
-        <div
-          style={{
-            display: "grid",
-            gap: 10,
-            gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
-          }}
-        >
-          <div>
-            <div className="admin-record-row__note">Readiness</div>
-            <strong style={{ color: "#0f172a" }}>{readinessLabel}</strong>
-          </div>
-          <div>
-            <div className="admin-record-row__note">Destinatari</div>
-            <strong style={{ color: "#0f172a" }}>
-              {recipients
-                ? `${formatCampaignCount(recipients.total)} totali / ${formatCampaignCount(recipients.eligible)} idonei / ${formatCampaignCount(recipients.blocked)} bloccati`
-                : "Conteggi non disponibili"}
-            </strong>
-          </div>
-          <div>
-            <div className="admin-record-row__note">Aggiornata</div>
-            <strong style={{ color: "#0f172a" }}>{formatDateLabel(campaign.updatedAt)}</strong>
-          </div>
+      <div
+        style={{
+          display: "grid",
+          gap: 10,
+          gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
+          marginTop: 14,
+        }}
+      >
+        <div>
+          <div className="admin-record-row__note">Readiness</div>
+          <strong style={{ color: "#0f172a" }}>{readinessLabel}</strong>
         </div>
-      </Link>
+        <div>
+          <div className="admin-record-row__note">Destinatari</div>
+          <strong style={{ color: "#0f172a" }}>
+            {recipients
+              ? `${formatCampaignCount(recipients.total)} totali / ${formatCampaignCount(recipients.eligible)} idonei`
+              : "Conteggi non disponibili"}
+          </strong>
+        </div>
+        <div>
+          <div className="admin-record-row__note">Aggiornata</div>
+          <strong style={{ color: "#0f172a" }}>{formatDateLabel(campaign.updatedAt)}</strong>
+        </div>
+      </div>
     </article>
   );
 }

@@ -133,7 +133,7 @@ export function AdminCampaignCreateWizard({
             Nuova campagna
           </h2>
           <p className="admin-clients-card__description">
-            Crea una bozza iniziale con cliente, nome e oggetto email. Dopo la creazione verrai reindirizzato allo step contenuto per scegliere o adattare un modello email.
+            Crea la bozza iniziale e prosegui nel wizard contenuto.
           </p>
         </div>
       </div>
@@ -193,7 +193,7 @@ export function AdminCampaignCreateWizard({
         <Button
           asChild
           variant="outline"
-          size="lg"
+          size="default"
           className="admin-topbar-action campaign-action campaign-action--secondary"
           style={{ minWidth: 148 }}
         >
@@ -204,7 +204,7 @@ export function AdminCampaignCreateWizard({
         </Button>
         <Button
           type="submit"
-          size="lg"
+          size="default"
           className="admin-topbar-action campaign-action campaign-action--primary"
           disabled={isSubmitting}
           style={{ minWidth: 170 }}

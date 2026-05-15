@@ -1,6 +1,7 @@
 "use client";
 
-import { CheckCircle2, LayoutTemplate } from "lucide-react";
+import { CheckCircle2, Eye, LayoutTemplate, X } from "lucide-react";
+import { useMemo, useState } from "react";
 import type { CampaignTemplate } from "../../lib/campaignTemplates";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
@@ -14,7 +15,7 @@ interface AdminCampaignTemplatePickerProps {
 }
 
 function getPreviewExcerpt(value: string): string {
-  return value.length > 150 ? `${value.slice(0, 147)}...` : value;
+  return value.length > 110 ? `${value.slice(0, 107)}...` : value;
 }
 
 export function AdminCampaignTemplatePicker({
@@ -24,16 +25,23 @@ export function AdminCampaignTemplatePicker({
   onSelect,
   onApply,
 }: AdminCampaignTemplatePickerProps) {
+  const [previewTemplateId, setPreviewTemplateId] = useState<string | null>(null);
+  const previewTemplate = useMemo(
+    () => templates.find((template) => template.id === previewTemplateId) ?? null,
+    [previewTemplateId, templates],
+  );
+
   return (
+    <>
     <section className="campaign-panel campaign-panel--subtle" style={{ padding: 20 }}>
       <div className="admin-clients-card__intro">
         <div>
-          <p className="admin-surface__eyebrow">Modelli frontend-only</p>
+          <p className="admin-surface__eyebrow">Modelli</p>
           <h3 className="admin-clients-card__title" style={{ color: "#0f172a", fontSize: "1.1rem" }}>
-            Selezione template email
+            Template email
           </h3>
           <p className="admin-clients-card__description" style={{ marginTop: 8 }}>
-            Applica un preset locale per precompilare anteprima, HTML e testo semplice. Il contenuto resta modificabile e non viene salvato automaticamente.
+            Preset locali per precompilare i campi del contenuto.
           </p>
         </div>
       </div>
@@ -75,38 +83,30 @@ export function AdminCampaignTemplatePicker({
                 <p className="campaign-template-card__description">{template.description}</p>
               </div>
 
-              <div className="campaign-template-card__preview">
-                <strong style={{ color: "#0f172a", display: "block", marginBottom: 6 }}>
-                  Uso consigliato
-                </strong>
-                <span>{template.recommendedUseCase}</span>
-              </div>
+              <div className="campaign-template-preview">{getPreviewExcerpt(template.previewText)}</div>
 
-              <div className="campaign-template-card__preview">
-                <strong style={{ color: "#0f172a", display: "block", marginBottom: 6 }}>
-                  Anteprima
-                </strong>
-                <span>{getPreviewExcerpt(template.previewText)}</span>
-              </div>
-
-              <div className="campaign-action-row__group">
+              <div className="campaign-template-actions">
                 <Button
                   type="button"
-                  variant={isSelected ? "default" : "outline"}
-                  className={`admin-topbar-action ${isSelected ? "campaign-action campaign-action--primary" : "campaign-action campaign-action--secondary"}`}
+                  variant="outline"
+                  className="admin-topbar-action campaign-action campaign-action--secondary"
                   disabled={disabled}
-                  onClick={() => onSelect(template.id)}
+                  onClick={() => setPreviewTemplateId(template.id)}
                 >
-                  <LayoutTemplate aria-hidden="true" className="admin-topbar-action__icon" />
-                  {isSelected ? "Modello selezionato" : "Seleziona"}
+                  <Eye aria-hidden="true" className="admin-topbar-action__icon" />
+                  Anteprima
                 </Button>
                 <Button
                   type="button"
                   className="admin-topbar-action campaign-action campaign-action--primary"
                   disabled={disabled}
-                  onClick={() => onApply(template)}
+                  onClick={() => {
+                    onSelect(template.id);
+                    onApply(template);
+                  }}
                 >
-                  Usa questo modello
+                  <LayoutTemplate aria-hidden="true" className="admin-topbar-action__icon" />
+                  {isSelected ? "Usa modello" : "Usa modello"}
                 </Button>
               </div>
             </article>
@@ -114,5 +114,71 @@ export function AdminCampaignTemplatePicker({
         })}
       </div>
     </section>
+
+    {previewTemplate ? (
+      <div
+        className="campaign-template-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="campaign-template-preview-title"
+        onClick={() => setPreviewTemplateId(null)}
+      >
+        <div
+          className="campaign-template-modal__card"
+          onClick={(event) => event.stopPropagation()}
+        >
+          <div className="campaign-template-modal__header">
+            <div style={{ display: "grid", gap: 8 }}>
+              <div className="campaign-template-card__meta">
+                <Badge
+                  variant="secondary"
+                  style={{ background: "rgba(219, 234, 254, 0.88)", color: "#1d4ed8" }}
+                >
+                  {previewTemplate.category}
+                </Badge>
+              </div>
+              <div>
+                <h4 id="campaign-template-preview-title" className="campaign-template-card__title">
+                  {previewTemplate.name}
+                </h4>
+                <p className="campaign-template-card__description">
+                  {previewTemplate.recommendedUseCase}
+                </p>
+              </div>
+            </div>
+
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              onClick={() => setPreviewTemplateId(null)}
+            >
+              <X aria-hidden="true" />
+            </Button>
+          </div>
+
+          <div className="campaign-template-modal__grid">
+            <section className="campaign-template-modal__section">
+              <strong style={{ color: "#0f172a" }}>Preview text</strong>
+              <span>{previewTemplate.previewText}</span>
+            </section>
+
+            <section className="campaign-template-modal__section">
+              <strong style={{ color: "#0f172a" }}>HTML email</strong>
+              <div
+                style={{ color: "#334155" }}
+                dangerouslySetInnerHTML={{ __html: previewTemplate.htmlBody }}
+              />
+            </section>
+
+            <section className="campaign-template-modal__section">
+              <strong style={{ color: "#0f172a" }}>Versione testo semplice</strong>
+              <pre>{previewTemplate.plainTextBody}</pre>
+            </section>
+          </div>
+        </div>
+      </div>
+    ) : null}
+    </>
   );
 }

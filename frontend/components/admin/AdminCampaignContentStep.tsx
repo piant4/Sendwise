@@ -1,7 +1,7 @@
 "use client";
 
 import { useAuth } from "@clerk/nextjs";
-import { AlertTriangle, Loader2, Save } from "lucide-react";
+import { Loader2, Save } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { type FormEvent, useState } from "react";
 import {
@@ -151,9 +151,6 @@ export function AdminCampaignContentStep({
           <h2 className="admin-clients-card__title" style={{ color: "#0f172a" }}>
             Contenuto email
           </h2>
-          <p className="admin-clients-card__description">
-            Seleziona un modello locale oppure completa manualmente i campi supportati dall&apos;endpoint esistente. La readiness resta sempre determinata dal backend dopo il salvataggio.
-          </p>
         </div>
       </div>
 
@@ -177,18 +174,8 @@ export function AdminCampaignContentStep({
           templates={CAMPAIGN_TEMPLATES}
         />
 
-        <div className="campaign-callout">
-          <span className="admin-surface__eyebrow">Nota contenuto</span>
-          <p className="campaign-field__helper">
-            Applicare un modello compila solo i campi locali dello step. Nessun salvataggio, invio o review viene eseguito finche non confermi con &quot;Salva e continua&quot;.
-          </p>
-        </div>
-
         <label className="campaign-field">
           <span className="campaign-field__label">Anteprima email</span>
-          <p className="campaign-field__helper">
-            Testo breve mostrato accanto all&apos;oggetto in inbox o anteprima client.
-          </p>
           <input
             className="campaign-input"
             disabled={isSubmitting}
@@ -199,9 +186,6 @@ export function AdminCampaignContentStep({
         </label>
         <label className="campaign-field">
           <span className="campaign-field__label">HTML email</span>
-          <p className="campaign-field__helper">
-            Contenuto HTML modificabile. Mantieni una struttura semplice e coerente con il messaggio inviato dal backend.
-          </p>
           <textarea
             className="campaign-textarea"
             disabled={isSubmitting}
@@ -214,7 +198,7 @@ export function AdminCampaignContentStep({
         <label className="campaign-field">
           <span className="campaign-field__label">Versione testo semplice</span>
           <p className="campaign-field__helper">
-            Versione leggibile senza HTML. Utile per compatibilita e per controllare il messaggio reale senza markup.
+            Versione leggibile senza HTML.
           </p>
           <textarea
             className="campaign-textarea"
@@ -238,24 +222,6 @@ export function AdminCampaignContentStep({
           Indietro
         </Button>
         <div className="campaign-action-row__group">
-          <div className="campaign-callout" style={{ minWidth: 260, padding: "12px 14px" }}>
-            <span
-              style={{
-                alignItems: "center",
-                color: "#0f172a",
-                display: "inline-flex",
-                fontSize: "0.9rem",
-                fontWeight: 600,
-                gap: 8,
-              }}
-            >
-              <AlertTriangle aria-hidden="true" size={16} />
-              Il template non implica contenuto pronto
-            </span>
-            <p className="campaign-field__helper">
-              Solo il backend puo confermare `content_ready` dopo il salvataggio e la review.
-            </p>
-          </div>
           <Button
             type="submit"
             className="admin-topbar-action campaign-action campaign-action--primary"

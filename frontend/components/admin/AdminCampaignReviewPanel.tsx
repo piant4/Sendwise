@@ -15,6 +15,7 @@ import type {
 } from "../../types";
 import {
   getReadableBackendReason,
+  getCampaignStepLabel,
 } from "../shared/campaignUi";
 import { Button } from "../ui/button";
 import { StatusBadge } from "../ui/StatusBadge";
@@ -73,6 +74,14 @@ function getInitialState(
     eligibleContactCount: summary?.recipients.eligible ?? 0,
     blockedContactCount: summary?.recipients.blocked ?? 0,
   };
+}
+
+function getReadinessLabel(value: boolean): string {
+  return value ? "Pronto" : "Non pronto";
+}
+
+function getBooleanLabel(value: boolean): string {
+  return value ? "Sì" : "No";
 }
 
 export function AdminCampaignReviewPanel({
@@ -146,13 +155,10 @@ export function AdminCampaignReviewPanel({
           <h2 className="admin-clients-card__title" style={{ color: "#0f172a" }}>
             Verifica finale
           </h2>
-          <p className="admin-clients-card__description">
-            Questo step esegue la review backend e mostra soltanto lo stato operativo restituito dalle API.
-          </p>
         </div>
         <StatusBadge
           label={state.reviewReady ? "Pronta" : "Da verificare"}
-          variant={state.reviewReady ? "success" : "neutral"}
+          variant={state.reviewReady ? "success" : "warning"}
         />
       </div>
 
@@ -172,35 +178,35 @@ export function AdminCampaignReviewPanel({
         </p>
       ) : null}
       {reviewResult ? (
-        <p className="admin-clients-feedback admin-clients-feedback--success" role="status">
+        <p className="admin-clients-feedback" role="status">
           Verifica completata dal backend. Nessun invio e stato avviato.
         </p>
       ) : null}
 
       <dl className="admin-record-grid" style={{ marginTop: 18 }}>
         <div>
-          <dt>allowed_to_send</dt>
-          <dd>{state.allowedToSend ? "true" : "false"}</dd>
+          <dt>Invio consentito</dt>
+          <dd>{getBooleanLabel(state.allowedToSend)}</dd>
         </div>
         <div>
-          <dt>can_send_when_enabled</dt>
-          <dd>{state.canSendWhenEnabled ? "true" : "false"}</dd>
+          <dt>Inviabile quando l&apos;invio reale sara attivo</dt>
+          <dd>{getBooleanLabel(state.canSendWhenEnabled)}</dd>
         </div>
         <div>
-          <dt>content_ready</dt>
-          <dd>{state.contentReady ? "true" : "false"}</dd>
+          <dt>Contenuto</dt>
+          <dd>{getReadinessLabel(state.contentReady)}</dd>
         </div>
         <div>
-          <dt>contacts_ready</dt>
-          <dd>{state.contactsReady ? "true" : "false"}</dd>
+          <dt>Destinatari</dt>
+          <dd>{getReadinessLabel(state.contactsReady)}</dd>
         </div>
         <div>
-          <dt>review_ready</dt>
-          <dd>{state.reviewReady ? "true" : "false"}</dd>
+          <dt>Review</dt>
+          <dd>{getReadinessLabel(state.reviewReady)}</dd>
         </div>
         <div>
-          <dt>Step backend</dt>
-          <dd>{state.currentStep}</dd>
+          <dt>Step operativo</dt>
+          <dd>{getCampaignStepLabel(state.currentStep)}</dd>
         </div>
         <div>
           <dt>Idonei</dt>

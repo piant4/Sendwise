@@ -89,7 +89,7 @@ export default async function AdminCampaignsPage() {
             <p className="admin-surface__eyebrow">Admin</p>
             <h1 className="admin-page-title">Campagne</h1>
             <p className="admin-page-description">
-              Vista compatta per aprire rapidamente il dettaglio di ogni campagna.
+              Elenco operativo campagne con accesso rapido a dettaglio e modifica.
             </p>
             <p className="admin-page-description">
               {"campaigns" in result
@@ -99,7 +99,7 @@ export default async function AdminCampaignsPage() {
           </div>
           <Button
             asChild
-            size="lg"
+            size="default"
             className="admin-topbar-action campaign-page-action"
           >
             <Link href="/admin/campaigns/new">

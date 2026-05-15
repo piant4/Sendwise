@@ -61,51 +61,25 @@ export function AdminCampaignDetailView({
 
   return (
     <div style={{ display: "grid", gap: 20 }}>
-      <section
-        className="admin-clients-card"
-        style={{
-          background:
-            "linear-gradient(180deg, rgba(248, 252, 255, 0.98), rgba(240, 247, 255, 0.94))",
-          border: "1px solid rgba(59, 130, 246, 0.16)",
-          boxShadow: "0 24px 60px rgba(15, 23, 42, 0.08)",
-        }}
-      >
+      <section className="admin-clients-card campaign-panel">
         <div
           className="admin-clients-card__intro"
           style={{ alignItems: "start", gap: 16, justifyContent: "space-between" }}
         >
           <div>
-            <p className="admin-surface__eyebrow">Dettaglio campagna</p>
-            <h2 className="admin-clients-card__title" style={{ color: "#0f172a" }}>
-              {campaign.name}
-            </h2>
             <p className="admin-clients-card__description">
               {campaign.clientName} / {campaign.subject?.trim() || "Oggetto email non disponibile"}
             </p>
           </div>
-          <div
-            style={{
-              alignItems: "center",
-              display: "flex",
-              flexWrap: "wrap",
-              gap: 10,
-              justifyContent: "flex-end",
-            }}
-          >
+          <div className="campaign-hero-actions">
             <StatusBadge
               label={getCampaignStatusLabel(campaign.status)}
               variant={getCampaignStatusVariant(campaign.status)}
             />
             <Button
               asChild
-              size="lg"
+              size="default"
               className="admin-topbar-action admin-topbar-action--primary"
-              style={{
-                background: "linear-gradient(135deg, #2563eb, #0ea5e9)",
-                border: "1px solid rgba(37, 99, 235, 0.18)",
-                boxShadow: "0 16px 34px rgba(37, 99, 235, 0.24)",
-                color: "#f8fbff",
-              }}
             >
               <Link href={`/admin/campaigns/${campaign.campaignId}?mode=edit`}>
                 <PenSquare aria-hidden="true" className="admin-topbar-action__icon" />
@@ -116,22 +90,18 @@ export function AdminCampaignDetailView({
         </div>
 
         <div
-          style={{
-            display: "grid",
-            gap: 14,
-            gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-            marginTop: 20,
-          }}
+          className="campaign-inline-summary"
+          style={{ marginTop: 18 }}
         >
           {[
             {
-              label: "Readiness",
+              label: "Stato operativo",
               value: summary
                 ? getCampaignReadinessShortLabel(summary.campaign)
                 : getCampaignReadinessShortLabel(campaign),
             },
             {
-              label: "Step backend",
+              label: "Step operativo",
               value: getCampaignStepLabel(campaign.currentStep),
             },
             {
@@ -147,17 +117,7 @@ export function AdminCampaignDetailView({
               value: formatDateLabel(campaign.updatedAt),
             },
           ].map((item) => (
-            <article
-              key={item.label}
-              style={{
-                background: "rgba(255, 255, 255, 0.78)",
-                border: "1px solid rgba(148, 163, 184, 0.22)",
-                borderRadius: 18,
-                display: "grid",
-                gap: 6,
-                padding: 16,
-              }}
-            >
+            <article key={item.label}>
               <span className="admin-record-row__note">{item.label}</span>
               <strong style={{ color: "#0f172a" }}>{item.value}</strong>
             </article>
@@ -175,15 +135,15 @@ export function AdminCampaignDetailView({
           </div>
           <FileText aria-hidden="true" color="#2563eb" size={18} />
         </div>
-        <div style={{ display: "grid", gap: 14, gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))" }}>
+        <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))" }}>
           <article
             style={{
-              background: "rgba(239, 246, 255, 0.62)",
-              border: "1px solid rgba(96, 165, 250, 0.18)",
-              borderRadius: 18,
+              background: "rgba(248, 250, 252, 0.94)",
+              border: "1px solid rgba(226, 232, 240, 0.94)",
+              borderRadius: 14,
               display: "grid",
               gap: 6,
-              padding: 16,
+              padding: 14,
             }}
           >
             <span className="admin-record-row__note">Oggetto email</span>
@@ -191,25 +151,25 @@ export function AdminCampaignDetailView({
           </article>
           <article
             style={{
-              background: "rgba(239, 246, 255, 0.62)",
-              border: "1px solid rgba(96, 165, 250, 0.18)",
-              borderRadius: 18,
+              background: "rgba(248, 250, 252, 0.94)",
+              border: "1px solid rgba(226, 232, 240, 0.94)",
+              borderRadius: 14,
               display: "grid",
               gap: 6,
-              padding: 16,
+              padding: 14,
             }}
           >
-            <span className="admin-record-row__note">Preview text</span>
+            <span className="admin-record-row__note">Anteprima email</span>
             <strong style={{ color: "#0f172a" }}>{getExcerpt(campaign.previewText)}</strong>
           </article>
           <article
             style={{
-              background: "rgba(239, 246, 255, 0.62)",
-              border: "1px solid rgba(96, 165, 250, 0.18)",
-              borderRadius: 18,
+              background: "rgba(248, 250, 252, 0.94)",
+              border: "1px solid rgba(226, 232, 240, 0.94)",
+              borderRadius: 14,
               display: "grid",
               gap: 6,
-              padding: 16,
+              padding: 14,
             }}
           >
             <span className="admin-record-row__note">HTML email</span>
@@ -220,12 +180,12 @@ export function AdminCampaignDetailView({
           </article>
           <article
             style={{
-              background: "rgba(239, 246, 255, 0.62)",
-              border: "1px solid rgba(96, 165, 250, 0.18)",
-              borderRadius: 18,
+              background: "rgba(248, 250, 252, 0.94)",
+              border: "1px solid rgba(226, 232, 240, 0.94)",
+              borderRadius: 14,
               display: "grid",
               gap: 6,
-              padding: 16,
+              padding: 14,
             }}
           >
             <span className="admin-record-row__note">Testo semplice</span>
@@ -251,26 +211,30 @@ export function AdminCampaignDetailView({
             </div>
             <StatusBadge
               label={getCampaignReadinessLabel(summary.campaign)}
-              variant={summary.campaign.reviewReady ? "success" : "neutral"}
+              variant={summary.campaign.reviewReady ? "success" : "warning"}
             />
           </div>
 
           <dl className="admin-record-grid" style={{ marginTop: 16 }}>
             <div>
-              <dt>allowed_to_send</dt>
-              <dd>{summary.canSend ? "true" : "false"}</dd>
+              <dt>Invio consentito</dt>
+              <dd>{summary.canSend ? "Sì" : "No"}</dd>
             </div>
             <div>
-              <dt>content_ready</dt>
-              <dd>{summary.campaign.contentReady ? "true" : "false"}</dd>
+              <dt>Contenuto</dt>
+              <dd>{summary.campaign.contentReady ? "Pronto" : "Non pronto"}</dd>
             </div>
             <div>
-              <dt>contacts_ready</dt>
-              <dd>{summary.campaign.contactsReady ? "true" : "false"}</dd>
+              <dt>Destinatari</dt>
+              <dd>{summary.campaign.contactsReady ? "Pronto" : "Non pronto"}</dd>
             </div>
             <div>
-              <dt>review_ready</dt>
-              <dd>{summary.campaign.reviewReady ? "true" : "false"}</dd>
+              <dt>Review</dt>
+              <dd>{summary.campaign.reviewReady ? "Pronto" : "Non pronto"}</dd>
+            </div>
+            <div>
+              <dt>Step operativo</dt>
+              <dd>{getCampaignStepLabel(summary.campaign.currentStep)}</dd>
             </div>
             <div>
               <dt>Idonei</dt>

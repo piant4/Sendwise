@@ -1,7 +1,7 @@
 "use client";
 
 import { useAuth } from "@clerk/nextjs";
-import { FileUp, Loader2, Plus, Upload } from "lucide-react";
+import { FileUp, Loader2, Plus } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { type ChangeEvent, type DragEvent, type FormEvent, useMemo, useRef, useState } from "react";
 import {
@@ -62,7 +62,7 @@ function getSafeContactsErrorMessage(error: unknown): string {
 
 function getContactsNotice(contacts: AdminCampaignContactsSummary | null): string {
   if (!contacts || contacts.total === 0) {
-    return "Aggiungi destinatari per continuare.";
+    return "Aggiungi destinatari per continuare";
   }
 
   if (contacts.eligible === 0 && contacts.blocked === contacts.total) {
@@ -201,7 +201,7 @@ export function AdminCampaignContactsPanel({
             Destinatari
           </h2>
           <p className="admin-clients-card__description">
-            Incolla email oppure trascina file `.csv` o `.txt`: il frontend estrae gli indirizzi e invia solo il batch email verso l&apos;endpoint esistente.
+            Trascina un file .csv/.txt o incolla gli indirizzi.
           </p>
         </div>
         <StatusBadge
@@ -279,9 +279,6 @@ export function AdminCampaignContactsPanel({
             <FileUp aria-hidden="true" size={18} />
             Trascina qui `.csv` o `.txt`
           </span>
-          <span className="admin-record-row__note">
-            Nessun import avanzato: il file viene letto solo per estrarre indirizzi email e riempire il batch manuale.
-          </span>
           <input
             accept=".csv,.txt,text/csv,text/plain"
             hidden
@@ -294,9 +291,6 @@ export function AdminCampaignContactsPanel({
 
         <label className="campaign-field">
           <span className="campaign-field__label">Email destinatari</span>
-          <p className="campaign-field__helper">
-            Inserisci una email per riga. Il parser frontend deduplica e invia poi il batch risultante all&apos;endpoint FastAPI esistente.
-          </p>
           <textarea
             className="campaign-textarea"
             disabled={isSubmitting}
@@ -308,10 +302,6 @@ export function AdminCampaignContactsPanel({
           />
         </label>
 
-        <p className="admin-record-row__note" style={{ marginTop: 10 }}>
-          {parsedEmails.length.toLocaleString("it-IT")} indirizzi pronti per l&apos;associazione.
-        </p>
-
         <div className="campaign-action-row" style={{ marginTop: 16 }}>
           <Button
             type="button"
@@ -322,30 +312,19 @@ export function AdminCampaignContactsPanel({
           >
             Indietro
           </Button>
-          <div className="campaign-action-row__group">
-            <Button
-              type="button"
-              variant="outline"
-              className="admin-topbar-action campaign-action campaign-action--secondary"
-              disabled
-            >
-              <Upload aria-hidden="true" className="admin-topbar-action__icon" />
-              Import avanzato non ancora disponibile
-            </Button>
-            <Button
-              type="submit"
-              className="admin-topbar-action campaign-action campaign-action--primary"
-              disabled={isSubmitting || parsedEmails.length === 0}
-              style={{ minWidth: 190 }}
-            >
-              {isSubmitting ? (
-                <Loader2 aria-hidden="true" className="admin-topbar-action__icon" />
-              ) : (
-                <Plus aria-hidden="true" className="admin-topbar-action__icon" />
-              )}
-              {isSubmitting ? "Associazione..." : "Aggiungi destinatari"}
-            </Button>
-          </div>
+          <Button
+            type="submit"
+            className="admin-topbar-action campaign-action campaign-action--primary"
+            disabled={isSubmitting || parsedEmails.length === 0}
+            style={{ minWidth: 190 }}
+          >
+            {isSubmitting ? (
+              <Loader2 aria-hidden="true" className="admin-topbar-action__icon" />
+            ) : (
+              <Plus aria-hidden="true" className="admin-topbar-action__icon" />
+            )}
+            {isSubmitting ? "Associazione..." : "Aggiungi destinatari"}
+          </Button>
         </div>
       </form>
 

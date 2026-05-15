@@ -41,23 +41,13 @@ export function AdminCampaignCompactCard({
       : getCampaignReadinessShortLabel(readiness.campaign);
 
   return (
-    <article
-      className="admin-record-row"
-      style={{
-        background:
-          "linear-gradient(180deg, rgba(248, 251, 255, 0.98), rgba(239, 246, 255, 0.94))",
-        border: "1px solid rgba(96, 165, 250, 0.22)",
-        borderRadius: 22,
-        boxShadow: "0 20px 48px rgba(37, 99, 235, 0.1)",
-        padding: 20,
-      }}
-    >
+    <article className="admin-record-row">
       <Link
         href={`/admin/campaigns/${campaign.id}`}
         style={{
           color: "inherit",
           display: "grid",
-          gap: 16,
+          gap: 14,
           textDecoration: "none",
         }}
       >
@@ -91,9 +81,9 @@ export function AdminCampaignCompactCard({
             <span
               style={{
                 alignItems: "center",
-                color: "#1d4ed8",
+                color: "#2563eb",
                 display: "inline-flex",
-                fontSize: 13,
+                fontSize: 12,
                 fontWeight: 700,
                 gap: 6,
               }}
@@ -106,7 +96,7 @@ export function AdminCampaignCompactCard({
         <div
           style={{
             display: "grid",
-            gap: 12,
+            gap: 10,
             gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
           }}
         >

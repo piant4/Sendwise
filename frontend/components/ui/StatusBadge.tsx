@@ -10,14 +10,14 @@ const variantStyles: Record<
   { background: string; borderColor: string; color: string }
 > = {
   neutral: {
-    background: "#f8fafc",
-    borderColor: "var(--border)",
-    color: "var(--muted)",
+    background: "rgba(248, 250, 252, 0.96)",
+    borderColor: "rgba(148, 163, 184, 0.28)",
+    color: "#334155",
   },
   success: {
-    background: "#ecfdf3",
-    borderColor: "#abefc6",
-    color: "#067647",
+    background: "#eef6ff",
+    borderColor: "#bfdbfe",
+    color: "#1d4ed8",
   },
   warning: {
     background: "#fffaeb",
@@ -43,10 +43,10 @@ export function StatusBadge({
         alignItems: "center",
         background: style.background,
         border: `1px solid ${style.borderColor}`,
-        borderRadius: 999,
+        borderRadius: 10,
         color: style.color,
         display: "inline-flex",
-        fontSize: 13,
+        fontSize: 12,
         fontWeight: 700,
         lineHeight: 1,
         padding: "6px 10px",

@@ -2638,3 +2638,42 @@ Checks result:
 Scope confirmation:
 - No backend code, DB schema, API contract, send/dispatch logic, Deliverability Guard, SES enablement, listmonk integration, Docker/env/config file, Clerk/auth flow, or onboarding/account runtime behavior was changed.
 - No fake delivery, open, click, click-rate, queued, sent-attempted, or provider-event metric claims were added.
+
+## Milestone 16.3 - Global Blue Theme And UI Cleanup Pass
+
+Date: 2026-05-15
+Branch: develop
+
+Verified state:
+- The shared frontend palette now uses blue/azure accent tokens across admin, client, campaign, and account surfaces instead of the previous olive/green primary accent, while keeping destructive and warning semantics intact.
+- Campaign list, detail, and edit flows now use one compact header direction, smaller secondary back actions, normalized primary/secondary buttons, and reduced badge/pill noise.
+- The campaign edit wizard now removes the extra guided hero copy, uses a compact blue stepper, trims tutorial text, removes the disabled advanced-import action, and keeps backend-owned readiness semantics visible with product labels only.
+- Template cards are now shorter, expose one `Anteprima` action plus one `Usa modello` action, and the preview opens in a frontend modal without saving anything automatically.
+- The admin dashboard now prioritizes operational data already exposed by the existing admin overview read model: active clients, campaigns needing attention, blocked sends, runtime/provider state, and clients near limits. No new endpoint or fake KPI was added.
+- The Sendwise-owned account workspace is simplified into compact summary and action rows; Clerk remains contained to the existing security sheet and no auth behavior changed.
+
+Known limits:
+- SES live validation remains pending.
+- Campaign send/dispatch controls remain unavailable and `EMAIL_SENDING_ENABLED` default behavior was not changed.
+- Review and readiness continue to reflect backend state only; selecting a template still does not imply `content_ready`.
+
+Checks executed:
+- `git diff --check`
+- `cd frontend && npm run lint`
+- `cd frontend && npm run build`
+- `bash scripts/audit.sh`
+- `bash scripts/smoke_test.sh`
+- `docker compose config`
+- `docker compose -f docker-compose.yml -f docker-compose.dev.yml config`
+- frontend direct-listmonk scan
+- frontend direct Clerk backend API / secret usage scan
+- touched-file fake delivered/open/click claim scan
+- changed-file backend/env/config/send-scope scan
+
+Checks result:
+- All listed checks passed in this workspace.
+- Compose validation output still exposes existing repository secrets in environment values; no Docker or env file was changed by this milestone.
+
+Scope confirmation:
+- No backend, schema, API contract, auth model, send/dispatch flow, SES enablement, listmonk integration, Docker/env/config, or frontend API boundary behavior was changed.
+- No fake delivered, open, click, click-rate, queued, sent-attempted, or provider-event metric claims were added.

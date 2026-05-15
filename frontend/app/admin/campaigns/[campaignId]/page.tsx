@@ -85,11 +85,10 @@ export default async function AdminCampaignDetailPage({
           <div>
             <Button
               asChild
-              variant="ghost"
+              variant="outline"
               size="sm"
               style={{
-                color: "var(--sw-text-muted)",
-                margin: "0 0 10px -8px",
+                marginBottom: 10,
               }}
             >
               <Link href="/admin/campaigns">
@@ -103,8 +102,8 @@ export default async function AdminCampaignDetailPage({
             </h1>
             <p className="admin-page-description">
               {isEditMode
-                ? "Wizard guidato a step singolo per completare o aggiornare la campagna."
-                : "Vista di dettaglio pulita, con verifica operativa e dettagli tecnici separati."}
+                ? "Modifica operativa con uno step attivo alla volta."
+                : "Dettaglio campagna con riepilogo operativo e contenuti essenziali."}
             </p>
           </div>
         </header>

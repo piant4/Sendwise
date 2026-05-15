@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import type {
   AdminCampaignContactsSummary,
   AdminCampaignDetail,
@@ -38,14 +38,6 @@ export function AdminCampaignWizardShell({
   );
 
   const currentIndex = STEP_ORDER.indexOf(currentStep);
-  const headerSummary = useMemo(
-    () => [
-      campaign.clientName,
-      campaign.subject?.trim() || "Oggetto email da completare",
-      "Invio sempre governato dal backend",
-    ].join(" / "),
-    [campaign.clientName, campaign.subject],
-  );
 
   function goToStep(step: CampaignWizardStep) {
     setCurrentStep(step);
@@ -72,22 +64,6 @@ export function AdminCampaignWizardShell({
 
   return (
     <div style={{ display: "grid", gap: 20 }}>
-      <section
-        className="admin-clients-card campaign-panel"
-      >
-        <div className="admin-clients-card__intro">
-          <div>
-            <p className="admin-surface__eyebrow">Setup guidato</p>
-            <h2 className="admin-clients-card__title" style={{ color: "#0f172a" }}>
-              Modifica campagna
-            </h2>
-            <p className="admin-clients-card__description">
-              {headerSummary}. Lo step contenuto include modelli email locali modificabili prima del salvataggio.
-            </p>
-          </div>
-        </div>
-      </section>
-
       <AdminCampaignSetupProgress
         campaign={campaign}
         contacts={contacts}

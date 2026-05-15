@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { useSessionList, useUser } from "@clerk/nextjs";
-import { ArrowLeft, ArrowUpRight, Building2, LogOut, Mail, UserRound } from "lucide-react";
+import { ArrowLeft, ArrowUpRight, LogOut } from "lucide-react";
 import type { AuthMeResponse } from "@/lib/api";
 import { AccountDeleteSection } from "@/components/shared/AccountDeleteSection";
 import { ClerkSignOutButton } from "@/components/shared/ClerkSignOutButton";
@@ -58,35 +58,6 @@ function ActionRow({
         {actionLabel}
         <ArrowUpRight aria-hidden="true" />
       </button>
-    </div>
-  );
-}
-
-function ProfileField({
-  icon: Icon,
-  label,
-  value,
-  help,
-}: {
-  icon: typeof UserRound;
-  label: string;
-  value: string;
-  help: string;
-}) {
-  return (
-    <div className="rounded-2xl border border-slate-200/80 bg-white/90 p-4">
-      <div className="mb-3 flex items-center gap-3 text-slate-900">
-        <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-sky-50 text-sky-600">
-          <Icon aria-hidden="true" className="h-4 w-4" />
-        </div>
-        <div>
-          <p className="text-[0.72rem] font-bold uppercase tracking-[0.14em] text-slate-500">
-            {label}
-          </p>
-          <p className="text-sm font-semibold text-slate-900">{value}</p>
-        </div>
-      </div>
-      <p className="text-sm leading-6 text-slate-600">{help}</p>
     </div>
   );
 }
@@ -151,41 +122,27 @@ export function AccountWorkspace({
               </div>
             </header>
 
-            <section className="rounded-[24px] border border-sky-100 bg-gradient-to-br from-sky-50 via-white to-cyan-50 p-5">
-              <div className="grid gap-4 md:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)]">
-                <div className="space-y-2">
-                  <p className="text-[0.72rem] font-bold uppercase tracking-[0.16em] text-sky-700">
-                    Account Sendwise
-                  </p>
-                  <h2 className="text-2xl font-semibold tracking-tight text-slate-950">
-                    Dati profilo nel prodotto, sicurezza in Clerk.
-                  </h2>
-                  <p className="text-sm leading-6 text-slate-600">
-                    Il backend Sendwise resta la fonte di verita per accesso cliente,
-                    portal context e autorizzazione. Clerk gestisce solo credenziali,
-                    email verificata, password e MFA.
-                  </p>
-                </div>
-
-                <dl className="grid gap-3 rounded-[20px] border border-white/70 bg-white/80 p-4">
-                  <div>
-                    <dt className="text-[0.72rem] font-bold uppercase tracking-[0.14em] text-slate-500">
-                      Email corrente
-                    </dt>
-                    <dd className="mt-1 break-all text-sm font-semibold text-slate-950">
-                      {displayEmail}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt className="text-[0.72rem] font-bold uppercase tracking-[0.14em] text-slate-500">
-                      Stato accesso
-                    </dt>
-                    <dd className="mt-1 text-sm font-semibold text-slate-950">
-                      {authState.status === "active" ? "Attivo" : "Da completare"}
-                    </dd>
-                  </div>
-                </dl>
+            <section className="settings-section" aria-labelledby="account-summary">
+              <div className="settings-section__header">
+                <h2 id="account-summary">Riepilogo</h2>
               </div>
+              <div className="campaign-inline-summary">
+                <article>
+                  <span className="admin-record-row__note">Email</span>
+                  <strong>{displayEmail}</strong>
+                </article>
+                <article>
+                  <span className="admin-record-row__note">Accesso</span>
+                  <strong>{authState.status === "active" ? "Attivo" : "Da completare"}</strong>
+                </article>
+                <article>
+                  <span className="admin-record-row__note">Sicurezza</span>
+                  <strong>Password {passwordState.toLowerCase()} / MFA {mfaState.toLowerCase()}</strong>
+                </article>
+              </div>
+              <p className="admin-record-row__note">
+                Sendwise mostra il profilo e lascia credenziali, email verificata e MFA nel pannello protetto Clerk.
+              </p>
             </section>
 
             <div className="settings-sections">
@@ -194,29 +151,36 @@ export function AccountWorkspace({
                   <h2 id="account-profile">Profilo</h2>
                 </div>
 
-                <div className="grid gap-3 md:grid-cols-3">
-                  <ProfileField
-                    icon={Mail}
-                    label="Email"
-                    value={displayEmail}
-                    help="Identita e verifica email restano gestite da Clerk e allineate al backend tramite /auth/me."
-                  />
-                  <ProfileField
-                    icon={UserRound}
-                    label="Nome personale"
-                    value={displayName}
-                    help={
-                      profileEditSupported
-                        ? "Questo dato puo essere aggiornato direttamente da questa pagina."
-                        : "Questo campo resta in sola lettura: in questa milestone non esiste un endpoint cliente documentato per aggiornarlo senza cambiare il modello auth."
-                    }
-                  />
-                  <ProfileField
-                    icon={Building2}
-                    label="Azienda"
-                    value={displayCompany}
-                    help="Il nome azienda non e ancora supportato dal profilo cliente V1 verificato, quindi non viene modificato dal frontend."
-                  />
+                <div className="settings-section__body">
+                  <div className="settings-row">
+                    <div className="settings-row__content">
+                      <span className="settings-row__label">Email</span>
+                      <strong className="settings-row__value">{displayEmail}</strong>
+                      <p className="settings-row__description">
+                        Identita e verifica email restano allineate tramite /auth/me.
+                      </p>
+                    </div>
+                  </div>
+                  <div className="settings-row">
+                    <div className="settings-row__content">
+                      <span className="settings-row__label">Nome personale</span>
+                      <strong className="settings-row__value">{displayName}</strong>
+                      <p className="settings-row__description">
+                        {profileEditSupported
+                          ? "Questo dato puo essere aggiornato da questa area."
+                          : "Campo in sola lettura in questa milestone."}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="settings-row">
+                    <div className="settings-row__content">
+                      <span className="settings-row__label">Azienda</span>
+                      <strong className="settings-row__value">{displayCompany}</strong>
+                      <p className="settings-row__description">
+                        Il nome azienda non e ancora modificabile dal frontend verificato.
+                      </p>
+                    </div>
+                  </div>
                 </div>
               </section>
 

@@ -1,5 +1,80 @@
 # Audit Log
 
+## Milestone 16.9H - Fix Manual Contact Attach Visibility
+
+Date: 2026-05-15
+Branch: develop
+
+Audit summary:
+- Reviewed the manual submit path in `frontend/components/admin/AdminCampaignContactsPanel.tsx`, including modal error lifecycle, `router.refresh()` usage, and the contact list render path fed by server props from `GET /admin/campaigns/{campaign_id}/contacts`.
+- Reviewed backend `POST /admin/campaigns/{campaign_id}/contacts` and `GET /admin/campaigns/{campaign_id}/contacts` across `backend/app/services/campaigns.py`, `backend/app/repositories/contacts.py`, and `backend/app/schemas/campaigns.py`.
+- Verified runtime backend logs for campaign `d77af2f1-8203-40de-9a53-f98e2921165b`: the manual submit reached `POST /admin/campaigns/{campaign_id}/contacts` but failed with `psycopg.ProgrammingError: cannot adapt type 'dict' using placeholder '%s'` while creating the new contact metadata payload.
+- Verified runtime database state after the failed submit for `ca7rax@gmail.com`: no `contacts` row existed for that email, no new `campaign_contacts` row was created, and the campaign still only referenced the previously attached contact.
+- Verified the frontend list previously rendered only `email`/status because the contacts response schema omitted metadata, so even successful manual attaches would not display `nome cognome`.
+
+Implemented:
+- Serialized contact metadata JSON for PostgreSQL create/update operations in `backend/app/repositories/contacts.py`, fixing the live manual attach failure when metadata is present.
+- Extended campaign contacts GET response shaping to include normalized contact metadata, then mapped it through frontend API/types so the recipients list can display `nome cognome` with email underneath.
+- Kept manual add on the recipients step after success, preserved `router.refresh()`, and cleared stale modal errors on open, close, field edit, and successful submit.
+- Added targeted backend tests for PostgreSQL metadata serialization and for contact metadata visibility in the campaign contacts response.
+
+Files touched:
+- `backend/app/repositories/contacts.py`
+- `backend/app/schemas/campaigns.py`
+- `backend/app/services/campaigns.py`
+- `backend/tests/test_admin_campaigns.py`
+- `backend/tests/test_contact_repository.py`
+- `frontend/components/admin/AdminCampaignContactsPanel.tsx`
+- `frontend/lib/api.ts`
+- `frontend/types/index.ts`
+- `docs/audit_log.md`
+
+## Milestone 16.9E - Browser API Base Resolution For Campaign Contacts
+
+Date: 2026-05-15
+Branch: develop
+
+Audit summary:
+- Reviewed `frontend/lib/api.ts` request URL construction for browser and server runtime paths, with focus on `NEXT_PUBLIC_API_BASE_URL`, `BACKEND_URL`, and the browser-only localhost rewrite branch.
+- Verified the manual contact modal in `AdminCampaignContactsPanel.tsx` posts through `attachAdminCampaignContacts(...)` to `POST /admin/campaigns/{campaign_id}/contacts` and keeps the modal open when the API call rejects.
+- Verified the review step in `AdminCampaignReviewPanel.tsx` uses the same API helper path through `reviewAdminCampaign(...)`.
+- Reproduced the effective browser URL construction from the current helper logic: on a non-localhost public origin with `NEXT_PUBLIC_API_BASE_URL=http://localhost:8000`, the client rewrote only protocol and hostname context while preserving port `8000`, producing a browser-visible URL on the frontend host instead of the intended public API origin.
+
+Implemented:
+- Removed the browser-side localhost rewrite fallback from `frontend/lib/api.ts`.
+- Added a deterministic browser configuration failure when a public frontend origin is paired with a localhost API base, while preserving existing server-side `BACKEND_URL` / `API_BASE_URL` behavior.
+- Updated the campaign contacts and campaign review UI error mapping so browser configuration faults render `Configurazione API non valida per questo ambiente.` instead of the generic backend-unreachable copy.
+
+Files touched:
+- `frontend/lib/api.ts`
+- `frontend/components/admin/AdminCampaignContactsPanel.tsx`
+- `frontend/components/admin/AdminCampaignReviewPanel.tsx`
+- `docs/audit_log.md`
+
+## Milestone 16.9D - Campaign Workflow Final Bugfix Pass
+
+Date: 2026-05-15
+Branch: develop
+
+Audit summary:
+- Reviewed the campaign HTML editor layout in `AdminCampaignContentStep.tsx` and `frontend/app/globals.css` to trace why the editor rendered at the textarea intrinsic width instead of filling the editor shell.
+- Reviewed the template apply flow in `AdminCampaignContentStep.tsx` and `AdminCampaignTemplatePicker.tsx`; the overwrite guard was still using `window.confirm(...)`, and the selected-template state was set before any explicit in-product confirmation.
+- Reviewed the manual contact modal shell/input styles in `AdminCampaignContactsPanel.tsx` and `frontend/app/globals.css`; the modal still inherited shell spacing meant for icon-leading fields, which reduced usable input width in the single-column contact fields.
+- Reviewed the browser API base resolution in `frontend/lib/api.ts`; when the configured browser base pointed at localhost and the app was opened from a non-local origin, the runtime only rewrote the hostname and protocol, leaving the backend port intact and causing fetch failures before any HTTP response on staging-style origins.
+
+Implemented:
+- The HTML editor now stretches to the full editor shell with explicit width and height fill rules, while the preview iframe remains a single large surface in the same container.
+- Replaced the native template overwrite confirm with a Sendwise modal using local-only apply semantics and no automatic save.
+- Tightened the manual contact modal field shell so email, nome, and cognome inputs use the full field width with border-box sizing and no extra left inset.
+- Fixed browser API base rewriting so localhost-configured browser targets resolve to the current browser origin, including port, before admin contact saves and other campaign requests are issued.
+
+Files touched:
+- `frontend/components/admin/AdminCampaignContentStep.tsx`
+- `frontend/components/admin/AdminCampaignTemplatePicker.tsx`
+- `frontend/lib/api.ts`
+- `frontend/app/globals.css`
+- `docs/audit_log.md`
+
 ## Milestone 16.9B - Contact Modal Error Fix, Template Card Polish And Metadata Docs
 
 Date: 2026-05-15

@@ -89,9 +89,6 @@ export default async function AdminCampaignsPage() {
             <p className="admin-surface__eyebrow">Admin</p>
             <h1 className="admin-page-title">Campagne</h1>
             <p className="admin-page-description">
-              Elenco operativo campagne con accesso rapido a dettaglio e modifica.
-            </p>
-            <p className="admin-page-description">
               {"campaigns" in result
                 ? `${result.campaigns.length.toLocaleString("it-IT")} campagne`
                 : "Conteggio campagne non disponibile"}

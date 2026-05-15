@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import json
 from typing import Any, Optional
 from uuid import uuid4
 
@@ -183,7 +184,10 @@ class PostgresContactRepository(ContactRepository):
 
         with postgres_connection(self._settings) as connection:
             with connection.cursor() as cursor:
-                cursor.execute(query, (client_id, email, status, metadata or {}))
+                cursor.execute(
+                    query,
+                    (client_id, email, status, _json_payload(metadata or {})),
+                )
                 row = cursor.fetchone()
             connection.commit()
 
@@ -359,7 +363,7 @@ class PostgresContactRepository(ContactRepository):
 
         with postgres_connection(self._settings) as connection:
             with connection.cursor() as cursor:
-                cursor.execute(query, (metadata, contact_id))
+                cursor.execute(query, (_json_payload(metadata), contact_id))
                 row = cursor.fetchone()
             connection.commit()
 
@@ -528,3 +532,7 @@ class InMemoryContactRepository(ContactRepository):
 
 def get_contact_repository() -> ContactRepository:
     return PostgresContactRepository(get_settings())
+
+
+def _json_payload(payload: dict[str, Any]) -> str:
+    return json.dumps(payload, sort_keys=True, separators=(",", ":"))

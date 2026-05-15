@@ -39,6 +39,8 @@ export const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL?.trim() ?? "";
 const INTERNAL_API_BASE_URL =
   process.env.BACKEND_URL?.trim() || API_BASE_URL;
 const LOCALHOST_HOSTNAMES = new Set(["localhost", "127.0.0.1", "0.0.0.0", "::1"]);
+const BROWSER_API_CONFIGURATION_ERROR =
+  "browser_api_base_must_be_public_for_public_origin";
 const ADMIN_ROUTE = "/admin";
 const CLIENT_PORTAL_ROUTE_PREFIX = "/c";
 
@@ -179,6 +181,10 @@ interface AdminCampaignDetailApiResponse {
 interface AdminCampaignContactApiItem {
   contact_id: string;
   email: string;
+  metadata: {
+    nome?: string;
+    cognome?: string;
+  };
   status: string;
   is_valid: boolean;
   is_eligible: boolean;
@@ -456,6 +462,10 @@ export function isApiError(error: unknown): error is ApiError {
   return error instanceof ApiError;
 }
 
+export function isApiConfigurationError(error: unknown): error is ApiError {
+  return isApiError(error) && error.path === "config";
+}
+
 function getRequiredApiBaseUrl(): string {
   const browserApiBaseUrl =
     typeof window === "undefined" ? API_BASE_URL : resolveBrowserApiBaseUrl(API_BASE_URL);
@@ -491,20 +501,19 @@ function resolveBrowserApiBaseUrl(candidateApiBaseUrl: string): string {
     return candidateApiBaseUrl;
   }
 
-  if (
-    !isLocalHostname(parsedBaseUrl.hostname) ||
-    isLocalHostname(window.location.hostname)
-  ) {
+  if (!isLocalHostname(parsedBaseUrl.hostname)) {
     return candidateApiBaseUrl;
   }
 
-  parsedBaseUrl.hostname = window.location.hostname;
-
-  if (window.location.protocol === "https:") {
-    parsedBaseUrl.protocol = "https:";
+  if (isLocalHostname(window.location.hostname)) {
+    return candidateApiBaseUrl;
   }
 
-  return parsedBaseUrl.toString().replace(/\/$/, "");
+  throw new ApiError({
+    path: "config",
+    status: 500,
+    detail: BROWSER_API_CONFIGURATION_ERROR,
+  });
 }
 
 async function readErrorDetails(response: Response): Promise<string> {
@@ -1155,6 +1164,10 @@ function mapAdminCampaignContacts(
     contacts: payload.contacts.map((contact) => ({
       contactId: contact.contact_id,
       email: contact.email,
+      metadata: {
+        ...(contact.metadata.nome ? { nome: contact.metadata.nome } : {}),
+        ...(contact.metadata.cognome ? { cognome: contact.metadata.cognome } : {}),
+      },
       status: contact.status,
       isValid: contact.is_valid,
       isEligible: contact.is_eligible,

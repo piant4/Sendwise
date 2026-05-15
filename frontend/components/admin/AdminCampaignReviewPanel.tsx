@@ -5,6 +5,7 @@ import { ClipboardCheck, Loader2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import {
+  isApiConfigurationError,
   isApiError,
   reviewAdminCampaign,
 } from "../../lib/api";
@@ -31,6 +32,10 @@ interface AdminCampaignReviewPanelProps {
 }
 
 function getSafeReviewErrorMessage(error: unknown): string {
+  if (isApiConfigurationError(error)) {
+    return "Configurazione API non valida per questo ambiente.";
+  }
+
   if (isApiError(error)) {
     if (error.isNetworkError) {
       return "Il browser non riesce a completare la verifica in questo momento.";

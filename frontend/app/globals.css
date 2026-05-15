@@ -2077,13 +2077,21 @@ button {
   );
 }
 
+.campaign-confirm-modal__actions {
+  margin-top: 18px;
+}
+
 .campaign-contact-modal__input-shell {
+  box-sizing: border-box;
   grid-template-columns: minmax(0, 1fr);
   min-height: 44px;
-  padding: 0 8px;
+  min-width: 0;
+  padding: 0 12px;
+  width: 100%;
 }
 
 .campaign-contact-modal__input {
+  box-sizing: border-box;
   display: block;
   inline-size: 100%;
   max-inline-size: 100%;
@@ -2154,8 +2162,12 @@ button {
   border: 0;
   border-radius: 0;
   box-shadow: none;
+  box-sizing: border-box;
+  display: block;
+  height: 100%;
   min-height: 340px;
   padding: 0;
+  width: 100%;
 }
 
 .campaign-textarea--editor:focus {
@@ -2196,9 +2208,11 @@ button {
 }
 
 .campaign-editor-shell {
+  align-items: stretch;
   background: rgba(255, 255, 255, 0.98);
   border: 1px solid rgba(148, 163, 184, 0.28);
   border-radius: 18px;
+  display: grid;
   min-height: 340px;
   overflow: hidden;
   padding: 16px;
@@ -2208,7 +2222,9 @@ button {
   background: #ffffff;
   border: 0;
   border-radius: 12px;
+  box-sizing: border-box;
   display: block;
+  height: 100%;
   min-height: 340px;
   width: 100%;
 }

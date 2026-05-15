@@ -9,7 +9,6 @@ interface AdminCampaignTemplatePickerProps {
   templates: CampaignTemplate[];
   selectedTemplateId: string | null;
   disabled?: boolean;
-  onSelect: (templateId: string) => void;
   onApply: (template: CampaignTemplate) => void;
 }
 
@@ -81,7 +80,6 @@ export function AdminCampaignTemplatePicker({
   templates,
   selectedTemplateId,
   disabled = false,
-  onSelect,
   onApply,
 }: AdminCampaignTemplatePickerProps) {
   const [previewTemplateId, setPreviewTemplateId] = useState<string | null>(null);
@@ -147,10 +145,7 @@ export function AdminCampaignTemplatePicker({
                     type="button"
                     className="admin-topbar-action campaign-action campaign-action--primary campaign-template-apply-button"
                     disabled={disabled}
-                    onClick={() => {
-                      onSelect(template.id);
-                      onApply(template);
-                    }}
+                    onClick={() => onApply(template)}
                   >
                     Usa modello
                   </Button>

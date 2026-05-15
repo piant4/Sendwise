@@ -4,7 +4,11 @@ import { useAuth } from "@clerk/nextjs";
 import { FileUp, Loader2, Plus, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { type ChangeEvent, type DragEvent, type FormEvent, useRef, useState } from "react";
-import { attachAdminCampaignContacts, isApiError } from "../../lib/api";
+import {
+  attachAdminCampaignContacts,
+  isApiConfigurationError,
+  isApiError,
+} from "../../lib/api";
 import type {
   AdminCampaignContactInput,
   AdminCampaignContactsSummary,
@@ -148,6 +152,10 @@ function parseCsvContacts(value: string): ParsedImportResult {
 }
 
 function getSafeContactsErrorMessage(error: unknown): string {
+  if (isApiConfigurationError(error)) {
+    return "Configurazione API non valida per questo ambiente.";
+  }
+
   if (isApiError(error)) {
     if (error.isNetworkError) {
       return "Il browser non riesce a raggiungere il backend Sendwise.";
@@ -225,6 +233,13 @@ function getReasonLabel(reason: string): string {
   }
 }
 
+function getContactDisplayName(contact: AdminCampaignContactsSummary["contacts"][number]): string | null {
+  const nome = contact.metadata.nome?.trim() ?? "";
+  const cognome = contact.metadata.cognome?.trim() ?? "";
+  const fullName = `${nome} ${cognome}`.trim();
+  return fullName || null;
+}
+
 async function readDroppedFiles(files: FileList | File[]): Promise<string> {
   const texts = await Promise.all(Array.from(files).map((file) => file.text()));
   return texts.join("\n");
@@ -256,7 +271,16 @@ export function AdminCampaignContactsPanel({
   const [manualFormError, setManualFormError] = useState<string | null>(null);
   const [importDraft, setImportDraft] = useState<ParsedImportResult | null>(null);
 
-  async function submitContacts(payload: AdminCampaignContactInput[]) {
+  function closeManualModal() {
+    setIsManualModalOpen(false);
+    setManualForm(EMPTY_MANUAL_CONTACT);
+    setManualFormError(null);
+  }
+
+  async function submitContacts(
+    payload: AdminCampaignContactInput[],
+    options?: { advanceOnSuccess?: boolean },
+  ) {
     const token = await getToken();
     const result = await attachAdminCampaignContacts(campaignId, { contacts: payload }, token);
     const imported = result.createdContacts + result.reusedContacts;
@@ -266,7 +290,9 @@ export function AdminCampaignContactsPanel({
     );
     setFormError(null);
     router.refresh();
-    onContinue?.();
+    if (options?.advanceOnSuccess) {
+      onContinue?.();
+    }
     return result;
   }
 
@@ -326,7 +352,7 @@ export function AdminCampaignContactsPanel({
     setSuccessMessage(null);
 
     try {
-      await submitContacts(importDraft.validContacts);
+      await submitContacts(importDraft.validContacts, { advanceOnSuccess: true });
       setImportDraft(null);
     } catch (error) {
       setFormError(getSafeContactsErrorMessage(error));
@@ -371,8 +397,7 @@ export function AdminCampaignContactsPanel({
           },
         },
       ]);
-      setManualForm(EMPTY_MANUAL_CONTACT);
-      setIsManualModalOpen(false);
+      closeManualModal();
     } catch (error) {
       setManualFormError(getSafeContactsErrorMessage(error));
     } finally {
@@ -449,7 +474,9 @@ export function AdminCampaignContactsPanel({
               type="button"
               className="admin-topbar-action campaign-action campaign-action--primary"
               onClick={() => {
+                setManualForm(EMPTY_MANUAL_CONTACT);
                 setManualFormError(null);
+                setSuccessMessage(null);
                 setIsManualModalOpen(true);
               }}
             >
@@ -545,7 +572,8 @@ export function AdminCampaignContactsPanel({
             <article key={contact.contactId} className="admin-record-row">
               <div className="admin-record-row__primary">
                 <div className="admin-record-row__copy">
-                  <strong>{contact.email}</strong>
+                  <strong>{getContactDisplayName(contact) ?? contact.email}</strong>
+                  {getContactDisplayName(contact) ? <span>{contact.email}</span> : null}
                   <span>{contact.status}</span>
                   {contact.blockedReasons.length > 0 ? (
                     <span>{contact.blockedReasons.map(getReasonLabel).join(", ")}</span>
@@ -564,7 +592,7 @@ export function AdminCampaignContactsPanel({
       ) : null}
 
       {isManualModalOpen ? (
-        <div className="modal-backdrop" role="presentation" onClick={() => setIsManualModalOpen(false)}>
+        <div className="modal-backdrop" role="presentation" onClick={closeManualModal}>
           <div
             className="invite-modal campaign-contact-modal"
             role="dialog"
@@ -583,7 +611,7 @@ export function AdminCampaignContactsPanel({
                 type="button"
                 className="invite-modal__close"
                 aria-label="Chiudi"
-                onClick={() => setIsManualModalOpen(false)}
+                onClick={closeManualModal}
               >
                 <X aria-hidden="true" />
               </button>
@@ -603,7 +631,10 @@ export function AdminCampaignContactsPanel({
                     autoComplete="given-name"
                     className="invite-modal__input campaign-contact-modal__input"
                     name="nome"
-                    onChange={(event) => setManualForm((current) => ({ ...current, nome: event.target.value }))}
+                    onChange={(event) => {
+                      setManualFormError(null);
+                      setManualForm((current) => ({ ...current, nome: event.target.value }));
+                    }}
                     required
                     value={manualForm.nome}
                   />
@@ -617,7 +648,10 @@ export function AdminCampaignContactsPanel({
                     autoComplete="family-name"
                     className="invite-modal__input campaign-contact-modal__input"
                     name="cognome"
-                    onChange={(event) => setManualForm((current) => ({ ...current, cognome: event.target.value }))}
+                    onChange={(event) => {
+                      setManualFormError(null);
+                      setManualForm((current) => ({ ...current, cognome: event.target.value }));
+                    }}
                     value={manualForm.cognome}
                   />
                 </div>
@@ -631,7 +665,10 @@ export function AdminCampaignContactsPanel({
                     className="invite-modal__input campaign-contact-modal__input"
                     inputMode="email"
                     name="email"
-                    onChange={(event) => setManualForm((current) => ({ ...current, email: event.target.value }))}
+                    onChange={(event) => {
+                      setManualFormError(null);
+                      setManualForm((current) => ({ ...current, email: event.target.value }));
+                    }}
                     required
                     type="email"
                     value={manualForm.email}
@@ -643,7 +680,7 @@ export function AdminCampaignContactsPanel({
                 <button
                   type="button"
                   className="invite-modal__button invite-modal__button--secondary"
-                  onClick={() => setIsManualModalOpen(false)}
+                  onClick={closeManualModal}
                 >
                   Annulla
                 </button>

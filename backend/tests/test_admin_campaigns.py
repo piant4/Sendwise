@@ -1043,6 +1043,7 @@ def test_admin_get_campaign_contacts_summary_classifies_contacts() -> None:
             contact_id="contact_valid",
             email="valid@example.test",
             status="sendable",
+            metadata={"nome": "Valid", "cognome": "Person"},
         ),
         build_contact(
             contact_id="contact_invalid",
@@ -1116,6 +1117,10 @@ def test_admin_get_campaign_contacts_summary_classifies_contacts() -> None:
     invalid_row = next(
         row for row in payload["contacts"] if row["contact_id"] == "contact_invalid"
     )
+    valid_row = next(
+        row for row in payload["contacts"] if row["contact_id"] == "contact_valid"
+    )
+    assert valid_row["metadata"] == {"nome": "Valid", "cognome": "Person"}
     assert invalid_row["is_valid"] is False
     assert invalid_row["is_eligible"] is False
     assert "invalid_email" in invalid_row["blocked_reasons"]

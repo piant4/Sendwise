@@ -1,7 +1,7 @@
 "use client";
 
 import { useAuth } from "@clerk/nextjs";
-import { Loader2, Save } from "lucide-react";
+import { Loader2, Save, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { type FormEvent, useState } from "react";
 import {
@@ -167,6 +167,7 @@ export function AdminCampaignContentStep({
   const [bodyText, setBodyText] = useState(getValue(campaign.bodyText));
   const [editorMode, setEditorMode] = useState<ContentEditorMode>("html");
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
+  const [pendingTemplate, setPendingTemplate] = useState<CampaignTemplate | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
@@ -175,14 +176,7 @@ export function AdminCampaignContentStep({
     return [previewText, bodyHtml, bodyText].some((value) => normalizeText(value).length > 0);
   }
 
-  function applyTemplate(template: CampaignTemplate) {
-    if (
-      hasCurrentContent() &&
-      window.confirm("Questo sostituirà il contenuto attuale dello step.") === false
-    ) {
-      return;
-    }
-
+  function commitTemplate(template: CampaignTemplate) {
     setSelectedTemplateId(template.id);
     setPreviewText(template.previewText);
     setBodyHtml(template.htmlBody);
@@ -190,6 +184,15 @@ export function AdminCampaignContentStep({
     setEditorMode("html");
     setErrorMessage(null);
     setSuccessMessage(`Modello "${template.name}" applicato localmente. Salva per inviare il contenuto al backend.`);
+  }
+
+  function applyTemplate(template: CampaignTemplate) {
+    if (hasCurrentContent()) {
+      setPendingTemplate(template);
+      return;
+    }
+
+    commitTemplate(template);
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -286,7 +289,6 @@ export function AdminCampaignContentStep({
         <AdminCampaignTemplatePicker
           disabled={isSubmitting}
           onApply={applyTemplate}
-          onSelect={setSelectedTemplateId}
           selectedTemplateId={selectedTemplateId}
           templates={CAMPAIGN_TEMPLATES}
         />
@@ -373,6 +375,63 @@ export function AdminCampaignContentStep({
           </Button>
         </div>
       </div>
+
+      {pendingTemplate ? (
+        <div
+          className="modal-backdrop"
+          role="presentation"
+          onClick={() => setPendingTemplate(null)}
+        >
+          <div
+            className="invite-modal campaign-confirm-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="campaign-template-confirm-title"
+            aria-describedby="campaign-template-confirm-body"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="invite-modal__header">
+              <div>
+                <p className="invite-modal__eyebrow">Modello</p>
+                <h3 id="campaign-template-confirm-title" className="invite-modal__title">
+                  Sostituire il contenuto?
+                </h3>
+                <p id="campaign-template-confirm-body" className="invite-modal__message">
+                  Il modello sostituira il contenuto email attuale.
+                </p>
+              </div>
+              <button
+                type="button"
+                className="invite-modal__close"
+                aria-label="Chiudi"
+                onClick={() => setPendingTemplate(null)}
+              >
+                <X aria-hidden="true" />
+              </button>
+            </div>
+
+            <div className="invite-modal__actions campaign-confirm-modal__actions">
+              <button
+                type="button"
+                className="invite-modal__button invite-modal__button--secondary"
+                onClick={() => setPendingTemplate(null)}
+              >
+                Annulla
+              </button>
+              <button
+                type="button"
+                className="invite-modal__button invite-modal__button--primary"
+                onClick={() => {
+                  commitTemplate(pendingTemplate);
+                  setPendingTemplate(null);
+                }}
+              >
+                Usa modello
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </form>
   );
 }

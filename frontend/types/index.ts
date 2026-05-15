@@ -309,6 +309,10 @@ export interface AdminCampaignContentInput {
 export interface AdminCampaignContact {
   contactId: string;
   email: string;
+  metadata: {
+    nome?: string;
+    cognome?: string;
+  };
   status: ContactStatus | string;
   isValid: boolean;
   isEligible: boolean;

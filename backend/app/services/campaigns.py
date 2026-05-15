@@ -749,6 +749,11 @@ class AdminCampaignService:
                 AdminCampaignContactItem(
                     contact_id=contact.id,
                     email=contact.email,
+                    metadata={
+                        key: str(value).strip()
+                        for key, value in (contact.metadata or {}).items()
+                        if key in CONTACT_METADATA_ALLOWED_KEYS and str(value).strip()
+                    },
                     status=contact.status,
                     is_valid=is_valid,
                     is_eligible=is_eligible,

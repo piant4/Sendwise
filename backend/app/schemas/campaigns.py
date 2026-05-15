@@ -127,6 +127,7 @@ class AdminCampaignContactError(BaseModel):
 class AdminCampaignContactItem(BaseModel):
     contact_id: str
     email: str
+    metadata: dict[str, str] = Field(default_factory=dict)
     status: str
     is_valid: bool
     is_eligible: bool

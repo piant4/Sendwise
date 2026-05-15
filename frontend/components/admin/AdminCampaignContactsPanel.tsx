@@ -193,7 +193,7 @@ export function AdminCampaignContactsPanel({
   }
 
   return (
-    <section className="admin-clients-card" id="destinatari">
+    <section className="admin-clients-card campaign-panel" id="destinatari">
       <div className="admin-clients-card__intro">
         <div>
           <p className="admin-surface__eyebrow">Step 3</p>
@@ -241,7 +241,7 @@ export function AdminCampaignContactsPanel({
           </p>
         ) : null}
         {successMessage ? (
-          <p className="admin-clients-feedback" role="status">
+          <p className="admin-clients-feedback admin-clients-feedback--success" role="status">
             {successMessage}
           </p>
         ) : null}
@@ -292,15 +292,18 @@ export function AdminCampaignContactsPanel({
           <span style={{ color: "#0f172a", fontWeight: 600 }}>Oppure clicca per selezionare un file</span>
         </label>
 
-        <label className="admin-clients-form__field">
-          <span>Email destinatari</span>
+        <label className="campaign-field">
+          <span className="campaign-field__label">Email destinatari</span>
+          <p className="campaign-field__helper">
+            Inserisci una email per riga. Il parser frontend deduplica e invia poi il batch risultante all&apos;endpoint FastAPI esistente.
+          </p>
           <textarea
-            className="admin-clients-form__input"
+            className="campaign-textarea"
             disabled={isSubmitting}
             onChange={(event) => setRawEmails(event.target.value)}
             placeholder="maria@example.com&#10;luca@example.com"
             rows={6}
-            style={{ minHeight: 170, resize: "none" }}
+            style={{ minHeight: 170 }}
             value={rawEmails}
           />
         </label>
@@ -309,55 +312,31 @@ export function AdminCampaignContactsPanel({
           {parsedEmails.length.toLocaleString("it-IT")} indirizzi pronti per l&apos;associazione.
         </p>
 
-        <div
-          style={{
-            alignItems: "center",
-            display: "flex",
-            flexWrap: "wrap",
-            gap: 12,
-            justifyContent: "space-between",
-            marginTop: 16,
-          }}
-        >
+        <div className="campaign-action-row" style={{ marginTop: 16 }}>
           <Button
             type="button"
             variant="outline"
-            className="admin-topbar-action admin-topbar-action--secondary"
+            className="admin-topbar-action campaign-action campaign-action--secondary"
             onClick={onBack}
-            style={{
-              borderColor: "rgba(148, 163, 184, 0.45)",
-              color: "#0f172a",
-              minWidth: 148,
-            }}
+            style={{ minWidth: 148 }}
           >
             Indietro
           </Button>
-          <div style={{ alignItems: "center", display: "flex", flexWrap: "wrap", gap: 12 }}>
+          <div className="campaign-action-row__group">
             <Button
               type="button"
               variant="outline"
-              className="admin-topbar-action admin-topbar-action--secondary"
+              className="admin-topbar-action campaign-action campaign-action--secondary"
               disabled
-              style={{
-                background: "rgba(239, 246, 255, 0.72)",
-                borderColor: "rgba(96, 165, 250, 0.2)",
-                color: "#64748b",
-              }}
             >
               <Upload aria-hidden="true" className="admin-topbar-action__icon" />
               Import avanzato non ancora disponibile
             </Button>
             <Button
               type="submit"
-              className="admin-topbar-action admin-topbar-action--primary"
+              className="admin-topbar-action campaign-action campaign-action--primary"
               disabled={isSubmitting || parsedEmails.length === 0}
-              style={{
-                background: "linear-gradient(135deg, #2563eb, #0ea5e9)",
-                border: "1px solid rgba(37, 99, 235, 0.18)",
-                boxShadow: "0 16px 34px rgba(37, 99, 235, 0.24)",
-                color: "#f8fbff",
-                minWidth: 190,
-              }}
+              style={{ minWidth: 190 }}
             >
               {isSubmitting ? (
                 <Loader2 aria-hidden="true" className="admin-topbar-action__icon" />

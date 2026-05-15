@@ -73,13 +73,7 @@ export function AdminCampaignWizardShell({
   return (
     <div style={{ display: "grid", gap: 20 }}>
       <section
-        className="admin-clients-card"
-        style={{
-          background:
-            "linear-gradient(180deg, rgba(248, 252, 255, 0.98), rgba(240, 247, 255, 0.94))",
-          border: "1px solid rgba(59, 130, 246, 0.16)",
-          boxShadow: "0 24px 60px rgba(15, 23, 42, 0.08)",
-        }}
+        className="admin-clients-card campaign-panel"
       >
         <div className="admin-clients-card__intro">
           <div>
@@ -87,7 +81,9 @@ export function AdminCampaignWizardShell({
             <h2 className="admin-clients-card__title" style={{ color: "#0f172a" }}>
               Modifica campagna
             </h2>
-            <p className="admin-clients-card__description">{headerSummary}</p>
+            <p className="admin-clients-card__description">
+              {headerSummary}. Lo step contenuto include modelli email locali modificabili prima del salvataggio.
+            </p>
           </div>
         </div>
       </section>

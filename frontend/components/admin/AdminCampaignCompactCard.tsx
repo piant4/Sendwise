@@ -45,10 +45,10 @@ export function AdminCampaignCompactCard({
       className="admin-record-row"
       style={{
         background:
-          "linear-gradient(180deg, rgba(248, 252, 255, 0.96), rgba(242, 248, 255, 0.92))",
-        border: "1px solid rgba(59, 130, 246, 0.14)",
+          "linear-gradient(180deg, rgba(248, 251, 255, 0.98), rgba(239, 246, 255, 0.94))",
+        border: "1px solid rgba(96, 165, 250, 0.22)",
         borderRadius: 22,
-        boxShadow: "0 20px 48px rgba(15, 23, 42, 0.06)",
+        boxShadow: "0 20px 48px rgba(37, 99, 235, 0.1)",
         padding: 20,
       }}
     >
@@ -91,7 +91,7 @@ export function AdminCampaignCompactCard({
             <span
               style={{
                 alignItems: "center",
-                color: "#2563eb",
+                color: "#1d4ed8",
                 display: "inline-flex",
                 fontSize: 13,
                 fontWeight: 700,

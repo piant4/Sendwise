@@ -1,14 +1,19 @@
 "use client";
 
 import { useAuth } from "@clerk/nextjs";
-import { Loader2, Save } from "lucide-react";
+import { AlertTriangle, Loader2, Save } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { type FormEvent, useState } from "react";
 import {
   isApiError,
   updateAdminCampaignContent,
 } from "../../lib/api";
+import {
+  CAMPAIGN_TEMPLATES,
+} from "../../lib/campaignTemplates";
+import type { CampaignTemplate } from "../../lib/campaignTemplates";
 import type { AdminCampaignDetail } from "../../types";
+import { AdminCampaignTemplatePicker } from "./AdminCampaignTemplatePicker";
 import { Button } from "../ui/button";
 
 interface AdminCampaignContentStepProps {
@@ -65,9 +70,30 @@ export function AdminCampaignContentStep({
   const [previewText, setPreviewText] = useState(getValue(campaign.previewText));
   const [bodyHtml, setBodyHtml] = useState(getValue(campaign.bodyHtml));
   const [bodyText, setBodyText] = useState(getValue(campaign.bodyText));
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+
+  function hasCurrentContent(): boolean {
+    return [previewText, bodyHtml, bodyText].some((value) => normalizeText(value).length > 0);
+  }
+
+  function applyTemplate(template: CampaignTemplate) {
+    if (
+      hasCurrentContent() &&
+      window.confirm("Questo sostituirà il contenuto attuale dello step.") === false
+    ) {
+      return;
+    }
+
+    setSelectedTemplateId(template.id);
+    setPreviewText(template.previewText);
+    setBodyHtml(template.htmlBody);
+    setBodyText(template.plainTextBody);
+    setErrorMessage(null);
+    setSuccessMessage(`Modello "${template.name}" applicato localmente. Salva per inviare il contenuto al backend.`);
+  }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -117,13 +143,8 @@ export function AdminCampaignContentStep({
     }
   }
 
-  const textareaStyle = {
-    minHeight: 160,
-    resize: "none" as const,
-  };
-
   return (
-    <form className="admin-clients-card" onSubmit={handleSubmit}>
+    <form className="admin-clients-card campaign-panel" onSubmit={handleSubmit}>
       <div className="admin-clients-card__intro">
         <div>
           <p className="admin-surface__eyebrow">Step 2</p>
@@ -131,7 +152,7 @@ export function AdminCampaignContentStep({
             Contenuto email
           </h2>
           <p className="admin-clients-card__description">
-            Completa i campi contenuto supportati dall&apos;endpoint esistente, senza template fittizi.
+            Seleziona un modello locale oppure completa manualmente i campi supportati dall&apos;endpoint esistente. La readiness resta sempre determinata dal backend dopo il salvataggio.
           </p>
         </div>
       </div>
@@ -142,96 +163,104 @@ export function AdminCampaignContentStep({
         </p>
       ) : null}
       {successMessage ? (
-        <p className="admin-clients-feedback" role="status">
+        <p className="admin-clients-feedback admin-clients-feedback--success" role="status">
           {successMessage}
         </p>
       ) : null}
 
-      <div className="admin-clients-form">
-        <label className="admin-clients-form__field">
-          <span>Preview text</span>
+      <div className="campaign-form-grid">
+        <AdminCampaignTemplatePicker
+          disabled={isSubmitting}
+          onApply={applyTemplate}
+          onSelect={setSelectedTemplateId}
+          selectedTemplateId={selectedTemplateId}
+          templates={CAMPAIGN_TEMPLATES}
+        />
+
+        <div className="campaign-callout">
+          <span className="admin-surface__eyebrow">Nota contenuto</span>
+          <p className="campaign-field__helper">
+            Applicare un modello compila solo i campi locali dello step. Nessun salvataggio, invio o review viene eseguito finche non confermi con &quot;Salva e continua&quot;.
+          </p>
+        </div>
+
+        <label className="campaign-field">
+          <span className="campaign-field__label">Anteprima email</span>
+          <p className="campaign-field__helper">
+            Testo breve mostrato accanto all&apos;oggetto in inbox o anteprima client.
+          </p>
           <input
-            className="admin-clients-form__input"
+            className="campaign-input"
             disabled={isSubmitting}
             onChange={(event) => setPreviewText(event.target.value)}
-            placeholder="Testo breve mostrato accanto all'oggetto nella inbox"
+            placeholder="Un riepilogo sintetico del contenuto dell'email"
             value={previewText}
           />
         </label>
-        <label className="admin-clients-form__field">
-          <span>HTML email</span>
+        <label className="campaign-field">
+          <span className="campaign-field__label">HTML email</span>
+          <p className="campaign-field__helper">
+            Contenuto HTML modificabile. Mantieni una struttura semplice e coerente con il messaggio inviato dal backend.
+          </p>
           <textarea
-            className="admin-clients-form__input"
+            className="campaign-textarea"
             disabled={isSubmitting}
             onChange={(event) => setBodyHtml(event.target.value)}
             placeholder="<html>...</html>"
             rows={8}
-            style={textareaStyle}
             value={bodyHtml}
           />
         </label>
-        <label className="admin-clients-form__field">
-          <span>Testo semplice</span>
+        <label className="campaign-field">
+          <span className="campaign-field__label">Versione testo semplice</span>
+          <p className="campaign-field__helper">
+            Versione leggibile senza HTML. Utile per compatibilita e per controllare il messaggio reale senza markup.
+          </p>
           <textarea
-            className="admin-clients-form__input"
+            className="campaign-textarea"
             disabled={isSubmitting}
             onChange={(event) => setBodyText(event.target.value)}
             placeholder="Versione testuale dell'email"
             rows={6}
-            style={textareaStyle}
             value={bodyText}
           />
         </label>
       </div>
 
-      <div
-        style={{
-          alignItems: "center",
-          display: "flex",
-          flexWrap: "wrap",
-          gap: 12,
-          justifyContent: "space-between",
-          marginTop: 18,
-        }}
-      >
+      <div className="campaign-action-row">
         <Button
           type="button"
           variant="outline"
-          className="admin-topbar-action admin-topbar-action--secondary"
+          className="admin-topbar-action campaign-action campaign-action--secondary"
           onClick={onBack}
-          style={{
-            borderColor: "rgba(148, 163, 184, 0.45)",
-            color: "#0f172a",
-            minWidth: 148,
-          }}
+          style={{ minWidth: 148 }}
         >
           Indietro
         </Button>
-        <div style={{ alignItems: "center", display: "flex", flexWrap: "wrap", gap: 12 }}>
-          <Button
-            type="button"
-            variant="outline"
-            className="admin-topbar-action admin-topbar-action--secondary"
-            disabled
-            style={{
-              background: "rgba(239, 246, 255, 0.72)",
-              borderColor: "rgba(96, 165, 250, 0.2)",
-              color: "#64748b",
-            }}
-          >
-            Modelli email non ancora disponibili
-          </Button>
+        <div className="campaign-action-row__group">
+          <div className="campaign-callout" style={{ minWidth: 260, padding: "12px 14px" }}>
+            <span
+              style={{
+                alignItems: "center",
+                color: "#0f172a",
+                display: "inline-flex",
+                fontSize: "0.9rem",
+                fontWeight: 600,
+                gap: 8,
+              }}
+            >
+              <AlertTriangle aria-hidden="true" size={16} />
+              Il template non implica contenuto pronto
+            </span>
+            <p className="campaign-field__helper">
+              Solo il backend puo confermare `content_ready` dopo il salvataggio e la review.
+            </p>
+          </div>
           <Button
             type="submit"
-            className="admin-topbar-action admin-topbar-action--primary"
+            className="admin-topbar-action campaign-action campaign-action--primary"
             disabled={isSubmitting}
-            style={{
-              background: "linear-gradient(135deg, #2563eb, #0ea5e9)",
-              border: "1px solid rgba(37, 99, 235, 0.18)",
-              boxShadow: "0 16px 34px rgba(37, 99, 235, 0.24)",
-              color: "#f8fbff",
-              minWidth: 170,
-            }}
+            style={{ minWidth: 170 }}
           >
             {isSubmitting ? (
               <Loader2 aria-hidden="true" className="admin-topbar-action__icon" />

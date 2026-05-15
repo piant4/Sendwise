@@ -130,7 +130,7 @@ export function AdminCampaignSetupForm({
   }
 
   return (
-    <form className="admin-clients-card" onSubmit={handleSubmit}>
+    <form className="admin-clients-card campaign-panel" onSubmit={handleSubmit}>
       <div className="admin-clients-card__intro">
         <div>
           <p className="admin-surface__eyebrow">Step 1</p>
@@ -138,7 +138,7 @@ export function AdminCampaignSetupForm({
             Setup base
           </h2>
           <p className="admin-clients-card__description">
-            Verifica i dati principali. In modifica, nome e oggetto email restano compatti finche non scegli di editarli.
+            Verifica i dati principali prima di passare al contenuto. Nome e oggetto restano compatti finche non scegli di editarli.
           </p>
         </div>
       </div>
@@ -149,7 +149,7 @@ export function AdminCampaignSetupForm({
         </p>
       ) : null}
       {successMessage ? (
-        <p className="admin-clients-feedback" role="status">
+        <p className="admin-clients-feedback admin-clients-feedback--success" role="status">
           {successMessage}
         </p>
       ) : null}
@@ -169,14 +169,7 @@ export function AdminCampaignSetupForm({
           ].map(([label, value]) => (
             <article
               key={label}
-              style={{
-                background: "rgba(239, 246, 255, 0.62)",
-                border: "1px solid rgba(96, 165, 250, 0.18)",
-                borderRadius: 18,
-                display: "grid",
-                gap: 6,
-                padding: 16,
-              }}
+              className="campaign-callout"
             >
               <span className="admin-record-row__note">{label}</span>
               <strong style={{ color: "#0f172a" }}>{value}</strong>
@@ -184,21 +177,21 @@ export function AdminCampaignSetupForm({
           ))}
         </div>
       ) : (
-        <div className="admin-clients-form">
-          <label className="admin-clients-form__field">
-            <span>Nome campagna</span>
+        <div className="campaign-form-grid">
+          <label className="campaign-field">
+            <span className="campaign-field__label">Nome campagna</span>
             <input
-              className="admin-clients-form__input"
+              className="campaign-input"
               disabled={isSubmitting}
               onChange={(event) => setName(event.target.value)}
               required
               value={name}
             />
           </label>
-          <label className="admin-clients-form__field">
-            <span>Oggetto email</span>
+          <label className="campaign-field">
+            <span className="campaign-field__label">Oggetto email</span>
             <input
-              className="admin-clients-form__input"
+              className="campaign-input"
               disabled={isSubmitting}
               onChange={(event) => setSubject(event.target.value)}
               value={subject}
@@ -207,41 +200,22 @@ export function AdminCampaignSetupForm({
         </div>
       )}
 
-      <div
-        style={{
-          alignItems: "center",
-          display: "flex",
-          flexWrap: "wrap",
-          gap: 12,
-          justifyContent: "space-between",
-          marginTop: 18,
-        }}
-      >
+      <div className="campaign-action-row">
         <Button
           type="button"
           variant="outline"
-          className="admin-topbar-action admin-topbar-action--secondary"
+          className="admin-topbar-action campaign-action campaign-action--secondary"
           onClick={() => setIsEditingBase((value) => !value)}
-          style={{
-            borderColor: "rgba(148, 163, 184, 0.45)",
-            color: "#0f172a",
-            minWidth: 160,
-          }}
+          style={{ minWidth: 160 }}
         >
           <Pencil aria-hidden="true" className="admin-topbar-action__icon" />
           {isEditingBase ? "Chiudi modifica" : "Modifica dati base"}
         </Button>
         <Button
           type="submit"
-          className="admin-topbar-action admin-topbar-action--primary"
+          className="admin-topbar-action campaign-action campaign-action--primary"
           disabled={isSubmitting}
-          style={{
-            background: "linear-gradient(135deg, #2563eb, #0ea5e9)",
-            border: "1px solid rgba(37, 99, 235, 0.18)",
-            boxShadow: "0 16px 34px rgba(37, 99, 235, 0.24)",
-            color: "#f8fbff",
-            minWidth: 170,
-          }}
+          style={{ minWidth: 170 }}
         >
           {isSubmitting ? (
             <Loader2 aria-hidden="true" className="admin-topbar-action__icon" />

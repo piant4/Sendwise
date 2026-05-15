@@ -102,7 +102,7 @@ export function AdminCampaignCreateWizard({
 
   if (clients.length === 0) {
     return (
-      <section className="admin-clients-card">
+      <section className="admin-clients-card campaign-panel">
         <div className="admin-clients-card__intro">
           <div>
             <p className="admin-surface__eyebrow">Creazione campagna</p>
@@ -115,7 +115,7 @@ export function AdminCampaignCreateWizard({
         <Button
           asChild
           size="lg"
-          className="admin-topbar-action admin-topbar-action--primary"
+          className="admin-topbar-action campaign-action campaign-action--primary"
           style={{ marginTop: 20 }}
         >
           <Link href="/admin/clients">Vai ai clienti</Link>
@@ -125,7 +125,7 @@ export function AdminCampaignCreateWizard({
   }
 
   return (
-    <form className="admin-clients-card" onSubmit={handleSubmit}>
+    <form className="admin-clients-card campaign-panel" onSubmit={handleSubmit}>
       <div className="admin-clients-card__intro">
         <div>
           <p className="admin-surface__eyebrow">Creazione campagna</p>
@@ -133,7 +133,7 @@ export function AdminCampaignCreateWizard({
             Nuova campagna
           </h2>
           <p className="admin-clients-card__description">
-            Crea una bozza iniziale e continua nel setup guidato. Nessun invio viene avviato da questa schermata.
+            Crea una bozza iniziale con cliente, nome e oggetto email. Dopo la creazione verrai reindirizzato allo step contenuto per scegliere o adattare un modello email.
           </p>
         </div>
       </div>
@@ -144,11 +144,11 @@ export function AdminCampaignCreateWizard({
         </p>
       ) : null}
 
-      <div className="admin-clients-form">
-        <label className="admin-clients-form__field">
-          <span>Cliente</span>
+      <div className="campaign-form-grid">
+        <label className="campaign-field">
+          <span className="campaign-field__label">Cliente</span>
           <select
-            className="admin-clients-form__input"
+            className="campaign-select"
             disabled={isSubmitting}
             onChange={(event) => setClientId(event.target.value)}
             required
@@ -161,36 +161,27 @@ export function AdminCampaignCreateWizard({
             ))}
           </select>
         </label>
-        <label className="admin-clients-form__field">
-          <span>Nome campagna</span>
+        <label className="campaign-field">
+          <span className="campaign-field__label">Nome campagna</span>
           <input
-            className="admin-clients-form__input"
+            className="campaign-input"
             disabled={isSubmitting}
             onChange={(event) => setName(event.target.value)}
             required
             value={name}
           />
         </label>
-        <label className="admin-clients-form__field">
-          <span>Oggetto email</span>
+        <label className="campaign-field">
+          <span className="campaign-field__label">Oggetto email</span>
           <input
-            className="admin-clients-form__input"
+            className="campaign-input"
             disabled={isSubmitting}
             onChange={(event) => setSubject(event.target.value)}
             required
             value={subject}
           />
         </label>
-        <div
-          style={{
-            background: "rgba(239, 246, 255, 0.62)",
-            border: "1px solid rgba(96, 165, 250, 0.18)",
-            borderRadius: 18,
-            display: "grid",
-            gap: 6,
-            padding: 16,
-          }}
-        >
+        <div className="campaign-callout">
           <span className="admin-record-row__note">Cliente selezionato</span>
           <strong style={{ color: "#0f172a" }}>
             {selectedClient ? getClientDisplayName(selectedClient) : "-"}
@@ -198,26 +189,13 @@ export function AdminCampaignCreateWizard({
         </div>
       </div>
 
-      <div
-        style={{
-          alignItems: "center",
-          display: "flex",
-          flexWrap: "wrap",
-          gap: 12,
-          justifyContent: "space-between",
-          marginTop: 22,
-        }}
-      >
+      <div className="campaign-action-row">
         <Button
           asChild
           variant="outline"
           size="lg"
-          className="admin-topbar-action admin-topbar-action--secondary"
-          style={{
-            borderColor: "rgba(148, 163, 184, 0.45)",
-            color: "#0f172a",
-            minWidth: 148,
-          }}
+          className="admin-topbar-action campaign-action campaign-action--secondary"
+          style={{ minWidth: 148 }}
         >
           <Link href="/admin/campaigns">
             <ArrowLeft aria-hidden="true" className="admin-topbar-action__icon" />
@@ -227,15 +205,9 @@ export function AdminCampaignCreateWizard({
         <Button
           type="submit"
           size="lg"
-          className="admin-topbar-action admin-topbar-action--primary"
+          className="admin-topbar-action campaign-action campaign-action--primary"
           disabled={isSubmitting}
-          style={{
-            background: "linear-gradient(135deg, #2563eb, #0ea5e9)",
-            border: "1px solid rgba(37, 99, 235, 0.18)",
-            boxShadow: "0 16px 34px rgba(37, 99, 235, 0.24)",
-            color: "#f8fbff",
-            minWidth: 170,
-          }}
+          style={{ minWidth: 170 }}
         >
           {isSubmitting ? (
             <Loader2 aria-hidden="true" className="admin-topbar-action__icon" />

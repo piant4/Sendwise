@@ -100,13 +100,7 @@ export default async function AdminCampaignsPage() {
           <Button
             asChild
             size="lg"
-            className="admin-topbar-action admin-topbar-action--primary"
-            style={{
-              background: "linear-gradient(135deg, #2563eb, #0ea5e9)",
-              border: "1px solid rgba(37, 99, 235, 0.18)",
-              boxShadow: "0 16px 34px rgba(37, 99, 235, 0.24)",
-              color: "#f8fbff",
-            }}
+            className="admin-topbar-action campaign-page-action"
           >
             <Link href="/admin/campaigns/new">
               <PlusCircle aria-hidden="true" className="admin-topbar-action__icon" />

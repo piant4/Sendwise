@@ -139,7 +139,7 @@ export function AdminCampaignReviewPanel({
   }, [autoRun, campaign.campaignId, campaign.reviewReady, getToken, router]);
 
   return (
-    <section className="admin-clients-card" id="review">
+    <section className="admin-clients-card campaign-panel" id="review">
       <div className="admin-clients-card__intro">
         <div>
           <p className="admin-surface__eyebrow">Step 4</p>
@@ -172,7 +172,7 @@ export function AdminCampaignReviewPanel({
         </p>
       ) : null}
       {reviewResult ? (
-        <p className="admin-clients-feedback" role="status">
+        <p className="admin-clients-feedback admin-clients-feedback--success" role="status">
           Verifica completata dal backend. Nessun invio e stato avviato.
         </p>
       ) : null}
@@ -232,41 +232,22 @@ export function AdminCampaignReviewPanel({
         </p>
       )}
 
-      <div
-        style={{
-          alignItems: "center",
-          display: "flex",
-          flexWrap: "wrap",
-          gap: 12,
-          justifyContent: "space-between",
-          marginTop: 18,
-        }}
-      >
+      <div className="campaign-action-row">
         <Button
           type="button"
           variant="outline"
-          className="admin-topbar-action admin-topbar-action--secondary"
+          className="admin-topbar-action campaign-action campaign-action--secondary"
           onClick={onBack}
-          style={{
-            borderColor: "rgba(148, 163, 184, 0.45)",
-            color: "#0f172a",
-            minWidth: 148,
-          }}
+          style={{ minWidth: 148 }}
         >
           Indietro
         </Button>
         <Button
           type="button"
-          className="admin-topbar-action admin-topbar-action--primary"
+          className="admin-topbar-action campaign-action campaign-action--primary"
           disabled={isSubmitting}
           onClick={runReview}
-          style={{
-            background: "linear-gradient(135deg, #2563eb, #0ea5e9)",
-            border: "1px solid rgba(37, 99, 235, 0.18)",
-            boxShadow: "0 16px 34px rgba(37, 99, 235, 0.24)",
-            color: "#f8fbff",
-            minWidth: 190,
-          }}
+          style={{ minWidth: 190 }}
         >
           {isSubmitting ? (
             <Loader2 aria-hidden="true" className="admin-topbar-action__icon" />

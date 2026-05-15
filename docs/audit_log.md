@@ -2594,3 +2594,47 @@ Checks executed:
 Scope confirmation:
 - No backend, schema, API contract, send/dispatch, Deliverability Guard, listmonk integration, local env, or secret files were changed.
 - No fake delivered, open, click, click-rate, queued, sent-attempted, or provider-event metric claims were added.
+
+## Milestone 16.2 - UI System Polish And Campaign Template Selection
+
+Date: 2026-05-15
+Branch: develop
+
+Verified state:
+- The admin campaign create flow and wizard steps now use a localized blue/azure campaign UI layer for cards, action rows, buttons, callouts, inputs, selects, and non-resizable textareas without changing backend behavior.
+- The campaign content step now exposes a frontend-only template picker with five Italian presets: primo contatto commerciale, follow-up leggero, newsletter breve, annuncio prodotto, and invito consulenza/demo.
+- Applying a template pre-fills `previewText`, `bodyHtml`, and `bodyText` locally only, warns before overwriting current step content, and still requires the existing save endpoint to persist changes.
+- New campaign creation still creates only the draft with client, campaign name, and subject, then redirects into the edit wizard content step where template selection is available.
+- The edit wizard keeps backend-owned readiness semantics intact: templates do not imply `content_ready`, review remains backend-run, and no send, simulate-send, or SES activation control was added.
+
+UI polish summary:
+- Normalized campaign-area primary/secondary button styling and heights around the existing button primitive.
+- Replaced touched campaign-area olive/green emphasis with blue/azure surfaces, borders, and focus states while leaving global product theme and non-campaign auth/account flows unchanged.
+- Tightened content-step labels and helper copy to `Anteprima email`, `HTML email`, and `Versione testo semplice`, with more balanced spacing and less raw-looking fields.
+- Kept contacts and review panels visually aligned with the same action row and card treatment.
+
+Known limits:
+- Template presets are frontend-only convenience content and are not backend/provider/listmonk templates.
+- Existing MJML files under `templates/` remain backend-owned compiled send templates and were not wired into the admin content form.
+- Global shared success status badges still use semantic success coloring; this milestone only removed olive/green emphasis from the touched campaign surfaces and controls.
+
+Checks executed:
+- `git diff --check`
+- `cd frontend && npm run lint`
+- `cd frontend && npm run build`
+- `bash scripts/audit.sh`
+- `bash scripts/smoke_test.sh`
+- `docker compose config`
+- `docker compose -f docker-compose.yml -f docker-compose.dev.yml config`
+- frontend direct-listmonk scan
+- frontend direct Clerk backend API/secret usage scan
+- touched-file fake delivered/open/click claim scan
+- changed-file env/secret/config scope scan
+
+Checks result:
+- All listed checks passed in this workspace.
+- The direct Clerk scan only returned existing Dockerfile env wiring outside the touched scope; no new direct Clerk backend API calls or secret usage were introduced by this milestone.
+
+Scope confirmation:
+- No backend code, DB schema, API contract, send/dispatch logic, Deliverability Guard, SES enablement, listmonk integration, Docker/env/config file, Clerk/auth flow, or onboarding/account runtime behavior was changed.
+- No fake delivery, open, click, click-rate, queued, sent-attempted, or provider-event metric claims were added.

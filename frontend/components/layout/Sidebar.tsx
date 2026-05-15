@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { BrandMark } from "../shared/BrandMark";
 import { MockModeBadge } from "../shared/MockModeBadge";
 import { SidebarAccountPanel } from "../shared/SidebarAccountPanel";
@@ -20,15 +21,22 @@ const ROLE_META: Record<
 interface SidebarProps {
   role: AppRole;
   isMockMode: boolean;
+  logoHref: string;
 }
 
-export function Sidebar({ role, isMockMode }: SidebarProps) {
+export function Sidebar({ role, isMockMode, logoHref }: SidebarProps) {
   const meta = ROLE_META[role];
 
   return (
     <div className="sidebar-shell">
       <div className="sidebar-brand">
-        <BrandMark size="md" />
+        <Link
+          href={logoHref}
+          className="sidebar-brand__link"
+          aria-label="Vai alla dashboard"
+        >
+          <BrandMark size="lg" />
+        </Link>
       </div>
       <div className="sidebar-section">
         <p className="sidebar-label">{meta.sectionLabel}</p>

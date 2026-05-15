@@ -54,7 +54,7 @@ export function getNavigationRole(pathname: string): AppRole | null {
   return null;
 }
 
-function getClientPortalBaseHref(pathname: string): string | null {
+export function getClientPortalBaseHref(pathname: string): string | null {
   const portalSlugMatch = pathname.match(/^\/c\/([A-Za-z0-9]+)(?:\/|$)/);
 
   if (!portalSlugMatch) {

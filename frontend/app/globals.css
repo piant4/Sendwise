@@ -108,6 +108,33 @@ button {
   padding: 2px 4px 10px;
 }
 
+.sidebar-brand__link {
+  align-items: center;
+  border-radius: 10px;
+  color: inherit;
+  display: inline-flex;
+  margin: -4px -6px;
+  padding: 4px 6px;
+  text-decoration: none;
+  transition:
+    background-color 0.16s ease,
+    box-shadow 0.16s ease,
+    color 0.16s ease;
+}
+
+.sidebar-brand__link:hover {
+  background: rgba(37, 99, 235, 0.06);
+  color: var(--sw-text);
+  text-decoration: none;
+}
+
+.sidebar-brand__link:focus-visible {
+  background: rgba(37, 99, 235, 0.08);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.14);
+  color: var(--sw-text);
+  outline: none;
+}
+
 .sidebar-account__copy {
   display: grid;
   min-width: 0;

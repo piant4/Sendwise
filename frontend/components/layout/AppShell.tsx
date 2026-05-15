@@ -1,11 +1,13 @@
 "use client";
 
 import type { ReactNode } from "react";
+import { useAuth } from "@clerk/nextjs";
 import { usePathname } from "next/navigation";
 import { AdminTopBarActions } from "../admin/AdminTopBarActions";
 import { MobileNav } from "./MobileNav";
 import {
   getActiveNavItem,
+  getClientPortalBaseHref,
   getNavigationRole,
 } from "./MainNav";
 import { Sidebar } from "./Sidebar";
@@ -16,6 +18,7 @@ interface AppShellProps {
 }
 
 export function AppShell({ children }: AppShellProps) {
+  const { isSignedIn } = useAuth();
   const pathname = usePathname();
   const role = getNavigationRole(pathname);
   const isMockMode = process.env.NEXT_PUBLIC_USE_MOCK_API !== "false";
@@ -36,11 +39,19 @@ export function AppShell({ children }: AppShellProps) {
         : activeNavItem?.label ?? (role === "admin" ? "Admin" : "Cliente");
   const actions = role === "admin" ? <AdminTopBarActions /> : undefined;
   const showUtilityButtons = false;
+  const logoHref =
+    isSignedIn === false
+      ? "/login"
+      : role === "admin"
+        ? "/admin"
+        : role === "client"
+          ? getClientPortalBaseHref(pathname) ?? "/login"
+          : "/login";
 
   return (
     <div className="app-shell">
       <aside className="app-sidebar" aria-label="Barra laterale Sendwise">
-        <Sidebar role={role} isMockMode={isMockMode} />
+        <Sidebar role={role} isMockMode={isMockMode} logoHref={logoHref} />
       </aside>
       <div className="app-frame">
         <TopBar

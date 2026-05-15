@@ -195,11 +195,11 @@ export function AdminCampaignCreateWizard({
           variant="outline"
           size="default"
           className="admin-topbar-action campaign-action campaign-action--secondary"
-          style={{ minWidth: 148 }}
+          style={{ minWidth: 190 }}
         >
           <Link href="/admin/campaigns">
             <ArrowLeft aria-hidden="true" className="admin-topbar-action__icon" />
-            Annulla
+            Torna alle campagne
           </Link>
         </Button>
         <Button

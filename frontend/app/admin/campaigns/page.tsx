@@ -100,7 +100,7 @@ export default async function AdminCampaignsPage() {
           <Button
             asChild
             size="default"
-            className="admin-topbar-action campaign-page-action"
+            className="admin-topbar-action campaign-action campaign-action--primary"
           >
             <Link href="/admin/campaigns/new">
               <PlusCircle aria-hidden="true" className="admin-topbar-action__icon" />

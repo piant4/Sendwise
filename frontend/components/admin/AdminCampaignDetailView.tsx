@@ -83,7 +83,7 @@ export function AdminCampaignDetailView({
             >
               <Link href={`/admin/campaigns/${campaign.campaignId}?mode=edit`}>
                 <PenSquare aria-hidden="true" className="admin-topbar-action__icon" />
-                Modifica campagna
+                Modifica
               </Link>
             </Button>
           </div>

@@ -1745,14 +1745,17 @@ button {
 
 .campaign-page-action[data-slot="button"],
 .campaign-action[data-slot="button"] {
+  align-items: center;
+  display: inline-flex;
+  justify-content: center;
   min-height: 40px;
   text-decoration: none;
 }
 
 .campaign-page-action[data-slot="button"] {
-  background: linear-gradient(180deg, #2563eb, #1d4ed8);
+  background: #2563eb;
   border: 1px solid rgba(37, 99, 235, 0.22);
-  box-shadow: 0 12px 24px rgba(37, 99, 235, 0.14);
+  box-shadow: 0 8px 18px rgba(37, 99, 235, 0.12);
   color: #eff6ff;
 }
 
@@ -1768,9 +1771,9 @@ button {
 }
 
 .campaign-action--primary[data-slot="button"] {
-  background: linear-gradient(180deg, #2563eb, #1d4ed8);
+  background: #2563eb;
   border: 1px solid rgba(37, 99, 235, 0.22);
-  box-shadow: 0 12px 24px rgba(37, 99, 235, 0.14);
+  box-shadow: 0 8px 18px rgba(37, 99, 235, 0.12);
   color: #eff6ff;
 }
 
@@ -1786,6 +1789,80 @@ button {
   background: rgba(248, 250, 252, 0.98);
   border-color: rgba(37, 99, 235, 0.22);
   color: #0f172a;
+}
+
+.campaign-record-link {
+  color: inherit;
+  text-decoration: none;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease,
+    transform 0.15s ease,
+    background-color 0.15s ease;
+}
+
+.campaign-record-link:hover,
+.campaign-record-link:focus-visible {
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 1),
+    rgba(239, 246, 255, 0.98)
+  );
+  border-color: rgba(96, 165, 250, 0.5);
+  box-shadow: 0 18px 36px rgba(37, 99, 235, 0.12);
+  outline: none;
+  transform: translateY(-1px);
+}
+
+.campaign-record-link__header {
+  align-items: flex-start;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  justify-content: space-between;
+}
+
+.campaign-record-link__copy {
+  gap: 8px;
+}
+
+.campaign-record-link__title {
+  color: #0f172a;
+  font-size: 1.05rem;
+}
+
+.campaign-record-link__client {
+  color: var(--sw-text-muted);
+}
+
+.campaign-record-link__actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.campaign-record-link__open {
+  align-items: center;
+  background: rgba(255, 255, 255, 0.96);
+  border: 1px solid rgba(148, 163, 184, 0.38);
+  border-radius: 999px;
+  color: #0f172a;
+  display: inline-flex;
+  font-size: 0.82rem;
+  font-weight: 700;
+  gap: 6px;
+  min-height: 32px;
+  padding: 0 12px;
+  text-decoration: none;
+}
+
+.campaign-record-link__summary {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  margin-top: 14px;
 }
 
 .campaign-action[data-slot="button"]:disabled,
@@ -2018,6 +2095,13 @@ button {
 
 .campaign-step-button[data-ready="true"] {
   border-color: rgba(147, 197, 253, 0.82);
+}
+
+.campaign-step-button:hover,
+.campaign-step-button:focus-visible {
+  border-color: rgba(96, 165, 250, 0.5);
+  box-shadow: 0 12px 28px rgba(37, 99, 235, 0.08);
+  outline: none;
 }
 
 .campaign-step-button__header {
@@ -3060,7 +3144,11 @@ p {
   padding: clamp(18px, 3vw, 30px);
   position: relative;
   background:
-    radial-gradient(circle at top left, rgba(219, 234, 254, 0.68), transparent 34%),
+    radial-gradient(
+      circle at top left,
+      rgba(219, 234, 254, 0.68),
+      transparent 34%
+    ),
     linear-gradient(180deg, #f7faff 0%, #eef4fb 100%);
 }
 
@@ -3338,7 +3426,10 @@ p {
   min-height: 44px;
   padding: 0 16px;
   text-decoration: none;
-  transition: background 140ms ease, border-color 140ms ease, color 140ms ease;
+  transition:
+    background 140ms ease,
+    border-color 140ms ease,
+    color 140ms ease;
 }
 
 .account-panel-card__action:hover {
@@ -3408,7 +3499,10 @@ p {
   font-weight: 700;
   min-height: 36px;
   padding: 0 14px;
-  transition: background 140ms ease, border-color 140ms ease, color 140ms ease;
+  transition:
+    background 140ms ease,
+    border-color 140ms ease,
+    color 140ms ease;
 }
 
 .account-sheet__shortcut[data-active="true"] {
@@ -4571,7 +4665,11 @@ p {
   align-items: start;
   background:
     linear-gradient(135deg, rgba(15, 23, 42, 0.98), rgba(29, 78, 216, 0.94)),
-    radial-gradient(circle at top right, rgba(125, 211, 252, 0.18), transparent 18rem);
+    radial-gradient(
+      circle at top right,
+      rgba(125, 211, 252, 0.18),
+      transparent 18rem
+    );
   border: 1px solid rgba(96, 165, 250, 0.18);
   border-radius: 28px;
   box-shadow: 0 24px 60px rgba(15, 23, 42, 0.16);

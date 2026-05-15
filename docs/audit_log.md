@@ -1,5 +1,57 @@
 # Audit Log
 
+## Milestone 16.6 - Campaign Buttons And Clickable Cards Fix
+
+Date: 2026-05-15
+Branch: develop
+
+UI audit before changes:
+- `/admin/campaigns` rendered each campaign as a non-clickable `article`; only the inner `Apri` link opened the detail route.
+- The `Apri` affordance was nested as a button-styled inner link instead of being part of a single card interaction target.
+- `Nuova campagna` reused the campaign page action treatment with a stronger glow than the other admin CTAs.
+- Campaign card header alignment depended on ad hoc inline flex styling and the badge/open affordance hierarchy was visually weak.
+- Campaign wizard and detail actions already used shared button classes, but campaign-specific primary actions still carried heavier glow and some long labels wrapped awkwardly.
+- No underline/link styling was intentionally applied inside the touched campaign files, but the clickable hierarchy was still unclear because cards were not first-class actions.
+
+Implemented:
+- Converted each admin campaign summary card into one keyboard-accessible `Link` that opens `/admin/campaigns/{campaignId}` from the full card surface.
+- Removed the nested inner action from the card and replaced `Apri` with a non-nested secondary affordance chip aligned with the status badge.
+- Kept the card summary compact to campaign name, client, readiness, recipients, and last updated. No IDs or synthetic metrics were added to the overview.
+- Normalized campaign primary buttons to a flatter, standard CTA treatment with reduced glow and consistent alignment across list/detail/wizard actions.
+- Shortened the detail CTA label to `Modifica` and changed the create-wizard back action to `Torna alle campagne` so labels stay compact and explicit.
+- Added clearer hover and focus-visible states for clickable cards and step buttons.
+
+Files touched:
+- `frontend/app/admin/campaigns/page.tsx`
+- `frontend/app/admin/campaigns/[campaignId]/page.tsx`
+- `frontend/components/admin/AdminCampaignCompactCard.tsx`
+- `frontend/components/admin/AdminCampaignCreateWizard.tsx`
+- `frontend/components/admin/AdminCampaignDetailView.tsx`
+- `frontend/app/globals.css`
+- `docs/audit_log.md`
+
+Checks executed:
+- `git diff --check`
+- `cd frontend && npm run lint`
+- `cd frontend && npm run build`
+- `bash scripts/audit.sh`
+- `bash scripts/smoke_test.sh`
+- `docker compose config`
+- `docker compose -f docker-compose.yml -f docker-compose.dev.yml config`
+- touched-file direct listmonk scan
+- touched-file fake delivered/open/click claim scan
+- changed-file env/config/backend scope scan
+
+Checks result:
+- All listed checks passed in this workspace after the patch.
+- Touched campaign files contain no direct listmonk calls and no fake delivered/open/click claims.
+- No backend, schema, auth, send/dispatch, SES, listmonk, Docker, env, or API contract files were changed in this milestone scope.
+
+Scope confirmation:
+- Frontend-only UI fix.
+- No backend code, DB schema, API contract, auth flow, send behavior, direct listmonk calls, or SES behavior changed.
+- No fake delivered, open, or click metrics were added.
+
 ## Milestone 12.1U + 16.5 - Unsubscribe QA And Global Button Cleanup
 
 Date: 2026-05-15

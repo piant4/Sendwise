@@ -10,7 +10,6 @@ import {
   getCampaignStatusLabel,
   getCampaignStatusVariant,
 } from "../shared/campaignUi";
-import { Button } from "../ui/button";
 import { StatusBadge } from "../ui/StatusBadge";
 
 interface AdminCampaignCompactCardProps {
@@ -42,56 +41,29 @@ export function AdminCampaignCompactCard({
       : getCampaignReadinessShortLabel(readiness.campaign);
 
   return (
-    <article className="admin-record-row">
-      <div
-        style={{
-          alignItems: "start",
-          display: "flex",
-          gap: 16,
-          justifyContent: "space-between",
-        }}
-      >
-        <div className="admin-record-row__copy" style={{ gap: 8 }}>
-          <strong style={{ color: "#0f172a", fontSize: "1.05rem" }}>{campaign.name}</strong>
-          <span>
-            {campaign.clientName} / {campaign.clientEmail}
-          </span>
+    <Link
+      href={`/admin/campaigns/${campaign.id}`}
+      className="admin-record-row campaign-record-link"
+      aria-label={`Apri campagna ${campaign.name}`}
+    >
+      <div className="campaign-record-link__header">
+        <div className="admin-record-row__copy campaign-record-link__copy">
+          <strong className="campaign-record-link__title">{campaign.name}</strong>
+          <span className="campaign-record-link__client">{campaign.clientName}</span>
         </div>
-        <div
-          style={{
-            alignItems: "center",
-            display: "flex",
-            flexWrap: "wrap",
-            gap: 8,
-            justifyContent: "flex-end",
-          }}
-        >
+        <div className="campaign-record-link__actions">
           <StatusBadge
             label={getCampaignStatusLabel(campaign.status)}
             variant={getCampaignStatusVariant(campaign.status)}
           />
-          <Button
-            asChild
-            variant="outline"
-            size="sm"
-            className="admin-topbar-action campaign-action campaign-action--secondary"
-          >
-            <Link href={`/admin/campaigns/${campaign.id}`}>
-              Apri
-              <ChevronRight aria-hidden="true" className="admin-topbar-action__icon" />
-            </Link>
-          </Button>
+          <span className="campaign-record-link__open">
+            Apri
+            <ChevronRight aria-hidden="true" className="admin-topbar-action__icon" />
+          </span>
         </div>
       </div>
 
-      <div
-        style={{
-          display: "grid",
-          gap: 10,
-          gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
-          marginTop: 14,
-        }}
-      >
+      <div className="campaign-record-link__summary">
         <div>
           <div className="admin-record-row__note">Readiness</div>
           <strong style={{ color: "#0f172a" }}>{readinessLabel}</strong>
@@ -109,6 +81,6 @@ export function AdminCampaignCompactCard({
           <strong style={{ color: "#0f172a" }}>{formatDateLabel(campaign.updatedAt)}</strong>
         </div>
       </div>
-    </article>
+    </Link>
   );
 }

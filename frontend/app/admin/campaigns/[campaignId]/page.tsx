@@ -87,6 +87,7 @@ export default async function AdminCampaignDetailPage({
               asChild
               variant="outline"
               size="sm"
+              className="admin-topbar-action admin-topbar-action--secondary"
               style={{
                 marginBottom: 10,
               }}

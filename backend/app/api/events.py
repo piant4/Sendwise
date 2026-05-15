@@ -18,6 +18,49 @@ router = APIRouter(
 )
 
 
+def _render_unsubscribe_page(
+    *,
+    title: str,
+    message: str,
+    status_code: int,
+) -> HTMLResponse:
+    return HTMLResponse(
+        content=(
+            "<!doctype html>"
+            "<html lang=\"it\">"
+            "<head>"
+            "<meta charset=\"utf-8\" />"
+            "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />"
+            "<title>Sendwise</title>"
+            "<style>"
+            ":root{color-scheme:light;}"
+            "*{box-sizing:border-box;}"
+            "body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;"
+            "padding:24px;background:linear-gradient(180deg,#f8fbff 0%,#eef6ff 100%);"
+            "font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"
+            "'Segoe UI',sans-serif;color:#0f172a;}"
+            ".card{width:min(100%,520px);padding:32px 28px;border:1px solid rgba(37,99,235,.12);"
+            "border-radius:24px;background:rgba(255,255,255,.98);"
+            "box-shadow:0 24px 60px rgba(37,99,235,.12);text-align:center;}"
+            ".eyebrow{margin:0 0 12px;font-size:12px;font-weight:700;letter-spacing:.08em;"
+            "text-transform:uppercase;color:#2563eb;}"
+            "h1{margin:0;font-size:30px;line-height:1.05;letter-spacing:-.04em;}"
+            "p{margin:12px 0 0;font-size:15px;line-height:1.6;color:#526075;}"
+            "</style>"
+            "</head>"
+            "<body>"
+            "<main class=\"card\">"
+            "<p class=\"eyebrow\">Sendwise</p>"
+            f"<h1>{title}</h1>"
+            f"<p>{message}</p>"
+            "</main>"
+            "</body>"
+            "</html>"
+        ),
+        status_code=status_code,
+    )
+
+
 def require_events_api_key(
     x_api_key: str | None = Header(default=None, alias="X-API-Key"),
     settings: Settings = Depends(get_settings),
@@ -41,18 +84,15 @@ def unsubscribe(
     try:
         unsubscribe_service.unsubscribe(token=token, campaign_id=campaign_id)
     except InvalidUnsubscribeTokenError as error:
-        raise HTTPException(
+        return _render_unsubscribe_page(
+            title="Link non valido",
+            message="Questo link di disiscrizione non e valido o non e piu disponibile.",
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid unsubscribe link.",
-        ) from error
+        )
 
-    return HTMLResponse(
-        content=(
-            "<!doctype html><html><body>"
-            "<h1>Unsubscribed</h1>"
-            "<p>Your address has been removed from future Sendwise mailings.</p>"
-            "</body></html>"
-        ),
+    return _render_unsubscribe_page(
+        title="Disiscrizione completata",
+        message="Non riceverai piu email da questa campagna.",
         status_code=status.HTTP_200_OK,
     )
 

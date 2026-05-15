@@ -1,5 +1,47 @@
 # Audit Log
 
+## Milestone 12.1U + 16.5 - Unsubscribe QA And Global Button Cleanup
+
+Date: 2026-05-15
+Branch: develop
+
+Verified state:
+- Audited the existing public unsubscribe flow end to end through the backend route, unsubscribe token service, provider-event ingestion, suppression repository, campaign preparation, and Guard-backed tests.
+- Kept the unsubscribe write path backend-owned and unchanged: valid public links still resolve through `GET /unsubscribe/{token}`, create or reuse a `sendwise_unsubscribe` provider event, update contact state to `unsubscribed`, and persist `suppression_list` state through the existing provider-event side effects.
+- Replaced the raw-looking public unsubscribe response with a minimal branded HTML page and converted invalid-token responses from JSON detail output to a controlled HTML page with no token, internal id, or debug leakage.
+- Normalized the visible admin/client CTA treatments that still used custom CSS outside the shared `Button` primitive so top-bar actions, campaign actions, account back links, account row actions, sidebar account actions, and modal CTA buttons now share the same height, radius, padding, hover weight, focus ring, and no-underline treatment.
+- Kept status badges informational only. No CTA behavior, send behavior, listmonk behavior, SES behavior, schema, or auth boundary was changed.
+
+Known limits:
+- The public unsubscribe success copy remains campaign-oriented by request even though suppression is persisted at the backend-owned recipient/client suppression layer.
+- The login reset action still uses underlined text styling, but login was outside the requested admin/client UI cleanup scope.
+- No standalone frontend public unsubscribe page exists in this milestone; the backend route remains the public entry point.
+
+Checks executed:
+- targeted backend unsubscribe/provider-event tests
+- `cd frontend && npm run lint`
+- `cd frontend && npm run build`
+- `bash scripts/audit.sh`
+- `bash scripts/smoke_test.sh`
+- `docker compose config`
+- `docker compose -f docker-compose.yml -f docker-compose.dev.yml config`
+- `git diff --check`
+- frontend direct-listmonk scan
+- frontend direct Clerk backend API/secret scan
+- touched-file fake delivered/open/click claim scan
+- touched-file underline/button scan
+- runtime invalid unsubscribe curl
+- runtime valid unsubscribe flow with seeded local Docker backend/PostgreSQL data
+
+Checks result:
+- All listed checks passed in this workspace after the patch.
+- Runtime verification confirmed controlled invalid-link handling, valid unsubscribe persistence, idempotent re-click behavior, suppression row persistence, and Guard block behavior without calling send endpoints.
+- No Docker/env/config or secret file was changed during the milestone.
+
+Scope confirmation:
+- No send endpoint, dispatch logic, SES behavior, listmonk behavior, fake provider event generation, schema, Docker/env/config, or n8n integration was changed.
+- No fake delivered/open/click/click-rate data was added.
+
 ## Milestone 16.4 - Client UI Color And Dashboard Polish
 
 Date: 2026-05-15

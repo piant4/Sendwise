@@ -196,7 +196,30 @@ def test_unsubscribe_token_invalid_is_rejected() -> None:
         app.dependency_overrides.pop(get_unsubscribe_service, None)
 
     assert response.status_code == 400
-    assert response.json()["detail"] == "Invalid unsubscribe link."
+    assert response.headers["content-type"].startswith("text/html")
+    assert "Link non valido" in response.text
+    assert "Questo link di disiscrizione non e valido o non e piu disponibile." in response.text
+    assert "not-a-valid-token" not in response.text
+
+
+def test_unsubscribe_route_returns_public_success_page() -> None:
+    runtime = build_runtime()
+    token_service: UnsubscribeTokenService = runtime["token_service"]  # type: ignore[assignment]
+    unsubscribe_service: UnsubscribeService = runtime["unsubscribe_service"]  # type: ignore[assignment]
+    token = token_service.generate_token(client_id="client_123", contact_id="contact_123")
+    app.dependency_overrides[get_unsubscribe_service] = lambda: unsubscribe_service
+    try:
+        response = TestClient(app).get(f"/unsubscribe/{token}?campaign_id=campaign_123")
+    finally:
+        app.dependency_overrides.pop(get_unsubscribe_service, None)
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/html")
+    assert "Disiscrizione completata" in response.text
+    assert "Non riceverai piu email da questa campagna." in response.text
+    assert token not in response.text
+    assert "campaign_123" not in response.text
+    assert "contact_123" not in response.text
 
 
 def test_provider_event_endpoint_requires_api_key() -> None:

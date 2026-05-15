@@ -78,7 +78,7 @@ function buildSteps(
     },
     {
       id: "review",
-      label: "Review",
+      label: "Verifica",
       state: campaign.reviewReady ? "ready" : "not-ready",
     },
   ];
@@ -114,7 +114,7 @@ export function AdminCampaignSetupProgress({
           <h2 className="admin-clients-card__title">Step campagna</h2>
         </div>
         <span className="admin-record-row__note">
-          Stato letto dal backend
+          Aggiornato con lo stato attuale della campagna
         </span>
       </div>
       <div className="campaign-stepper">

@@ -21,30 +21,39 @@ export interface ReadableBackendReason {
 }
 
 const BACKEND_REASON_LABELS: Array<[RegExp, string]> = [
-  [/^Campaign has no associated contacts\.$/i, "Nessun contatto associato"],
-  [/^Campaign has no eligible contacts to send\.$/i, "Nessun destinatario idoneo"],
+  [/^Campaign has no associated contacts\.$/i, "Aggiungi almeno un destinatario valido."],
+  [/^Campaign has no eligible contacts to send\.$/i, "Nessun destinatario idoneo disponibile."],
   [
-    /^EMAIL_SENDING_ENABLED is not exactly true; real dispatch is disabled\.$/i,
-    "Invio reale disattivato",
+    /^EMAIL_SENDING_ENABLED is not exactly "true"; real dispatch is disabled\.$/i,
+    "Invio reale disattivato in questo ambiente.",
   ],
-  [/all recipients blocked/i, "Tutti i destinatari sono bloccati"],
-  [/^Campaign content is not ready\.$/i, "Contenuto campagna da completare"],
-  [/^Campaign status .+ is not sendable\.$/i, "Stato campagna non inviabile"],
-  [/^Only ready or running campaigns may dispatch\.$/i, "Campagna non pronta all'invio"],
+  [/all recipients blocked/i, "Tutti i destinatari risultano esclusi dall'invio."],
+  [/^Campaign content is not ready\.$/i, "Completa e salva il contenuto email."],
+  [/^Campaign status .+ is not sendable\.$/i, "La campagna non è ancora in uno stato inviabile."],
+  [/^Client status .+ is not sendable\.$/i, "Il cliente non è in uno stato che consente l'invio."],
+  [/^Only ready or running campaigns may dispatch\.$/i, "La campagna non è ancora in uno stato inviabile."],
   [/^Client max_campaigns limit is exceeded\.$/i, "Limite campagne cliente superato"],
   [
     /^Campaign eligible contact count exceeds email_limit_per_campaign\.$/i,
-    "Destinatari oltre il limite per campagna",
+    "I destinatari superano il limite previsto per questa campagna.",
   ],
   [
     /^Campaign eligible contact count exceeds campaign slot max_emails\.$/i,
-    "Destinatari oltre il limite dello slot",
+    "I destinatari superano il limite previsto per questo slot.",
   ],
   [
     /^Campaign contains non-sendable contacts and partial dispatch is not supported\.$/i,
-    "Sono presenti destinatari non inviabili",
+    "Alcuni destinatari non sono idonei all'invio.",
   ],
 ];
+
+export interface CampaignReviewStateMeta {
+  badgeLabel: string;
+  badgeVariant: StatusBadgeVariant;
+  summaryLabel: string;
+  helperText: string;
+  buttonLabel: string;
+}
 
 export function formatCampaignCount(value: number): string {
   return value.toLocaleString("it-IT");
@@ -65,10 +74,58 @@ export function getReadableBackendReason(reason: string): ReadableBackendReason 
   }
 
   return {
-    label: "Verifica operativa richiesta",
+    label: normalizedReason || "Verifica operativa richiesta.",
     raw: normalizedReason || "Reason non disponibile",
     isKnown: false,
   };
+}
+
+export function getCampaignReviewStateMeta(
+  reviewReady: boolean,
+  reviewExecuted: boolean,
+): CampaignReviewStateMeta {
+  if (reviewReady) {
+    return {
+      badgeLabel: "Pronta",
+      badgeVariant: "success",
+      summaryLabel: "Campagna pronta",
+      helperText: "La verifica è stata eseguita. Nessun invio è stato avviato.",
+      buttonLabel: "Verifica",
+    };
+  }
+
+  if (reviewExecuted) {
+    return {
+      badgeLabel: "Richiede intervento",
+      badgeVariant: "warning",
+      summaryLabel: "Campagna non pronta",
+      helperText: "La verifica è stata eseguita. Risolvi i punti sotto e poi rieseguila.",
+      buttonLabel: "Riesegui verifica",
+    };
+  }
+
+  return {
+    badgeLabel: "Da verificare",
+    badgeVariant: "warning",
+    summaryLabel: "Verifica da eseguire",
+    helperText: "Esegui la verifica finale per controllare contenuto, destinatari e stato della campagna.",
+    buttonLabel: "Verifica",
+  };
+}
+
+export function dedupeReviewReasons(reasons: ReadableBackendReason[]): ReadableBackendReason[] {
+  const seen = new Set<string>();
+
+  return reasons.filter((reason) => {
+    const key = `${reason.label}::${reason.raw}`;
+
+    if (seen.has(key)) {
+      return false;
+    }
+
+    seen.add(key);
+    return true;
+  });
 }
 
 export function getCampaignStatusLabel(status: CampaignStatus): string {
@@ -126,7 +183,7 @@ export function getCampaignReadinessItems(
       value: campaign.contactsReady ? "Presenti" : "Non pronti",
     },
     {
-      label: "Review",
+      label: "Verifica",
       value: campaign.reviewReady ? "Approvata" : "In attesa",
     },
   ];

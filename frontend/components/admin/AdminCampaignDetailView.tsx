@@ -6,8 +6,8 @@ import type {
   AdminCampaignReadinessSummary,
 } from "../../types";
 import {
+  dedupeReviewReasons,
   formatCampaignCount,
-  getCampaignReadinessLabel,
   getCampaignReadinessShortLabel,
   getCampaignStatusLabel,
   getCampaignStatusVariant,
@@ -55,20 +55,26 @@ export function AdminCampaignDetailView({
   contacts,
 }: AdminCampaignDetailViewProps) {
   const runtimeItems = summary ? getRuntimeSafetyItems(summary.runtime) : [];
-  const reviewReasons = summary
-    ? [...summary.blockingErrors, ...summary.warnings].map(getReadableBackendReason)
+  const blockingReasons = summary
+    ? dedupeReviewReasons(summary.blockingErrors.map(getReadableBackendReason))
+    : [];
+  const warningReasons = summary
+    ? dedupeReviewReasons(summary.warnings.map(getReadableBackendReason))
     : [];
 
   return (
     <div style={{ display: "grid", gap: 20 }}>
-      <section className="admin-clients-card campaign-panel">
+      <section className="admin-clients-card campaign-panel campaign-panel--subtle">
         <div
           className="admin-clients-card__intro"
           style={{ alignItems: "start", gap: 16, justifyContent: "space-between" }}
         >
           <div>
-            <p className="admin-clients-card__description">
-              {campaign.clientName} / {campaign.subject?.trim() || "Oggetto email non disponibile"}
+            <p className="admin-clients-card__description" style={{ margin: 0 }}>
+              {campaign.clientName}
+            </p>
+            <p className="admin-record-row__note" style={{ marginTop: 6 }}>
+              {campaign.subject?.trim() || "Oggetto email da completare"}
             </p>
           </div>
           <div className="campaign-hero-actions">
@@ -207,14 +213,14 @@ export function AdminCampaignDetailView({
               </h2>
             </div>
             <StatusBadge
-              label={getCampaignReadinessLabel(summary.campaign)}
+              label={summary.campaign.reviewReady ? "Pronta" : "Non pronta"}
               variant={summary.campaign.reviewReady ? "success" : "warning"}
             />
           </div>
 
           <dl className="admin-record-grid" style={{ marginTop: 16 }}>
             <div>
-              <dt>Invio consentito</dt>
+              <dt>Invio reale disponibile</dt>
               <dd>{summary.canSend ? "Sì" : "No"}</dd>
             </div>
             <div>
@@ -226,11 +232,11 @@ export function AdminCampaignDetailView({
               <dd>{summary.campaign.contactsReady ? "Pronto" : "Non pronto"}</dd>
             </div>
             <div>
-              <dt>Review</dt>
+              <dt>Verifica</dt>
               <dd>{summary.campaign.reviewReady ? "Pronto" : "Non pronto"}</dd>
             </div>
             <div>
-              <dt>Step operativo</dt>
+              <dt>Step attuale</dt>
               <dd>{getCampaignStepLabel(summary.campaign.currentStep)}</dd>
             </div>
             <div>
@@ -247,20 +253,39 @@ export function AdminCampaignDetailView({
             {getProviderEventsLabel(summary.logs)}. {getProviderEventsDetail(summary.logs)}
           </p>
 
-          {reviewReasons.length > 0 ? (
-            <ul className="admin-record-row__note" style={{ marginTop: 12 }}>
-              {reviewReasons.map((reason) => (
-                <li key={`${reason.raw}-${reason.label}`}>
-                  {reason.label}
-                  {reason.isKnown ? "" : `: ${reason.raw}`}
-                </li>
-              ))}
-            </ul>
+          {blockingReasons.length > 0 ? (
+            <>
+              <p className="admin-record-row__note" style={{ marginTop: 12 }}>
+                Problemi da risolvere
+              </p>
+              <ul className="admin-record-row__note" style={{ marginTop: 0 }}>
+                {blockingReasons.map((reason) => (
+                  <li key={`${reason.raw}-${reason.label}`}>
+                    {reason.label}
+                  </li>
+                ))}
+              </ul>
+            </>
           ) : (
             <p className="admin-record-row__note" style={{ marginTop: 12 }}>
-              Nessun warning o errore bloccante restituito dall&apos;ultimo read model disponibile.
+              Nessun problema bloccante rilevato nello stato attuale della campagna.
             </p>
           )}
+
+          {warningReasons.length > 0 ? (
+            <>
+              <p className="admin-record-row__note" style={{ marginTop: 12 }}>
+                Controlli utili
+              </p>
+              <ul className="admin-record-row__note" style={{ marginTop: 0 }}>
+                {warningReasons.map((reason) => (
+                  <li key={`${reason.raw}-${reason.label}`}>
+                    {reason.label}
+                  </li>
+                ))}
+              </ul>
+            </>
+          ) : null}
         </section>
       ) : null}
 

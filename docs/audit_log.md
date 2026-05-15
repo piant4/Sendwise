@@ -1,5 +1,7 @@
 # Audit Log
 
+- Milestone 16.8 frontend UX pass: replaced the campaign header back pill with a subtle accessible back link, reduced the campaign header copy to a compact client/subject subtitle, and clarified review diagnostics so the final step distinguishes "Da verificare", "Campagna non pronta", and "Campagna pronta" without changing dispatch behavior, Deliverability Guard, backend APIs, or readiness honesty.
+
 ## Milestone 16.6 - Campaign Buttons And Clickable Cards Fix
 
 Date: 2026-05-15

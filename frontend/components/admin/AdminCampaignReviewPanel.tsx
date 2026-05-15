@@ -14,8 +14,10 @@ import type {
   AdminCampaignReviewResult,
 } from "../../types";
 import {
-  getReadableBackendReason,
+  dedupeReviewReasons,
+  getCampaignReviewStateMeta,
   getCampaignStepLabel,
+  getReadableBackendReason,
 } from "../shared/campaignUi";
 import { Button } from "../ui/button";
 import { StatusBadge } from "../ui/StatusBadge";
@@ -31,11 +33,11 @@ interface AdminCampaignReviewPanelProps {
 function getSafeReviewErrorMessage(error: unknown): string {
   if (isApiError(error)) {
     if (error.isNetworkError) {
-      return "Il browser non riesce a raggiungere il backend Sendwise.";
+      return "Il browser non riesce a completare la verifica in questo momento.";
     }
 
     if (error.status === 401 || error.status === 403) {
-      return "La sessione admin non e valida per eseguire la review.";
+      return "La sessione admin non è valida per eseguire la verifica.";
     }
 
     if (error.status === 404) {
@@ -43,11 +45,11 @@ function getSafeReviewErrorMessage(error: unknown): string {
     }
 
     if (error.status === 409) {
-      return "Il backend ha rifiutato la review per lo stato corrente della campagna.";
+      return "La verifica non è disponibile con lo stato attuale della campagna.";
     }
 
     if (error.status === 422) {
-      return "Il backend non puo eseguire la review con i dati attuali.";
+      return "Completa i dati mancanti e poi riprova la verifica.";
     }
 
     if (error.detail.trim()) {
@@ -55,7 +57,7 @@ function getSafeReviewErrorMessage(error: unknown): string {
     }
   }
 
-  return "Non e stato possibile eseguire la review. Riprova.";
+  return "Non è stato possibile eseguire la verifica. Riprova.";
 }
 
 function getInitialState(
@@ -100,9 +102,48 @@ export function AdminCampaignReviewPanel({
   const [formError, setFormError] = useState<string | null>(null);
 
   const state = reviewResult ?? getInitialState(campaign, summary);
-  const reviewReasons = [...state.blockingErrors, ...state.warnings].map(
-    getReadableBackendReason,
+  const reviewExecuted = reviewResult !== null || campaign.reviewReady;
+  const reviewState = getCampaignReviewStateMeta(state.reviewReady, reviewExecuted);
+  const blockingReasons = dedupeReviewReasons(
+    state.blockingErrors.map(getReadableBackendReason),
   );
+  const warningReasons = dedupeReviewReasons(
+    state.warnings.map(getReadableBackendReason),
+  );
+  const blockingContent =
+    blockingReasons.length > 0 ? (
+      <div style={{ display: "grid", gap: 12, marginTop: 18 }}>
+        <div>
+          <strong style={{ color: "#0f172a" }}>Problemi da risolvere</strong>
+        </div>
+        <ul className="admin-record-row__note" style={{ margin: 0 }}>
+          {blockingReasons.map((reason) => (
+            <li key={`${reason.raw}-${reason.label}`}>
+              {reason.label}
+            </li>
+          ))}
+        </ul>
+      </div>
+    ) : reviewExecuted ? (
+      <p className="admin-record-row__note" style={{ marginTop: 18 }}>
+        Nessun problema bloccante rilevato dalla verifica.
+      </p>
+    ) : null;
+  const warningContent =
+    warningReasons.length > 0 ? (
+      <div style={{ display: "grid", gap: 12, marginTop: 18 }}>
+        <div>
+          <strong style={{ color: "#0f172a" }}>Controlli utili</strong>
+        </div>
+        <ul className="admin-record-row__note" style={{ margin: 0 }}>
+          {warningReasons.map((reason) => (
+            <li key={`${reason.raw}-${reason.label}`}>
+              {reason.label}
+            </li>
+          ))}
+        </ul>
+      </div>
+    ) : null;
 
   async function runReview() {
     if (isSubmitting) {
@@ -157,8 +198,8 @@ export function AdminCampaignReviewPanel({
           </h2>
         </div>
         <StatusBadge
-          label={state.reviewReady ? "Pronta" : "Da verificare"}
-          variant={state.reviewReady ? "success" : "warning"}
+          label={reviewState.badgeLabel}
+          variant={reviewState.badgeVariant}
         />
       </div>
 
@@ -174,22 +215,28 @@ export function AdminCampaignReviewPanel({
       ) : null}
       {isSubmitting ? (
         <p className="admin-clients-feedback" role="status">
-          Verifica campagna in corso...
-        </p>
-      ) : null}
-      {reviewResult ? (
-        <p className="admin-clients-feedback" role="status">
-          Verifica completata dal backend. Nessun invio e stato avviato.
+          Verifica in corso...
         </p>
       ) : null}
 
+      <div className="campaign-callout campaign-callout--review" style={{ marginTop: 18 }}>
+        <strong style={{ color: "#0f172a" }}>{reviewState.summaryLabel}</strong>
+        <p className="campaign-field__helper" style={{ margin: 0 }}>
+          {reviewState.helperText}
+        </p>
+      </div>
+
       <dl className="admin-record-grid" style={{ marginTop: 18 }}>
         <div>
-          <dt>Invio consentito</dt>
+          <dt>Esito verifica</dt>
+          <dd>{state.reviewReady ? "Pronta" : reviewExecuted ? "Non pronta" : "Da verificare"}</dd>
+        </div>
+        <div>
+          <dt>Invio reale disponibile ora</dt>
           <dd>{getBooleanLabel(state.allowedToSend)}</dd>
         </div>
         <div>
-          <dt>Inviabile quando l&apos;invio reale sara attivo</dt>
+          <dt>Pronta quando l&apos;invio reale è attivo</dt>
           <dd>{getBooleanLabel(state.canSendWhenEnabled)}</dd>
         </div>
         <div>
@@ -201,11 +248,11 @@ export function AdminCampaignReviewPanel({
           <dd>{getReadinessLabel(state.contactsReady)}</dd>
         </div>
         <div>
-          <dt>Review</dt>
+          <dt>Verifica</dt>
           <dd>{getReadinessLabel(state.reviewReady)}</dd>
         </div>
         <div>
-          <dt>Step operativo</dt>
+          <dt>Step attuale</dt>
           <dd>{getCampaignStepLabel(state.currentStep)}</dd>
         </div>
         <div>
@@ -218,25 +265,9 @@ export function AdminCampaignReviewPanel({
         </div>
       </dl>
 
-      {reviewReasons.length > 0 ? (
-        <div style={{ display: "grid", gap: 12, marginTop: 18 }}>
-          <div>
-            <strong style={{ color: "#0f172a" }}>Warning e blocchi backend</strong>
-          </div>
-          <ul className="admin-record-row__note" style={{ margin: 0 }}>
-            {reviewReasons.map((reason) => (
-              <li key={`${reason.raw}-${reason.label}`}>
-                {reason.label}
-                {reason.isKnown ? "" : `: ${reason.raw}`}
-              </li>
-            ))}
-          </ul>
-        </div>
-      ) : (
-        <p className="admin-record-row__note" style={{ marginTop: 18 }}>
-          Nessun warning o errore bloccante restituito dal backend.
-        </p>
-      )}
+      {blockingContent}
+
+      {warningContent}
 
       <div className="campaign-action-row">
         <Button
@@ -260,7 +291,7 @@ export function AdminCampaignReviewPanel({
           ) : (
             <ClipboardCheck aria-hidden="true" className="admin-topbar-action__icon" />
           )}
-          {isSubmitting ? "Verifica..." : "Completa verifica"}
+          {isSubmitting ? "Verifica..." : reviewState.buttonLabel}
         </Button>
       </div>
     </section>

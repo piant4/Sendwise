@@ -4,7 +4,6 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { AdminCampaignDetailView } from "../../../../components/admin/AdminCampaignDetailView";
 import { AdminCampaignWizardShell } from "../../../../components/admin/AdminCampaignWizardShell";
-import { Button } from "../../../../components/ui/button";
 import {
   getAdminCampaignDetail,
   getAdminCampaignContacts,
@@ -81,30 +80,24 @@ export default async function AdminCampaignDetailPage({
   return (
     <main className="shell">
       <section className="admin-page-shell">
-        <header className="admin-page-header">
+        <header className="admin-page-header campaign-page-header">
           <div>
-            <Button
-              asChild
-              variant="outline"
-              size="sm"
-              className="admin-topbar-action admin-topbar-action--secondary"
-              style={{
-                marginBottom: 10,
-              }}
-            >
-              <Link href="/admin/campaigns">
-                <ArrowLeft aria-hidden="true" size={14} />
-                Torna alle campagne
-              </Link>
-            </Button>
-            <p className="admin-surface__eyebrow">Admin / Campagne</p>
+            <Link href="/admin/campaigns" className="campaign-back-link">
+              <ArrowLeft aria-hidden="true" size={14} />
+              Torna alle campagne
+            </Link>
+            <p className="admin-surface__eyebrow" style={{ marginTop: 14 }}>
+              Campagne admin
+            </p>
             <h1 className="admin-page-title">
               {"campaign" in result ? result.campaign.name : "Campagna"}
             </h1>
             <p className="admin-page-description">
-              {isEditMode
-                ? "Modifica operativa con uno step attivo alla volta."
-                : "Dettaglio campagna con riepilogo operativo e contenuti essenziali."}
+              {"campaign" in result
+                ? `${result.campaign.clientName} · ${result.campaign.subject?.trim() || "Oggetto email da completare"}`
+                : isEditMode
+                  ? "Configurazione campagna non disponibile."
+                  : "Dettaglio campagna non disponibile."}
             </p>
           </div>
         </header>

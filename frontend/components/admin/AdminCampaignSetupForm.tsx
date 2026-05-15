@@ -1,7 +1,7 @@
 "use client";
 
 import { useAuth } from "@clerk/nextjs";
-import { AlertCircle, Loader2, Save } from "lucide-react";
+import { Loader2, Pencil, Save } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { type FormEvent, useState } from "react";
 import {
@@ -14,6 +14,7 @@ import { Button } from "../ui/button";
 
 interface AdminCampaignSetupFormProps {
   campaign: AdminCampaignDetail;
+  onContinue?: () => void;
 }
 
 function getValue(value?: string | null): string {
@@ -43,7 +44,7 @@ function getSafeUpdateErrorMessage(error: unknown): string {
     }
 
     if (error.status === 422) {
-      return "Verifica nome, oggetto e contenuto prima di salvare.";
+      return "Verifica nome campagna e oggetto email prima di salvare.";
     }
 
     if (error.detail.trim()) {
@@ -51,19 +52,18 @@ function getSafeUpdateErrorMessage(error: unknown): string {
     }
   }
 
-  return "Non e stato possibile salvare la configurazione. Riprova.";
+  return "Non e stato possibile salvare la configurazione di base. Riprova.";
 }
 
 export function AdminCampaignSetupForm({
   campaign,
+  onContinue,
 }: AdminCampaignSetupFormProps) {
   const router = useRouter();
   const { getToken } = useAuth();
   const [name, setName] = useState(campaign.name);
   const [subject, setSubject] = useState(getValue(campaign.subject));
-  const [previewText, setPreviewText] = useState(getValue(campaign.previewText));
-  const [bodyHtml, setBodyHtml] = useState(getValue(campaign.bodyHtml));
-  const [bodyText, setBodyText] = useState(getValue(campaign.bodyText));
+  const [isEditingBase, setIsEditingBase] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
@@ -82,18 +82,12 @@ export function AdminCampaignSetupForm({
 
     const nameChanged = name.trim() !== campaign.name;
     const subjectValue = normalizeText(subject);
-    const previewValue = normalizeText(previewText);
-    const bodyHtmlValue = normalizeText(bodyHtml);
-    const bodyTextValue = normalizeText(bodyText);
-    const contentChanged =
-      subjectValue !== normalizeText(campaign.subject) ||
-      previewValue !== normalizeText(campaign.previewText) ||
-      bodyHtmlValue !== normalizeText(campaign.bodyHtml) ||
-      bodyTextValue !== normalizeText(campaign.bodyText);
+    const subjectChanged = subjectValue !== normalizeText(campaign.subject);
 
-    if (!nameChanged && !contentChanged) {
-      setSuccessMessage("Nessuna modifica da salvare.");
+    if (!nameChanged && !subjectChanged) {
+      setSuccessMessage("Dati base invariati.");
       setErrorMessage(null);
+      onContinue?.();
       return;
     }
 
@@ -114,21 +108,20 @@ export function AdminCampaignSetupForm({
         );
       }
 
-      if (contentChanged) {
+      if (subjectChanged) {
         await updateAdminCampaignContent(
           campaign.campaignId,
           {
             subject: subjectValue,
-            previewText: previewValue,
-            bodyHtml: bodyHtmlValue,
-            bodyText: bodyTextValue,
           },
           token,
         );
       }
 
-      setSuccessMessage("Configurazione salvata. Stato e prontezza sono aggiornati dal backend.");
+      setSuccessMessage("Dati base salvati. La readiness resta calcolata dal backend.");
       router.refresh();
+      setIsEditingBase(false);
+      onContinue?.();
     } catch (error) {
       setErrorMessage(getSafeUpdateErrorMessage(error));
     } finally {
@@ -140,11 +133,12 @@ export function AdminCampaignSetupForm({
     <form className="admin-clients-card" onSubmit={handleSubmit}>
       <div className="admin-clients-card__intro">
         <div>
-          <p className="admin-surface__eyebrow">Setup base</p>
-          <h2 className="admin-clients-card__title">Configurazione e contenuto</h2>
+          <p className="admin-surface__eyebrow">Step 1</p>
+          <h2 className="admin-clients-card__title" style={{ color: "#0f172a" }}>
+            Setup base
+          </h2>
           <p className="admin-clients-card__description">
-            Salva i campi supportati dal backend. La prontezza resta letta dalle
-            risposte API.
+            Verifica i dati principali. In modifica, nome e oggetto email restano compatti finche non scegli di editarli.
           </p>
         </div>
       </div>
@@ -160,84 +154,101 @@ export function AdminCampaignSetupForm({
         </p>
       ) : null}
 
-      {!campaign.contentReady ? (
-        <p className="admin-clients-feedback" role="status">
-          <AlertCircle aria-hidden="true" size={16} /> Contenuto non ancora pronto
-          secondo il backend.
-        </p>
-      ) : null}
-
-      <div className="admin-clients-form" id="setup-base">
-        <label className="admin-clients-form__field">
-          <span>Nome campagna</span>
-          <input
-            className="admin-clients-form__input"
-            disabled={isSubmitting}
-            onChange={(event) => setName(event.target.value)}
-            required
-            value={name}
-          />
-        </label>
-        <label className="admin-clients-form__field">
-          <span>Oggetto</span>
-          <input
-            className="admin-clients-form__input"
-            disabled={isSubmitting}
-            onChange={(event) => setSubject(event.target.value)}
-            value={subject}
-          />
-        </label>
-      </div>
-
-      <div className="admin-clients-form" id="content" style={{ marginTop: 18 }}>
-        <div>
-          <p className="admin-surface__eyebrow">Contenuto</p>
-          <h3 className="admin-clients-card__title">Email campagna</h3>
+      {!isEditingBase ? (
+        <div
+          style={{
+            display: "grid",
+            gap: 14,
+            gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+          }}
+        >
+          {[
+            ["Cliente", campaign.clientName],
+            ["Nome campagna", campaign.name],
+            ["Oggetto email", campaign.subject?.trim() || "Da completare"],
+          ].map(([label, value]) => (
+            <article
+              key={label}
+              style={{
+                background: "rgba(239, 246, 255, 0.62)",
+                border: "1px solid rgba(96, 165, 250, 0.18)",
+                borderRadius: 18,
+                display: "grid",
+                gap: 6,
+                padding: 16,
+              }}
+            >
+              <span className="admin-record-row__note">{label}</span>
+              <strong style={{ color: "#0f172a" }}>{value}</strong>
+            </article>
+          ))}
         </div>
-        <label className="admin-clients-form__field">
-          <span>Preview text</span>
-          <input
-            className="admin-clients-form__input"
-            disabled={isSubmitting}
-            onChange={(event) => setPreviewText(event.target.value)}
-            value={previewText}
-          />
-        </label>
-        <label className="admin-clients-form__field">
-          <span>HTML contenuto</span>
-          <textarea
-            className="admin-clients-form__input"
-            disabled={isSubmitting}
-            onChange={(event) => setBodyHtml(event.target.value)}
-            rows={8}
-            value={bodyHtml}
-          />
-        </label>
-        <label className="admin-clients-form__field">
-          <span>Testo semplice</span>
-          <textarea
-            className="admin-clients-form__input"
-            disabled={isSubmitting}
-            onChange={(event) => setBodyText(event.target.value)}
-            rows={5}
-            value={bodyText}
-          />
-        </label>
-      </div>
+      ) : (
+        <div className="admin-clients-form">
+          <label className="admin-clients-form__field">
+            <span>Nome campagna</span>
+            <input
+              className="admin-clients-form__input"
+              disabled={isSubmitting}
+              onChange={(event) => setName(event.target.value)}
+              required
+              value={name}
+            />
+          </label>
+          <label className="admin-clients-form__field">
+            <span>Oggetto email</span>
+            <input
+              className="admin-clients-form__input"
+              disabled={isSubmitting}
+              onChange={(event) => setSubject(event.target.value)}
+              value={subject}
+            />
+          </label>
+        </div>
+      )}
 
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginTop: 22 }}>
+      <div
+        style={{
+          alignItems: "center",
+          display: "flex",
+          flexWrap: "wrap",
+          gap: 12,
+          justifyContent: "space-between",
+          marginTop: 18,
+        }}
+      >
+        <Button
+          type="button"
+          variant="outline"
+          className="admin-topbar-action admin-topbar-action--secondary"
+          onClick={() => setIsEditingBase((value) => !value)}
+          style={{
+            borderColor: "rgba(148, 163, 184, 0.45)",
+            color: "#0f172a",
+            minWidth: 160,
+          }}
+        >
+          <Pencil aria-hidden="true" className="admin-topbar-action__icon" />
+          {isEditingBase ? "Chiudi modifica" : "Modifica dati base"}
+        </Button>
         <Button
           type="submit"
-          size="default"
           className="admin-topbar-action admin-topbar-action--primary"
           disabled={isSubmitting}
+          style={{
+            background: "linear-gradient(135deg, #2563eb, #0ea5e9)",
+            border: "1px solid rgba(37, 99, 235, 0.18)",
+            boxShadow: "0 16px 34px rgba(37, 99, 235, 0.24)",
+            color: "#f8fbff",
+            minWidth: 170,
+          }}
         >
           {isSubmitting ? (
             <Loader2 aria-hidden="true" className="admin-topbar-action__icon" />
           ) : (
             <Save aria-hidden="true" className="admin-topbar-action__icon" />
           )}
-          {isSubmitting ? "Salvataggio..." : "Salva configurazione"}
+          {isSubmitting ? "Salvataggio..." : "Salva e continua"}
         </Button>
       </div>
     </form>

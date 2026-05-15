@@ -91,7 +91,7 @@ export function AdminCampaignCreateWizard({
         },
         token,
       );
-      router.push(`/admin/campaigns/${createdCampaign.campaignId}`);
+      router.push(`/admin/campaigns/${createdCampaign.campaignId}?mode=edit&step=content`);
       router.refresh();
     } catch (error) {
       setErrorMessage(getSafeCreateErrorMessage(error));
@@ -129,10 +129,11 @@ export function AdminCampaignCreateWizard({
       <div className="admin-clients-card__intro">
         <div>
           <p className="admin-surface__eyebrow">Creazione campagna</p>
-          <h2 className="admin-clients-card__title">Bozza campagna</h2>
+          <h2 className="admin-clients-card__title" style={{ color: "#0f172a" }}>
+            Nuova campagna
+          </h2>
           <p className="admin-clients-card__description">
-            La campagna verra creata come bozza sicura. Invio, provider e
-            destinatari restano governati dal backend.
+            Crea una bozza iniziale e continua nel setup guidato. Nessun invio viene avviato da questa schermata.
           </p>
         </div>
       </div>
@@ -171,7 +172,7 @@ export function AdminCampaignCreateWizard({
           />
         </label>
         <label className="admin-clients-form__field">
-          <span>Oggetto</span>
+          <span>Oggetto email</span>
           <input
             className="admin-clients-form__input"
             disabled={isSubmitting}
@@ -180,24 +181,43 @@ export function AdminCampaignCreateWizard({
             value={subject}
           />
         </label>
-        <dl className="admin-record-grid">
-          <div>
-            <dt>Cliente</dt>
-            <dd>{selectedClient ? getClientDisplayName(selectedClient) : "-"}</dd>
-          </div>
-          <div>
-            <dt>Stato iniziale</dt>
-            <dd>Bozza backend</dd>
-          </div>
-        </dl>
+        <div
+          style={{
+            background: "rgba(239, 246, 255, 0.62)",
+            border: "1px solid rgba(96, 165, 250, 0.18)",
+            borderRadius: 18,
+            display: "grid",
+            gap: 6,
+            padding: 16,
+          }}
+        >
+          <span className="admin-record-row__note">Cliente selezionato</span>
+          <strong style={{ color: "#0f172a" }}>
+            {selectedClient ? getClientDisplayName(selectedClient) : "-"}
+          </strong>
+        </div>
       </div>
 
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginTop: 22 }}>
+      <div
+        style={{
+          alignItems: "center",
+          display: "flex",
+          flexWrap: "wrap",
+          gap: 12,
+          justifyContent: "space-between",
+          marginTop: 22,
+        }}
+      >
         <Button
           asChild
           variant="outline"
           size="lg"
           className="admin-topbar-action admin-topbar-action--secondary"
+          style={{
+            borderColor: "rgba(148, 163, 184, 0.45)",
+            color: "#0f172a",
+            minWidth: 148,
+          }}
         >
           <Link href="/admin/campaigns">
             <ArrowLeft aria-hidden="true" className="admin-topbar-action__icon" />
@@ -209,6 +229,13 @@ export function AdminCampaignCreateWizard({
           size="lg"
           className="admin-topbar-action admin-topbar-action--primary"
           disabled={isSubmitting}
+          style={{
+            background: "linear-gradient(135deg, #2563eb, #0ea5e9)",
+            border: "1px solid rgba(37, 99, 235, 0.18)",
+            boxShadow: "0 16px 34px rgba(37, 99, 235, 0.24)",
+            color: "#f8fbff",
+            minWidth: 170,
+          }}
         >
           {isSubmitting ? (
             <Loader2 aria-hidden="true" className="admin-topbar-action__icon" />

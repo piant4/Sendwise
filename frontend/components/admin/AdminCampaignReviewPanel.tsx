@@ -3,7 +3,7 @@
 import { useAuth } from "@clerk/nextjs";
 import { ClipboardCheck, Loader2 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   isApiError,
   reviewAdminCampaign,
@@ -23,6 +23,8 @@ interface AdminCampaignReviewPanelProps {
   campaign: AdminCampaignDetail;
   summary: AdminCampaignReadinessSummary | null;
   errorMessage?: string | null;
+  autoRun?: boolean;
+  onBack?: () => void;
 }
 
 function getSafeReviewErrorMessage(error: unknown): string {
@@ -55,15 +57,21 @@ function getSafeReviewErrorMessage(error: unknown): string {
   return "Non e stato possibile eseguire la review. Riprova.";
 }
 
-function getLatestReviewState(
+function getInitialState(
   campaign: AdminCampaignDetail,
-  result: AdminCampaignReviewResult | null,
+  summary: AdminCampaignReadinessSummary | null,
 ) {
   return {
-    contentReady: result?.contentReady ?? campaign.contentReady,
-    contactsReady: result?.contactsReady ?? campaign.contactsReady,
-    reviewReady: result?.reviewReady ?? campaign.reviewReady,
-    currentStep: result?.currentStep ?? campaign.currentStep,
+    allowedToSend: summary?.canSend ?? false,
+    canSendWhenEnabled: summary?.canSend ?? false,
+    contentReady: summary?.campaign.contentReady ?? campaign.contentReady,
+    contactsReady: summary?.campaign.contactsReady ?? campaign.contactsReady,
+    reviewReady: summary?.campaign.reviewReady ?? campaign.reviewReady,
+    currentStep: summary?.campaign.currentStep ?? campaign.currentStep,
+    warnings: summary?.warnings ?? [],
+    blockingErrors: summary?.blockingErrors ?? [],
+    eligibleContactCount: summary?.recipients.eligible ?? 0,
+    blockedContactCount: summary?.recipients.blocked ?? 0,
   };
 }
 
@@ -71,24 +79,23 @@ export function AdminCampaignReviewPanel({
   campaign,
   summary,
   errorMessage,
+  autoRun = false,
+  onBack,
 }: AdminCampaignReviewPanelProps) {
   const router = useRouter();
   const { getToken } = useAuth();
+  const autoRequestedRef = useRef(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [reviewResult, setReviewResult] =
     useState<AdminCampaignReviewResult | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
-  const state = getLatestReviewState(campaign, reviewResult);
-  const reviewReasons = [
-    ...(reviewResult?.blockingErrors ?? summary?.blockingErrors ?? []),
-    ...(reviewResult?.warnings ?? summary?.warnings ?? []),
-  ].map(getReadableBackendReason);
-  const eligibleContactCount =
-    reviewResult?.eligibleContactCount ?? summary?.recipients.eligible ?? 0;
-  const blockedContactCount =
-    reviewResult?.blockedContactCount ?? summary?.recipients.blocked ?? 0;
 
-  async function handleReview() {
+  const state = reviewResult ?? getInitialState(campaign, summary);
+  const reviewReasons = [...state.blockingErrors, ...state.warnings].map(
+    getReadableBackendReason,
+  );
+
+  async function runReview() {
     if (isSubmitting) {
       return;
     }
@@ -108,18 +115,43 @@ export function AdminCampaignReviewPanel({
     }
   }
 
+  useEffect(() => {
+    if (!autoRun || autoRequestedRef.current || campaign.reviewReady) {
+      return;
+    }
+
+    autoRequestedRef.current = true;
+    void (async () => {
+      setIsSubmitting(true);
+      setFormError(null);
+
+      try {
+        const token = await getToken();
+        const result = await reviewAdminCampaign(campaign.campaignId, token);
+        setReviewResult(result);
+        router.refresh();
+      } catch (error) {
+        setFormError(getSafeReviewErrorMessage(error));
+      } finally {
+        setIsSubmitting(false);
+      }
+    })();
+  }, [autoRun, campaign.campaignId, campaign.reviewReady, getToken, router]);
+
   return (
     <section className="admin-clients-card" id="review">
       <div className="admin-clients-card__intro">
         <div>
-          <p className="admin-surface__eyebrow">Review</p>
-          <h2 className="admin-clients-card__title">Verifica campagna</h2>
+          <p className="admin-surface__eyebrow">Step 4</p>
+          <h2 className="admin-clients-card__title" style={{ color: "#0f172a" }}>
+            Verifica finale
+          </h2>
           <p className="admin-clients-card__description">
-            Esegue solo la review backend e aggiorna lo stato di prontezza.
+            Questo step esegue la review backend e mostra soltanto lo stato operativo restituito dalle API.
           </p>
         </div>
         <StatusBadge
-          label={state.reviewReady ? "Pronto" : "Non pronto"}
+          label={state.reviewReady ? "Pronta" : "Da verificare"}
           variant={state.reviewReady ? "success" : "neutral"}
         />
       </div>
@@ -134,74 +166,114 @@ export function AdminCampaignReviewPanel({
           {formError}
         </p>
       ) : null}
-      {reviewResult ? (
+      {isSubmitting ? (
         <p className="admin-clients-feedback" role="status">
-          Review eseguita dal backend. Stato aggiornato dalla risposta API.
+          Verifica campagna in corso...
         </p>
       ) : null}
-      {!state.reviewReady ? (
-        <p className="admin-record-row__note">
-          Review non pronta: completa setup, contenuto e destinatari, poi riesegui
-          la verifica backend.
+      {reviewResult ? (
+        <p className="admin-clients-feedback" role="status">
+          Verifica completata dal backend. Nessun invio e stato avviato.
         </p>
       ) : null}
 
-      <dl className="admin-record-grid">
+      <dl className="admin-record-grid" style={{ marginTop: 18 }}>
         <div>
-          <dt>Contenuto</dt>
-          <dd>{state.contentReady ? "Pronto" : "Da completare"}</dd>
+          <dt>allowed_to_send</dt>
+          <dd>{state.allowedToSend ? "true" : "false"}</dd>
         </div>
         <div>
-          <dt>Destinatari</dt>
-          <dd>{state.contactsReady ? "Pronto" : "Non pronto"}</dd>
+          <dt>can_send_when_enabled</dt>
+          <dd>{state.canSendWhenEnabled ? "true" : "false"}</dd>
         </div>
         <div>
-          <dt>Review</dt>
-          <dd>{state.reviewReady ? "Pronto" : "Non pronto"}</dd>
+          <dt>content_ready</dt>
+          <dd>{state.contentReady ? "true" : "false"}</dd>
+        </div>
+        <div>
+          <dt>contacts_ready</dt>
+          <dd>{state.contactsReady ? "true" : "false"}</dd>
+        </div>
+        <div>
+          <dt>review_ready</dt>
+          <dd>{state.reviewReady ? "true" : "false"}</dd>
         </div>
         <div>
           <dt>Step backend</dt>
           <dd>{state.currentStep}</dd>
         </div>
         <div>
-          <dt>Contatti idonei</dt>
-          <dd>{eligibleContactCount.toLocaleString("it-IT")}</dd>
+          <dt>Idonei</dt>
+          <dd>{state.eligibleContactCount.toLocaleString("it-IT")}</dd>
         </div>
         <div>
-          <dt>Contatti bloccati</dt>
-          <dd>{blockedContactCount.toLocaleString("it-IT")}</dd>
+          <dt>Bloccati</dt>
+          <dd>{state.blockedContactCount.toLocaleString("it-IT")}</dd>
         </div>
       </dl>
 
       {reviewReasons.length > 0 ? (
-        <ul className="admin-record-row__note">
-          {reviewReasons.map((reason) => (
-            <li key={`${reason.raw}-${reason.label}`}>
-              {reason.label}
-              {reason.isKnown ? "" : `: ${reason.raw}`}
-            </li>
-          ))}
-        </ul>
+        <div style={{ display: "grid", gap: 12, marginTop: 18 }}>
+          <div>
+            <strong style={{ color: "#0f172a" }}>Warning e blocchi backend</strong>
+          </div>
+          <ul className="admin-record-row__note" style={{ margin: 0 }}>
+            {reviewReasons.map((reason) => (
+              <li key={`${reason.raw}-${reason.label}`}>
+                {reason.label}
+                {reason.isKnown ? "" : `: ${reason.raw}`}
+              </li>
+            ))}
+          </ul>
+        </div>
       ) : (
-        <p className="admin-record-row__note">
-          Nessun blocco o warning restituito dal backend.
+        <p className="admin-record-row__note" style={{ marginTop: 18 }}>
+          Nessun warning o errore bloccante restituito dal backend.
         </p>
       )}
 
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginTop: 18 }}>
+      <div
+        style={{
+          alignItems: "center",
+          display: "flex",
+          flexWrap: "wrap",
+          gap: 12,
+          justifyContent: "space-between",
+          marginTop: 18,
+        }}
+      >
         <Button
           type="button"
-          size="default"
+          variant="outline"
+          className="admin-topbar-action admin-topbar-action--secondary"
+          onClick={onBack}
+          style={{
+            borderColor: "rgba(148, 163, 184, 0.45)",
+            color: "#0f172a",
+            minWidth: 148,
+          }}
+        >
+          Indietro
+        </Button>
+        <Button
+          type="button"
           className="admin-topbar-action admin-topbar-action--primary"
           disabled={isSubmitting}
-          onClick={handleReview}
+          onClick={runReview}
+          style={{
+            background: "linear-gradient(135deg, #2563eb, #0ea5e9)",
+            border: "1px solid rgba(37, 99, 235, 0.18)",
+            boxShadow: "0 16px 34px rgba(37, 99, 235, 0.24)",
+            color: "#f8fbff",
+            minWidth: 190,
+          }}
         >
           {isSubmitting ? (
             <Loader2 aria-hidden="true" className="admin-topbar-action__icon" />
           ) : (
             <ClipboardCheck aria-hidden="true" className="admin-topbar-action__icon" />
           )}
-          {isSubmitting ? "Review..." : "Esegui review"}
+          {isSubmitting ? "Verifica..." : "Completa verifica"}
         </Button>
       </div>
     </section>

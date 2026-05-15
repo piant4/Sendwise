@@ -7,6 +7,7 @@ import type {
 } from "../../types";
 
 type StatusBadgeVariant = "neutral" | "success" | "warning" | "danger";
+export type CampaignWizardStep = "setup" | "content" | "recipients" | "review";
 
 export interface LabelValueItem {
   label: string;
@@ -148,6 +149,52 @@ export function getCampaignReadinessLabel(
   }
 
   return `Non pronta: ${missing.join(", ")}`;
+}
+
+export function getCampaignReadinessShortLabel(
+  campaign: Pick<
+    CampaignSummaryItem,
+    "contentReady" | "contactsReady" | "reviewReady"
+  >,
+): string {
+  if (campaign.contentReady && campaign.contactsReady && campaign.reviewReady) {
+    return "Pronta";
+  }
+
+  if (!campaign.contentReady) {
+    return "Contenuto da completare";
+  }
+
+  if (!campaign.contactsReady) {
+    return "Destinatari da verificare";
+  }
+
+  return "Verifica finale richiesta";
+}
+
+export function getCampaignStepLabel(step: string): string {
+  switch (step) {
+    case "setup":
+      return "Setup";
+    case "content":
+      return "Contenuto";
+    case "recipients":
+      return "Destinatari";
+    case "review":
+      return "Verifica";
+    case "send":
+      return "Invio";
+    default:
+      return step || "Setup";
+  }
+}
+
+export function normalizeCampaignWizardStep(step?: string | null): CampaignWizardStep {
+  if (step === "content" || step === "recipients" || step === "review") {
+    return step;
+  }
+
+  return "setup";
 }
 
 export function getRecipientSummaryItems(

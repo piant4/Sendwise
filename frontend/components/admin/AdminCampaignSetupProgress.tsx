@@ -4,6 +4,10 @@ import type {
   AdminCampaignDetail,
   AdminCampaignReadinessSummary,
 } from "../../types";
+import {
+  normalizeCampaignWizardStep,
+  type CampaignWizardStep,
+} from "../shared/campaignUi";
 
 type StepState = "ready" | "needs-attention" | "not-ready";
 
@@ -11,6 +15,8 @@ interface AdminCampaignSetupProgressProps {
   campaign: AdminCampaignDetail;
   contacts: AdminCampaignContactsSummary | null;
   summary: AdminCampaignReadinessSummary | null;
+  currentStep?: CampaignWizardStep;
+  onStepSelect?: (step: CampaignWizardStep) => void;
 }
 
 interface WizardStep {
@@ -98,14 +104,11 @@ export function AdminCampaignSetupProgress({
   campaign,
   contacts,
   summary,
+  currentStep,
+  onStepSelect,
 }: AdminCampaignSetupProgressProps) {
   const steps = buildSteps(campaign, contacts, summary);
-  const anchorByStep: Record<string, string> = {
-    setup: "setup-base",
-    content: "content",
-    recipients: "destinatari",
-    review: "review",
-  };
+  const activeStep = currentStep ?? normalizeCampaignWizardStep(campaign.currentStep);
 
   return (
     <nav
@@ -143,26 +146,29 @@ export function AdminCampaignSetupProgress({
       >
         {steps.map((step) => {
           const Icon = getStepIcon(step.state);
-          const isCurrent = campaign.currentStep === step.id;
+          const isCurrent = activeStep === step.id;
 
           return (
-            <a
+            <button
               key={step.id}
-              href={`#${anchorByStep[step.id] ?? step.id}`}
+              type="button"
+              onClick={() => onStepSelect?.(normalizeCampaignWizardStep(step.id))}
               style={{
                 background: isCurrent
-                  ? "rgba(93, 118, 78, 0.1)"
-                  : "rgba(250, 250, 247, 0.72)",
+                  ? "rgba(219, 234, 254, 0.88)"
+                  : "rgba(248, 252, 255, 0.82)",
                 border: isCurrent
-                  ? "1px solid rgba(93, 118, 78, 0.32)"
-                  : "1px solid rgba(202, 207, 214, 0.58)",
+                  ? "1px solid rgba(37, 99, 235, 0.3)"
+                  : "1px solid rgba(148, 163, 184, 0.32)",
                 borderRadius: 14,
                 color: "inherit",
                 display: "grid",
                 gap: 6,
+                cursor: onStepSelect ? "pointer" : "default",
                 minHeight: 118,
                 padding: 14,
                 textDecoration: "none",
+                textAlign: "left",
               }}
             >
               <span
@@ -176,7 +182,7 @@ export function AdminCampaignSetupProgress({
                 <strong
                   style={{
                     alignItems: "center",
-                    color: "var(--sw-olive)",
+                    color: "#1d4ed8",
                     display: "flex",
                     gap: 8,
                   }}
@@ -199,7 +205,7 @@ export function AdminCampaignSetupProgress({
                 ) : null}
               </span>
               <span className="admin-record-row__note">{step.helper}</span>
-            </a>
+            </button>
           );
         })}
       </div>

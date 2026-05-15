@@ -13,11 +13,11 @@ export const CAMPAIGN_TEMPLATES: CampaignTemplate[] = [
   {
     id: "primo-contatto-commerciale",
     name: "Primo contatto commerciale",
-    description: "Presentazione iniziale sobria per aprire la conversazione.",
+    description: "Primo contatto chiaro e professionale.",
     category: "Commerciale",
     recommendedUseCase: "Quando vuoi avviare una conversazione con un lead o un prospect.",
     previewText:
-      "Un primo contatto professionale per presentare il contesto in modo chiaro.",
+      "Un primo messaggio essenziale per aprire il dialogo.",
     htmlBody: `<p>Ciao {{nome}},</p>
 <p>ti contatto per condividere una proposta essenziale e capire se puo essere utile per il tuo contesto operativo.</p>
 <p>Se il tema e rilevante, posso inviarti un riepilogo breve oppure concordare un confronto introduttivo.</p>
@@ -34,11 +34,11 @@ Team Sendwise`,
   {
     id: "follow-up-leggero",
     name: "Follow-up leggero",
-    description: "Promemoria discreto per riaprire il dialogo senza pressione.",
+    description: "Follow-up misurato per riprendere il dialogo.",
     category: "Follow-up",
     recommendedUseCase: "Quando hai gia scritto e vuoi riprendere il filo con tono professionale.",
     previewText:
-      "Riprendo il messaggio precedente per capire se ha ancora senso approfondire.",
+      "Un richiamo cortese per riprendere la conversazione.",
     htmlBody: `<p>Ciao {{nome}},</p>
 <p>riprendo il mio messaggio precedente, nel caso sia passato in secondo piano.</p>
 <p>Se il tema resta attuale, posso condividere un esempio pratico o un riepilogo molto rapido.</p>
@@ -58,7 +58,7 @@ Team Sendwise`,
   {
     id: "newsletter-breve",
     name: "Newsletter breve",
-    description: "Aggiornamento sintetico con un unico messaggio principale.",
+    description: "Aggiornamento breve con un messaggio centrale.",
     category: "Newsletter",
     recommendedUseCase: "Quando vuoi comunicare una novita o un aggiornamento sintetico.",
     previewText:
@@ -90,11 +90,11 @@ Team Sendwise`,
   {
     id: "annuncio-prodotto",
     name: "Annuncio prodotto",
-    description: "Annuncio sobrio per comunicare una novita di prodotto.",
+    description: "Annuncio sintetico per una novita di prodotto.",
     category: "Prodotto",
     recommendedUseCase: "Quando devi presentare una novita con benefici chiari e tono sobrio.",
     previewText:
-      "Una novita pensata per semplificare il lavoro quotidiano.",
+      "Una novita presentata in modo semplice e diretto.",
     htmlBody: `<p>Ciao {{nome}},</p>
 <p>ti segnaliamo una novita pensata per semplificare alcune attivita operative.</p>
 <p>Puo essere utile soprattutto se vuoi:</p>
@@ -122,11 +122,11 @@ Team Sendwise`,
   {
     id: "invito-consulenza-demo",
     name: "Invito consulenza/demo",
-    description: "Invito misurato a una demo o a un confronto introduttivo.",
+    description: "Invito breve a un confronto o a una demo.",
     category: "Invito",
     recommendedUseCase: "Quando vuoi proporre una call conoscitiva o una demo mirata.",
     previewText:
-      "Possiamo dedicare 20 minuti a un confronto rapido.",
+      "Un invito diretto a fissare un confronto rapido.",
     htmlBody: `<p>Ciao {{nome}},</p>
 <p>se il tema e attuale, possiamo organizzare una breve consulenza o una demo mirata.</p>
 <p>L'obiettivo e capire rapidamente se c'e aderenza con il vostro contesto operativo, senza entrare in un percorso complesso.</p>

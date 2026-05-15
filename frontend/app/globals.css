@@ -2077,6 +2077,19 @@ button {
   );
 }
 
+.campaign-contact-modal__input-shell {
+  grid-template-columns: minmax(0, 1fr);
+  min-height: 44px;
+  padding: 0 12px;
+}
+
+.campaign-contact-modal__input {
+  overflow: visible;
+  padding: 0;
+  text-overflow: clip;
+  width: 100%;
+}
+
 .campaign-field {
   display: grid;
   gap: 8px;
@@ -2171,7 +2184,7 @@ button {
 
 .campaign-template-grid {
   display: grid;
-  gap: 12px;
+  gap: 10px;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
 }
 
@@ -2180,10 +2193,10 @@ button {
   border: 1px solid rgba(148, 163, 184, 0.22);
   border-radius: 16px;
   display: grid;
-  gap: 12px;
+  gap: 10px;
   grid-template-rows: auto 1fr auto;
-  min-height: 212px;
-  padding: 14px;
+  min-height: 186px;
+  padding: 12px;
   transition:
     border-color 0.15s ease,
     box-shadow 0.15s ease,
@@ -2197,15 +2210,15 @@ button {
 }
 
 .campaign-template-card--selected {
-  border-color: rgba(37, 99, 235, 0.42);
-  box-shadow: 0 18px 36px rgba(37, 99, 235, 0.14);
+  border-color: rgba(37, 99, 235, 0.28);
+  box-shadow: 0 14px 28px rgba(37, 99, 235, 0.1);
 }
 
 .campaign-template-card__meta {
   align-items: center;
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 6px;
 }
 
 .campaign-template-badge,
@@ -2213,35 +2226,35 @@ button {
   align-items: center;
   border-radius: 999px;
   display: inline-flex;
-  font-size: 0.74rem;
-  font-weight: 700;
-  gap: 6px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  gap: 5px;
   letter-spacing: 0.01em;
   line-height: 1;
-  min-height: 26px;
-  padding: 0 10px;
+  min-height: 22px;
+  padding: 0 8px;
 }
 
 .campaign-template-badge {
-  background: rgba(239, 246, 255, 0.96);
-  border: 1px solid rgba(147, 197, 253, 0.55);
-  color: #1d4ed8;
+  background: rgba(248, 250, 252, 0.96);
+  border: 1px solid rgba(203, 213, 225, 0.72);
+  color: #526075;
 }
 
 .campaign-template-selected {
-  background: rgba(224, 242, 254, 0.9);
-  border: 1px solid rgba(125, 211, 252, 0.56);
-  color: #0369a1;
+  background: rgba(239, 246, 255, 0.92);
+  border: 1px solid rgba(147, 197, 253, 0.46);
+  color: #1d4ed8;
 }
 
 .campaign-template-card__copy {
   display: grid;
-  gap: 8px;
+  gap: 6px;
 }
 
 .campaign-template-card__title {
   color: #0f172a;
-  font-size: 0.96rem;
+  font-size: 0.94rem;
   font-weight: 700;
   margin: 0;
 }
@@ -2249,8 +2262,8 @@ button {
 .campaign-template-card__description {
   color: var(--sw-text-muted);
   display: -webkit-box;
-  font-size: 0.87rem;
-  line-height: 1.45;
+  font-size: 0.84rem;
+  line-height: 1.4;
   margin: 0;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 1;
@@ -2260,11 +2273,11 @@ button {
 .campaign-template-card__excerpt {
   color: #334155;
   display: -webkit-box;
-  font-size: 0.84rem;
-  line-height: 1.5;
+  font-size: 0.82rem;
+  line-height: 1.45;
   margin: 0;
   -webkit-box-orient: vertical;
-  -webkit-line-clamp: 3;
+  -webkit-line-clamp: 2;
   overflow: hidden;
 }
 
@@ -2365,13 +2378,25 @@ button {
 }
 
 .campaign-template-actions {
+  align-items: stretch;
   display: flex;
   gap: 8px;
   margin-top: auto;
+  padding-top: 2px;
 }
 
 .campaign-template-actions > [data-slot="button"] {
-  flex: 1 1 0;
+  flex: 0 0 auto;
+}
+
+.campaign-template-preview-button[data-slot="button"] {
+  min-width: 40px;
+  padding: 0;
+}
+
+.campaign-template-apply-button[data-slot="button"] {
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 .campaign-template-modal {

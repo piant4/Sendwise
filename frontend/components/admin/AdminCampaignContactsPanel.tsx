@@ -153,6 +153,8 @@ function getSafeContactsErrorMessage(error: unknown): string {
       return "Il browser non riesce a raggiungere il backend Sendwise.";
     }
 
+    const detail = error.detail.trim().toLowerCase();
+
     if (error.status === 401 || error.status === 403) {
       return "La sessione admin non e valida per modificare i destinatari.";
     }
@@ -165,12 +167,20 @@ function getSafeContactsErrorMessage(error: unknown): string {
       return "Il backend ha rifiutato l'associazione per lo stato corrente della campagna.";
     }
 
-    if (error.status === 422) {
-      return "Controlla email e nome prima di aggiungere i destinatari.";
+    if (error.status === 400) {
+      return "Controlla i dati del contatto e riprova.";
     }
 
-    if (error.detail.trim()) {
-      return error.detail;
+    if (error.status === 422) {
+      if (detail === "nome_required") {
+        return "Il nome e obbligatorio per salvare il contatto.";
+      }
+
+      return "Controlla nome ed email prima di aggiungere il destinatario.";
+    }
+
+    if (error.status !== null && error.status >= 500) {
+      return "Il backend ha restituito un errore. Riprova tra poco.";
     }
   }
 
@@ -584,9 +594,10 @@ export function AdminCampaignContactsPanel({
 
               <label className="invite-modal__field">
                 <span>Nome</span>
-                <div className="invite-modal__input-shell">
+                <div className="invite-modal__input-shell campaign-contact-modal__input-shell">
                   <input
-                    className="invite-modal__input"
+                    autoComplete="given-name"
+                    className="invite-modal__input campaign-contact-modal__input"
                     name="nome"
                     onChange={(event) => setManualForm((current) => ({ ...current, nome: event.target.value }))}
                     required
@@ -597,9 +608,10 @@ export function AdminCampaignContactsPanel({
 
               <label className="invite-modal__field">
                 <span>Cognome</span>
-                <div className="invite-modal__input-shell">
+                <div className="invite-modal__input-shell campaign-contact-modal__input-shell">
                   <input
-                    className="invite-modal__input"
+                    autoComplete="family-name"
+                    className="invite-modal__input campaign-contact-modal__input"
                     name="cognome"
                     onChange={(event) => setManualForm((current) => ({ ...current, cognome: event.target.value }))}
                     value={manualForm.cognome}
@@ -609,9 +621,10 @@ export function AdminCampaignContactsPanel({
 
               <label className="invite-modal__field">
                 <span>Email</span>
-                <div className="invite-modal__input-shell">
+                <div className="invite-modal__input-shell campaign-contact-modal__input-shell">
                   <input
-                    className="invite-modal__input"
+                    autoComplete="email"
+                    className="invite-modal__input campaign-contact-modal__input"
                     inputMode="email"
                     name="email"
                     onChange={(event) => setManualForm((current) => ({ ...current, email: event.target.value }))}

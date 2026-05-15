@@ -1,6 +1,6 @@
 "use client";
 
-import { CheckCircle2, Eye, LayoutTemplate, X } from "lucide-react";
+import { CheckCircle2, Eye, X } from "lucide-react";
 import { useMemo, useState } from "react";
 import type { CampaignTemplate } from "../../lib/campaignTemplates";
 import { Button } from "../ui/button";
@@ -14,7 +14,13 @@ interface AdminCampaignTemplatePickerProps {
 }
 
 function getPreviewExcerpt(value: string): string {
-  return value.length > 90 ? `${value.slice(0, 87)}...` : value;
+  if (value.length <= 82) {
+    return value;
+  }
+
+  const trimmed = value.slice(0, 82);
+  const lastSpace = trimmed.lastIndexOf(" ");
+  return `${trimmed.slice(0, lastSpace > 48 ? lastSpace : trimmed.length).trim()}...`;
 }
 
 export function AdminCampaignTemplatePicker({
@@ -58,8 +64,8 @@ export function AdminCampaignTemplatePicker({
                   <span className="campaign-template-badge">{template.category}</span>
                   {isSelected ? (
                     <span className="campaign-template-selected">
-                      <CheckCircle2 aria-hidden="true" size={12} />
-                      Selezionato
+                      <CheckCircle2 aria-hidden="true" size={11} />
+                      Scelto
                     </span>
                   ) : null}
                 </div>
@@ -72,25 +78,26 @@ export function AdminCampaignTemplatePicker({
 
                 <div className="campaign-template-actions">
                   <Button
+                    aria-label="Anteprima template"
                     type="button"
                     variant="outline"
-                    className="admin-topbar-action campaign-action campaign-action--secondary"
+                    size="icon-sm"
+                    title="Anteprima template"
+                    className="admin-topbar-action campaign-action campaign-action--secondary campaign-template-preview-button"
                     disabled={disabled}
                     onClick={() => setPreviewTemplateId(template.id)}
                   >
                     <Eye aria-hidden="true" className="admin-topbar-action__icon" />
-                    Anteprima
                   </Button>
                   <Button
                     type="button"
-                    className="admin-topbar-action campaign-action campaign-action--primary"
+                    className="admin-topbar-action campaign-action campaign-action--primary campaign-template-apply-button"
                     disabled={disabled}
                     onClick={() => {
                       onSelect(template.id);
                       onApply(template);
                     }}
                   >
-                    <LayoutTemplate aria-hidden="true" className="admin-topbar-action__icon" />
                     Usa modello
                   </Button>
                 </div>

@@ -168,12 +168,17 @@ Current verified fields:
 - `client_id`
 - `email`
 - `status`
+- `metadata`
 - `created_at`
 - `updated_at`
 
 Contract rules:
 - deduplication must remain scoped by `client_id + email`
 - cross-client contact reuse is forbidden unless explicitly modeled later
+- `metadata` stores recipient attributes used by the admin campaign contact collection flow, including `nome` and optional `cognome`
+- per-recipient merge tags `{{nome}}` and `{{cognome}}` are powered by `contacts.metadata`
+- admin campaign contact collection currently requires `metadata.nome`
+- `metadata.cognome` remains optional
 
 ### campaign_contacts
 

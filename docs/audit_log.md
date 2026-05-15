@@ -1,5 +1,48 @@
 # Audit Log
 
+## Milestone 16.9B - Contact Modal Error Fix, Template Card Polish And Metadata Docs
+
+Date: 2026-05-15
+Branch: develop
+
+Audit summary:
+- Reviewed the manual contact modal submit path in `AdminCampaignContactsPanel`, the frontend API boundary classification in `frontend/lib/api.ts`, and the backend contact attach flow in `backend/app/services/campaigns.py`.
+- Verified that only fetch failures are tagged as network errors in the API layer, while backend validation and HTTP failures keep their HTTP status and detail.
+- Verified backend contact metadata normalization requires `nome`, accepts optional `cognome`, and stores both in `contacts.metadata` without changing send or merge behavior.
+- Reviewed modal input shell styling and template card layout/action styling in `frontend/app/globals.css` and `AdminCampaignTemplatePicker`.
+- Reviewed `db/migrations/20260515_contacts_metadata_names.sql`, `db/init.sql`, `docs/data_model_v1.md`, and `docs/api_contracts_v1.md` to align docs with the shipped `contacts.metadata` column and supported merge tags.
+
+Implemented:
+- Contact modal now reserves the `Il browser non riesce a raggiungere il backend Sendwise.` message for real network failures only and maps HTTP/API failures to concise Italian messages without exposing backend detail strings.
+- Reduced manual modal input shell padding and removed the extra left inset so typed values, especially email addresses, remain fully visible while keeping the modal compact and aligned.
+- Compacted template cards, softened category/selected badges, shortened copy, reduced truncation pressure, and rebalanced the action row so the preview control is icon-only while `Usa modello` takes the remaining width without the prior icon.
+- Documented `contacts.metadata` in the data model as the recipient-attribute container for `nome` and optional `cognome`, including its use for `{{nome}}` and `{{cognome}}`.
+
+Files touched:
+- `frontend/components/admin/AdminCampaignContactsPanel.tsx`
+- `frontend/components/admin/AdminCampaignTemplatePicker.tsx`
+- `frontend/lib/campaignTemplates.ts`
+- `frontend/app/globals.css`
+- `docs/data_model_v1.md`
+- `docs/audit_log.md`
+
+Checks executed:
+- `git diff --check`
+- `cd frontend && npm run lint`
+- `cd frontend && npm run build`
+- `bash scripts/audit.sh`
+- `bash scripts/smoke_test.sh`
+- `docker compose config`
+- `docker compose -f docker-compose.yml -f docker-compose.dev.yml config`
+- touched-file direct listmonk scan
+- touched-file fake delivered/open/click claim scan
+- changed-file env/config scope scan
+
+Checks result:
+- All listed checks passed in this workspace after the patch.
+- Touched frontend files contain no direct listmonk calls.
+- Changed files introduce no fake delivered/open/click claims and no backend, schema, send, SES, auth, Docker, or env/config edits.
+
 - Milestone 16.8 frontend UX pass: replaced the campaign header back pill with a subtle accessible back link, reduced the campaign header copy to a compact client/subject subtitle, and clarified review diagnostics so the final step distinguishes "Da verificare", "Campagna non pronta", and "Campagna pronta" without changing dispatch behavior, Deliverability Guard, backend APIs, or readiness honesty.
 
 ## Milestone 16.6 - Campaign Buttons And Clickable Cards Fix

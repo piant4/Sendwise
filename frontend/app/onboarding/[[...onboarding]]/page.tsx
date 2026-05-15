@@ -1,7 +1,7 @@
 import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 import { AccessStateCard } from "../../../components/shared/AccessStateCard";
-import { ClientOnboardingForm } from "../../../components/shared/ClientOnboardingForm";
+import { ClientOnboardingExperience } from "../../../components/auth/ClientOnboardingExperience";
 import { getAuthMe, isApiError } from "../../../lib/api";
 
 export const dynamic = "force-dynamic";
@@ -84,5 +84,5 @@ export default async function OnboardingPage() {
     redirect("/auth/redirect");
   }
 
-  return <ClientOnboardingForm authMe={authResult.authMe} />;
+  return <ClientOnboardingExperience authMe={authResult.authMe} />;
 }

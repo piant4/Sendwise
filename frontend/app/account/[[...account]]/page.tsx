@@ -1,7 +1,8 @@
 import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
-import { AccountOverviewPanel } from "../../../components/shared/AccountOverviewPanel";
-import { getAuthMe, type AuthMeResponse } from "../../../lib/api";
+import { AccessStateCard } from "../../../components/shared/AccessStateCard";
+import { AccountWorkspace } from "../../../components/account/AccountWorkspace";
+import { getAuthMe, isApiError } from "../../../lib/api";
 
 interface AccountPageProps {
   params: Promise<{
@@ -22,37 +23,62 @@ export default async function AccountPage({ params }: AccountPageProps) {
   }
 
   const accessToken = await getToken();
-
-  let backHref = "/auth/redirect";
-  let authState: AuthMeResponse | null = null;
+  let authStateResult:
+    | { authState: Awaited<ReturnType<typeof getAuthMe>> }
+    | { error: unknown };
 
   try {
-    authState = await getAuthMe(accessToken);
+    authStateResult = { authState: await getAuthMe(accessToken) };
+  } catch (error) {
+    authStateResult = { error };
+  }
 
-    if (authState.access_type === "platform_admin") {
-      backHref = "/admin";
-    } else if (
-      authState.status === "active" &&
-      !authState.onboarding_required &&
-      authState.portal_slug
+  if ("error" in authStateResult) {
+    if (
+      isApiError(authStateResult.error) &&
+      [401, 403].includes(authStateResult.error.status ?? 0)
     ) {
-      backHref = `/c/${authState.portal_slug}`;
+      redirect("/auth/redirect");
     }
-  } catch {
-    backHref = "/auth/redirect";
+
+    return (
+      <AccessStateCard
+        eyebrow="Account"
+        title="Account non disponibile"
+        message="Non e stato possibile verificare il tipo di accesso necessario per questa area."
+        detail={
+          authStateResult.error instanceof Error ? authStateResult.error.message : null
+        }
+        retryHref="/account"
+      />
+    );
+  }
+
+  const { authState } = authStateResult;
+
+  if (authState.access_type === "client") {
+    if (authState.status === "invited" || authState.onboarding_required) {
+      redirect("/onboarding");
+    }
+
+    if (authState.portal_slug) {
+      redirect(`/c/${authState.portal_slug}/account`);
+    }
+
+    redirect("/auth/redirect");
   }
 
   return (
-    <main className="account-page">
-      <div className="account-page__glow account-page__glow--mint" />
-      <div className="account-page__glow account-page__glow--aqua" />
-
-      <div className="account-layout">
-        <AccountOverviewPanel
-          authState={authState}
-          backHref={backHref}
-        />
-      </div>
-    </main>
+    <AccountWorkspace
+      authState={authState}
+      backHref="/admin"
+      backLabel="Torna alla dashboard admin"
+      email={authState.email}
+      personalName={null}
+      companyName={null}
+      profileEditSupported={false}
+      title="Account piattaforma"
+      description="Area account amministratore Sendwise. I dati amministratore sono gestiti da Clerk e la sicurezza resta nel pannello protetto."
+    />
   );
 }

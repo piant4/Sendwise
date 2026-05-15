@@ -2080,19 +2080,32 @@ button {
 .campaign-contact-modal__input-shell {
   grid-template-columns: minmax(0, 1fr);
   min-height: 44px;
-  padding: 0 12px;
+  padding: 0 8px;
 }
 
 .campaign-contact-modal__input {
+  display: block;
+  inline-size: 100%;
+  max-inline-size: 100%;
+  min-width: 0;
   overflow: visible;
   padding: 0;
   text-overflow: clip;
+  white-space: nowrap;
   width: 100%;
 }
 
 .campaign-field {
   display: grid;
   gap: 8px;
+}
+
+.campaign-field__header {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  justify-content: space-between;
 }
 
 .campaign-field__label {
@@ -2135,6 +2148,73 @@ button {
   min-height: 152px;
   padding: 14px 16px;
   resize: none;
+}
+
+.campaign-textarea--editor {
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  min-height: 340px;
+  padding: 0;
+}
+
+.campaign-textarea--editor:focus {
+  border: 0;
+  box-shadow: none;
+}
+
+.campaign-editor-toggle {
+  align-items: center;
+  background: rgba(239, 246, 255, 0.94);
+  border: 1px solid rgba(147, 197, 253, 0.4);
+  border-radius: 999px;
+  display: inline-flex;
+  gap: 4px;
+  padding: 4px;
+}
+
+.campaign-editor-toggle__button {
+  background: transparent;
+  border: 0;
+  border-radius: 999px;
+  color: #526075;
+  font: inherit;
+  font-size: 0.84rem;
+  font-weight: 700;
+  min-height: 34px;
+  padding: 0 14px;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.campaign-editor-toggle__button[data-active="true"] {
+  background: #ffffff;
+  box-shadow: 0 8px 18px rgba(37, 99, 235, 0.14);
+  color: #1d4ed8;
+}
+
+.campaign-editor-shell {
+  background: rgba(255, 255, 255, 0.98);
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-radius: 18px;
+  min-height: 340px;
+  overflow: hidden;
+  padding: 16px;
+}
+
+.campaign-email-preview-frame {
+  background: #ffffff;
+  border: 0;
+  border-radius: 12px;
+  display: block;
+  min-height: 340px;
+  width: 100%;
+}
+
+.campaign-email-preview-frame--template {
+  min-height: 420px;
 }
 
 .campaign-input::placeholder,
@@ -2419,10 +2499,10 @@ button {
   display: grid;
   gap: 16px;
   max-height: calc(100vh - 48px);
-  max-width: 840px;
+  max-width: 760px;
   overflow: auto;
   padding: 22px;
-  width: min(100%, 840px);
+  width: min(100%, 760px);
 }
 
 .campaign-template-modal__header {
@@ -2437,6 +2517,34 @@ button {
   gap: 14px;
 }
 
+.campaign-template-modal__close {
+  align-items: center;
+  background: rgba(248, 250, 252, 0.96);
+  border: 1px solid rgba(203, 213, 225, 0.82);
+  border-radius: 999px;
+  color: #526075;
+  display: inline-flex;
+  flex: 0 0 auto;
+  height: 38px;
+  justify-content: center;
+  padding: 0;
+  transition:
+    border-color 0.15s ease,
+    background-color 0.15s ease,
+    color 0.15s ease,
+    box-shadow 0.15s ease;
+  width: 38px;
+}
+
+.campaign-template-modal__close:hover,
+.campaign-template-modal__close:focus-visible {
+  background: #ffffff;
+  border-color: rgba(96, 165, 250, 0.42);
+  box-shadow: 0 12px 24px rgba(37, 99, 235, 0.12);
+  color: #1d4ed8;
+  outline: none;
+}
+
 .campaign-template-modal__section {
   background: rgba(248, 250, 252, 0.94);
   border: 1px solid rgba(226, 232, 240, 0.94);
@@ -2444,6 +2552,12 @@ button {
   display: grid;
   gap: 10px;
   padding: 16px;
+}
+
+.campaign-template-modal__preview-text {
+  color: #334155;
+  line-height: 1.6;
+  margin: 0;
 }
 
 .campaign-template-modal__section pre {
@@ -4807,12 +4921,25 @@ p {
   }
 
   .campaign-contact-section__header,
-  .campaign-template-actions {
+  .campaign-template-actions,
+  .campaign-field__header {
     flex-direction: column;
   }
 
   .campaign-template-actions > [data-slot="button"] {
     width: 100%;
+  }
+
+  .campaign-field__header {
+    align-items: stretch;
+  }
+
+  .campaign-editor-toggle {
+    width: 100%;
+  }
+
+  .campaign-editor-toggle__button {
+    flex: 1 1 0;
   }
 
   .invite-modal {

@@ -38,6 +38,7 @@ export const USE_MOCK_API = process.env.NEXT_PUBLIC_USE_MOCK_API !== "false";
 export const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL?.trim() ?? "";
 const INTERNAL_API_BASE_URL =
   process.env.BACKEND_URL?.trim() || API_BASE_URL;
+const LOCALHOST_HOSTNAMES = new Set(["localhost", "127.0.0.1", "0.0.0.0", "::1"]);
 const ADMIN_ROUTE = "/admin";
 const CLIENT_PORTAL_ROUTE_PREFIX = "/c";
 
@@ -456,8 +457,10 @@ export function isApiError(error: unknown): error is ApiError {
 }
 
 function getRequiredApiBaseUrl(): string {
+  const browserApiBaseUrl =
+    typeof window === "undefined" ? API_BASE_URL : resolveBrowserApiBaseUrl(API_BASE_URL);
   const candidateApiBaseUrl =
-    typeof window === "undefined" ? INTERNAL_API_BASE_URL : API_BASE_URL;
+    typeof window === "undefined" ? INTERNAL_API_BASE_URL : browserApiBaseUrl;
 
   if (!candidateApiBaseUrl) {
     throw new ApiError({
@@ -469,6 +472,39 @@ function getRequiredApiBaseUrl(): string {
   }
 
   return candidateApiBaseUrl.replace(/\/$/, "");
+}
+
+function isLocalHostname(hostname: string): boolean {
+  return LOCALHOST_HOSTNAMES.has(hostname.trim().toLowerCase());
+}
+
+function resolveBrowserApiBaseUrl(candidateApiBaseUrl: string): string {
+  if (!candidateApiBaseUrl || typeof window === "undefined") {
+    return candidateApiBaseUrl;
+  }
+
+  let parsedBaseUrl: URL;
+
+  try {
+    parsedBaseUrl = new URL(candidateApiBaseUrl);
+  } catch {
+    return candidateApiBaseUrl;
+  }
+
+  if (
+    !isLocalHostname(parsedBaseUrl.hostname) ||
+    isLocalHostname(window.location.hostname)
+  ) {
+    return candidateApiBaseUrl;
+  }
+
+  parsedBaseUrl.hostname = window.location.hostname;
+
+  if (window.location.protocol === "https:") {
+    parsedBaseUrl.protocol = "https:";
+  }
+
+  return parsedBaseUrl.toString().replace(/\/$/, "");
 }
 
 async function readErrorDetails(response: Response): Promise<string> {

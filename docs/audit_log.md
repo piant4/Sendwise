@@ -2858,6 +2858,24 @@ Scope confirmation:
 - No backend, schema, API contract, auth model, send/dispatch flow, SES enablement, listmonk integration, Docker/env/config, or frontend API boundary behavior was changed.
 - No fake delivered, open, click, click-rate, queued, sent-attempted, or provider-event metric claims were added.
 
+## Milestone 16.9C - Contact Attach, Email Preview UX And Review Diagnostics
+
+Date: 2026-05-15
+Branch: develop
+
+Verified state:
+- The browser campaign API bundle was audited against the built frontend artifact and the contact/review actions were pointing to `http://localhost:8000` in client-side runtime code. This is a true fetch/network failure whenever the frontend is opened from a non-localhost hostname, so the contact modal and review step were surfacing real network copy rather than an HTTP backend response.
+- Browser API base resolution now rewrites localhost-only frontend runtime targets to the current browser hostname before issuing client-side admin campaign requests, while server-side calls continue using `BACKEND_URL`.
+- Manual contact save and review keep the browser/network copy only for real fetch failures; HTTP 4xx/5xx responses now stay inside controlled backend error copy instead of collapsing into network messaging.
+- The manual contact modal keeps the compact layout but removes the extra left inset so full email addresses stay visible across the field width.
+- Step 2 now uses one large editor surface with `HTML` and `Preview` modes, keeps `Anteprima email` above the editor, renders preview content inside a sandboxed iframe, and safely derives `body_text` from HTML when saving if the HTML changed.
+- Template preview keeps the preview text block, renders the HTML preview in a sandboxed iframe, and uses a styled close icon button aligned with the rest of the Sendwise modal system.
+
+Scope confirmation:
+- No backend, schema, API contract, auth model, send/dispatch flow, SES enablement, listmonk integration, Docker/env/config, or deliverability guard policy was changed.
+- The only frontend API-layer change is browser-side base URL resolution for admin campaign requests when a localhost-only build target would otherwise cause a fetch failure.
+- No fake readiness, personalization, delivered, open, click, click-rate, queued, sent-attempted, or provider-event metric claims were added.
+
 ## Milestone 16.9 - Contact Names And Compact Templates
 
 Date: 2026-05-15

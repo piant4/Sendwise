@@ -52,6 +52,14 @@ function getSafeReviewErrorMessage(error: unknown): string {
       return "Completa i dati mancanti e poi riprova la verifica.";
     }
 
+    if (error.status !== null && error.status >= 500) {
+      return "Il backend ha restituito un errore durante la verifica. Riprova tra poco.";
+    }
+
+    if (error.status !== null && error.status >= 400) {
+      return "Il backend ha rifiutato la verifica per questa campagna.";
+    }
+
     if (error.detail.trim()) {
       return error.detail;
     }

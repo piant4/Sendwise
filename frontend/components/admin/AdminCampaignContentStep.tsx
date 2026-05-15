@@ -22,12 +22,90 @@ interface AdminCampaignContentStepProps {
   onContinue?: () => void;
 }
 
+type ContentEditorMode = "html" | "preview";
+
 function getValue(value?: string | null): string {
   return value ?? "";
 }
 
 function normalizeText(value?: string | null): string {
   return (value ?? "").trim();
+}
+
+function stripScripts(value: string): string {
+  return value.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, "");
+}
+
+function normalizePlainText(value: string): string {
+  return value
+    .replace(/\r\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+function derivePlainTextFromHtml(value: string): string {
+  const cleanedValue = stripScripts(value);
+
+  if (typeof window !== "undefined" && typeof window.DOMParser !== "undefined") {
+    const document = new window.DOMParser().parseFromString(cleanedValue, "text/html");
+    return normalizePlainText(document.body.textContent ?? "");
+  }
+
+  return normalizePlainText(
+    cleanedValue
+      .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, " ")
+      .replace(/<[^>]+>/g, " "),
+  );
+}
+
+function buildPreviewDocument(value: string): string {
+  const cleanedValue = stripScripts(value).trim();
+  const content =
+    cleanedValue.length > 0
+      ? cleanedValue
+      : '<div class="sw-preview-empty">Nessun contenuto HTML da mostrare.</div>';
+
+  return `<!doctype html>
+<html lang="it">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; img-src data: blob:; style-src 'unsafe-inline'; font-src data:; form-action 'none'; frame-ancestors 'none'; base-uri 'none'"
+    />
+    <style>
+      :root {
+        color-scheme: light;
+        font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        background: #ffffff;
+        color: #0f172a;
+        padding: 20px;
+      }
+
+      img {
+        height: auto;
+        max-width: 100%;
+      }
+
+      .sw-preview-empty {
+        border: 1px dashed rgba(148, 163, 184, 0.4);
+        border-radius: 16px;
+        color: #64748b;
+        padding: 20px;
+      }
+    </style>
+  </head>
+  <body>${content}</body>
+</html>`;
 }
 
 function getSafeUpdateErrorMessage(error: unknown): string {
@@ -87,6 +165,7 @@ export function AdminCampaignContentStep({
   const [previewText, setPreviewText] = useState(getValue(campaign.previewText));
   const [bodyHtml, setBodyHtml] = useState(getValue(campaign.bodyHtml));
   const [bodyText, setBodyText] = useState(getValue(campaign.bodyText));
+  const [editorMode, setEditorMode] = useState<ContentEditorMode>("html");
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -108,6 +187,7 @@ export function AdminCampaignContentStep({
     setPreviewText(template.previewText);
     setBodyHtml(template.htmlBody);
     setBodyText(template.plainTextBody);
+    setEditorMode("html");
     setErrorMessage(null);
     setSuccessMessage(`Modello "${template.name}" applicato localmente. Salva per inviare il contenuto al backend.`);
   }
@@ -121,7 +201,10 @@ export function AdminCampaignContentStep({
 
     const previewValue = normalizeText(previewText);
     const bodyHtmlValue = normalizeText(bodyHtml);
-    const bodyTextValue = normalizeText(bodyText);
+    const bodyTextValue =
+      bodyHtmlValue === normalizeText(campaign.bodyHtml) && normalizeText(bodyText)
+        ? normalizeText(bodyText)
+        : derivePlainTextFromHtml(bodyHtmlValue);
     const unsupportedSubjectPlaceholders = collectUnsupportedPlaceholders(
       normalizeText(campaign.subject),
       new Set<string>(),
@@ -156,6 +239,7 @@ export function AdminCampaignContentStep({
 
     try {
       const token = await getToken();
+      setBodyText(bodyTextValue);
       await updateAdminCampaignContent(
         campaign.campaignId,
         {
@@ -217,31 +301,50 @@ export function AdminCampaignContentStep({
             value={previewText}
           />
         </label>
-        <label className="campaign-field">
-          <span className="campaign-field__label">HTML email</span>
-          <textarea
-            className="campaign-textarea"
-            disabled={isSubmitting}
-            onChange={(event) => setBodyHtml(event.target.value)}
-            placeholder="<html>...</html>"
-            rows={8}
-            value={bodyHtml}
-          />
-        </label>
-        <label className="campaign-field">
-          <span className="campaign-field__label">Versione testo semplice</span>
-          <p className="campaign-field__helper">
-            Versione leggibile senza HTML.
-          </p>
-          <textarea
-            className="campaign-textarea"
-            disabled={isSubmitting}
-            onChange={(event) => setBodyText(event.target.value)}
-            placeholder="Versione testuale dell'email"
-            rows={6}
-            value={bodyText}
-          />
-        </label>
+        <section className="campaign-field">
+          <div className="campaign-field__header">
+            <span className="campaign-field__label">Anteprima email</span>
+            <div className="campaign-editor-toggle" role="tablist" aria-label="Modalita editor email">
+              {(["html", "preview"] as const).map((mode) => {
+                const isActive = editorMode === mode;
+
+                return (
+                  <button
+                    key={mode}
+                    type="button"
+                    role="tab"
+                    aria-selected={isActive}
+                    className="campaign-editor-toggle__button"
+                    data-active={isActive}
+                    disabled={isSubmitting}
+                    onClick={() => setEditorMode(mode)}
+                  >
+                    {mode === "html" ? "HTML" : "Preview"}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+          <div className="campaign-editor-shell">
+            {editorMode === "html" ? (
+              <textarea
+                className="campaign-textarea campaign-textarea--editor"
+                disabled={isSubmitting}
+                onChange={(event) => setBodyHtml(event.target.value)}
+                placeholder="<html>...</html>"
+                rows={14}
+                value={bodyHtml}
+              />
+            ) : (
+              <iframe
+                className="campaign-email-preview-frame"
+                sandbox=""
+                srcDoc={buildPreviewDocument(bodyHtml)}
+                title="Anteprima email"
+              />
+            )}
+          </div>
+        </section>
       </div>
 
       <div className="campaign-action-row">
@@ -266,7 +369,7 @@ export function AdminCampaignContentStep({
             ) : (
               <Save aria-hidden="true" className="admin-topbar-action__icon" />
             )}
-            {isSubmitting ? "Salvataggio..." : "Salva e continua"}
+            {isSubmitting ? "Salvataggio..." : "Salva contenuto"}
           </Button>
         </div>
       </div>

@@ -182,6 +182,10 @@ function getSafeContactsErrorMessage(error: unknown): string {
     if (error.status !== null && error.status >= 500) {
       return "Il backend ha restituito un errore. Riprova tra poco.";
     }
+
+    if (error.status !== null && error.status >= 400) {
+      return "Il backend ha rifiutato il salvataggio del contatto.";
+    }
   }
 
   return "Non e stato possibile aggiornare i destinatari. Riprova.";

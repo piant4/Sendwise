@@ -23,6 +23,60 @@ function getPreviewExcerpt(value: string): string {
   return `${trimmed.slice(0, lastSpace > 48 ? lastSpace : trimmed.length).trim()}...`;
 }
 
+function stripScripts(value: string): string {
+  return value.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, "");
+}
+
+function buildPreviewDocument(value: string): string {
+  const cleanedValue = stripScripts(value).trim();
+  const content =
+    cleanedValue.length > 0
+      ? cleanedValue
+      : '<div class="sw-preview-empty">Nessun contenuto HTML da mostrare.</div>';
+
+  return `<!doctype html>
+<html lang="it">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; img-src data: blob:; style-src 'unsafe-inline'; font-src data:; form-action 'none'; frame-ancestors 'none'; base-uri 'none'"
+    />
+    <style>
+      :root {
+        color-scheme: light;
+        font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        background: #ffffff;
+        color: #0f172a;
+        padding: 20px;
+      }
+
+      img {
+        height: auto;
+        max-width: 100%;
+      }
+
+      .sw-preview-empty {
+        border: 1px dashed rgba(148, 163, 184, 0.4);
+        border-radius: 16px;
+        color: #64748b;
+        padding: 20px;
+      }
+    </style>
+  </head>
+  <body>${content}</body>
+</html>`;
+}
+
 export function AdminCampaignTemplatePicker({
   templates,
   selectedTemplateId,
@@ -78,11 +132,11 @@ export function AdminCampaignTemplatePicker({
 
                 <div className="campaign-template-actions">
                   <Button
-                    aria-label="Anteprima template"
+                    aria-label="Anteprima email"
                     type="button"
                     variant="outline"
                     size="icon-sm"
-                    title="Anteprima template"
+                    title="Anteprima email"
                     className="admin-topbar-action campaign-action campaign-action--secondary campaign-template-preview-button"
                     disabled={disabled}
                     onClick={() => setPreviewTemplateId(template.id)}
@@ -138,6 +192,8 @@ export function AdminCampaignTemplatePicker({
                 type="button"
                 variant="ghost"
                 size="icon-sm"
+                aria-label="Chiudi anteprima email"
+                className="campaign-template-modal__close"
                 onClick={() => setPreviewTemplateId(null)}
               >
                 <X aria-hidden="true" />
@@ -146,21 +202,20 @@ export function AdminCampaignTemplatePicker({
 
             <div className="campaign-template-modal__grid">
               <section className="campaign-template-modal__section">
-                <strong style={{ color: "#0f172a" }}>Preview text</strong>
-                <span>{previewTemplate.previewText}</span>
+                <strong style={{ color: "#0f172a" }}>Anteprima email</strong>
+                <p className="campaign-template-modal__preview-text">
+                  {previewTemplate.previewText}
+                </p>
               </section>
 
               <section className="campaign-template-modal__section">
-                <strong style={{ color: "#0f172a" }}>HTML email</strong>
-                <div
-                  style={{ color: "#334155" }}
-                  dangerouslySetInnerHTML={{ __html: previewTemplate.htmlBody }}
+                <strong style={{ color: "#0f172a" }}>HTML</strong>
+                <iframe
+                  className="campaign-email-preview-frame campaign-email-preview-frame--template"
+                  sandbox=""
+                  srcDoc={buildPreviewDocument(previewTemplate.htmlBody)}
+                  title={`Anteprima email ${previewTemplate.name}`}
                 />
-              </section>
-
-              <section className="campaign-template-modal__section">
-                <strong style={{ color: "#0f172a" }}>Versione testo semplice</strong>
-                <pre>{previewTemplate.plainTextBody}</pre>
               </section>
             </div>
           </div>

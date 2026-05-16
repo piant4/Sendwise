@@ -234,6 +234,7 @@ interface AdminCampaignContactRemoveApiResponse {
 interface AdminCampaignReviewApiResponse {
   campaign_id: string;
   client_id: string;
+  status: Campaign["status"];
   allowed_to_send: boolean;
   can_send_when_enabled: boolean;
   sending_enabled: boolean;
@@ -1241,6 +1242,7 @@ function mapAdminCampaignReviewResult(
   return {
     campaignId: payload.campaign_id,
     clientId: payload.client_id,
+    status: payload.status,
     allowedToSend: payload.allowed_to_send,
     canSendWhenEnabled: payload.can_send_when_enabled,
     sendingEnabled: payload.sending_enabled,

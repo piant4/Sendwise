@@ -79,7 +79,12 @@ function buildSteps(
     {
       id: "review",
       label: "Verifica",
-      state: campaign.reviewReady ? "ready" : "not-ready",
+      state: campaign.reviewReady
+        ? "ready"
+        : campaign.currentStep === "review" ||
+            (campaign.contentReady && campaign.contactsReady)
+          ? "needs-attention"
+          : "not-ready",
     },
   ];
 }

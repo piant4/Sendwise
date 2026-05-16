@@ -613,28 +613,59 @@ class AdminCampaignService:
 
     def review_campaign(self, campaign_id: str) -> AdminCampaignReviewResponse:
         campaign = self.get_campaign_record(campaign_id)
-        summary = self.get_campaign_summary(campaign_id)
+        client = self._get_client(campaign.client_id)
+        contacts = self.contact_repository.list_campaign_contacts(
+            client_id=campaign.client_id,
+            campaign_id=campaign.id,
+        )
+        suppressed_emails = self.suppression_list_repository.list_suppressed_emails_for_campaign(
+            client_id=campaign.client_id,
+            emails=[contact.email for contact in contacts],
+        )
+        slot = self._get_campaign_slot(campaign=campaign)
+        contact_summary = self._summarize_campaign_contacts(
+            campaign=campaign,
+            contacts=contacts,
+            suppressed_emails=suppressed_emails,
+        )
+        evaluation = self._evaluate_campaign(
+            campaign=campaign,
+            client=client,
+            contacts=contacts,
+            suppressed_emails=suppressed_emails,
+            slot=slot,
+            contact_summary=contact_summary,
+            allow_draft_transition=True,
+        )
+        next_status = campaign.status
+        if (
+            campaign.status.lower() == CampaignStatus.draft.value
+            and evaluation.review_ready
+        ):
+            next_status = CampaignStatus.ready.value
         updated = self.repository.update_campaign(
             client_id=campaign.client_id,
             campaign_id=campaign.id,
-            content_ready=summary.campaign.content_ready,
-            contacts_ready=summary.campaign.contacts_ready,
-            review_ready=summary.campaign.review_ready,
+            status=next_status,
+            content_ready=evaluation.content_ready,
+            contacts_ready=evaluation.contacts_ready,
+            review_ready=evaluation.review_ready,
             current_step="review",
         )
 
         return AdminCampaignReviewResponse(
             campaign_id=updated.id,
             client_id=updated.client_id,
-            allowed_to_send=summary.can_send,
-            can_send_when_enabled=summary.campaign.review_ready,
+            status=updated.status,
+            allowed_to_send=evaluation.can_send,
+            can_send_when_enabled=evaluation.can_send_when_enabled,
             sending_enabled=self.settings.email_sending_enabled,
-            warnings=summary.warnings,
-            blocking_errors=summary.blocking_errors,
-            eligible_contact_count=summary.recipients.eligible,
-            blocked_contact_count=summary.recipients.blocked,
-            slot_limit=summary.slot.max_emails,
-            limit_source=summary.slot.limit_source,
+            warnings=evaluation.warnings,
+            blocking_errors=evaluation.blocking_errors,
+            eligible_contact_count=contact_summary.eligible,
+            blocked_contact_count=contact_summary.blocked,
+            slot_limit=evaluation.guard_result.limit_value,
+            limit_source=evaluation.guard_result.limit_source,
             content_ready=updated.content_ready,
             contacts_ready=updated.contacts_ready,
             review_ready=updated.review_ready,
@@ -825,6 +856,7 @@ class AdminCampaignService:
         suppressed_emails: set[str],
         slot,
         contact_summary: CampaignContactsSummary,
+        allow_draft_transition: bool = False,
     ) -> CampaignEvaluation:
         content_ready = self._content_ready(
             subject=campaign.subject,
@@ -832,10 +864,14 @@ class AdminCampaignService:
         )
         contacts_ready = contact_summary.contacts_ready
         active_campaign_count = self._count_active_campaigns(client.id)
+        guard_campaign = self._build_guard_campaign(
+            campaign=campaign,
+            allow_draft_transition=allow_draft_transition,
+        )
         guard_result = self.guard.authorize_campaign_dispatch(
             email_sending_enabled=True,
             client=client,
-            campaign=self._to_client_campaign_record(campaign),
+            campaign=guard_campaign,
             slot=slot,
             contacts=contacts,
             suppressed_emails=suppressed_emails,
@@ -867,6 +903,22 @@ class AdminCampaignService:
             blocking_errors=blocking_errors,
             guard_result=guard_result,
         )
+
+    def _build_guard_campaign(
+        self,
+        *,
+        campaign: CampaignRecord,
+        allow_draft_transition: bool,
+    ) -> ClientCampaignRecord:
+        guard_campaign = self._to_client_campaign_record(campaign)
+        if (
+            allow_draft_transition
+            and campaign.status.lower() == CampaignStatus.draft.value
+        ):
+            return guard_campaign.model_copy(
+                update={"status": CampaignStatus.ready.value}
+            )
+        return guard_campaign
 
     def _build_campaign_summary_item(
         self,

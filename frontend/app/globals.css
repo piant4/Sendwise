@@ -1825,6 +1825,116 @@ button {
   gap: 8px;
 }
 
+.campaign-review-overview {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+}
+
+.campaign-review-overview__item {
+  background: rgba(255, 255, 255, 0.78);
+  border: 1px solid rgba(191, 219, 254, 0.64);
+  border-radius: 14px;
+  display: grid;
+  gap: 6px;
+  padding: 14px 16px;
+}
+
+.campaign-review-overview__item strong {
+  color: #0f172a;
+  font-size: 1rem;
+}
+
+.campaign-review-overview__label {
+  color: #526075;
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.campaign-review-checklist {
+  display: grid;
+  gap: 12px;
+}
+
+.campaign-review-checklist__item {
+  background: rgba(255, 255, 255, 0.88);
+  border: 1px solid rgba(203, 213, 225, 0.74);
+  border-left-width: 4px;
+  border-radius: 16px;
+  display: grid;
+  gap: 10px;
+  padding: 16px 18px;
+}
+
+.campaign-review-checklist__item[data-state="passed"] {
+  border-left-color: #16a34a;
+}
+
+.campaign-review-checklist__item[data-state="warning"] {
+  border-left-color: #d97706;
+}
+
+.campaign-review-checklist__item[data-state="failed"] {
+  border-left-color: #dc2626;
+}
+
+.campaign-review-checklist__header {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.campaign-review-checklist__title {
+  align-items: center;
+  color: #0f172a;
+  display: inline-flex;
+  gap: 10px;
+}
+
+.campaign-review-checklist__badge {
+  background: rgba(239, 246, 255, 0.96);
+  border: 1px solid rgba(191, 219, 254, 0.8);
+  border-radius: 999px;
+  color: #1d4ed8;
+  font-size: 0.78rem;
+  font-weight: 700;
+  padding: 5px 10px;
+  white-space: nowrap;
+}
+
+.campaign-review-checklist__item[data-state="passed"] .campaign-review-checklist__badge {
+  background: rgba(240, 253, 244, 0.96);
+  border-color: rgba(134, 239, 172, 0.84);
+  color: #15803d;
+}
+
+.campaign-review-checklist__item[data-state="warning"] .campaign-review-checklist__badge {
+  background: rgba(255, 247, 237, 0.96);
+  border-color: rgba(253, 186, 116, 0.84);
+  color: #c2410c;
+}
+
+.campaign-review-checklist__item[data-state="failed"] .campaign-review-checklist__badge {
+  background: rgba(254, 242, 242, 0.96);
+  border-color: rgba(252, 165, 165, 0.84);
+  color: #b91c1c;
+}
+
+.campaign-review-checklist__reason,
+.campaign-review-checklist__action {
+  color: #334155;
+  line-height: 1.6;
+  margin: 0;
+}
+
+.campaign-review-checklist__action span {
+  color: #0f172a;
+  font-weight: 700;
+}
+
 .campaign-page-action[data-slot="button"],
 .campaign-action[data-slot="button"] {
   align-items: center;

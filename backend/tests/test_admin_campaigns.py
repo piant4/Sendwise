@@ -727,6 +727,79 @@ def test_admin_review_can_be_ready_with_email_sending_disabled() -> None:
     ]
 
 
+def test_admin_review_promotes_sendable_draft_campaign_to_ready() -> None:
+    repository = InMemoryCampaignRepository(
+        campaign_contacts={("client_123", "campaign_123", "contact_1")},
+    )
+    campaign = repository.add_campaign(
+        campaign_id="campaign_123",
+        client_id="client_123",
+        status="draft",
+        subject="Launch",
+        body_html="<p>Hello</p>",
+        body_text="Hello",
+        content_ready=True,
+        contacts_ready=True,
+        current_step="review",
+    )
+    contact = build_contact(contact_id="contact_1", email="one@example.test")
+    service = build_admin_service(
+        campaign_repository=repository,
+        contacts=[contact],
+        campaign_contacts={("client_123", campaign.id, contact.id)},
+    )
+
+    result = service.review_campaign(campaign.id)
+
+    assert result.status == "ready"
+    assert result.allowed_to_send is False
+    assert result.can_send_when_enabled is True
+    assert result.review_ready is True
+    assert result.blocking_errors == []
+    assert result.warnings == [
+        'EMAIL_SENDING_ENABLED is not exactly "true"; real dispatch is disabled.'
+    ]
+
+    updated = repository.get_by_id(campaign_id=campaign.id, client_id=campaign.client_id)
+    assert updated is not None
+    assert updated.status == "ready"
+    assert updated.current_step == "review"
+    assert updated.review_ready is True
+
+
+def test_admin_review_keeps_real_send_disabled_warning_when_promoting_draft() -> None:
+    repository = InMemoryCampaignRepository(
+        campaign_contacts={("client_123", "campaign_123", "contact_1")},
+    )
+    campaign = repository.add_campaign(
+        campaign_id="campaign_123",
+        client_id="client_123",
+        status="draft",
+        subject="Launch",
+        body_html="<p>Hello</p>",
+        body_text="Hello",
+        content_ready=True,
+        contacts_ready=True,
+        current_step="review",
+    )
+    contact = build_contact(contact_id="contact_1", email="one@example.test")
+    service = build_admin_service(
+        settings=Settings(email_sending_enabled_raw="false"),
+        campaign_repository=repository,
+        contacts=[contact],
+        campaign_contacts={("client_123", campaign.id, contact.id)},
+    )
+
+    result = service.review_campaign(campaign.id)
+
+    assert result.status == "ready"
+    assert result.allowed_to_send is False
+    assert result.can_send_when_enabled is True
+    assert result.review_ready is True
+    assert result.warnings == [
+        'EMAIL_SENDING_ENABLED is not exactly "true"; real dispatch is disabled.'
+    ]
+
 def test_admin_simulate_send_endpoint_uses_simulation_service() -> None:
     repository = InMemoryCampaignRepository(
         campaign_contacts={

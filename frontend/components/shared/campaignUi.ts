@@ -29,9 +29,8 @@ const BACKEND_REASON_LABELS: Array<[RegExp, string]> = [
   ],
   [/all recipients blocked/i, "Tutti i destinatari risultano esclusi dall'invio."],
   [/^Campaign content is not ready\.$/i, "Completa e salva il contenuto email."],
-  [/^Campaign status .+ is not sendable\.$/i, "La campagna non è ancora in uno stato inviabile."],
   [/^Client status .+ is not sendable\.$/i, "Il cliente non è in uno stato che consente l'invio."],
-  [/^Only ready or running campaigns may dispatch\.$/i, "La campagna non è ancora in uno stato inviabile."],
+  [/^Only ready or running campaigns may dispatch\.$/i, "Porta la campagna in stato pronta prima dell'invio."],
   [/^Client max_campaigns limit is exceeded\.$/i, "Limite campagne cliente superato"],
   [
     /^Campaign eligible contact count exceeds email_limit_per_campaign\.$/i,
@@ -61,6 +60,24 @@ export function formatCampaignCount(value: number): string {
 
 export function getReadableBackendReason(reason: string): ReadableBackendReason {
   const normalizedReason = reason.trim();
+  const campaignStatusMatch = normalizedReason.match(
+    /^Campaign status (.+) is not sendable\.$/i,
+  );
+  if (campaignStatusMatch) {
+    const normalizedStatus = campaignStatusMatch[1]?.trim().toLowerCase() ?? "";
+    const statusLabel = getCampaignStatusLabel(normalizedStatus as CampaignStatus);
+    const label =
+      normalizedStatus === "draft"
+        ? "La review non ha ancora portato la campagna in stato pronta."
+        : normalizedStatus === "paused"
+          ? "La campagna è in pausa: riportala in stato pronta per poterla inviare."
+          : `La campagna è in stato ${statusLabel.toLowerCase()}: portala in stato pronta prima dell'invio.`;
+    return {
+      label,
+      raw: normalizedReason,
+      isKnown: true,
+    };
+  }
   const knownReason = BACKEND_REASON_LABELS.find(([pattern]) =>
     pattern.test(normalizedReason),
   );

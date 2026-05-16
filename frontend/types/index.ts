@@ -374,6 +374,7 @@ export interface AdminCampaignContactRemoveResult {
 export interface AdminCampaignReviewResult {
   campaignId: string;
   clientId: string;
+  status: CampaignStatus;
   allowedToSend: boolean;
   canSendWhenEnabled: boolean;
   sendingEnabled: boolean;

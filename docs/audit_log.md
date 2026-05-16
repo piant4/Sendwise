@@ -1,5 +1,33 @@
 # Audit Log
 
+## Milestone 16.9K - Clarify Review Readiness And Fix Non-Sendable Campaign State
+
+Date: 2026-05-16
+Branch: develop
+
+Verified state:
+- Audited `POST /admin/campaigns/{campaign_id}/review`, the summary/preflight path, Deliverability Guard status checks, and the admin review UI. The blocking case was real: fully configured draft campaigns stayed `status="draft"` with `content_ready=true` and `contacts_ready=true`, so Guard returned `Campaign status draft is not sendable.` and review could never become `review_ready=true`.
+- Fixed the backend lifecycle loop so review stays non-dispatching but may promote a configured draft campaign to `ready` while persisting `review_ready=true` and keeping `current_step="review"` when content, recipients, and Guard checks all pass. No send, dispatch, SES enablement, or listmonk behavior changed.
+- Extended the review response contract to include the current campaign status and rewired the final review panel into a checklist covering content, recipients, recipient eligibility, campaign state, and real-send availability with explicit next actions.
+- Tightened known reason mapping for non-sendable status copy and updated the setup progress indicator so a review step with saved content and recipients shows as attention-needed instead of a vague not-ready state.
+
+Checks executed:
+- `git diff --check`
+- `cd frontend && npm run lint`
+- `cd frontend && npm run build`
+- `pytest backend/tests/test_admin_campaigns.py -k review`
+- `bash scripts/audit.sh`
+- `bash scripts/smoke_test.sh`
+- `docker compose config`
+- `docker compose -f docker-compose.yml -f docker-compose.dev.yml config`
+- touched frontend file scan for direct listmonk calls
+- touched file scan for fake delivered/open/click claims
+- changed file scan for env/secrets/config changes
+
+Scope confirmation:
+- No DB schema, migration, auth, Docker/env/config, send/dispatch execution, SES live send, or direct frontend listmonk call change was made.
+- No fake readiness or fake metrics were introduced. `review_ready` still means review passed; it does not mean send executed or provider events occurred.
+
 ## Milestone 16.9I - Remove Contact From Campaign UI
 
 Date: 2026-05-15

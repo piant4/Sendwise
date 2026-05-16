@@ -91,6 +91,7 @@ class AdminCampaignSlotAssignmentResponse(BaseModel):
 class AdminCampaignReviewResponse(BaseModel):
     campaign_id: str
     client_id: str
+    status: CampaignStatus
     allowed_to_send: bool
     can_send_when_enabled: bool
     sending_enabled: bool

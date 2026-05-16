@@ -1,7 +1,7 @@
 "use client";
 
 import { useAuth } from "@clerk/nextjs";
-import { ClipboardCheck, Loader2 } from "lucide-react";
+import { AlertCircle, CheckCircle2, ClipboardCheck, Loader2, XCircle } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import {
@@ -16,12 +16,15 @@ import type {
 } from "../../types";
 import {
   dedupeReviewReasons,
+  getCampaignStatusLabel,
+  getCampaignStatusVariant,
   getCampaignReviewStateMeta,
   getCampaignStepLabel,
   getReadableBackendReason,
 } from "../shared/campaignUi";
 import { Button } from "../ui/button";
 import { StatusBadge } from "../ui/StatusBadge";
+import type { CampaignStatus } from "../../types";
 
 interface AdminCampaignReviewPanelProps {
   campaign: AdminCampaignDetail;
@@ -78,6 +81,7 @@ function getInitialState(
   summary: AdminCampaignReadinessSummary | null,
 ) {
   return {
+    status: summary?.campaign.status ?? campaign.status,
     allowedToSend: summary?.canSend ?? false,
     canSendWhenEnabled: summary?.canSend ?? false,
     contentReady: summary?.campaign.contentReady ?? campaign.contentReady,
@@ -91,12 +95,142 @@ function getInitialState(
   };
 }
 
-function getReadinessLabel(value: boolean): string {
-  return value ? "Pronto" : "Non pronto";
+type ChecklistState = "passed" | "warning" | "failed";
+
+interface ReviewChecklistItem {
+  id: string;
+  label: string;
+  state: ChecklistState;
+  reason: string;
+  nextAction: string;
 }
 
-function getBooleanLabel(value: boolean): string {
-  return value ? "Sì" : "No";
+function getChecklistStateLabel(state: ChecklistState): string {
+  switch (state) {
+    case "passed":
+      return "Ok";
+    case "warning":
+      return "Attenzione";
+    default:
+      return "Da risolvere";
+  }
+}
+
+function getChecklistStateIcon(state: ChecklistState) {
+  if (state === "passed") {
+    return CheckCircle2;
+  }
+
+  if (state === "warning") {
+    return AlertCircle;
+  }
+
+  return XCircle;
+}
+
+function buildReviewChecklist(state: {
+  status: CampaignStatus;
+  allowedToSend: boolean;
+  canSendWhenEnabled: boolean;
+  contentReady: boolean;
+  contactsReady: boolean;
+  reviewReady: boolean;
+  eligibleContactCount: number;
+  blockedContactCount: number;
+}): ReviewChecklistItem[] {
+  const statusLabel = getCampaignStatusLabel(state.status);
+  const statusVariant = getCampaignStatusVariant(state.status);
+  const stateCampaignStatusReady =
+    state.status === "ready" || state.status === "running";
+
+  return [
+    {
+      id: "content",
+      label: "Contenuto email",
+      state: state.contentReady ? "passed" : "failed",
+      reason: state.contentReady
+        ? "Oggetto e corpo HTML risultano salvati."
+        : "La campagna non ha ancora un contenuto completo e salvato.",
+      nextAction: state.contentReady
+        ? "Nessuna azione richiesta."
+        : "Completa e salva oggetto e contenuto email.",
+    },
+    {
+      id: "recipients",
+      label: "Destinatari",
+      state: state.contactsReady ? "passed" : "failed",
+      reason: state.contactsReady
+        ? "La campagna ha almeno un destinatario associato."
+        : "Non ci sono destinatari associati pronti per la review.",
+      nextAction: state.contactsReady
+        ? "Nessuna azione richiesta."
+        : "Aggiungi almeno un destinatario alla campagna.",
+    },
+    {
+      id: "eligibility",
+      label: "Idoneità destinatari",
+      state:
+        state.eligibleContactCount === 0
+          ? "failed"
+          : state.blockedContactCount > 0
+            ? "warning"
+            : "passed",
+      reason:
+        state.eligibleContactCount === 0
+          ? "Nessun destinatario risulta idoneo all'invio."
+          : state.blockedContactCount > 0
+            ? `${state.eligibleContactCount.toLocaleString("it-IT")} idonei, ${state.blockedContactCount.toLocaleString("it-IT")} bloccati.`
+            : `${state.eligibleContactCount.toLocaleString("it-IT")} destinatari idonei e nessun bloccato.`,
+      nextAction:
+        state.eligibleContactCount === 0
+          ? "Rivedi i destinatari esclusi e mantieni almeno un contatto idoneo."
+          : state.blockedContactCount > 0
+            ? "Controlla i destinatari bloccati prima dell'invio reale."
+            : "Nessuna azione richiesta.",
+    },
+    {
+      id: "status",
+      label: "Stato campagna",
+      state: state.reviewReady
+        ? "passed"
+        : stateCampaignStatusReady
+          ? "warning"
+          : "failed",
+      reason: state.reviewReady
+        ? `La review ha portato la campagna in stato ${statusLabel.toLowerCase()}.`
+        : state.status === "draft"
+          ? "La campagna è ancora in bozza."
+          : statusVariant === "warning"
+            ? `La campagna è in stato ${statusLabel.toLowerCase()}.`
+            : `La campagna è in stato ${statusLabel.toLowerCase()} e non può ancora essere inviata.`,
+      nextAction: state.reviewReady
+        ? "Nessuna azione richiesta."
+        : state.status === "draft"
+          ? "Esegui o riesegui la review per portarla in stato Pronta."
+          : state.status === "paused"
+            ? "Riporta la campagna in stato Pronta prima dell'invio."
+            : "Porta la campagna in uno stato inviabile prima dell'invio.",
+    },
+    {
+      id: "real-send",
+      label: "Invio reale",
+      state: state.allowedToSend
+        ? "passed"
+        : state.canSendWhenEnabled
+          ? "warning"
+          : "failed",
+      reason: state.allowedToSend
+        ? "Il backend consentirebbe l'invio reale in questo ambiente."
+        : state.canSendWhenEnabled
+          ? "La campagna è pronta, ma l'invio reale è disattivato in questo ambiente."
+          : "Il backend non consentirebbe ancora l'invio reale.",
+      nextAction: state.allowedToSend
+        ? "L'invio resta separato dalla review e non è stato avviato."
+        : state.canSendWhenEnabled
+          ? "Attiva l'invio reale solo nell'ambiente previsto, poi usa il flusso di invio."
+          : "Risolvi gli elementi sopra prima di considerare l'invio.",
+    },
+  ];
 }
 
 export function AdminCampaignReviewPanel({
@@ -117,6 +251,7 @@ export function AdminCampaignReviewPanel({
   const state = reviewResult ?? getInitialState(campaign, summary);
   const reviewExecuted = reviewResult !== null || campaign.reviewReady;
   const reviewState = getCampaignReviewStateMeta(state.reviewReady, reviewExecuted);
+  const checklistItems = buildReviewChecklist(state);
   const blockingReasons = dedupeReviewReasons(
     state.blockingErrors.map(getReadableBackendReason),
   );
@@ -239,44 +374,51 @@ export function AdminCampaignReviewPanel({
         </p>
       </div>
 
-      <dl className="admin-record-grid" style={{ marginTop: 18 }}>
-        <div>
-          <dt>Esito verifica</dt>
-          <dd>{state.reviewReady ? "Pronta" : reviewExecuted ? "Non pronta" : "Da verificare"}</dd>
-        </div>
-        <div>
-          <dt>Invio reale disponibile ora</dt>
-          <dd>{getBooleanLabel(state.allowedToSend)}</dd>
-        </div>
-        <div>
-          <dt>Pronta quando l&apos;invio reale è attivo</dt>
-          <dd>{getBooleanLabel(state.canSendWhenEnabled)}</dd>
-        </div>
-        <div>
-          <dt>Contenuto</dt>
-          <dd>{getReadinessLabel(state.contentReady)}</dd>
-        </div>
-        <div>
-          <dt>Destinatari</dt>
-          <dd>{getReadinessLabel(state.contactsReady)}</dd>
-        </div>
-        <div>
-          <dt>Verifica</dt>
-          <dd>{getReadinessLabel(state.reviewReady)}</dd>
-        </div>
-        <div>
-          <dt>Step attuale</dt>
-          <dd>{getCampaignStepLabel(state.currentStep)}</dd>
-        </div>
-        <div>
-          <dt>Idonei</dt>
-          <dd>{state.eligibleContactCount.toLocaleString("it-IT")}</dd>
-        </div>
-        <div>
-          <dt>Bloccati</dt>
-          <dd>{state.blockedContactCount.toLocaleString("it-IT")}</dd>
-        </div>
-      </dl>
+      <div className="campaign-review-overview" style={{ marginTop: 18 }}>
+        <article className="campaign-review-overview__item">
+          <span className="campaign-review-overview__label">Stato attuale</span>
+          <strong>{getCampaignStatusLabel(state.status)}</strong>
+        </article>
+        <article className="campaign-review-overview__item">
+          <span className="campaign-review-overview__label">Idonei</span>
+          <strong>{state.eligibleContactCount.toLocaleString("it-IT")}</strong>
+        </article>
+        <article className="campaign-review-overview__item">
+          <span className="campaign-review-overview__label">Bloccati</span>
+          <strong>{state.blockedContactCount.toLocaleString("it-IT")}</strong>
+        </article>
+        <article className="campaign-review-overview__item">
+          <span className="campaign-review-overview__label">Step attuale</span>
+          <strong>{getCampaignStepLabel(state.currentStep)}</strong>
+        </article>
+      </div>
+
+      <div className="campaign-review-checklist" style={{ marginTop: 18 }}>
+        {checklistItems.map((item) => {
+          const Icon = getChecklistStateIcon(item.state);
+
+          return (
+            <article
+              key={item.id}
+              className="campaign-review-checklist__item"
+              data-state={item.state}
+            >
+              <div className="campaign-review-checklist__header">
+                <strong className="campaign-review-checklist__title">
+                  <Icon aria-hidden="true" size={18} /> {item.label}
+                </strong>
+                <span className="campaign-review-checklist__badge">
+                  {getChecklistStateLabel(item.state)}
+                </span>
+              </div>
+              <p className="campaign-review-checklist__reason">{item.reason}</p>
+              <p className="campaign-review-checklist__action">
+                <span>Prossima azione:</span> {item.nextAction}
+              </p>
+            </article>
+          );
+        })}
+      </div>
 
       {blockingContent}
 

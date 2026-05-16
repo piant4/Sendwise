@@ -44,6 +44,46 @@ const BACKEND_REASON_LABELS: Array<[RegExp, string]> = [
     /^Campaign contains non-sendable contacts and partial dispatch is not supported\.$/i,
     "Alcuni destinatari non sono idonei all'invio.",
   ],
+  [
+    /^Controlled dispatch requires development or staging runtime with Mailpit-compatible provider configuration\.$/i,
+    "L'invio controllato è consentito solo in runtime development, staging o test supportati.",
+  ],
+  [
+    /^SES controlled send is not allowed in this runtime environment\.$/i,
+    "Questo ambiente non è autorizzato all'invio SES controllato.",
+  ],
+  [
+    /^SES SMTP config is incomplete:/i,
+    "La configurazione SMTP SES è incompleta per l'invio controllato.",
+  ],
+  [
+    /^BACKEND_PUBLIC_URL must be a reachable public URL for SES unsubscribe links\.$/i,
+    "Serve un BACKEND_PUBLIC_URL pubblico e raggiungibile per i link di disiscrizione.",
+  ],
+  [
+    /^SES controlled send requires content_ready, contacts_ready, and review_ready\.$/i,
+    "Il backend richiede contenuto, destinatari e review pronti prima dell'invio SES.",
+  ],
+  [
+    /^Eligible contact count exceeds REAL_SEND_MAX_RECIPIENTS\.$/i,
+    "I destinatari idonei superano il limite REAL_SEND_MAX_RECIPIENTS.",
+  ],
+  [
+    /^REAL_SEND_ALLOWED_RECIPIENTS is required for SES controlled send\.$/i,
+    "Serve una allowlist REAL_SEND_ALLOWED_RECIPIENTS prima dell'invio SES.",
+  ],
+  [
+    /^SES controlled send includes recipients outside REAL_SEND_ALLOWED_RECIPIENTS\.$/i,
+    "Almeno un destinatario non è presente nella allowlist REAL_SEND_ALLOWED_RECIPIENTS.",
+  ],
+  [
+    /^Prepared SES campaign content does not include a real unsubscribe URL\.$/i,
+    "Il contenuto preparato non include un link di disiscrizione reale.",
+  ],
+  [
+    /^Campaign HTML template is not ready for dispatch\.$/i,
+    "Il contenuto HTML preparato dal backend non è ancora pronto all'invio.",
+  ],
 ];
 
 export interface CampaignReviewStateMeta {

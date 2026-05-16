@@ -246,6 +246,8 @@ class CampaignReadModel(BaseModel):
 class AdminCampaignSummaryResponse(CampaignReadModel):
     client: CampaignClientSummary
     can_send: bool
+    can_send_when_enabled: bool
+    sending_enabled: bool
     blocking_errors: list[str]
     warnings: list[str]
 

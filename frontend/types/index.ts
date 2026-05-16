@@ -485,8 +485,42 @@ export interface CampaignReadModel {
 export interface AdminCampaignReadinessSummary extends CampaignReadModel {
   client: CampaignClientSummary;
   canSend: boolean;
+  canSendWhenEnabled: boolean;
+  sendingEnabled: boolean;
   blockingErrors: string[];
   warnings: string[];
+}
+
+export interface AdminCampaignDispatchResult {
+  status: string;
+  mode: string;
+  provider?: string | null;
+  campaignId: string;
+  clientId?: string | null;
+  allowed: boolean;
+  decision: SendDecision | string;
+  reason: string;
+  code: string;
+  severity: string;
+  safetyChecked?: boolean;
+  safetyPassed?: boolean;
+  allowedRecipientsChecked?: boolean;
+  eligibleContactCount: number;
+  maxRealSendRecipients?: number | null;
+  blockedContactCount: number;
+  blockedReasons: Record<string, number>;
+  diagnostic?: string | null;
+  limitSource?: string | null;
+  limitValue?: number | null;
+  dispatchAttempted: boolean;
+  realSendAttempted: boolean;
+  providerPrepared: boolean;
+  providerDispatched: boolean;
+  contentReady: boolean;
+  unsubscribeReady?: boolean;
+  providerEventsReady?: boolean;
+  emailLogsCreated: number;
+  emailLogsUpdated: number;
 }
 
 export interface ClientCampaignStatsReadModel {

@@ -128,6 +128,7 @@ Admin-managed contract notes:
 - only admin selects `client_id`
 - backend validates selected `client_id` and client status on every write action
 - admin may assign `campaign_slot_id`, save content, associate/import contacts, request review, simulate, and send
+- `GET /admin/campaigns/{campaign_id}/summary` returns backend-owned `can_send`, `can_send_when_enabled`, and `sending_enabled` so the admin UI can distinguish review readiness from runtime send gating
 - admin review remains non-dispatching, but it may promote a draft campaign to `ready` only after content, recipients, and Deliverability Guard checks all pass
 - `POST /admin/campaigns/{campaign_id}/contacts` accepts `{ "contacts": [{ "email": string, "metadata": { "nome": string, "cognome"?: string } }] }`
 - `DELETE /admin/campaigns/{campaign_id}/contacts/{contact_id}` removes only the `campaign_contacts` association, keeps the underlying `contacts` row and suppression data untouched, and returns backend-owned `contacts_ready`

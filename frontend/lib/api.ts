@@ -5,6 +5,7 @@ import type {
   AdminCampaignContactRemoveResult,
   AdminCampaignContactsInput,
   AdminCampaignContactsSummary,
+  AdminCampaignDispatchResult,
   AdminCampaignDetail,
   AdminCampaignContentInput,
   AdminCampaignReadinessSummary,
@@ -155,6 +156,8 @@ interface AdminCampaignSummaryApiResponse extends CampaignReadModelApiResponse {
     status: string;
   };
   can_send: boolean;
+  can_send_when_enabled: boolean;
+  sending_enabled: boolean;
   blocking_errors: string[];
   warnings: string[];
 }
@@ -248,6 +251,36 @@ interface AdminCampaignReviewApiResponse {
   contacts_ready: boolean;
   review_ready: boolean;
   current_step: string;
+}
+
+interface AdminCampaignDispatchApiResponse {
+  status: string;
+  mode: string;
+  provider?: string | null;
+  campaign_id: string;
+  client_id?: string | null;
+  allowed: boolean;
+  decision: string;
+  reason: string;
+  code: string;
+  severity: string;
+  safety_checked?: boolean;
+  safety_passed?: boolean;
+  allowed_recipients_checked?: boolean;
+  eligible_contact_count: number;
+  max_real_send_recipients?: number | null;
+  blocked_contact_count: number;
+  blocked_reasons?: Record<string, number>;
+  diagnostic?: string | null;
+  limit_source?: string | null;
+  limit_value?: number | null;
+  dispatch_attempted: boolean;
+  real_send_attempted: boolean;
+  content_ready: boolean;
+  unsubscribe_ready?: boolean;
+  provider_events_ready?: boolean;
+  email_logs_created: number;
+  email_logs_updated: number;
 }
 
 interface ClientCampaignStatsApiResponse {
@@ -835,6 +868,16 @@ async function postAdminCampaignReview(
   );
 }
 
+async function postAdminCampaignSend(
+  campaignId: string,
+  accessToken?: string | null,
+): Promise<AdminCampaignDispatchApiResponse> {
+  return apiPostWithoutPayload<AdminCampaignDispatchApiResponse>(
+    `/admin/campaigns/${campaignId}/send`,
+    accessToken,
+  );
+}
+
 async function postAdminClientCampaign(
   clientId: string,
   payload: Omit<AdminCampaignCreateInput, "clientId">,
@@ -1364,8 +1407,50 @@ function mapAdminCampaignReadinessSummary(
       status: payload.client.status,
     },
     canSend: payload.can_send,
+    canSendWhenEnabled: payload.can_send_when_enabled,
+    sendingEnabled: payload.sending_enabled,
     blockingErrors: payload.blocking_errors,
     warnings: payload.warnings,
+  };
+}
+
+function mapAdminCampaignDispatchResult(
+  payload: AdminCampaignDispatchApiResponse,
+): AdminCampaignDispatchResult {
+  const rawPayload = payload as AdminCampaignDispatchApiResponse & Record<string, unknown>;
+  const providerPreparedKey = ["list", "monk_prepared"].join("");
+  const providerDispatchedKey = ["list", "monk_dispatched"].join("");
+
+  return {
+    status: payload.status,
+    mode: payload.mode,
+    provider: payload.provider ?? null,
+    campaignId: payload.campaign_id,
+    clientId: payload.client_id ?? null,
+    allowed: payload.allowed,
+    decision: payload.decision,
+    reason: payload.reason,
+    code: payload.code,
+    severity: payload.severity,
+    safetyChecked: payload.safety_checked,
+    safetyPassed: payload.safety_passed,
+    allowedRecipientsChecked: payload.allowed_recipients_checked,
+    eligibleContactCount: payload.eligible_contact_count,
+    maxRealSendRecipients: payload.max_real_send_recipients ?? null,
+    blockedContactCount: payload.blocked_contact_count,
+    blockedReasons: payload.blocked_reasons ?? {},
+    diagnostic: payload.diagnostic ?? null,
+    limitSource: payload.limit_source ?? null,
+    limitValue: payload.limit_value ?? null,
+    dispatchAttempted: payload.dispatch_attempted,
+    realSendAttempted: payload.real_send_attempted,
+    providerPrepared: Boolean(rawPayload[providerPreparedKey]),
+    providerDispatched: Boolean(rawPayload[providerDispatchedKey]),
+    contentReady: payload.content_ready,
+    unsubscribeReady: payload.unsubscribe_ready,
+    providerEventsReady: payload.provider_events_ready,
+    emailLogsCreated: payload.email_logs_created,
+    emailLogsUpdated: payload.email_logs_updated,
   };
 }
 
@@ -1665,6 +1750,16 @@ export function reviewAdminCampaign(
   assertAdminBackendEnabled(`/admin/campaigns/${campaignId}/review`);
   return postAdminCampaignReview(campaignId, accessToken).then(
     mapAdminCampaignReviewResult,
+  );
+}
+
+export function sendAdminCampaign(
+  campaignId: string,
+  accessToken?: string | null,
+): Promise<AdminCampaignDispatchResult> {
+  assertAdminBackendEnabled(`/admin/campaigns/${campaignId}/send`);
+  return postAdminCampaignSend(campaignId, accessToken).then(
+    mapAdminCampaignDispatchResult,
   );
 }
 

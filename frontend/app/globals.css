@@ -4183,42 +4183,6 @@ p {
   outline-offset: 6px;
 }
 
-.account-sheet .cl-rootBox,
-.account-sheet .cl-userProfile-root,
-.account-sheet .cl-card,
-.account-sheet .cl-userProfile-root .cl-card {
-  width: 100%;
-}
-
-.account-sheet .cl-card,
-.account-sheet .cl-userProfile-root .cl-card {
-  background: rgba(255, 255, 255, 0.82);
-  border: 1px solid rgba(202, 207, 214, 0.72);
-  border-radius: 22px;
-  box-shadow: none;
-}
-
-.account-sheet .cl-navbar {
-  display: none;
-}
-
-.account-sheet .cl-pageScrollBox,
-.account-sheet .cl-scrollBox {
-  padding: 0;
-}
-
-.account-sheet .cl-profileSectionTitleText,
-.account-sheet .cl-headerTitle {
-  color: var(--sw-olive);
-}
-
-.account-sheet .cl-headerSubtitle,
-.account-sheet .cl-profileSectionSubtitleText,
-.account-sheet .cl-navbarButton,
-.account-sheet .cl-navbarButtonIcon {
-  color: var(--sw-text-muted);
-}
-
 .settings-shell {
   backdrop-filter: blur(14px);
   background: rgba(255, 255, 255, 0.9);

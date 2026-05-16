@@ -7,7 +7,6 @@ import { type FormEvent, useState } from "react";
 import {
   isApiError,
   updateAdminCampaign,
-  updateAdminCampaignContent,
 } from "../../lib/api";
 import type { AdminCampaignDetail } from "../../types";
 import { Button } from "../ui/button";
@@ -98,25 +97,14 @@ export function AdminCampaignSetupForm({
     try {
       const token = await getToken();
 
-      if (nameChanged) {
-        await updateAdminCampaign(
-          campaign.campaignId,
-          {
-            name: name.trim(),
-          },
-          token,
-        );
-      }
-
-      if (subjectChanged) {
-        await updateAdminCampaignContent(
-          campaign.campaignId,
-          {
-            subject: subjectValue,
-          },
-          token,
-        );
-      }
+      await updateAdminCampaign(
+        campaign.campaignId,
+        {
+          ...(nameChanged ? { name: name.trim() } : {}),
+          ...(subjectChanged ? { subject: subjectValue } : {}),
+        },
+        token,
+      );
 
       setSuccessMessage("Dati base salvati. La readiness resta calcolata dal backend.");
       router.refresh();

@@ -8,8 +8,10 @@ import {
   isApiConfigurationError,
   isApiError,
   reviewAdminCampaign,
+  sendAdminCampaign,
 } from "../../lib/api";
 import type {
+  AdminCampaignDispatchResult,
   AdminCampaignDetail,
   AdminCampaignReadinessSummary,
   AdminCampaignReviewResult,
@@ -83,7 +85,7 @@ function getInitialState(
   return {
     status: summary?.campaign.status ?? campaign.status,
     allowedToSend: summary?.canSend ?? false,
-    canSendWhenEnabled: summary?.canSend ?? false,
+    canSendWhenEnabled: summary?.canSendWhenEnabled ?? false,
     contentReady: summary?.campaign.contentReady ?? campaign.contentReady,
     contactsReady: summary?.campaign.contactsReady ?? campaign.contactsReady,
     reviewReady: summary?.campaign.reviewReady ?? campaign.reviewReady,
@@ -233,6 +235,18 @@ function buildReviewChecklist(state: {
   ];
 }
 
+function getDispatchOutcomeLabel(result: AdminCampaignDispatchResult): string {
+  if (result.status === "queued" && result.allowed) {
+    return "Invio accodato";
+  }
+
+  if (result.status === "blocked" || result.status === "dispatch_blocked") {
+    return "Invio bloccato";
+  }
+
+  return "Invio non eseguito";
+}
+
 export function AdminCampaignReviewPanel({
   campaign,
   summary,
@@ -244,9 +258,14 @@ export function AdminCampaignReviewPanel({
   const { getToken } = useAuth();
   const autoRequestedRef = useRef(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isDispatching, setIsDispatching] = useState(false);
   const [reviewResult, setReviewResult] =
     useState<AdminCampaignReviewResult | null>(null);
+  const [dispatchResult, setDispatchResult] =
+    useState<AdminCampaignDispatchResult | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
+  const [dispatchError, setDispatchError] = useState<string | null>(null);
+  const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
 
   const state = reviewResult ?? getInitialState(campaign, summary);
   const reviewExecuted = reviewResult !== null || campaign.reviewReady;
@@ -258,6 +277,17 @@ export function AdminCampaignReviewPanel({
   const warningReasons = dedupeReviewReasons(
     state.warnings.map(getReadableBackendReason),
   );
+  const dispatchVisible =
+    state.reviewReady || state.status === "ready" || state.status === "running";
+  const dispatchEnabled = state.reviewReady && state.allowedToSend && !isDispatching;
+  const dispatchBlockedReason =
+    !state.reviewReady
+      ? "Completa la review finale prima di aprire il flusso di invio."
+      : state.allowedToSend
+        ? null
+        : dedupeReviewReasons(
+            [...state.blockingErrors, ...state.warnings].map(getReadableBackendReason),
+          )[0]?.label ?? "Il backend mantiene l'invio reale bloccato in questo ambiente.";
   const blockingContent =
     blockingReasons.length > 0 ? (
       <div style={{ display: "grid", gap: 12, marginTop: 18 }}>
@@ -305,6 +335,8 @@ export function AdminCampaignReviewPanel({
       const token = await getToken();
       const result = await reviewAdminCampaign(campaign.campaignId, token);
       setReviewResult(result);
+      setDispatchResult(null);
+      setDispatchError(null);
       router.refresh();
     } catch (error) {
       setFormError(getSafeReviewErrorMessage(error));
@@ -327,6 +359,8 @@ export function AdminCampaignReviewPanel({
         const token = await getToken();
         const result = await reviewAdminCampaign(campaign.campaignId, token);
         setReviewResult(result);
+        setDispatchResult(null);
+        setDispatchError(null);
         router.refresh();
       } catch (error) {
         setFormError(getSafeReviewErrorMessage(error));
@@ -335,6 +369,27 @@ export function AdminCampaignReviewPanel({
       }
     })();
   }, [autoRun, campaign.campaignId, campaign.reviewReady, getToken, router]);
+
+  async function handleDispatchConfirm() {
+    if (!dispatchEnabled) {
+      return;
+    }
+
+    setIsDispatching(true);
+    setDispatchError(null);
+
+    try {
+      const token = await getToken();
+      const result = await sendAdminCampaign(campaign.campaignId, token);
+      setDispatchResult(result);
+      setIsConfirmModalOpen(false);
+      router.refresh();
+    } catch (error) {
+      setDispatchError(getSafeReviewErrorMessage(error));
+    } finally {
+      setIsDispatching(false);
+    }
+  }
 
   return (
     <section className="admin-clients-card campaign-panel" id="review">
@@ -424,6 +479,69 @@ export function AdminCampaignReviewPanel({
 
       {warningContent}
 
+      {dispatchVisible ? (
+        <div className="campaign-callout" style={{ marginTop: 18 }}>
+          <strong style={{ color: "#0f172a" }}>Invio controllato</strong>
+          <p className="campaign-field__helper" style={{ margin: 0 }}>
+            L&apos;invio resta separato dalla review e usa sempre i gate backend esistenti.
+          </p>
+          <p className="admin-record-row__note" style={{ marginTop: 12 }}>
+            {dispatchBlockedReason ??
+              "La campagna risulta pronta anche per il gate di invio reale di questo ambiente."}
+          </p>
+          <div className="campaign-action-row" style={{ marginTop: 16 }}>
+            <Button
+              type="button"
+              className="admin-topbar-action campaign-action campaign-action--primary"
+              disabled={!dispatchEnabled}
+              onClick={() => {
+                setDispatchError(null);
+                setIsConfirmModalOpen(true);
+              }}
+              style={{ minWidth: 190 }}
+            >
+              {isDispatching ? (
+                <Loader2 aria-hidden="true" className="admin-topbar-action__icon" />
+              ) : (
+                <ClipboardCheck aria-hidden="true" className="admin-topbar-action__icon" />
+              )}
+              {isDispatching ? "Invio..." : "Invia campagna"}
+            </Button>
+          </div>
+          {dispatchError ? (
+            <p
+              className="admin-clients-feedback admin-clients-feedback--error"
+              role="alert"
+              style={{ marginTop: 16 }}
+            >
+              {dispatchError}
+            </p>
+          ) : null}
+          {dispatchResult ? (
+            <div className="campaign-review-checklist__item" style={{ marginTop: 16 }}>
+              <div className="campaign-review-checklist__header">
+                <strong className="campaign-review-checklist__title">
+                  {getDispatchOutcomeLabel(dispatchResult)}
+                </strong>
+                <span className="campaign-review-checklist__badge">
+                  {dispatchResult.code}
+                </span>
+              </div>
+              <p className="campaign-review-checklist__reason">
+                {getReadableBackendReason(dispatchResult.reason).label}
+              </p>
+              <p className="campaign-review-checklist__action">
+                <span>Esito backend:</span>{" "}
+                {dispatchResult.providerDispatched
+                  ? "provider coinvolto"
+                  : "nessuna dispatch provider eseguita"}
+                , {dispatchResult.emailLogsCreated.toLocaleString("it-IT")} log creati.
+              </p>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+
       <div className="campaign-action-row">
         <Button
           type="button"
@@ -449,6 +567,57 @@ export function AdminCampaignReviewPanel({
           {isSubmitting ? "Verifica..." : reviewState.buttonLabel}
         </Button>
       </div>
+
+      {isConfirmModalOpen ? (
+        <div
+          className="modal-backdrop"
+          role="presentation"
+          onClick={() => {
+            if (!isDispatching) {
+              setIsConfirmModalOpen(false);
+            }
+          }}
+        >
+          <div
+            className="invite-modal campaign-contact-remove-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="campaign-dispatch-title"
+            aria-describedby="campaign-dispatch-message"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="invite-modal__header">
+              <div>
+                <p className="invite-modal__eyebrow">Invio controllato</p>
+                <h3 id="campaign-dispatch-title" className="invite-modal__title">
+                  Confermi l&apos;avvio dell&apos;invio?
+                </h3>
+              </div>
+            </div>
+            <p id="campaign-dispatch-message" className="invite-modal__message">
+              Il backend rieseguirà i controlli di sicurezza prima di qualsiasi dispatch provider.
+            </p>
+            <div className="invite-modal__actions" style={{ marginTop: 18 }}>
+              <button
+                type="button"
+                className="invite-modal__button invite-modal__button--secondary"
+                disabled={isDispatching}
+                onClick={() => setIsConfirmModalOpen(false)}
+              >
+                Annulla
+              </button>
+              <button
+                type="button"
+                className="invite-modal__button invite-modal__button--primary"
+                disabled={isDispatching}
+                onClick={handleDispatchConfirm}
+              >
+                {isDispatching ? "Invio..." : "Conferma invio"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }

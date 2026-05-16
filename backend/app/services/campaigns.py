@@ -265,6 +265,8 @@ class AdminCampaignService:
                 campaign=campaign,
             ),
             can_send=evaluation.can_send,
+            can_send_when_enabled=evaluation.can_send_when_enabled,
+            sending_enabled=self.settings.email_sending_enabled,
             blocking_errors=evaluation.blocking_errors,
             warnings=evaluation.warnings,
         )

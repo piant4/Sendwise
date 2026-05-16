@@ -463,6 +463,8 @@ def test_admin_summary_returns_campaign_client_slot_and_readiness() -> None:
     assert result.slot.status == "assigned"
     assert result.slot.limit_source == "campaign_slot"
     assert result.can_send is False
+    assert result.can_send_when_enabled is True
+    assert result.sending_enabled is False
     assert result.runtime.email_sending_enabled is False
     assert result.runtime.email_provider == "mailpit"
     assert result.runtime.provider_mode_label == "Sending disabled"
@@ -500,6 +502,9 @@ def test_admin_summary_endpoint_exposes_safe_runtime_shape_without_secrets() -> 
 
     assert response.status_code == 200
     payload = response.json()
+    assert payload["can_send"] is False
+    assert payload["can_send_when_enabled"] is False
+    assert payload["sending_enabled"] is True
     assert payload["runtime"] == {
         "email_sending_enabled": True,
         "email_provider": "ses",

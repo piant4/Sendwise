@@ -189,6 +189,7 @@ export function AccountSecuritySheet({
                   appearance={{
                     elements: {
                       rootBox: "w-full",
+                      cardBox: "w-full",
                       card: "w-full border border-slate-200 bg-white shadow-none",
                       navbar: "hidden",
                       pageScrollBox: "p-0",
@@ -197,6 +198,8 @@ export function AccountSecuritySheet({
                       headerSubtitle: "text-slate-500",
                       profileSectionTitleText: "text-slate-950",
                       profileSectionSubtitleText: "text-slate-500",
+                      navbarButton: "text-slate-500",
+                      navbarButtonIcon: "text-slate-500",
                       formButtonPrimary:
                         "bg-sky-600 hover:bg-sky-700 text-white shadow-none",
                       formFieldInput:

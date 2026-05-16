@@ -1,170 +1,93 @@
+import Link from "next/link";
 import { StatusBadge } from "../ui/StatusBadge";
 import type { ClientOverviewSummary } from "../../types";
-import {
-  formatOptionalLimit,
-  getClientAccessStatusLabel,
-  getClientAccountVariant,
-  getClientStatusLabel,
-} from "./clientStatus";
+import type { ClientDashboardModel } from "./dashboardModel";
 
 interface ClientDashboardHeaderProps {
   summary: ClientOverviewSummary;
-}
-
-function getCapacityRatio(totalCampaigns: number, maxCampaigns?: number | null) {
-  if (typeof maxCampaigns !== "number" || maxCampaigns <= 0) {
-    return null;
-  }
-
-  return totalCampaigns / maxCampaigns;
+  model?: ClientDashboardModel;
 }
 
 export function ClientDashboardHeader({
   summary,
+  model,
 }: ClientDashboardHeaderProps) {
-  const capacityRatio = getCapacityRatio(
-    summary.campaigns.totalCampaigns,
-    summary.limits.maxCampaigns,
-  );
-  const campaignsNeedingAttention =
-    summary.campaigns.statusCounts.blocked + summary.campaigns.statusCounts.failed;
-  const visualItems = [
-    { label: "Bozze", value: summary.campaigns.statusCounts.draft, tone: "draft" },
-    { label: "Pronte", value: summary.campaigns.statusCounts.ready, tone: "ready" },
-    { label: "In corso", value: summary.campaigns.statusCounts.running, tone: "running" },
-    { label: "In pausa", value: summary.campaigns.statusCounts.paused, tone: "paused" },
-    { label: "Da seguire", value: campaignsNeedingAttention, tone: "attention" },
-  ].filter((item) => item.value > 0);
-
-  const health =
-    summary.client.clientStatus !== "active"
-      ? {
-          label: getClientStatusLabel(summary.client.clientStatus),
-          detail: "Lo stato workspace limita l'operativita.",
-          variant: getClientAccountVariant(summary.client.clientStatus),
-        }
-      : summary.client.accessStatus !== "active"
-        ? {
-            label: getClientAccessStatusLabel(summary.client.accessStatus),
-            detail: "L'accesso va verificato prima di nuove attivita.",
-            variant: "warning" as const,
-          }
-        : summary.blockedSends.currentPeriodCount > 0
-          ? {
-              label: "Invii bloccati presenti",
-              detail: "Sono presenti blocchi nel periodo corrente.",
-              variant: "warning" as const,
-            }
-          : campaignsNeedingAttention > 0
-            ? {
-                label: "Campagne da seguire",
-                detail: "Alcune campagne richiedono una verifica operativa.",
-                variant: "warning" as const,
-              }
-            : {
-                label: "Operativita regolare",
-                detail: "Nessun blocco critico visibile nel riepilogo.",
-                variant: "success" as const,
-              };
+  const dashboardModel =
+    model ?? {
+      blockedSendsCount: summary.blockedSends.currentPeriodCount,
+      campaignsNeedingAttention:
+        summary.campaigns.statusCounts.blocked +
+        summary.campaigns.statusCounts.failed +
+        summary.campaigns.statusCounts.paused,
+      campaignsToComplete:
+        summary.campaigns.statusCounts.draft + summary.campaigns.statusCounts.paused,
+      capacityRatio: null,
+      readyCampaigns: summary.campaigns.statusCounts.ready,
+      recentProviderEventsCount: 0,
+      recentReadyCampaignsCount: 0,
+      recentRecipientIssuesCount: 0,
+      remainingCampaignSlots: null,
+      statusSegments: [],
+      totalCampaigns: summary.campaigns.totalCampaigns,
+      workspaceStatus: {
+        detail: "Riepilogo operativo disponibile.",
+        label: "Workspace",
+        variant: "neutral" as const,
+      },
+      recommendation: {
+        title: "Vai alle campagne",
+        description: "Apri l'elenco campagne per i dettagli operativi.",
+        href: `/c/${summary.client.portalSlug}/campaigns`,
+        actionLabel: "Vai alle campagne",
+      },
+    };
 
   return (
-    <section className="client-hero">
-      <div className="client-hero__copy">
-        <div className="client-hero__headline">
-          <p className="client-hero__eyebrow">Workspace cliente</p>
-          <h2 className="client-hero__title">{summary.client.name}</h2>
-          <p className="client-hero__lead">{health.detail}</p>
+    <section className="client-hero client-dashboard-hero">
+      <div className="client-dashboard-hero__copy">
+        <div className="client-dashboard-hero__headline">
+          <p className="client-hero__eyebrow">Dashboard cliente</p>
+          <h1 className="client-hero__title">{summary.client.name}</h1>
+          <p className="client-dashboard-hero__lead">
+            Vista operativa del workspace con campagne, limiti e blocchi realmente
+            registrati.
+          </p>
         </div>
 
-        <div className="client-hero__status-row">
+        <div className="client-dashboard-hero__status">
           <StatusBadge
-            label={getClientStatusLabel(summary.client.clientStatus)}
-            variant={getClientAccountVariant(summary.client.clientStatus)}
+            label={dashboardModel.workspaceStatus.label}
+            variant={dashboardModel.workspaceStatus.variant}
           />
-          <StatusBadge
-            label={getClientAccessStatusLabel(summary.client.accessStatus)}
-            variant="neutral"
-          />
-          <StatusBadge label={health.label} variant={health.variant} />
-        </div>
-
-        <div className="client-hero__facts">
-          <article className="client-hero__fact">
-            <span>Campagne attive</span>
-            <strong>{summary.campaigns.activeCampaigns.toLocaleString("it-IT")}</strong>
-          </article>
-          <article className="client-hero__fact">
-            <span>Da seguire</span>
-            <strong>{campaignsNeedingAttention.toLocaleString("it-IT")}</strong>
-          </article>
-          <article className="client-hero__fact">
-            <span>Blocchi periodo</span>
-            <strong>
-              {summary.blockedSends.currentPeriodCount.toLocaleString("it-IT")}
-            </strong>
-          </article>
-          <article className="client-hero__fact">
-            <span>Campagne visibili</span>
-            <strong>{summary.campaigns.totalCampaigns.toLocaleString("it-IT")}</strong>
-          </article>
+          <span className="client-dashboard-hero__status-detail">
+            {dashboardModel.workspaceStatus.detail}
+          </span>
         </div>
       </div>
 
-      <div className="client-hero__meter">
-        <div className="client-hero__meter-header">
-          <span>Capacita campagne</span>
-          <strong>
-            {typeof summary.limits.maxCampaigns === "number" &&
-            summary.limits.maxCampaigns > 0
-              ? `${summary.campaigns.totalCampaigns.toLocaleString("it-IT")} / ${summary.limits.maxCampaigns.toLocaleString("it-IT")}`
-              : summary.campaigns.totalCampaigns.toLocaleString("it-IT")}
+      <div className="client-dashboard-hero__actions">
+        <div className="client-dashboard-hero__focus">
+          <span className="client-dashboard-hero__focus-label">Stato attuale</span>
+          <strong className="client-dashboard-hero__focus-value">
+            {dashboardModel.readyCampaigns > 0
+              ? `${dashboardModel.readyCampaigns.toLocaleString("it-IT")} campagne pronte`
+              : dashboardModel.campaignsNeedingAttention > 0
+                ? `${dashboardModel.campaignsNeedingAttention.toLocaleString("it-IT")} campagne da seguire`
+                : "Nessuna urgenza visibile"}
           </strong>
+          <p className="client-dashboard-hero__focus-copy">
+            {summary.blockedSends.currentPeriodCount > 0
+              ? `Sono presenti ${summary.blockedSends.currentPeriodCount.toLocaleString("it-IT")} blocchi nel periodo corrente.`
+              : "Usa l'elenco campagne per seguire i prossimi passaggi del workspace."}
+          </p>
         </div>
-        <div className="client-progress" aria-hidden="true">
-          <div
-            className="client-progress__fill"
-            style={{
-              width:
-                capacityRatio !== null
-                  ? `${Math.max(8, Math.min(capacityRatio * 100, 100))}%`
-                  : "18%",
-            }}
-          />
-        </div>
-        <div className="client-fact-grid">
-          <article className="client-fact-card">
-            <span>Email per campagna</span>
-            <strong>{formatOptionalLimit(summary.limits.emailLimitPerCampaign)}</strong>
-          </article>
-          <article className="client-fact-card">
-            <span>Campagne massime</span>
-            <strong>{formatOptionalLimit(summary.limits.maxCampaigns)}</strong>
-          </article>
-        </div>
-        {visualItems.length > 0 ? (
-          <div className="client-status-visual">
-            <div className="client-status-visual__bar" aria-hidden="true">
-              {visualItems.map((item) => (
-                <div
-                  key={item.label}
-                  className="client-status-visual__segment"
-                  data-tone={item.tone}
-                  style={{
-                    width: `${(item.value / summary.campaigns.totalCampaigns) * 100}%`,
-                  }}
-                />
-              ))}
-            </div>
-            <div className="client-status-visual__legend">
-              {visualItems.map((item) => (
-                <article key={item.label} className="client-status-visual__legend-item">
-                  <span>{item.label}</span>
-                  <strong>{item.value.toLocaleString("it-IT")}</strong>
-                </article>
-              ))}
-            </div>
-          </div>
-        ) : null}
+
+        <Link
+          className="client-dashboard-hero__action"
+          href={`/c/${summary.client.portalSlug}/campaigns`}
+        >
+          Vai alle campagne
+        </Link>
       </div>
     </section>
   );

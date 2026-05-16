@@ -6,6 +6,7 @@ import {
   getSendDecisionLabel,
   getSendDecisionVariant,
 } from "./clientStatus";
+import { getReadableBackendReason } from "../shared/campaignUi";
 
 interface ClientRecentBlockedSendsCardProps {
   summary: ClientOverviewSummary;
@@ -17,10 +18,10 @@ export function ClientRecentBlockedSendsCard({
   return (
     <ClientSurface
       title="Blocchi recenti"
-      description="Ultimi stop registrati nel periodo."
+      description="Ultimi stop registrati nel periodo corrente."
       aside={
         <span className="client-surface__eyebrow">
-          {summary.blockedSends.recentBlockedSends.length.toLocaleString("it-IT")} elementi
+          {summary.blockedSends.currentPeriodCount.toLocaleString("it-IT")} nel periodo
         </span>
       }
     >
@@ -48,14 +49,14 @@ export function ClientRecentBlockedSendsCard({
                 />
               </div>
               <p className="client-row__support client-note--compact">
-                {blockedSend.reason}
+                {getReadableBackendReason(blockedSend.reason).label}
               </p>
             </article>
           ))}
         </div>
       ) : (
-        <div className="client-empty-state">
-          Nessun blocco registrato per questo cliente nel periodo corrente.
+        <div className="client-empty-state client-empty-state--compact">
+          Nessun blocco registrato nel periodo corrente.
         </div>
       )}
     </ClientSurface>

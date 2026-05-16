@@ -189,6 +189,8 @@ The main project contracts live in `docs/`:
 - `docs/ownership_v1.md`
 - `docs/structural_contracts_v1.md`
 - `docs/audit_checklist_v1.md`
+- `docs/runbook_backup_restore.md`
+- `docs/runbook_vps_staging.md`
 
 These docs define how the product should evolve. When behavior changes, update the matching contract document with the code.
 

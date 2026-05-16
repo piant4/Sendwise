@@ -10,7 +10,7 @@ interface ClientPageHeaderProps {
 export function ClientPageHeader({
   title,
   description,
-  eyebrow = "Vista cliente",
+  eyebrow = "",
   actions,
 }: ClientPageHeaderProps) {
   return (

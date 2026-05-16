@@ -43,7 +43,7 @@ export default async function ClientBlockedSendsPage({
     return (
       <DashboardErrorState
         title="Invii bloccati"
-        description="Elenco invii bloccati del cliente letto dal backend applicativo."
+        description=""
         errorMessage={result.errorMessage}
       />
     );
@@ -58,8 +58,8 @@ export default async function ClientBlockedSendsPage({
       <section className="client-page-shell">
         <ClientPageHeader
           title="Invii bloccati"
-          description="Qui trovi gli stop registrati per il tuo workspace, con motivazione, decisione e momento in cui il backend li ha salvati."
-          actions={<StatusBadge label="Timeline reale" variant="warning" />}
+          description=""
+          actions={<StatusBadge label="Timeline reale" variant="success" />}
         />
 
         <section className="client-page-stat-grid" aria-label="Statistiche invii bloccati">
@@ -92,7 +92,7 @@ export default async function ClientBlockedSendsPage({
 
         <ClientSurface
           title="Cronologia blocchi"
-          description="Ogni riga mostra la campagna interessata, la decisione applicata e il motivo registrato dal sistema."
+          description=""
           aside={
             <span className="client-surface__eyebrow">
               {result.items.length.toLocaleString()} elementi
@@ -138,7 +138,7 @@ export default async function ClientBlockedSendsPage({
             </div>
           ) : (
             <div className="client-empty-state">
-              Nessun invio bloccato registrato per questo workspace nel periodo
+              Nessun <b>invio bloccato</b> registrato per questo workspace nel periodo
               attuale.
             </div>
           )}

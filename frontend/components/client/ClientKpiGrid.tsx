@@ -1,64 +1,87 @@
 import type { ClientOverviewSummary } from "../../types";
+import type { ClientDashboardModel } from "./dashboardModel";
 
 interface ClientKpiGridProps {
   summary: ClientOverviewSummary;
+  model?: ClientDashboardModel;
 }
 
-export function ClientKpiGrid({ summary }: ClientKpiGridProps) {
-  const campaignsNeedingAttention =
-    summary.campaigns.statusCounts.blocked + summary.campaigns.statusCounts.failed;
-  const pausedCampaigns = summary.campaigns.statusCounts.paused;
-  const remainingSlots =
-    typeof summary.limits.maxCampaigns === "number" && summary.limits.maxCampaigns > 0
-      ? Math.max(summary.limits.maxCampaigns - summary.campaigns.totalCampaigns, 0)
-      : null;
-
+export function ClientKpiGrid({ summary, model }: ClientKpiGridProps) {
+  const dashboardModel =
+    model ?? {
+      blockedSendsCount: summary.blockedSends.currentPeriodCount,
+      campaignsNeedingAttention:
+        summary.campaigns.statusCounts.blocked +
+        summary.campaigns.statusCounts.failed +
+        summary.campaigns.statusCounts.paused,
+      campaignsToComplete:
+        summary.campaigns.statusCounts.draft + summary.campaigns.statusCounts.paused,
+      capacityRatio: null,
+      readyCampaigns: summary.campaigns.statusCounts.ready,
+      recentProviderEventsCount: 0,
+      recentReadyCampaignsCount: 0,
+      recentRecipientIssuesCount: 0,
+      remainingCampaignSlots: null,
+      statusSegments: [],
+      totalCampaigns: summary.campaigns.totalCampaigns,
+      workspaceStatus: {
+        detail: "Riepilogo operativo disponibile.",
+        label: "Workspace",
+        variant: "neutral" as const,
+      },
+      recommendation: {
+        title: "Vai alle campagne",
+        description: "Apri l'elenco campagne per i dettagli operativi.",
+        href: `/c/${summary.client.portalSlug}/campaigns`,
+        actionLabel: "Vai alle campagne",
+      },
+    };
   const cards = [
     {
-      title: "Campagne attive",
-      value: summary.campaigns.activeCampaigns.toLocaleString("it-IT"),
+      title: "Campagne pronte",
+      value: dashboardModel.readyCampaigns.toLocaleString("it-IT"),
       tone: "campaigns",
-      emphasis: "primary",
-      detail: `${summary.campaigns.totalCampaigns.toLocaleString("it-IT")} visibili nel workspace`,
+      detail:
+        dashboardModel.readyCampaigns > 0
+          ? "Pronte per il prossimo passaggio operativo."
+          : "Nessuna campagna pronta in questo momento.",
     },
     {
-      title: "In corso",
-      value: summary.campaigns.runningCampaigns.toLocaleString("it-IT"),
+      title: "Da completare",
+      value: dashboardModel.campaignsToComplete.toLocaleString("it-IT"),
       tone: "sent",
-      detail: `${summary.campaigns.statusCounts.ready.toLocaleString("it-IT")} pronte e ${summary.campaigns.statusCounts.draft.toLocaleString("it-IT")} bozze`,
+      detail:
+        dashboardModel.campaignsToComplete > 0
+          ? "Bozze o pause ancora da completare."
+          : "Nessuna campagna incompleta visibile.",
     },
     {
       title: "Da seguire",
-      value: campaignsNeedingAttention.toLocaleString("it-IT"),
+      value: dashboardModel.campaignsNeedingAttention.toLocaleString("it-IT"),
       tone: "blocked",
       detail:
-        pausedCampaigns > 0
-          ? `${pausedCampaigns.toLocaleString("it-IT")} campagne in pausa`
-          : "Nessuna pausa attiva",
+        dashboardModel.campaignsNeedingAttention > 0
+          ? "Pause, errori o blocchi da verificare."
+          : "Nessuna campagna richiede attenzione immediata.",
     },
     {
-      title: "Capacita residua",
+      title: "Limite campagne",
       value:
-        remainingSlots === null
-          ? "n/d"
-          : remainingSlots.toLocaleString("it-IT"),
+        typeof summary.limits.maxCampaigns === "number" && summary.limits.maxCampaigns > 0
+          ? `${summary.campaigns.totalCampaigns.toLocaleString("it-IT")} / ${summary.limits.maxCampaigns.toLocaleString("it-IT")}`
+          : "Non configurato",
       tone: "limits",
       detail:
-        remainingSlots === null
-          ? "Campagne massime non configurate"
-          : "Slot campagne ancora disponibili",
+        dashboardModel.remainingCampaignSlots === null
+          ? "Capacità massima non definita."
+          : `${dashboardModel.remainingCampaignSlots.toLocaleString("it-IT")} slot ancora disponibili.`,
     },
   ];
 
   return (
-    <section className="client-kpi-grid" aria-label="Indicatori cliente">
+    <section className="client-kpi-grid" aria-label="Riepilogo dashboard cliente">
       {cards.map((card) => (
-        <article
-          key={card.title}
-          className="client-kpi-card"
-          data-tone={card.tone}
-          data-emphasis={card.emphasis}
-        >
+        <article key={card.title} className="client-kpi-card" data-tone={card.tone}>
           <div className="client-kpi-card__topline">
             <span className="client-kpi-card__title">{card.title}</span>
             <span className="client-kpi-card__pulse" aria-hidden="true" />

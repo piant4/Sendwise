@@ -90,8 +90,8 @@ export default async function ClientEmailLimitsPage({
       <section className="client-page-shell">
         <ClientPageHeader
           title="Limiti email"
-          description="Capacita attiva e campagne oggi visibili."
-          actions={<StatusBadge label="Sola lettura" variant="neutral" />}
+          description=""
+          actions={<StatusBadge label="CONTRATTO" variant="neutral" />}
         />
 
         <section className="client-page-stat-grid" aria-label="Riepilogo limiti">
@@ -133,18 +133,13 @@ export default async function ClientEmailLimitsPage({
             <div className="client-progress-panel">
               <div className="client-progress-panel__row">
                 <div>
-                  <span>Occupazione slot</span>
-                  <strong>
+                  <span>Occupazione slot </span>
+                </div>
+                <strong>
                     {typeof maxCampaigns === "number" && maxCampaigns > 0
                       ? `${campaignsInUse.toLocaleString("it-IT")} / ${maxCampaigns.toLocaleString("it-IT")}`
                       : `${campaignsInUse.toLocaleString("it-IT")} campagne`}
                   </strong>
-                </div>
-                <span>
-                  {campaignUsageRatio !== null
-                    ? `${Math.round(Math.min(campaignUsageRatio, 1) * 100)}%`
-                    : "n/d"}
-                </span>
               </div>
               <div className="client-progress" aria-hidden="true">
                 <div

@@ -1,5 +1,40 @@
 # Audit Log
 
+## Milestone 18.0B - VPS Backup And Restore Safety Runbook
+
+Date: 2026-05-16
+Branch: develop
+
+Backup and restore audit summary:
+- Added a dedicated backup and restore runbook covering hourly local and remote backups for both `email_ai` and `listmonk`, retention policy, forbidden destructive commands, deploy safety, rollback flow, and the managed PostgreSQL recommendation.
+- Added a staging VPS runbook that requires a backup before deploy, migrations only after pull/build, health and smoke checks after restart, code rollback steps, and restore validation before any live recovery.
+- Added `scripts/backup_postgres.sh` to create timestamped `pg_dump` custom-format archives for both databases, write checksums, maintain local hourly/daily/weekly retention trees, and optionally sync the same trees to an rclone remote without hardcoded credentials or secret output.
+- Added `scripts/restore_postgres_check.sh` to restore backups into temporary database names only, verify public table counts, fail safely, and print manual cleanup commands when temporary databases are retained.
+
+Files touched:
+- `docs/runbook_backup_restore.md`
+- `docs/runbook_vps_staging.md`
+- `scripts/backup_postgres.sh`
+- `scripts/restore_postgres_check.sh`
+- `docs/audit_log.md`
+- `README.md`
+
+Checks executed:
+- `bash -n scripts/backup_postgres.sh`
+- `bash -n scripts/restore_postgres_check.sh`
+- `git diff --check`
+- `bash scripts/audit.sh`
+- `bash scripts/smoke_test.sh`
+- `docker compose config`
+- changed-file secret and env-value scan
+
+Scope confirmation:
+- No backend application code changed.
+- No frontend code changed.
+- No database schema or migration changed.
+- No Docker or private env file changed.
+- No destructive restore or live data mutation was performed.
+
 ## Milestone 16.9K - Clarify Review Readiness And Fix Non-Sendable Campaign State
 
 Date: 2026-05-16
@@ -2991,6 +3026,39 @@ Checks result:
 Scope confirmation:
 - No backend, schema, API contract, auth model, send/dispatch flow, SES enablement, listmonk integration, Docker/env/config, or frontend API boundary behavior was changed.
 - No fake delivered, open, click, click-rate, queued, sent-attempted, or provider-event metric claims were added.
+
+## Milestone 17.1 - Client Dashboard Product Polish
+
+Date: 2026-05-16
+Branch: develop
+
+Verified state:
+- The client dashboard route now composes the portal view directly from `GET /client/overview` plus existing per-campaign read models for recent campaigns only, so the page stays tied to backend-backed campaign state, recipient readiness, blocked sends, usage totals, and provider-event availability without inventing trends or delivery claims.
+- The hero was reduced to workspace identity, one concise operational status, and a single primary action to open campaigns.
+- The top summary now uses four compact cards only: campaigns ready, campaigns to complete, campaigns needing attention, and campaign capacity versus configured limit.
+- The main dashboard card now renders a real status distribution bar from backend campaign counts and a recent campaign list enriched with readiness, eligible recipients, blocked recipients, and provider-event availability when exposed.
+- The side rail now focuses on readiness signals from recent campaign read models, configured limits, current-period usage labels, blocked sends, and one recommended next action.
+- Raw usage keys are translated into product labels and blocked-send reasons reuse the shared readable-reason mapping when available.
+
+Checks executed:
+- `git diff --check`
+- `cd frontend && npm run lint`
+- `cd frontend && npm run build`
+- `bash scripts/audit.sh`
+- `bash scripts/smoke_test.sh`
+- `docker compose config`
+- `docker compose -f docker-compose.yml -f docker-compose.dev.yml config`
+- touched dashboard file scan for direct listmonk calls
+- touched dashboard file scan for fake delivered/open/click claims
+
+Checks result:
+- All listed checks passed in this workspace.
+- `docker compose up -d` confirmed the frontend, backend, postgres, listmonk, and mailpit containers were already running.
+- Browser-based positive-path QA for a valid authenticated client route was not completed here because the local Playwright browser dependency is unavailable and no reusable client login session or credentials are present in this workspace.
+
+Scope confirmation:
+- No backend, schema, API contract, auth model, send/dispatch flow, SES enablement, listmonk integration, Docker/env/config, or frontend API boundary behavior was changed.
+- No fake delivered, open, click, click-rate, queued, sent-attempted, or time-series trend claims were added.
 
 ## Milestone 16.9C - Contact Attach, Email Preview UX And Review Diagnostics
 

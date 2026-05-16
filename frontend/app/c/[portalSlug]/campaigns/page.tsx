@@ -121,7 +121,7 @@ export default async function ClientCampaignsPage({
       <section className="client-page-shell">
         <ClientPageHeader
           title="Campagne"
-          description="Stato, readiness, destinatari ed eventi provider disponibili."
+          description=""
           actions={<StatusBadge label="Dati reali" variant="success" />}
         />
 

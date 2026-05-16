@@ -38,9 +38,6 @@ export default async function NewAdminCampaignPage() {
           <div>
             <p className="admin-surface__eyebrow">Admin</p>
             <h1 className="admin-page-title">Nuova campagna</h1>
-            <p className="admin-page-description">
-              Crea una bozza campagna backend-backed. Nessun invio viene avviato.
-            </p>
           </div>
         </header>
 

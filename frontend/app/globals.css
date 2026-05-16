@@ -1963,8 +1963,36 @@ button {
 .campaign-contacts-layout {
   display: grid;
   gap: 16px;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
   margin-top: 18px;
+}
+
+.campaign-contact-manual-action {
+  align-items: center;
+  background: rgba(255, 255, 255, 0.8);
+  border: 1px solid rgba(203, 213, 225, 0.72);
+  border-radius: 18px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  justify-content: space-between;
+  padding: 14px 18px;
+}
+
+.campaign-contact-manual-action__eyebrow {
+  color: var(--sw-text-muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  margin: 0 0 4px;
+  text-transform: uppercase;
+}
+
+.campaign-contact-manual-action__title {
+  color: #0f172a;
+  font-size: 0.94rem;
+  font-weight: 600;
+  line-height: 1.4;
+  margin: 0;
 }
 
 .campaign-contact-section {
@@ -1974,6 +2002,10 @@ button {
   display: grid;
   gap: 14px;
   padding: 18px;
+}
+
+.campaign-contact-section--full {
+  width: 100%;
 }
 
 .campaign-contact-section__header {
@@ -2069,6 +2101,12 @@ button {
   line-height: 1.45;
 }
 
+.campaign-contact-import-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 16px;
+}
+
 .campaign-contact-modal {
   background: linear-gradient(
     180deg,
@@ -2107,6 +2145,21 @@ button {
   position: relative;
 }
 
+.campaign-contact-list-shell {
+  background: rgba(248, 250, 252, 0.72);
+  border: 1px solid rgba(203, 213, 225, 0.68);
+  border-radius: 20px;
+  padding: 10px;
+}
+
+.campaign-contact-list {
+  display: grid;
+  gap: 10px;
+  max-height: 420px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
 .campaign-contact-row__primary {
   align-items: flex-start;
 }
@@ -2122,6 +2175,10 @@ button {
 
 .campaign-contact-row__summary .admin-record-row__copy {
   min-width: 0;
+}
+
+.campaign-contact-row .admin-record-row__copy {
+  gap: 3px;
 }
 
 .campaign-contact-row__remove {
@@ -2347,6 +2404,10 @@ button {
   gap: 12px;
   justify-content: space-between;
   margin-top: 22px;
+}
+
+.campaign-action-row--wizard {
+  margin-top: 18px;
 }
 
 .campaign-action-row__group {
@@ -4521,7 +4582,7 @@ p {
   background: rgba(255, 255, 255, 0.92);
   border: 1px solid var(--sw-border);
   border-radius: 14px;
-  grid-template-columns: auto 1fr;
+  grid-template-columns: auto;
   min-height: 48px;
   padding: 0 14px;
 }
@@ -4541,7 +4602,7 @@ p {
   font: inherit;
   min-width: 0;
   outline: none;
-  padding: 0 0 0 12px;
+  padding: 0;
 }
 
 .invite-modal__actions,
@@ -5014,10 +5075,21 @@ p {
     padding: 16px;
   }
 
+  .campaign-contact-manual-action,
   .campaign-contact-section__header,
   .campaign-template-actions,
   .campaign-field__header {
     flex-direction: column;
+  }
+
+  .campaign-contact-manual-action,
+  .campaign-contact-import-actions {
+    align-items: stretch;
+  }
+
+  .campaign-contact-import-actions > [data-slot="button"],
+  .campaign-contact-manual-action > [data-slot="button"] {
+    width: 100%;
   }
 
   .campaign-template-actions > [data-slot="button"] {

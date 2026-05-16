@@ -1202,6 +1202,22 @@ def test_admin_remove_campaign_contact_endpoint_returns_backend_owned_state() ->
     assert admin_service.contact_repository.get_by_id(contact.id) is not None
 
 
+def test_admin_remove_campaign_contact_preflight_allows_delete() -> None:
+    response = TestClient(app).options(
+        "/admin/campaigns/campaign_123/contacts/contact_123",
+        headers={
+            "Origin": "http://localhost:3000",
+            "Access-Control-Request-Method": "DELETE",
+            "Access-Control-Request-Headers": "authorization,content-type",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.headers["access-control-allow-origin"] == "http://localhost:3000"
+    assert "DELETE" in response.headers["access-control-allow-methods"]
+    assert "authorization" in response.headers["access-control-allow-headers"].lower()
+
+
 def test_client_campaign_routes_remain_read_only() -> None:
     client = TestClient(app, raise_server_exceptions=False)
 

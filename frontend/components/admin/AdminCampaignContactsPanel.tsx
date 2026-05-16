@@ -159,13 +159,13 @@ function getSafeContactsErrorMessage(error: unknown): string {
 
   if (isApiError(error)) {
     if (error.isNetworkError) {
-      return "Il browser non riesce a raggiungere il backend Sendwise.";
+      return "Il browser non riesce a raggiungere il servizio Sendwise.";
     }
 
     const detail = error.detail.trim().toLowerCase();
 
     if (error.status === 401 || error.status === 403) {
-      return "La sessione admin non e valida per modificare i destinatari.";
+      return "La sessione admin non è valida per modificare i destinatari.";
     }
 
     if (error.status === 404) {
@@ -173,7 +173,7 @@ function getSafeContactsErrorMessage(error: unknown): string {
     }
 
     if (error.status === 409) {
-      return "Il backend ha rifiutato l'associazione per lo stato corrente della campagna.";
+      return "Il servizio ha rifiutato l'associazione per lo stato corrente della campagna.";
     }
 
     if (error.status === 400) {
@@ -182,22 +182,22 @@ function getSafeContactsErrorMessage(error: unknown): string {
 
     if (error.status === 422) {
       if (detail === "nome_required") {
-        return "Il nome e obbligatorio per salvare il contatto.";
+        return "Il nome è obbligatorio per salvare il contatto.";
       }
 
       return "Controlla nome ed email prima di aggiungere il destinatario.";
     }
 
     if (error.status !== null && error.status >= 500) {
-      return "Il backend ha restituito un errore. Riprova tra poco.";
+      return "Il servizio ha restituito un errore. Riprova tra poco.";
     }
 
     if (error.status !== null && error.status >= 400) {
-      return "Il backend ha rifiutato il salvataggio del contatto.";
+      return "Il servizio ha rifiutato il salvataggio del contatto.";
     }
   }
 
-  return "Non e stato possibile aggiornare i destinatari. Riprova.";
+  return "Non è stato possibile aggiornare i destinatari. Riprova.";
 }
 
 function getSafeContactRemovalErrorMessage(error: unknown): string {
@@ -207,27 +207,27 @@ function getSafeContactRemovalErrorMessage(error: unknown): string {
 
   if (isApiError(error)) {
     if (error.isNetworkError) {
-      return "Il browser non riesce a raggiungere il backend Sendwise.";
+      return "Il browser non riesce a raggiungere il servizio Sendwise.";
     }
 
     if (error.status === 401 || error.status === 403) {
-      return "La sessione admin non e valida per modificare i destinatari.";
+      return "La sessione admin non è valida per modificare i destinatari.";
     }
 
     if (error.status === 404) {
-      return "Il destinatario non e piu associato a questa campagna.";
+      return "Il destinatario non è più associato a questa campagna.";
     }
 
     if (error.status === 409) {
-      return "Il backend ha rifiutato la rimozione per lo stato corrente della campagna.";
+      return "Il servizio ha rifiutato la rimozione per lo stato corrente della campagna.";
     }
 
     if (error.status !== null && error.status >= 500) {
-      return "Il backend ha restituito un errore. Riprova tra poco.";
+      return "Il servizio ha restituito un errore. Riprova tra poco.";
     }
   }
 
-  return "Non e stato possibile rimuovere il destinatario. Riprova.";
+  return "Non è stato possibile rimuovere il destinatario. Riprova.";
 }
 
 function getContactsNotice(contacts: AdminCampaignContactsSummary | null): string {
@@ -240,10 +240,10 @@ function getContactsNotice(contacts: AdminCampaignContactsSummary | null): strin
   }
 
   if (contacts.eligible === 0) {
-    return "Il backend non ha ancora confermato destinatari idonei.";
+    return "Nessun destinatario risulta idoneo al momento.";
   }
 
-  return "I conteggi vengono letti dal backend dopo l'associazione.";
+  return "I conteggi si aggiornano dopo ogni associazione.";
 }
 
 function getReasonLabel(reason: string): string {
@@ -269,6 +269,39 @@ function getContactDisplayName(contact: AdminCampaignContactsSummary["contacts"]
   const cognome = contact.metadata.cognome?.trim() ?? "";
   const fullName = `${nome} ${cognome}`.trim();
   return fullName || null;
+}
+
+function getContactStatusLabel(status: string): string {
+  switch (status) {
+    case "sendable":
+      return "Attivo";
+    case "pending":
+      return "In verifica";
+    case "suppressed":
+      return "Soppresso";
+    case "unsubscribed":
+      return "Disiscritto";
+    case "blacklisted":
+      return "Blacklisted";
+    case "bounced":
+      return "Bounce";
+    case "error":
+      return "Errore";
+    default:
+      return status;
+  }
+}
+
+function getContactSupportText(contact: AdminCampaignContactsSummary["contacts"][number]): string | null {
+  if (contact.blockedReasons.length > 0) {
+    return contact.blockedReasons.map(getReasonLabel).join(", ");
+  }
+
+  if (contact.isEligible) {
+    return null;
+  }
+
+  return getContactStatusLabel(contact.status);
 }
 
 async function readDroppedFiles(files: FileList | File[]): Promise<string> {
@@ -322,22 +355,16 @@ export function AdminCampaignContactsPanel({
     setRemoveError(null);
   }
 
-  async function submitContacts(
-    payload: AdminCampaignContactInput[],
-    options?: { advanceOnSuccess?: boolean },
-  ) {
+  async function submitContacts(payload: AdminCampaignContactInput[]) {
     const token = await getToken();
     const result = await attachAdminCampaignContacts(campaignId, { contacts: payload }, token);
     const imported = result.createdContacts + result.reusedContacts;
 
     setSuccessMessage(
-      `${result.attachedContacts.toLocaleString("it-IT")} destinatari associati. ${imported.toLocaleString("it-IT")} contatti validi elaborati dal backend.`,
+      `${result.attachedContacts.toLocaleString("it-IT")} destinatari associati. ${imported.toLocaleString("it-IT")} contatti validi elaborati.`,
     );
     setFormError(null);
     router.refresh();
-    if (options?.advanceOnSuccess) {
-      onContinue?.();
-    }
     return result;
   }
 
@@ -397,7 +424,7 @@ export function AdminCampaignContactsPanel({
     setSuccessMessage(null);
 
     try {
-      await submitContacts(importDraft.validContacts, { advanceOnSuccess: true });
+      await submitContacts(importDraft.validContacts);
       setImportDraft(null);
     } catch (error) {
       setFormError(getSafeContactsErrorMessage(error));
@@ -464,6 +491,7 @@ export function AdminCampaignContactsPanel({
       const token = await getToken();
       await removeAdminCampaignContact(campaignId, contactPendingRemoval.contactId, token);
       setSuccessMessage("Destinatario rimosso dalla campagna.");
+      setRemoveError(null);
       setContactPendingRemoval(null);
       router.refresh();
     } catch (error) {
@@ -530,31 +558,27 @@ export function AdminCampaignContactsPanel({
       ) : null}
 
       <div className="campaign-contacts-layout">
-        <section className="campaign-contact-section">
-          <div className="campaign-contact-section__header">
-            <div>
-              <h3 className="campaign-contact-section__title">Aggiunta manuale</h3>
-              <p className="campaign-contact-section__description">
-                Inserisci un singolo destinatario con i campi richiesti.
-              </p>
-            </div>
-            <Button
-              type="button"
-              className="admin-topbar-action campaign-action campaign-action--primary"
-              onClick={() => {
-                setManualForm(EMPTY_MANUAL_CONTACT);
-                setManualFormError(null);
-                setSuccessMessage(null);
-                setIsManualModalOpen(true);
-              }}
-            >
-              <Plus aria-hidden="true" className="admin-topbar-action__icon" />
-              Aggiungi contatto
-            </Button>
+        <div className="campaign-contact-manual-action">
+          <div>
+            <p className="campaign-contact-manual-action__eyebrow">Aggiunta manuale</p>
+            <p className="campaign-contact-manual-action__title">Aggiungi un singolo destinatario.</p>
           </div>
-        </section>
+          <Button
+            type="button"
+            className="admin-topbar-action campaign-action campaign-action--primary"
+            onClick={() => {
+              setManualForm(EMPTY_MANUAL_CONTACT);
+              setManualFormError(null);
+              setSuccessMessage(null);
+              setIsManualModalOpen(true);
+            }}
+          >
+            <Plus aria-hidden="true" className="admin-topbar-action__icon" />
+            Aggiungi contatto
+          </Button>
+        </div>
 
-        <form className="campaign-contact-section" onSubmit={handleImportSubmit}>
+        <form className="campaign-contact-section campaign-contact-section--full" onSubmit={handleImportSubmit}>
           <div className="campaign-contact-section__header">
             <div>
               <h3 className="campaign-contact-section__title">Import CSV</h3>
@@ -607,16 +631,7 @@ export function AdminCampaignContactsPanel({
             </div>
           ) : null}
 
-          <div className="campaign-action-row" style={{ marginTop: 16 }}>
-            <Button
-              type="button"
-              variant="outline"
-              className="admin-topbar-action campaign-action campaign-action--secondary"
-              onClick={onBack}
-              style={{ minWidth: 148 }}
-            >
-              Indietro
-            </Button>
+          <div className="campaign-contact-import-actions">
             <Button
               type="submit"
               className="admin-topbar-action campaign-action campaign-action--primary"
@@ -635,44 +650,67 @@ export function AdminCampaignContactsPanel({
       </div>
 
       {contacts && contacts.contacts.length > 0 ? (
-        <div className="admin-record-list" style={{ marginTop: 18 }}>
-          {contacts.contacts.map((contact) => (
-            <article key={contact.contactId} className="admin-record-row campaign-contact-row">
-              <div className="admin-record-row__primary campaign-contact-row__primary">
-                <div className="campaign-contact-row__summary">
-                  <div className="admin-record-row__copy">
-                    <strong>{getContactDisplayName(contact) ?? contact.email}</strong>
-                    {getContactDisplayName(contact) ? <span>{contact.email}</span> : null}
-                    <span>{contact.status}</span>
-                    {contact.blockedReasons.length > 0 ? (
-                      <span>{contact.blockedReasons.map(getReasonLabel).join(", ")}</span>
-                    ) : (
-                      <span>Idoneita confermata dal backend</span>
-                    )}
+        <div className="campaign-contact-list-shell" style={{ marginTop: 18 }}>
+          <div className="campaign-contact-list" role="list" aria-label="Destinatari associati">
+            {contacts.contacts.map((contact) => {
+              const displayName = getContactDisplayName(contact);
+              const supportText = getContactSupportText(contact);
+
+              return (
+                <article key={contact.contactId} className="admin-record-row campaign-contact-row" role="listitem">
+                  <div className="admin-record-row__primary campaign-contact-row__primary">
+                    <div className="campaign-contact-row__summary">
+                      <div className="admin-record-row__copy">
+                        <strong>{displayName ?? contact.email}</strong>
+                        {displayName ? <span>{contact.email}</span> : null}
+                        {supportText ? <span>{supportText}</span> : null}
+                      </div>
+                      <StatusBadge
+                        label={contact.isEligible ? "Idoneo" : "Bloccato"}
+                        variant={contact.isEligible ? "success" : "warning"}
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      className="campaign-contact-row__remove"
+                      aria-label="Rimuovi destinatario dalla campagna"
+                      onClick={() => {
+                        setContactPendingRemoval(contact);
+                        setRemoveError(null);
+                        setFormError(null);
+                        setSuccessMessage(null);
+                      }}
+                    >
+                      <X aria-hidden="true" size={16} />
+                    </button>
                   </div>
-                  <StatusBadge
-                    label={contact.isEligible ? "Idoneo" : "Bloccato"}
-                    variant={contact.isEligible ? "success" : "warning"}
-                  />
-                </div>
-                <button
-                  type="button"
-                  className="campaign-contact-row__remove"
-                  aria-label="Rimuovi destinatario dalla campagna"
-                  onClick={() => {
-                    setContactPendingRemoval(contact);
-                    setRemoveError(null);
-                    setFormError(null);
-                    setSuccessMessage(null);
-                  }}
-                >
-                  <X aria-hidden="true" size={16} />
-                </button>
-              </div>
-            </article>
-          ))}
+                </article>
+              );
+            })}
+          </div>
         </div>
       ) : null}
+
+      <div className="campaign-action-row campaign-action-row--wizard">
+        <Button
+          type="button"
+          variant="outline"
+          className="admin-topbar-action campaign-action campaign-action--secondary"
+          onClick={onBack}
+          style={{ minWidth: 148 }}
+        >
+          Indietro
+        </Button>
+        <Button
+          type="button"
+          className="admin-topbar-action campaign-action campaign-action--primary"
+          disabled={!contacts?.contactsReady}
+          onClick={onContinue}
+          style={{ minWidth: 190 }}
+        >
+          Continua alla verifica
+        </Button>
+      </div>
 
       {isManualModalOpen ? (
         <div className="modal-backdrop" role="presentation" onClick={closeManualModal}>
@@ -809,7 +847,7 @@ export function AdminCampaignContactsPanel({
             </div>
 
             <p id="campaign-contact-remove-message" className="invite-modal__message">
-              Il contatto restera salvato, ma non sara piu associato a questa campagna.
+              Il contatto resterà salvato, ma non sarà più associato a questa campagna.
             </p>
 
             {removeError ? (

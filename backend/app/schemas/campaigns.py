@@ -25,6 +25,8 @@ class AdminCampaignCreateRequest(BaseModel):
     client_id: str
     name: str
     subject: str
+    period_email_limit: Optional[int] = None
+    daily_email_limit: Optional[int] = None
 
 
 class AdminClientCampaignCreateRequest(BaseModel):
@@ -32,6 +34,8 @@ class AdminClientCampaignCreateRequest(BaseModel):
 
     name: str
     subject: str
+    period_email_limit: Optional[int] = None
+    daily_email_limit: Optional[int] = None
 
 
 class AdminCampaignUpdateRequest(BaseModel):
@@ -41,6 +45,8 @@ class AdminCampaignUpdateRequest(BaseModel):
     subject: Optional[str] = None
     status: Optional[CampaignStatus] = None
     current_step: Optional[str] = None
+    period_email_limit: Optional[int] = None
+    daily_email_limit: Optional[int] = None
 
 
 class AdminCampaignContentRequest(BaseModel):
@@ -75,6 +81,9 @@ class AdminCampaignDetail(BaseModel):
     content_ready: bool
     contacts_ready: bool
     review_ready: bool
+    period_email_limit: int = 1000
+    daily_email_limit: int = 50
+    period_started_at: Optional[datetime] = None
     created_at: datetime
     updated_at: datetime
 
@@ -105,6 +114,14 @@ class AdminCampaignReviewResponse(BaseModel):
     contacts_ready: bool
     review_ready: bool
     current_step: str
+    daily_limit: Optional[int] = None
+    daily_used: int = 0
+    daily_remaining: Optional[int] = None
+    period_limit: Optional[int] = None
+    period_used: int = 0
+    period_remaining: Optional[int] = None
+    period_started_at: Optional[datetime] = None
+    period_ends_at: Optional[datetime] = None
 
 
 class AdminCampaignContactPayload(BaseModel):
@@ -219,6 +236,15 @@ class CampaignLogsSummary(BaseModel):
     provider_events_available: bool = False
 
 
+class CampaignPeriodUsageSummary(BaseModel):
+    period_email_limit: Optional[int] = None
+    period_used: int = 0
+    period_remaining: Optional[int] = None
+    period_started_at: Optional[datetime] = None
+    period_ends_at: Optional[datetime] = None
+    has_real_usage: bool = False
+
+
 class ProviderRuntimeSummary(BaseModel):
     email_sending_enabled: bool
     email_provider: str
@@ -239,6 +265,9 @@ class CampaignReadModel(BaseModel):
     slot: CampaignSlotSummary
     recipients: CampaignRecipientsSummary
     logs: CampaignLogsSummary
+    period_usage: CampaignPeriodUsageSummary = Field(
+        default_factory=CampaignPeriodUsageSummary
+    )
     runtime: ProviderRuntimeSummary
     blocked_sends: CampaignBlockedSendsSummary
 
@@ -250,6 +279,14 @@ class AdminCampaignSummaryResponse(CampaignReadModel):
     sending_enabled: bool
     blocking_errors: list[str]
     warnings: list[str]
+    daily_limit: Optional[int] = None
+    daily_used: int = 0
+    daily_remaining: Optional[int] = None
+    period_limit: Optional[int] = None
+    period_used: int = 0
+    period_remaining: Optional[int] = None
+    period_started_at: Optional[datetime] = None
+    period_ends_at: Optional[datetime] = None
 
 
 class ClientCampaignDetailResponse(CampaignReadModel):

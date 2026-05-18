@@ -12,6 +12,7 @@ from app.integrations.listmonk.client import ListmonkClient, ListmonkError
 from app.repositories.blocked_sends import InMemoryBlockedSendRepository
 from app.main import app
 from app.repositories.campaign_slots import InMemoryCampaignSlotRepository
+from app.repositories.campaign_sending_limits import InMemoryCampaignSendingLimitRepository
 from app.repositories.clients import ClientCampaignRecord, ClientRecord
 from app.repositories.contacts import ContactRecord, InMemoryContactRepository
 from app.repositories.email_logs import InMemoryEmailLogRepository
@@ -94,6 +95,21 @@ class FakeClientRepository:
     def list_admin_campaigns(self) -> list[ClientCampaignRecord]:
         return self._campaigns
 
+    def update_campaign_status(
+        self,
+        *,
+        client_id: str,
+        campaign_id: str,
+        status: str,
+    ) -> ClientCampaignRecord | None:
+        for index, campaign in enumerate(self._campaigns):
+            if campaign.client_id != client_id or campaign.id != campaign_id:
+                continue
+            updated = campaign.model_copy(update={"status": status})
+            self._campaigns[index] = updated
+            return updated
+        return None
+
 
 def build_campaign(
     campaign_id: str = "campaign_123",
@@ -172,6 +188,7 @@ def build_dispatch_service(
     contact_repository: InMemoryContactRepository | None = None,
     suppression_repository: InMemorySuppressionListRepository | None = None,
     campaign_slot_repository: InMemoryCampaignSlotRepository | None = None,
+    campaign_limit_repository: InMemoryCampaignSendingLimitRepository | None = None,
     preparation_service: FakePreparationService | None = None,
     settings: Settings | None = None,
 ) -> CampaignDispatchService:
@@ -197,6 +214,8 @@ def build_dispatch_service(
             selected_clients,
         ),
         campaign_slot_repository=campaign_slot_repository,
+        campaign_limit_repository=campaign_limit_repository
+        or InMemoryCampaignSendingLimitRepository(),
         contact_repository=selected_contact_repository,
         suppression_list_repository=suppression_repository
         or InMemorySuppressionListRepository(),
@@ -693,7 +712,7 @@ def test_draft_campaign_blocks_campaign_send_without_listmonk() -> None:
     assert fake_listmonk.sent_campaign_ids == []
 
 
-def test_email_limit_per_campaign_blocks_oversized_batch() -> None:
+def test_ready_campaign_with_no_usage_is_not_blocked_by_campaign_limits() -> None:
     fake_listmonk = FakeListmonkClient()
     contact_repository = InMemoryContactRepository(
         contacts=[
@@ -707,19 +726,21 @@ def test_email_limit_per_campaign_blocks_oversized_batch() -> None:
     )
     service = build_dispatch_service(
         fake_listmonk=fake_listmonk,
-        clients=[build_client(email_limit_per_campaign=1)],
         contact_repository=contact_repository,
+        preparation_service=FakePreparationService(content_ready=True),
     )
 
     result = service.send_campaign("campaign_123")
 
-    assert result["status"] == "blocked"
-    assert result["code"] == "email_limit_per_campaign_exceeded"
+    assert result["status"] == "queued"
+    assert result["code"] == "dispatch_authorized"
     assert result["eligible_contact_count"] == 2
-    assert fake_listmonk.sent_campaign_ids == []
+    assert result["daily_used"] == 2
+    assert result["period_used"] == 2
+    assert fake_listmonk.sent_campaign_ids == ["lm_existing"]
 
 
-def test_campaign_slot_limit_overrides_legacy_client_limit() -> None:
+def test_campaign_slot_limit_blocks_oversized_batch() -> None:
     fake_listmonk = FakeListmonkClient()
     contact_repository = InMemoryContactRepository(
         contacts=[
@@ -742,7 +763,7 @@ def test_campaign_slot_limit_overrides_legacy_client_limit() -> None:
     )
     service = build_dispatch_service(
         fake_listmonk=fake_listmonk,
-        clients=[build_client(email_limit_per_campaign=1)],
+        clients=[build_client()],
         campaigns=[build_campaign(campaign_slot_id=slot.id)],
         contact_repository=contact_repository,
         campaign_slot_repository=slot_repository,
@@ -758,30 +779,125 @@ def test_campaign_slot_limit_overrides_legacy_client_limit() -> None:
     assert result["guard"]["limit_value"] == 5
 
 
-def test_campaign_without_slot_uses_legacy_client_limit() -> None:
+def test_campaign_daily_limit_blocks_dispatch_when_reached() -> None:
     fake_listmonk = FakeListmonkClient()
+    email_log_repository = InMemoryEmailLogRepository()
+    email_log_repository.create_email_log(
+        client_id="client_123",
+        campaign_id="campaign_123",
+        contact_id="contact_existing",
+        status="queued",
+    )
     contact_repository = InMemoryContactRepository(
-        contacts=[
-            build_contact(contact_id="contact_1", email="one@example.test"),
-            build_contact(contact_id="contact_2", email="two@example.test"),
-        ],
-        campaign_contacts={
-            ("client_123", "campaign_123", "contact_1"),
-            ("client_123", "campaign_123", "contact_2"),
-        },
+        contacts=[build_contact(contact_id="contact_1", email="one@example.test")],
+        campaign_contacts={("client_123", "campaign_123", "contact_1")},
+    )
+    limit_repository = InMemoryCampaignSendingLimitRepository()
+    limit_repository.ensure_for_campaign(
+        campaign_id="campaign_123",
+        period_email_limit=1000,
+        daily_email_limit=1,
     )
     service = build_dispatch_service(
         fake_listmonk=fake_listmonk,
-        clients=[build_client(email_limit_per_campaign=5)],
+        email_log_repository=email_log_repository,
+        campaign_limit_repository=limit_repository,
         contact_repository=contact_repository,
         preparation_service=FakePreparationService(content_ready=True),
     )
 
     result = service.send_campaign("campaign_123")
 
-    assert result["status"] == "queued"
-    assert result["limit_source"] == "legacy_client_limit"
-    assert result["limit_value"] == 5
+    assert result["status"] == "blocked"
+    assert result["code"] == "campaign_daily_limit_reached"
+    assert result["daily_limit"] == 1
+    assert result["daily_used"] == 1
+    assert result["daily_remaining"] == 0
+    assert fake_listmonk.sent_campaign_ids == []
+
+
+def test_campaign_period_limit_blocks_dispatch_when_reached() -> None:
+    fake_listmonk = FakeListmonkClient()
+    email_log_repository = InMemoryEmailLogRepository()
+    email_log_repository.create_email_log(
+        client_id="client_123",
+        campaign_id="campaign_123",
+        contact_id="contact_existing",
+        status="queued",
+    )
+    contact_repository = InMemoryContactRepository(
+        contacts=[build_contact(contact_id="contact_1", email="one@example.test")],
+        campaign_contacts={("client_123", "campaign_123", "contact_1")},
+    )
+    limit_repository = InMemoryCampaignSendingLimitRepository()
+    limit_repository.ensure_for_campaign(
+        campaign_id="campaign_123",
+        period_email_limit=1,
+        daily_email_limit=50,
+    )
+    limit_repository.update_for_campaign(
+        campaign_id="campaign_123",
+        period_started_at=datetime.now(timezone.utc),
+    )
+    service = build_dispatch_service(
+        fake_listmonk=fake_listmonk,
+        email_log_repository=email_log_repository,
+        campaign_limit_repository=limit_repository,
+        contact_repository=contact_repository,
+        campaigns=[build_campaign(status="running")],
+        preparation_service=FakePreparationService(content_ready=True),
+    )
+
+    result = service.send_campaign("campaign_123")
+
+    assert result["status"] == "blocked"
+    assert result["code"] == "campaign_period_limit_reached"
+    assert result["period_limit"] == 1
+    assert result["period_used"] == 1
+    assert result["period_remaining"] == 0
+    assert fake_listmonk.sent_campaign_ids == []
+
+
+def test_campaign_limit_counts_existing_real_logs_regardless_of_current_status() -> None:
+    fake_listmonk = FakeListmonkClient()
+    email_log_repository = InMemoryEmailLogRepository()
+    email_log_repository.create_email_log(
+        client_id="client_123",
+        campaign_id="campaign_123",
+        contact_id="contact_existing_1",
+        status="queued",
+    )
+    email_log_repository.create_email_log(
+        client_id="client_123",
+        campaign_id="campaign_123",
+        contact_id="contact_existing_2",
+        status="bounced",
+    )
+    contact_repository = InMemoryContactRepository(
+        contacts=[build_contact(contact_id="contact_1", email="one@example.test")],
+        campaign_contacts={("client_123", "campaign_123", "contact_1")},
+    )
+    limit_repository = InMemoryCampaignSendingLimitRepository()
+    limit_repository.ensure_for_campaign(
+        campaign_id="campaign_123",
+        period_email_limit=1000,
+        daily_email_limit=2,
+    )
+    service = build_dispatch_service(
+        fake_listmonk=fake_listmonk,
+        email_log_repository=email_log_repository,
+        campaign_limit_repository=limit_repository,
+        contact_repository=contact_repository,
+        campaigns=[build_campaign(status="running")],
+        preparation_service=FakePreparationService(content_ready=True),
+    )
+
+    result = service.send_campaign("campaign_123")
+
+    assert result["status"] == "blocked"
+    assert result["code"] == "campaign_daily_limit_reached"
+    assert result["daily_used"] == 2
+    assert fake_listmonk.sent_campaign_ids == []
 
 
 def test_campaign_slot_limit_block_persists_blocked_send() -> None:
@@ -1052,6 +1168,31 @@ def test_enabled_campaign_send_creates_mapping_after_guard_authorizes() -> None:
     assert logs[0].status == "queued"
     assert logs[0].provider_message_id is None
     assert logs[0].body == "<html><body><p>Body</p></body></html>"
+
+
+def test_successful_dispatch_marks_campaign_running_and_starts_period() -> None:
+    fake_listmonk = FakeListmonkClient()
+    email_log_repository = InMemoryEmailLogRepository()
+    limit_repository = InMemoryCampaignSendingLimitRepository()
+    service = build_dispatch_service(
+        fake_listmonk=fake_listmonk,
+        email_log_repository=email_log_repository,
+        campaign_limit_repository=limit_repository,
+        preparation_service=FakePreparationService(content_ready=True),
+    )
+
+    result = service.send_campaign("campaign_123")
+    client_repository = service.client_repository
+
+    assert result["status"] == "queued"
+    assert result["period_started_at"] is not None
+    assert result["period_ends_at"] is not None
+    assert limit_repository.get_by_campaign_id(campaign_id="campaign_123") is not None
+    assert limit_repository.get_by_campaign_id(
+        campaign_id="campaign_123"
+    ).period_started_at is not None
+    assert client_repository is not None
+    assert client_repository.list_admin_campaigns()[0].status == "running"
 
 
 def test_enabled_campaign_send_reuses_existing_mapping() -> None:

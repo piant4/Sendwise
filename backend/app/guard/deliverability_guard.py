@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from datetime import datetime
 from enum import StrEnum
 from typing import Mapping, Sequence
 
@@ -11,6 +12,24 @@ class SendDecision(StrEnum):
     AUTHORIZED = "authorized"
     BLOCKED = "blocked"
     DRY_RUN = "dry_run"
+
+
+@dataclass(frozen=True)
+class CampaignLimitUsage:
+    daily_limit: int
+    daily_used: int
+    period_limit: int
+    period_used: int
+    period_started_at: datetime | None
+    period_ends_at: datetime | None
+
+    @property
+    def daily_remaining(self) -> int:
+        return max(self.daily_limit - self.daily_used, 0)
+
+    @property
+    def period_remaining(self) -> int:
+        return max(self.period_limit - self.period_used, 0)
 
 
 @dataclass(frozen=True)
@@ -27,6 +46,14 @@ class GuardResult:
     diagnostic: str = "Dispatch authorized by Deliverability Guard."
     limit_source: str | None = None
     limit_value: int | None = None
+    daily_limit: int | None = None
+    daily_used: int = 0
+    daily_remaining: int | None = None
+    period_limit: int | None = None
+    period_used: int = 0
+    period_remaining: int | None = None
+    period_started_at: datetime | None = None
+    period_ends_at: datetime | None = None
 
     @property
     def allowed(self) -> bool:
@@ -47,6 +74,14 @@ class GuardResult:
             "diagnostic": self.diagnostic,
             "limit_source": self.limit_source,
             "limit_value": self.limit_value,
+            "daily_limit": self.daily_limit,
+            "daily_used": self.daily_used,
+            "daily_remaining": self.daily_remaining,
+            "period_limit": self.period_limit,
+            "period_used": self.period_used,
+            "period_remaining": self.period_remaining,
+            "period_started_at": self.period_started_at,
+            "period_ends_at": self.period_ends_at,
         }
 
 
@@ -91,6 +126,7 @@ class DeliverabilityGuard:
         contacts: Sequence[ContactRecord],
         suppressed_emails: set[str],
         active_campaign_count: int | None,
+        campaign_limit_usage: CampaignLimitUsage | None = None,
     ) -> GuardResult:
         switch_result = self.authorize_campaign_send(email_sending_enabled)
         client_id = client.id if client is not None else campaign.client_id if campaign else None
@@ -202,16 +238,8 @@ class DeliverabilityGuard:
 
         if limit_value is not None and eligible_count > limit_value:
             return self._blocked(
-                code=(
-                    "campaign_slot_limit_exceeded"
-                    if limit_source == "campaign_slot"
-                    else "email_limit_per_campaign_exceeded"
-                ),
-                reason=(
-                    "Campaign eligible contact count exceeds campaign slot max_emails."
-                    if limit_source == "campaign_slot"
-                    else "Campaign eligible contact count exceeds email_limit_per_campaign."
-                ),
+                code="campaign_slot_limit_exceeded",
+                reason="Campaign eligible contact count exceeds campaign slot max_emails.",
                 severity="error",
                 client_id=client.id,
                 campaign_id=campaign.id,
@@ -253,6 +281,42 @@ class DeliverabilityGuard:
                 limit_value=limit_value,
             )
 
+        if campaign_limit_usage is not None:
+            if (
+                campaign_limit_usage.daily_used >= campaign_limit_usage.daily_limit
+                or campaign_limit_usage.daily_used + eligible_count
+                > campaign_limit_usage.daily_limit
+            ):
+                return self._blocked(
+                    code="campaign_daily_limit_reached",
+                    reason="Campaign daily email limit reached for the current pacing window.",
+                    severity="error",
+                    client_id=client.id,
+                    campaign_id=campaign.id,
+                    eligible_contact_count=eligible_count,
+                    blocked_contact_count=blocked_count,
+                    blocked_reasons=blocked_reasons,
+                    diagnostic="Guard blocked before dispatch because the campaign daily pacing limit would be exceeded.",
+                    campaign_limit_usage=campaign_limit_usage,
+                )
+            if (
+                campaign_limit_usage.period_used >= campaign_limit_usage.period_limit
+                or campaign_limit_usage.period_used + eligible_count
+                > campaign_limit_usage.period_limit
+            ):
+                return self._blocked(
+                    code="campaign_period_limit_reached",
+                    reason="Campaign 30-day period email limit reached.",
+                    severity="error",
+                    client_id=client.id,
+                    campaign_id=campaign.id,
+                    eligible_contact_count=eligible_count,
+                    blocked_contact_count=blocked_count,
+                    blocked_reasons=blocked_reasons,
+                    diagnostic="Guard blocked before dispatch because the campaign 30-day sending limit would be exceeded.",
+                    campaign_limit_usage=campaign_limit_usage,
+                )
+
         return GuardResult(
             decision=SendDecision.AUTHORIZED,
             reason="Campaign dispatch authorized by Deliverability Guard.",
@@ -266,6 +330,22 @@ class DeliverabilityGuard:
             diagnostic="Client, campaign, contact, suppression, and limit checks passed.",
             limit_source=limit_source,
             limit_value=limit_value,
+            daily_limit=campaign_limit_usage.daily_limit if campaign_limit_usage else None,
+            daily_used=campaign_limit_usage.daily_used if campaign_limit_usage else 0,
+            daily_remaining=(
+                campaign_limit_usage.daily_remaining if campaign_limit_usage else None
+            ),
+            period_limit=campaign_limit_usage.period_limit if campaign_limit_usage else None,
+            period_used=campaign_limit_usage.period_used if campaign_limit_usage else 0,
+            period_remaining=(
+                campaign_limit_usage.period_remaining if campaign_limit_usage else None
+            ),
+            period_started_at=(
+                campaign_limit_usage.period_started_at if campaign_limit_usage else None
+            ),
+            period_ends_at=(
+                campaign_limit_usage.period_ends_at if campaign_limit_usage else None
+            ),
         )
 
     def can_send_to_contact(self, *_args: object, **_kwargs: object) -> GuardResult:
@@ -347,6 +427,7 @@ class DeliverabilityGuard:
         diagnostic: str,
         limit_source: str | None = None,
         limit_value: int | None = None,
+        campaign_limit_usage: CampaignLimitUsage | None = None,
     ) -> GuardResult:
         return GuardResult(
             decision=SendDecision.BLOCKED,
@@ -361,6 +442,22 @@ class DeliverabilityGuard:
             diagnostic=diagnostic,
             limit_source=limit_source,
             limit_value=limit_value,
+            daily_limit=campaign_limit_usage.daily_limit if campaign_limit_usage else None,
+            daily_used=campaign_limit_usage.daily_used if campaign_limit_usage else 0,
+            daily_remaining=(
+                campaign_limit_usage.daily_remaining if campaign_limit_usage else None
+            ),
+            period_limit=campaign_limit_usage.period_limit if campaign_limit_usage else None,
+            period_used=campaign_limit_usage.period_used if campaign_limit_usage else 0,
+            period_remaining=(
+                campaign_limit_usage.period_remaining if campaign_limit_usage else None
+            ),
+            period_started_at=(
+                campaign_limit_usage.period_started_at if campaign_limit_usage else None
+            ),
+            period_ends_at=(
+                campaign_limit_usage.period_ends_at if campaign_limit_usage else None
+            ),
         )
 
     def _resolve_limit(
@@ -369,7 +466,7 @@ class DeliverabilityGuard:
         client: ClientRecord,
         campaign: ClientCampaignRecord,
         slot: CampaignSlotRecord | None,
-    ) -> tuple[str, int | None, GuardResult | None]:
+    ) -> tuple[str | None, int | None, GuardResult | None]:
         if campaign.campaign_slot_id:
             if slot is None:
                 return (
@@ -417,4 +514,4 @@ class DeliverabilityGuard:
                 )
             return "campaign_slot", slot.max_emails, None
 
-        return "legacy_client_limit", client.email_limit_per_campaign, None
+        return None, None, None

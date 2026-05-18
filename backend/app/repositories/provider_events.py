@@ -77,6 +77,16 @@ class ProviderEventRepository:
     ) -> list[ProviderEventRecord]:
         raise NotImplementedError
 
+    def count_client_events(
+        self,
+        *,
+        client_id: str,
+        event_types: tuple[str, ...],
+        started_at: datetime | None = None,
+        ended_at: datetime | None = None,
+    ) -> int:
+        raise NotImplementedError
+
 
 class PostgresProviderEventRepository(ProviderEventRepository):
     def __init__(self, settings: Settings) -> None:
@@ -343,6 +353,47 @@ class PostgresProviderEventRepository(ProviderEventRepository):
 
         return [ProviderEventRecord.model_validate(row) for row in rows]
 
+    def count_client_events(
+        self,
+        *,
+        client_id: str,
+        event_types: tuple[str, ...],
+        started_at: datetime | None = None,
+        ended_at: datetime | None = None,
+    ) -> int:
+        query = """
+            SELECT
+                COUNT(
+                    DISTINCT COALESCE(
+                        contact_id::text,
+                        email_log_id::text,
+                        event_key
+                    )
+                )::int AS total
+            FROM provider_events
+            WHERE client_id::text = %s
+                AND processed_at IS NOT NULL
+                AND event_type = ANY(%s)
+        """
+        parameters: list[object] = [client_id, list(event_types)]
+
+        if started_at is not None:
+            query = f"{query}\n                AND occurred_at >= %s"
+            parameters.append(started_at)
+
+        if ended_at is not None:
+            query = f"{query}\n                AND occurred_at < %s"
+            parameters.append(ended_at)
+
+        with postgres_connection(self._settings) as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(query, tuple(parameters))
+                row = cursor.fetchone()
+
+        if row is None:
+            return 0
+        return int(row["total"])
+
 
 class InMemoryProviderEventRepository(ProviderEventRepository):
     def __init__(self) -> None:
@@ -447,6 +498,27 @@ class InMemoryProviderEventRepository(ProviderEventRepository):
             ],
             key=lambda record: (record.occurred_at, record.created_at),
         )
+
+    def count_client_events(
+        self,
+        *,
+        client_id: str,
+        event_types: tuple[str, ...],
+        started_at: datetime | None = None,
+        ended_at: datetime | None = None,
+    ) -> int:
+        keys: set[str] = set()
+        for record in self._records.values():
+            if record.client_id != client_id or record.processed_at is None:
+                continue
+            if record.event_type not in event_types:
+                continue
+            if started_at is not None and record.occurred_at < started_at:
+                continue
+            if ended_at is not None and record.occurred_at >= ended_at:
+                continue
+            keys.add(record.contact_id or record.email_log_id or record.event_key)
+        return len(keys)
 
 
 def _json_payload(payload: dict[str, Any]) -> str:

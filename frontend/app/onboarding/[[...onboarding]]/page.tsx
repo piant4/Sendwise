@@ -12,7 +12,7 @@ function buildOnboardingErrorContent(error: unknown) {
       return {
         title: "Accesso cliente non disponibile",
         message:
-          "L'account autenticato non risulta associato a un invito cliente valido oppure l'accesso non e piu disponibile.",
+          "L'account autenticato non risulta associato a un invito cliente valido oppure l'accesso non è più disponibile.",
         detail: error.detail,
       };
     }
@@ -20,7 +20,7 @@ function buildOnboardingErrorContent(error: unknown) {
     return {
       title: "Onboarding non disponibile",
       message:
-        "Non e stato possibile verificare lo stato dell'onboarding in questo momento.",
+        "Non è stato possibile verificare lo stato dell'onboarding in questo momento.",
       detail: error.detail,
     };
   }
@@ -28,7 +28,7 @@ function buildOnboardingErrorContent(error: unknown) {
   return {
     title: "Onboarding non disponibile",
     message:
-      "Non e stato possibile verificare lo stato dell'onboarding in questo momento.",
+      "Non è stato possibile verificare lo stato dell'onboarding in questo momento.",
     detail: error instanceof Error ? error.message : null,
   };
 }
@@ -70,8 +70,8 @@ export default async function OnboardingPage() {
     return (
       <AccessStateCard
         eyebrow="Accesso"
-        title="Accesso cliente non disponibile"
-        message="Questo account autenticato non dispone di un accesso cliente Sendwise da completare."
+        title="Accesso non disponibile"
+        message="Questo account autenticato non dispone di un accesso Sendwise da completare."
         retryHref="/onboarding"
       />
     );

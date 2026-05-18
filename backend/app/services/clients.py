@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import Depends, HTTPException, status
@@ -52,6 +52,17 @@ from app.schemas.clients import (
     AdminSystemStatus,
     AdminTopClientByVolume,
     Client,
+    ClientDashboardActionItem,
+    ClientDashboardActionsRequired,
+    ClientDashboardCta,
+    ClientDashboardKpis,
+    ClientDashboardKpiValue,
+    ClientDashboardPerformanceAnalytics,
+    ClientDashboardPeriodUsage,
+    ClientDashboardStatusSummary,
+    ClientDashboardSummary,
+    ClientDashboardWindowKey,
+    ClientDashboardWindowMetrics,
     ClientCampaignStatusCounts,
     ClientAccessSummary,
     ClientContext,
@@ -93,6 +104,14 @@ RECENT_ADMIN_CAMPAIGNS_LIMIT = 5
 RECENT_ADMIN_BLOCKED_SENDS_LIMIT = 5
 TOP_CLIENTS_LIMIT = 5
 CLIENTS_NEAR_LIMIT_LIMIT = 5
+CLIENT_DASHBOARD_DEFAULT_WINDOW: ClientDashboardWindowKey = "7d"
+CLIENT_DASHBOARD_WINDOW_DELTAS: tuple[tuple[ClientDashboardWindowKey, timedelta | None], ...] = (
+    ("24h", timedelta(hours=24)),
+    ("7d", timedelta(days=7)),
+    ("14d", timedelta(days=14)),
+    ("30d", timedelta(days=30)),
+    ("allTime", None),
+)
 
 
 def _prefer_provider_metric(
@@ -117,6 +136,16 @@ def _build_client_name(client: ClientRecord) -> str:
         return client.personal_name
 
     return client.email
+
+
+def _build_greeting_name(client: ClientRecord) -> str:
+    display_name = _build_client_name(client).strip()
+    if not display_name:
+        return "cliente"
+
+    local_part = display_name.split("@", 1)[0].strip() if "@" in display_name else display_name
+    first_token = next((token for token in local_part.split() if token), "")
+    return first_token or "cliente"
 
 
 def normalize_profile_value(
@@ -413,7 +442,6 @@ class ClientsService:
         blocked_sends = self._repository.list_client_blocked_sends(client_id)
 
         status_counts = ClientCampaignStatusCounts()
-        active_campaigns = 0
         running_campaigns = 0
 
         for campaign in campaigns:
@@ -424,9 +452,6 @@ class ClientsService:
                     getattr(status_counts, campaign.status) + 1,
                 )
 
-            if campaign.status in ACTIVE_CAMPAIGN_STATUSES:
-                active_campaigns += 1
-
             if campaign.status in RUNNING_CAMPAIGN_STATUSES:
                 running_campaigns += 1
 
@@ -436,6 +461,14 @@ class ClientsService:
                 continue
 
             usage_totals[entry.usage_type] = usage_totals.get(entry.usage_type, 0) + entry.quantity
+
+        client_dashboard = self._build_client_dashboard_summary(
+            client=client,
+            portal_slug=access.portal_slug,
+            campaigns=campaigns,
+            status_counts=status_counts,
+            now=current_time,
+        )
 
         return ClientOverviewSummary(
             client=ClientOverviewIdentity(
@@ -449,7 +482,7 @@ class ClientsService:
             ),
             campaigns=ClientOverviewCampaigns(
                 total_campaigns=len(campaigns),
-                active_campaigns=active_campaigns,
+                active_campaigns=running_campaigns,
                 running_campaigns=running_campaigns,
                 status_counts=status_counts,
                 recent_campaigns=[
@@ -489,7 +522,171 @@ class ClientsService:
                 email_limit_per_campaign=client.email_limit_per_campaign,
                 max_campaigns=client.max_campaigns,
             ),
+            client_dashboard=client_dashboard,
         )
+
+    def _build_client_dashboard_summary(
+        self,
+        *,
+        client: ClientRecord,
+        portal_slug: str,
+        campaigns: list[ClientCampaignRecord],
+        status_counts: ClientCampaignStatusCounts,
+        now: datetime,
+    ) -> ClientDashboardSummary:
+        performance_windows = self._build_client_dashboard_windows(
+            client_id=client.id,
+            now=now,
+        )
+        default_window = performance_windows[CLIENT_DASHBOARD_DEFAULT_WINDOW]
+        campaigns_to_complete = status_counts.draft + status_counts.paused
+        blocked_campaigns = status_counts.blocked + status_counts.failed
+        blocked_sends_to_review = (
+            default_window.blocked if default_window.blocked_available else 0
+        ) or 0
+        action_items: list[ClientDashboardActionItem] = []
+
+        if campaigns_to_complete > 0:
+            action_items.append(
+                ClientDashboardActionItem(
+                    label="Campagne da completare",
+                    count=campaigns_to_complete,
+                    severity="warning",
+                )
+            )
+
+        if blocked_sends_to_review > 0:
+            action_items.append(
+                ClientDashboardActionItem(
+                    label="Blocchi da verificare",
+                    count=blocked_sends_to_review,
+                    severity="danger",
+                )
+            )
+
+        has_period_usage = (
+            (default_window.sent_available and (default_window.sent or 0) > 0)
+            or (default_window.queued_available and (default_window.queued or 0) > 0)
+            or (default_window.blocked_available and (default_window.blocked or 0) > 0)
+            or (default_window.opened_available and (default_window.opened or 0) > 0)
+        )
+
+        return ClientDashboardSummary(
+            greeting_name=_build_greeting_name(client),
+            cta=ClientDashboardCta(campaigns_href=f"/c/{portal_slug}/campaigns"),
+            kpis=ClientDashboardKpis(
+                active_campaigns=ClientDashboardKpiValue(
+                    value=status_counts.running,
+                    limit=client.max_campaigns,
+                    available=True,
+                ),
+                sent_last_7d=ClientDashboardKpiValue(
+                    value=performance_windows["7d"].sent,
+                    available=performance_windows["7d"].sent_available,
+                ),
+                opened_last_7d=ClientDashboardKpiValue(
+                    value=performance_windows["7d"].opened,
+                    available=performance_windows["7d"].opened_available,
+                ),
+                ready_campaigns=ClientDashboardKpiValue(
+                    value=status_counts.ready,
+                    available=True,
+                ),
+            ),
+            performance_analytics=ClientDashboardPerformanceAnalytics(
+                default_window=CLIENT_DASHBOARD_DEFAULT_WINDOW,
+                windows=performance_windows,
+            ),
+            actions_required=ClientDashboardActionsRequired(
+                campaigns_to_complete=campaigns_to_complete,
+                blocked_sends_to_review=blocked_sends_to_review,
+                provider_events_issues=None,
+                items=action_items,
+            ),
+            status_summary=ClientDashboardStatusSummary(
+                total_campaigns=len(campaigns),
+                running=status_counts.running,
+                ready=status_counts.ready,
+                to_complete=campaigns_to_complete,
+                blocked=blocked_campaigns,
+                completed=status_counts.completed,
+            ),
+            period_usage=ClientDashboardPeriodUsage(
+                has_real_usage=has_period_usage,
+                sent=default_window.sent if default_window.sent_available else None,
+                queued=default_window.queued if default_window.queued_available else None,
+                blocked=default_window.blocked if default_window.blocked_available else None,
+                opened=default_window.opened if default_window.opened_available else None,
+            ),
+        )
+
+    def _build_client_dashboard_windows(
+        self,
+        *,
+        client_id: str,
+        now: datetime,
+    ) -> dict[ClientDashboardWindowKey, ClientDashboardWindowMetrics]:
+        windows: dict[ClientDashboardWindowKey, ClientDashboardWindowMetrics] = {}
+
+        email_log_repository = self._email_log_repository
+        blocked_send_repository = self._blocked_send_repository
+        provider_event_repository = self._provider_event_repository
+
+        for window_key, delta in CLIENT_DASHBOARD_WINDOW_DELTAS:
+            started_at = now - delta if delta is not None else None
+            sent_available = email_log_repository is not None
+            queued_available = email_log_repository is not None
+            blocked_available = blocked_send_repository is not None
+            opened_available = provider_event_repository is not None
+
+            windows[window_key] = ClientDashboardWindowMetrics(
+                sent=(
+                    email_log_repository.count_client_real_logs(
+                        client_id=client_id,
+                        started_at=started_at,
+                        ended_at=now,
+                    )
+                    if email_log_repository is not None
+                    else None
+                ),
+                queued=(
+                    email_log_repository.count_client_real_logs(
+                        client_id=client_id,
+                        started_at=started_at,
+                        ended_at=now,
+                        statuses=("queued",),
+                    )
+                    if email_log_repository is not None
+                    else None
+                ),
+                blocked=(
+                    blocked_send_repository.count_by_client(
+                        client_id=client_id,
+                        started_at=started_at,
+                        ended_at=now,
+                    )
+                    if blocked_send_repository is not None
+                    else None
+                ),
+                opened=(
+                    provider_event_repository.count_client_events(
+                        client_id=client_id,
+                        event_types=("ses_open",),
+                        started_at=started_at,
+                        ended_at=now,
+                    )
+                    if provider_event_repository is not None
+                    else None
+                ),
+                sent_available=sent_available,
+                queued_available=queued_available,
+                blocked_available=blocked_available,
+                opened_available=opened_available,
+                window_started_at=started_at,
+                window_ended_at=now,
+            )
+
+        return windows
 
     def list_client_campaigns(
         self,

@@ -70,7 +70,7 @@ Admin request notes:
 | Endpoint | Purpose | Allowed caller | Required access | High-level input | High-level output | Main errors | Status |
 |---|---|---|---|---|---|---|---|
 | `GET /client/me` | Read current client context. | Client portal. | Active client account. | Auth context. | Client profile and access summary. | `401`, `403`. | `implemented` |
-| `GET /client/overview` | Read client overview summary. | Client portal. | Active client account. | Auth context. | Client dashboard summary. | `401`, `403`. | `implemented` |
+| `GET /client/overview` | Read client overview summary. | Client portal. | Active client account. | Auth context. | Client dashboard summary plus backend-owned `client_dashboard` analytics windows and KPI state. | `401`, `403`. | `implemented` |
 | `GET /client/campaigns` | List campaigns owned by the authenticated client. | Client portal. | Active client account. | Filters, pagination. | Client-scoped campaign summaries. | `401`, `403`. | `implemented` |
 | `GET /client/campaigns/{campaign_id}` | Read own campaign detail. | Client portal. | Active client account. | `campaign_id`. | Client-scoped campaign read model with readiness, recipient counts, log counts, and blocked sends. | `401`, `403`, `404`. | `implemented` |
 | `GET /client/campaigns/{campaign_id}/stats` | Read own campaign stats. | Client portal. | Active client account. | `campaign_id`. | DB-backed campaign metrics only; unsupported provider metrics stay `0` with unavailable source metadata. | `401`, `403`, `404`. | `implemented` |
@@ -82,6 +82,12 @@ Current contract note:
 - today the client can read campaigns and dashboard data
 - today the client cannot create or edit campaigns through dedicated client endpoints
 - client scoping comes from auth + backend mapping, not from frontend input
+- business metrics shown on the client dashboard are backend-owned through `client_dashboard`; the frontend may format and switch windows but must not derive send/open/block metrics from unrelated fields
+- `client_dashboard.kpis.active_campaigns.value` uses `running` campaigns only; `ready` campaigns never consume active capacity
+- `client_dashboard.performance_analytics.windows` exposes `24h`, `7d`, `14d`, `30d`, and `allTime` with backend counts for `sent`, `queued`, `blocked`, and `opened`
+- `client_dashboard.period_usage` mirrors the backend default dashboard window and is intended for compact send-activity UI only
+- unavailable metric sources must remain `null` with `available=false`; real zero-row windows must remain `0` with `available=true`
+- `opened` metrics are provider-event-backed only, `blocked` metrics are `blocked_sends` rows only, and client daily pacing limits stay hidden from client responses
 
 ## Campaign Runtime Endpoints Current
 
@@ -128,7 +134,9 @@ Admin-managed contract notes:
 - only admin selects `client_id`
 - backend validates selected `client_id` and client status on every write action
 - admin may assign `campaign_slot_id`, save content, associate/import contacts, request review, simulate, and send
+- `POST /admin/campaigns` and `PATCH /admin/campaigns/{campaign_id}` accept campaign-scoped `period_email_limit` and `daily_email_limit`
 - `GET /admin/campaigns/{campaign_id}/summary` returns backend-owned `can_send`, `can_send_when_enabled`, and `sending_enabled` so the admin UI can distinguish review readiness from runtime send gating
+- admin summary, review, and send responses expose campaign usage metadata: `daily_limit`, `daily_used`, `daily_remaining`, `period_limit`, `period_used`, `period_remaining`, `period_started_at`, and `period_ends_at`
 - admin review remains non-dispatching, but it may promote a draft campaign to `ready` only after content, recipients, and Deliverability Guard checks all pass
 - `POST /admin/campaigns/{campaign_id}/contacts` accepts `{ "contacts": [{ "email": string, "metadata": { "nome": string, "cognome"?: string } }] }`
 - `DELETE /admin/campaigns/{campaign_id}/contacts/{contact_id}` removes only the `campaign_contacts` association, keeps the underlying `contacts` row and suppression data untouched, and returns backend-owned `contacts_ready`
@@ -136,6 +144,7 @@ Admin-managed contract notes:
 - `EMAIL_SENDING_ENABLED` remains the real-dispatch kill switch
 - `EMAIL_PROVIDER=ses` adds a backend safety gate requiring explicit dev/staging runtime, complete SES SMTP env, public unsubscribe URL, review readiness, allowed recipients, and recipient max before listmonk dispatch
 - controlled send responses include provider and safety diagnostics such as `safety_checked`, `safety_passed`, `allowed_recipients_checked`, `eligible_contact_count`, `max_real_send_recipients`, `listmonk_dispatched`, `real_send_attempted`, `email_logs_created`, `unsubscribe_ready`, and `provider_events_ready`
+- Deliverability Guard blocks campaign dispatch with `campaign_daily_limit_reached` and `campaign_period_limit_reached` when campaign usage would exceed the configured table-backed limits
 - listmonk remains a technical engine only
 
 ## Client Read-Only Campaign API Contract
@@ -156,7 +165,8 @@ Client read-only notes:
 - V1 client routes do not create, edit, delete, import, simulate, send, assign slots, or mutate templates
 - backend derives `client_id` from auth and `client_access`
 - backend denies cross-client access even for read-only campaign data
-- client-visible metrics may include queued, sent, opens, clicks, bounce, complaint/spam, unsubscribe, blocked sends, and slot/limit usage when the backend exposes them
+- client-visible metrics may include queued, sent, opens, clicks, bounce, complaint/spam, unsubscribe, blocked sends, and period usage only when backed by real logs or provider events
+- client responses must not expose configured `daily_email_limit`
 
 ## Admin Template API Future
 

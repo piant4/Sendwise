@@ -110,12 +110,92 @@ class ClientOverviewLimits(BaseModel):
     max_campaigns: Optional[int] = None
 
 
+ClientDashboardWindowKey = Literal["24h", "7d", "14d", "30d", "allTime"]
+ClientDashboardActionSeverity = Literal["neutral", "warning", "danger"]
+
+
+class ClientDashboardCta(BaseModel):
+    campaigns_href: str
+
+
+class ClientDashboardKpiValue(BaseModel):
+    value: Optional[int] = None
+    limit: Optional[int] = None
+    available: bool
+
+
+class ClientDashboardKpis(BaseModel):
+    active_campaigns: ClientDashboardKpiValue
+    sent_last_7d: ClientDashboardKpiValue
+    opened_last_7d: ClientDashboardKpiValue
+    ready_campaigns: ClientDashboardKpiValue
+
+
+class ClientDashboardWindowMetrics(BaseModel):
+    sent: Optional[int] = None
+    queued: Optional[int] = None
+    blocked: Optional[int] = None
+    opened: Optional[int] = None
+    sent_available: bool = False
+    queued_available: bool = False
+    blocked_available: bool = False
+    opened_available: bool = False
+    window_started_at: Optional[datetime] = None
+    window_ended_at: datetime
+
+
+class ClientDashboardPerformanceAnalytics(BaseModel):
+    default_window: ClientDashboardWindowKey = "7d"
+    windows: dict[ClientDashboardWindowKey, ClientDashboardWindowMetrics]
+
+
+class ClientDashboardActionItem(BaseModel):
+    label: str
+    count: int
+    severity: ClientDashboardActionSeverity
+
+
+class ClientDashboardActionsRequired(BaseModel):
+    campaigns_to_complete: int
+    blocked_sends_to_review: int
+    provider_events_issues: Optional[int] = None
+    items: list[ClientDashboardActionItem]
+
+
+class ClientDashboardStatusSummary(BaseModel):
+    total_campaigns: int
+    running: int
+    ready: int
+    to_complete: int
+    blocked: int
+    completed: int
+
+
+class ClientDashboardPeriodUsage(BaseModel):
+    has_real_usage: bool
+    sent: Optional[int] = None
+    queued: Optional[int] = None
+    blocked: Optional[int] = None
+    opened: Optional[int] = None
+
+
+class ClientDashboardSummary(BaseModel):
+    greeting_name: str
+    cta: ClientDashboardCta
+    kpis: ClientDashboardKpis
+    performance_analytics: ClientDashboardPerformanceAnalytics
+    actions_required: ClientDashboardActionsRequired
+    status_summary: ClientDashboardStatusSummary
+    period_usage: ClientDashboardPeriodUsage
+
+
 class ClientOverviewSummary(BaseModel):
     client: ClientOverviewIdentity
     campaigns: ClientOverviewCampaigns
     usage: ClientOverviewUsage
     blocked_sends: ClientOverviewBlockedSends
     limits: ClientOverviewLimits
+    client_dashboard: Optional[ClientDashboardSummary] = None
 
 
 class AdminClientInviteRequest(BaseModel):

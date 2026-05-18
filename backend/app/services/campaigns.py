@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from datetime import datetime, time, timedelta, timezone
 from typing import Any
 import re
 from urllib.parse import urlsplit
@@ -7,7 +8,12 @@ from fastapi import HTTPException, status
 
 from app.core.auth import AuthenticatedUser
 from app.core.config import Settings, get_settings
-from app.guard.deliverability_guard import DeliverabilityGuard, GuardResult, SendDecision
+from app.guard.deliverability_guard import (
+    CampaignLimitUsage,
+    DeliverabilityGuard,
+    GuardResult,
+    SendDecision,
+)
 from app.integrations.listmonk.client import (
     ListmonkClient,
     ListmonkError,
@@ -21,6 +27,11 @@ from app.repositories.campaigns import (
     CampaignRecord,
     CampaignRepository,
     get_campaign_repository,
+)
+from app.repositories.campaign_sending_limits import (
+    CampaignSendingLimitRecord,
+    CampaignSendingLimitRepository,
+    get_campaign_sending_limit_repository,
 )
 from app.repositories.blocked_sends import (
     BlockedSendRepository,
@@ -61,6 +72,7 @@ from app.schemas.campaigns import (
     CampaignBlockedSendsSummary,
     CampaignClientSummary,
     CampaignLogsSummary,
+    CampaignPeriodUsageSummary,
     CampaignRecipientsSummary,
     CampaignSlotSummary,
     CampaignSummaryItem,
@@ -90,6 +102,9 @@ BLOCKED_SENDS_LATEST_LIMIT = 5
 CONTACT_METADATA_ALLOWED_KEYS = {"nome", "cognome"}
 RECIPIENT_TEMPLATE_PLACEHOLDERS = {"nome", "cognome"}
 TEMPLATE_PLACEHOLDER_PATTERN = re.compile(r"{{\s*([A-Za-z0-9_]+)\s*}}")
+DEFAULT_CAMPAIGN_PERIOD_EMAIL_LIMIT = 1000
+DEFAULT_CAMPAIGN_DAILY_EMAIL_LIMIT = 50
+CAMPAIGN_PERIOD_WINDOW = timedelta(days=30)
 
 
 def _prefer_provider_metric(
@@ -179,6 +194,14 @@ class CampaignEvaluation:
     warnings: list[str]
     blocking_errors: list[str]
     guard_result: GuardResult
+    limit_record: CampaignSendingLimitRecord
+    limit_usage: CampaignLimitUsage
+
+
+@dataclass(frozen=True)
+class CampaignLimitContext:
+    record: CampaignSendingLimitRecord
+    usage: CampaignLimitUsage
 
 
 @dataclass(frozen=True)
@@ -186,6 +209,7 @@ class AdminCampaignService:
     settings: Settings
     guard: DeliverabilityGuard
     repository: CampaignRepository
+    campaign_limit_repository: CampaignSendingLimitRepository
     client_repository: ClientRepository
     campaign_slot_service: CampaignSlotService
     campaign_slot_repository: CampaignSlotRepository
@@ -207,7 +231,8 @@ class AdminCampaignService:
     def get_campaign_detail(self, campaign_id: str) -> AdminCampaignDetail:
         campaign = self.get_campaign_record(campaign_id)
         client = self._get_client(campaign.client_id)
-        return self._build_detail(campaign=campaign, client=client)
+        limits = self._ensure_campaign_limits(campaign.id)
+        return self._build_detail(campaign=campaign, client=client, limits=limits)
 
     def get_campaign_summary(self, campaign_id: str) -> AdminCampaignSummaryResponse:
         campaign = self.get_campaign_record(campaign_id)
@@ -226,6 +251,7 @@ class AdminCampaignService:
             contacts=contacts,
             suppressed_emails=suppressed_emails,
         )
+        limit_context = self._build_campaign_limit_context(campaign=campaign)
         evaluation = self._evaluate_campaign(
             campaign=campaign,
             client=client,
@@ -233,6 +259,7 @@ class AdminCampaignService:
             suppressed_emails=suppressed_emails,
             slot=slot,
             contact_summary=contact_summary,
+            limit_context=limit_context,
         )
         logs = self._build_campaign_logs_summary(
             client_id=campaign.client_id,
@@ -257,6 +284,7 @@ class AdminCampaignService:
             ),
             recipients=self._build_campaign_recipients_summary(contact_summary),
             logs=logs,
+            period_usage=self._build_period_usage_summary(limit_context=limit_context),
             runtime=build_provider_runtime_summary(
                 self.settings,
                 provider_events_available=logs.provider_events_available,
@@ -269,6 +297,14 @@ class AdminCampaignService:
             sending_enabled=self.settings.email_sending_enabled,
             blocking_errors=evaluation.blocking_errors,
             warnings=evaluation.warnings,
+            daily_limit=evaluation.limit_usage.daily_limit,
+            daily_used=evaluation.limit_usage.daily_used,
+            daily_remaining=evaluation.limit_usage.daily_remaining,
+            period_limit=evaluation.limit_usage.period_limit,
+            period_used=evaluation.limit_usage.period_used,
+            period_remaining=evaluation.limit_usage.period_remaining,
+            period_started_at=evaluation.limit_usage.period_started_at,
+            period_ends_at=evaluation.limit_usage.period_ends_at,
         )
 
     def get_campaign_contacts(self, campaign_id: str) -> AdminCampaignContactsResponse:
@@ -295,6 +331,8 @@ class AdminCampaignService:
         client_id: str,
         name: str,
         subject: str,
+        period_email_limit: int | None = None,
+        daily_email_limit: int | None = None,
     ) -> AdminCampaignDetail:
         client = self._get_writable_client(client_id)
         campaign = self.repository.create_campaign(
@@ -307,7 +345,20 @@ class AdminCampaignService:
             review_ready=False,
             current_step="setup",
         )
-        return self._build_detail(campaign=campaign, client=client)
+        limits = self.campaign_limit_repository.ensure_for_campaign(
+            campaign_id=campaign.id,
+            period_email_limit=self._validate_positive_int(
+                period_email_limit,
+                field_label="period_email_limit",
+                default=DEFAULT_CAMPAIGN_PERIOD_EMAIL_LIMIT,
+            ),
+            daily_email_limit=self._validate_positive_int(
+                daily_email_limit,
+                field_label="daily_email_limit",
+                default=DEFAULT_CAMPAIGN_DAILY_EMAIL_LIMIT,
+            ),
+        )
+        return self._build_detail(campaign=campaign, client=client, limits=limits)
 
     def update_campaign(
         self,
@@ -317,6 +368,8 @@ class AdminCampaignService:
         subject: str | None = None,
         status_value: str | None = None,
         current_step: str | None = None,
+        period_email_limit: int | None = None,
+        daily_email_limit: int | None = None,
     ) -> AdminCampaignDetail:
         campaign = self.get_campaign_record(campaign_id)
         client = self._get_writable_client(campaign.client_id)
@@ -358,7 +411,12 @@ class AdminCampaignService:
             review_ready=False,
             current_step=next_step,
         )
-        return self._build_detail(campaign=updated, client=client)
+        limits = self._update_campaign_limits(
+            campaign=updated,
+            period_email_limit=period_email_limit,
+            daily_email_limit=daily_email_limit,
+        )
+        return self._build_detail(campaign=updated, client=client, limits=limits)
 
     def update_campaign_content(
         self,
@@ -426,7 +484,11 @@ class AdminCampaignService:
             review_ready=False,
             current_step=next_step,
         )
-        return self._build_detail(campaign=updated, client=client)
+        return self._build_detail(
+            campaign=updated,
+            client=client,
+            limits=self._ensure_campaign_limits(updated.id),
+        )
 
     def add_campaign_contacts(
         self,
@@ -630,6 +692,7 @@ class AdminCampaignService:
             contacts=contacts,
             suppressed_emails=suppressed_emails,
         )
+        limit_context = self._build_campaign_limit_context(campaign=campaign)
         evaluation = self._evaluate_campaign(
             campaign=campaign,
             client=client,
@@ -637,6 +700,7 @@ class AdminCampaignService:
             suppressed_emails=suppressed_emails,
             slot=slot,
             contact_summary=contact_summary,
+            limit_context=limit_context,
             allow_draft_transition=True,
         )
         next_status = campaign.status
@@ -672,6 +736,14 @@ class AdminCampaignService:
             contacts_ready=updated.contacts_ready,
             review_ready=updated.review_ready,
             current_step=updated.current_step,
+            daily_limit=evaluation.limit_usage.daily_limit,
+            daily_used=evaluation.limit_usage.daily_used,
+            daily_remaining=evaluation.limit_usage.daily_remaining,
+            period_limit=evaluation.limit_usage.period_limit,
+            period_used=evaluation.limit_usage.period_used,
+            period_remaining=evaluation.limit_usage.period_remaining,
+            period_started_at=evaluation.limit_usage.period_started_at,
+            period_ends_at=evaluation.limit_usage.period_ends_at,
         )
 
     def _get_client(self, client_id: str) -> ClientRecord:
@@ -705,13 +777,163 @@ class AdminCampaignService:
             slot_id=campaign.campaign_slot_id,
         )
 
+    def _validate_positive_int(
+        self,
+        value: int | None,
+        *,
+        field_label: str,
+        default: int | None = None,
+    ) -> int:
+        if value is None:
+            if default is None:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail=f"{field_label} is required.",
+                )
+            return default
+        if value <= 0:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"{field_label} must be greater than zero.",
+            )
+        return value
+
+    def _ensure_campaign_limits(
+        self,
+        campaign_id: str,
+    ) -> CampaignSendingLimitRecord:
+        return self.campaign_limit_repository.ensure_for_campaign(
+            campaign_id=campaign_id,
+            period_email_limit=DEFAULT_CAMPAIGN_PERIOD_EMAIL_LIMIT,
+            daily_email_limit=DEFAULT_CAMPAIGN_DAILY_EMAIL_LIMIT,
+        )
+
+    def _update_campaign_limits(
+        self,
+        *,
+        campaign: CampaignRecord,
+        period_email_limit: int | None,
+        daily_email_limit: int | None,
+    ) -> CampaignSendingLimitRecord:
+        limits = self._ensure_campaign_limits(campaign.id)
+        if period_email_limit is None and daily_email_limit is None:
+            return limits
+        return self.campaign_limit_repository.update_for_campaign(
+            campaign_id=campaign.id,
+            period_email_limit=(
+                self._validate_positive_int(
+                    period_email_limit,
+                    field_label="period_email_limit",
+                )
+                if period_email_limit is not None
+                else limits.period_email_limit
+            ),
+            daily_email_limit=(
+                self._validate_positive_int(
+                    daily_email_limit,
+                    field_label="daily_email_limit",
+                )
+                if daily_email_limit is not None
+                else limits.daily_email_limit
+            ),
+        )
+
+    def _build_campaign_limit_context(
+        self,
+        *,
+        campaign: CampaignRecord,
+        limits: CampaignSendingLimitRecord | None = None,
+    ) -> CampaignLimitContext:
+        limit_record = limits or self._ensure_campaign_limits(campaign.id)
+        normalized_record = self._normalize_period_started_at(
+            campaign=campaign,
+            limits=limit_record,
+        )
+        period_started_at = normalized_record.period_started_at
+        period_ends_at = (
+            period_started_at + CAMPAIGN_PERIOD_WINDOW
+            if period_started_at is not None
+            else None
+        )
+        today_started_at = datetime.combine(
+            datetime.now(timezone.utc).date(),
+            time.min,
+            tzinfo=timezone.utc,
+        )
+        daily_used = self.email_log_repository.count_real_campaign_logs_since(
+            client_id=campaign.client_id,
+            campaign_id=campaign.id,
+            started_at=today_started_at,
+        )
+        period_used = (
+            self.email_log_repository.count_real_campaign_logs_since(
+                client_id=campaign.client_id,
+                campaign_id=campaign.id,
+                started_at=period_started_at,
+                ended_at=period_ends_at,
+            )
+            if period_started_at is not None
+            else 0
+        )
+        usage = CampaignLimitUsage(
+            daily_limit=normalized_record.daily_email_limit,
+            daily_used=daily_used,
+            period_limit=normalized_record.period_email_limit,
+            period_used=period_used,
+            period_started_at=period_started_at,
+            period_ends_at=period_ends_at,
+        )
+        return CampaignLimitContext(record=normalized_record, usage=usage)
+
+    def _normalize_period_started_at(
+        self,
+        *,
+        campaign: CampaignRecord,
+        limits: CampaignSendingLimitRecord,
+    ) -> CampaignSendingLimitRecord:
+        if limits.period_started_at is not None:
+            return limits
+        if campaign.status.lower() != CampaignStatus.running.value:
+            return limits
+        first_activity_at = self.email_log_repository.get_first_real_campaign_log_at(
+            client_id=campaign.client_id,
+            campaign_id=campaign.id,
+        )
+        if first_activity_at is None:
+            return limits
+        return self.campaign_limit_repository.update_for_campaign(
+            campaign_id=campaign.id,
+            period_started_at=first_activity_at,
+        )
+
+    def _build_period_usage_summary(
+        self,
+        *,
+        limit_context: CampaignLimitContext,
+    ) -> CampaignPeriodUsageSummary:
+        period_limit = limit_context.record.period_email_limit
+        has_real_usage = (
+            limit_context.usage.period_used > 0
+            or limit_context.usage.period_started_at is not None
+        )
+        return CampaignPeriodUsageSummary(
+            period_email_limit=period_limit,
+            period_used=limit_context.usage.period_used,
+            period_remaining=max(period_limit - limit_context.usage.period_used, 0),
+            period_started_at=limit_context.usage.period_started_at,
+            period_ends_at=limit_context.usage.period_ends_at,
+            has_real_usage=has_real_usage,
+        )
+
     def _build_detail(
         self,
         *,
         campaign: CampaignRecord,
         client: ClientRecord,
+        limits: CampaignSendingLimitRecord | None = None,
     ) -> AdminCampaignDetail:
         client_name = client.personal_name or client.email
+        limit_record = limits or self._ensure_campaign_limits(campaign.id)
         return AdminCampaignDetail(
             campaign_id=campaign.id,
             client_id=campaign.client_id,
@@ -728,6 +950,9 @@ class AdminCampaignService:
             content_ready=campaign.content_ready,
             contacts_ready=campaign.contacts_ready,
             review_ready=campaign.review_ready,
+            period_email_limit=limit_record.period_email_limit,
+            daily_email_limit=limit_record.daily_email_limit,
+            period_started_at=limit_record.period_started_at,
             created_at=campaign.created_at,
             updated_at=campaign.updated_at,
         )
@@ -858,6 +1083,7 @@ class AdminCampaignService:
         suppressed_emails: set[str],
         slot,
         contact_summary: CampaignContactsSummary,
+        limit_context: CampaignLimitContext,
         allow_draft_transition: bool = False,
     ) -> CampaignEvaluation:
         content_ready = self._content_ready(
@@ -878,6 +1104,7 @@ class AdminCampaignService:
             contacts=contacts,
             suppressed_emails=suppressed_emails,
             active_campaign_count=active_campaign_count,
+            campaign_limit_usage=limit_context.usage,
         )
 
         blocking_errors: list[str] = []
@@ -904,6 +1131,8 @@ class AdminCampaignService:
             warnings=warnings,
             blocking_errors=blocking_errors,
             guard_result=guard_result,
+            limit_record=limit_context.record,
+            limit_usage=limit_context.usage,
         )
 
     def _build_guard_campaign(
@@ -961,8 +1190,8 @@ class AdminCampaignService:
         return CampaignSlotSummary(
             id=campaign.campaign_slot_id,
             label=None,
-            max_emails=evaluation.guard_result.limit_value,
-            status="legacy" if client.email_limit_per_campaign is not None else None,
+            max_emails=None,
+            status=None,
             limit_source=evaluation.guard_result.limit_source,
         )
 
@@ -1192,6 +1421,7 @@ class CampaignDispatchService:
     mapping_service: ListmonkMappingService | None = None
     client_repository: ClientRepository | None = None
     campaign_slot_repository: CampaignSlotRepository | None = None
+    campaign_limit_repository: CampaignSendingLimitRepository | None = None
     contact_repository: ContactRepository | None = None
     suppression_list_repository: SuppressionListRepository | None = None
     blocked_send_repository: BlockedSendRepository | None = None
@@ -1209,10 +1439,12 @@ class CampaignDispatchService:
         suppression_repository = self.suppression_list_repository
         blocked_send_repository = self.blocked_send_repository
         email_log_repository = self.email_log_repository
+        campaign_limit_repository = self.campaign_limit_repository
 
         if (
             mapping_service is None
             or client_repository is None
+            or campaign_limit_repository is None
             or contact_repository is None
             or suppression_repository is None
             or email_log_repository is None
@@ -1240,6 +1472,7 @@ class CampaignDispatchService:
         suppressed_emails: set[str] = set()
         active_campaign_count: int | None = None
         slot = None
+        limit_usage: CampaignLimitUsage | None = None
         if client is not None and campaign is not None:
             contacts = contact_repository.list_campaign_contacts(
                 client_id=client.id,
@@ -1261,6 +1494,12 @@ class CampaignDispatchService:
                     client_id=client.id,
                     slot_id=campaign.campaign_slot_id,
                 )
+            limit_usage = self._build_dispatch_limit_usage(
+                campaign=campaign,
+                client_id=client.id,
+                campaign_limit_repository=campaign_limit_repository,
+                email_log_repository=email_log_repository,
+            )
 
         guard_result = self.guard.authorize_campaign_dispatch(
             email_sending_enabled=self.settings.email_sending_enabled,
@@ -1270,6 +1509,7 @@ class CampaignDispatchService:
             contacts=contacts,
             suppressed_emails=suppressed_emails,
             active_campaign_count=active_campaign_count,
+            campaign_limit_usage=limit_usage,
         )
         if guard_result.decision != SendDecision.AUTHORIZED:
             return self._blocked_response(
@@ -1456,6 +1696,18 @@ class CampaignDispatchService:
             contact_ids=[contact.id for contact in contacts],
             body=str(content.get("body") or ""),
         )
+        campaign = self._mark_campaign_running(
+            campaign=campaign,
+            client_repository=client_repository,
+            campaign_limit_repository=campaign_limit_repository,
+            email_log_repository=email_log_repository,
+        )
+        limit_usage = self._build_dispatch_limit_usage(
+            campaign=campaign,
+            client_id=campaign.client_id,
+            campaign_limit_repository=campaign_limit_repository,
+            email_log_repository=email_log_repository,
+        )
         response = {
             "status": "queued",
             "mode": "controlled_dev",
@@ -1477,6 +1729,14 @@ class CampaignDispatchService:
             "diagnostic": guard_result.diagnostic,
             "limit_source": guard_result.limit_source,
             "limit_value": guard_result.limit_value,
+            "daily_limit": limit_usage.daily_limit if limit_usage else None,
+            "daily_used": limit_usage.daily_used if limit_usage else 0,
+            "daily_remaining": limit_usage.daily_remaining if limit_usage else None,
+            "period_limit": limit_usage.period_limit if limit_usage else None,
+            "period_used": limit_usage.period_used if limit_usage else 0,
+            "period_remaining": limit_usage.period_remaining if limit_usage else None,
+            "period_started_at": limit_usage.period_started_at if limit_usage else None,
+            "period_ends_at": limit_usage.period_ends_at if limit_usage else None,
             "guard": guard_result.to_dict(),
             "dispatch_attempted": True,
             "real_send_attempted": True,
@@ -1559,6 +1819,103 @@ class CampaignDispatchService:
             for campaign in client_repository.list_client_campaigns(client_id)
             if campaign.status.lower() in self.guard.SENDABLE_CAMPAIGN_STATUSES
         )
+
+    def _build_dispatch_limit_usage(
+        self,
+        *,
+        campaign: ClientCampaignRecord,
+        client_id: str,
+        campaign_limit_repository: CampaignSendingLimitRepository,
+        email_log_repository: EmailLogRepository,
+    ) -> CampaignLimitUsage:
+        limits = campaign_limit_repository.ensure_for_campaign(
+            campaign_id=campaign.id,
+            period_email_limit=DEFAULT_CAMPAIGN_PERIOD_EMAIL_LIMIT,
+            daily_email_limit=DEFAULT_CAMPAIGN_DAILY_EMAIL_LIMIT,
+        )
+        if limits.period_started_at is None and campaign.status.lower() == CampaignStatus.running.value:
+            first_activity_at = email_log_repository.get_first_real_campaign_log_at(
+                client_id=client_id,
+                campaign_id=campaign.id,
+            )
+            if first_activity_at is not None:
+                limits = campaign_limit_repository.update_for_campaign(
+                    campaign_id=campaign.id,
+                    period_started_at=first_activity_at,
+                )
+        period_started_at = limits.period_started_at
+        period_ends_at = (
+            period_started_at + CAMPAIGN_PERIOD_WINDOW
+            if period_started_at is not None
+            else None
+        )
+        today_started_at = datetime.combine(
+            datetime.now(timezone.utc).date(),
+            time.min,
+            tzinfo=timezone.utc,
+        )
+        daily_used = email_log_repository.count_real_campaign_logs_since(
+            client_id=client_id,
+            campaign_id=campaign.id,
+            started_at=today_started_at,
+        )
+        period_used = (
+            email_log_repository.count_real_campaign_logs_since(
+                client_id=client_id,
+                campaign_id=campaign.id,
+                started_at=period_started_at,
+                ended_at=period_ends_at,
+            )
+            if period_started_at is not None
+            else 0
+        )
+        return CampaignLimitUsage(
+            daily_limit=limits.daily_email_limit,
+            daily_used=daily_used,
+            period_limit=limits.period_email_limit,
+            period_used=period_used,
+            period_started_at=period_started_at,
+            period_ends_at=period_ends_at,
+        )
+
+    def _mark_campaign_running(
+        self,
+        *,
+        campaign: ClientCampaignRecord,
+        client_repository: ClientRepository,
+        campaign_limit_repository: CampaignSendingLimitRepository,
+        email_log_repository: EmailLogRepository,
+    ) -> ClientCampaignRecord:
+        if not hasattr(client_repository, "update_campaign_status"):
+            if campaign.status.lower() != CampaignStatus.running.value:
+                return campaign.model_copy(update={"status": CampaignStatus.running.value})
+            return campaign
+
+        next_campaign = campaign
+        if campaign.status.lower() != CampaignStatus.running.value:
+            updated = client_repository.update_campaign_status(  # type: ignore[attr-defined]
+                client_id=campaign.client_id,
+                campaign_id=campaign.id,
+                status=CampaignStatus.running.value,
+            )
+            if updated is not None:
+                next_campaign = updated
+        limits = campaign_limit_repository.ensure_for_campaign(
+            campaign_id=campaign.id,
+            period_email_limit=DEFAULT_CAMPAIGN_PERIOD_EMAIL_LIMIT,
+            daily_email_limit=DEFAULT_CAMPAIGN_DAILY_EMAIL_LIMIT,
+        )
+        if limits.period_started_at is None:
+            first_activity_at = email_log_repository.get_first_real_campaign_log_at(
+                client_id=campaign.client_id,
+                campaign_id=campaign.id,
+            )
+            if first_activity_at is not None:
+                campaign_limit_repository.update_for_campaign(
+                    campaign_id=campaign.id,
+                    period_started_at=first_activity_at,
+                )
+        return next_campaign
 
     def _resolve_controlled_provider(self) -> str | None:
         environment = self.settings.environment.strip().lower()
@@ -1848,6 +2205,14 @@ class CampaignDispatchService:
             "diagnostic": guard_result.diagnostic,
             "limit_source": guard_result.limit_source,
             "limit_value": guard_result.limit_value,
+            "daily_limit": guard_result.daily_limit,
+            "daily_used": guard_result.daily_used,
+            "daily_remaining": guard_result.daily_remaining,
+            "period_limit": guard_result.period_limit,
+            "period_used": guard_result.period_used,
+            "period_remaining": guard_result.period_remaining,
+            "period_started_at": guard_result.period_started_at,
+            "period_ends_at": guard_result.period_ends_at,
             "guard": guard_result.to_dict(),
             "dispatch_attempted": False,
             "real_send_attempted": False,
@@ -1910,6 +2275,14 @@ class CampaignDispatchService:
                 "diagnostic": reason,
                 "limit_source": None,
                 "limit_value": None,
+                "daily_limit": None,
+                "daily_used": 0,
+                "daily_remaining": None,
+                "period_limit": None,
+                "period_used": 0,
+                "period_remaining": None,
+                "period_started_at": None,
+                "period_ends_at": None,
             }
             decision_value = decision
             default_client_id = client_id
@@ -1931,6 +2304,14 @@ class CampaignDispatchService:
             "blocked_contact_count": blocked_contact_count,
             "limit_source": guard_payload.get("limit_source"),
             "limit_value": guard_payload.get("limit_value"),
+            "daily_limit": guard_payload.get("daily_limit"),
+            "daily_used": guard_payload.get("daily_used", 0),
+            "daily_remaining": guard_payload.get("daily_remaining"),
+            "period_limit": guard_payload.get("period_limit"),
+            "period_used": guard_payload.get("period_used", 0),
+            "period_remaining": guard_payload.get("period_remaining"),
+            "period_started_at": guard_payload.get("period_started_at"),
+            "period_ends_at": guard_payload.get("period_ends_at"),
             "guard": guard_payload,
             "dispatch_attempted": False,
             "real_send_attempted": False,
@@ -1974,6 +2355,14 @@ class CampaignDispatchService:
             "diagnostic": guard_result.diagnostic,
             "limit_source": guard_result.limit_source,
             "limit_value": guard_result.limit_value,
+            "daily_limit": guard_result.daily_limit,
+            "daily_used": guard_result.daily_used,
+            "daily_remaining": guard_result.daily_remaining,
+            "period_limit": guard_result.period_limit,
+            "period_used": guard_result.period_used,
+            "period_remaining": guard_result.period_remaining,
+            "period_started_at": guard_result.period_started_at,
+            "period_ends_at": guard_result.period_ends_at,
             "guard": guard_result.to_dict(),
             "dispatch_attempted": dispatch_attempted,
             "real_send_attempted": dispatch_attempted,
@@ -2007,6 +2396,7 @@ def get_admin_campaign_service() -> AdminCampaignService:
         settings=settings,
         guard=DeliverabilityGuard(),
         repository=get_campaign_repository(),
+        campaign_limit_repository=get_campaign_sending_limit_repository(),
         client_repository=PostgresClientRepository(settings),
         campaign_slot_service=get_campaign_slot_service(),
         campaign_slot_repository=get_campaign_slot_repository(),
@@ -2030,6 +2420,7 @@ def get_campaign_dispatch_service() -> CampaignDispatchService:
         mapping_service=ListmonkMappingService(mapping_repository),
         client_repository=PostgresClientRepository(settings),
         campaign_slot_repository=get_campaign_slot_repository(),
+        campaign_limit_repository=get_campaign_sending_limit_repository(),
         contact_repository=PostgresContactRepository(settings),
         suppression_list_repository=get_suppression_list_repository(),
         blocked_send_repository=get_blocked_send_repository(),

@@ -292,11 +292,15 @@ export interface AdminCampaignCreateInput {
   clientId: string;
   name: string;
   subject: string;
+  periodEmailLimit?: number | null;
+  dailyEmailLimit?: number | null;
 }
 
 export interface AdminCampaignUpdateInput {
   name?: string;
   subject?: string | null;
+  periodEmailLimit?: number | null;
+  dailyEmailLimit?: number | null;
 }
 
 export interface AdminCampaignContentInput {
@@ -388,6 +392,14 @@ export interface AdminCampaignReviewResult {
   contactsReady: boolean;
   reviewReady: boolean;
   currentStep: string;
+  dailyLimit?: number | null;
+  dailyUsed: number;
+  dailyRemaining?: number | null;
+  periodLimit?: number | null;
+  periodUsed: number;
+  periodRemaining?: number | null;
+  periodStartedAt?: string | null;
+  periodEndsAt?: string | null;
 }
 
 export interface AdminCampaignDetail {
@@ -406,6 +418,9 @@ export interface AdminCampaignDetail {
   contentReady: boolean;
   contactsReady: boolean;
   reviewReady: boolean;
+  periodEmailLimit: number;
+  dailyEmailLimit: number;
+  periodStartedAt?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -458,6 +473,15 @@ export interface CampaignLogsSummary {
   providerEventsAvailable: boolean;
 }
 
+export interface CampaignPeriodUsageSummary {
+  periodEmailLimit?: number | null;
+  periodUsed: number;
+  periodRemaining?: number | null;
+  periodStartedAt?: string | null;
+  periodEndsAt?: string | null;
+  hasRealUsage: boolean;
+}
+
 export interface ProviderRuntimeSummary {
   emailSendingEnabled: boolean;
   emailProvider: string;
@@ -478,6 +502,7 @@ export interface CampaignReadModel {
   slot: CampaignSlotSummary;
   recipients: CampaignRecipientsSummary;
   logs: CampaignLogsSummary;
+  periodUsage: CampaignPeriodUsageSummary;
   runtime: ProviderRuntimeSummary;
   blockedSends: CampaignBlockedSendsSummary;
 }
@@ -489,6 +514,14 @@ export interface AdminCampaignReadinessSummary extends CampaignReadModel {
   sendingEnabled: boolean;
   blockingErrors: string[];
   warnings: string[];
+  dailyLimit?: number | null;
+  dailyUsed: number;
+  dailyRemaining?: number | null;
+  periodLimit?: number | null;
+  periodUsed: number;
+  periodRemaining?: number | null;
+  periodStartedAt?: string | null;
+  periodEndsAt?: string | null;
 }
 
 export interface AdminCampaignDispatchResult {
@@ -512,6 +545,14 @@ export interface AdminCampaignDispatchResult {
   diagnostic?: string | null;
   limitSource?: string | null;
   limitValue?: number | null;
+  dailyLimit?: number | null;
+  dailyUsed: number;
+  dailyRemaining?: number | null;
+  periodLimit?: number | null;
+  periodUsed: number;
+  periodRemaining?: number | null;
+  periodStartedAt?: string | null;
+  periodEndsAt?: string | null;
   dispatchAttempted: boolean;
   realSendAttempted: boolean;
   providerPrepared: boolean;
@@ -560,6 +601,7 @@ export interface ClientOverviewSummary {
   usage: ClientOverviewUsage;
   blockedSends: ClientOverviewBlockedSends;
   limits: ClientOverviewLimits;
+  clientDashboard?: ClientDashboardSummary | null;
 }
 
 export interface ClientOverviewIdentity {
@@ -612,4 +654,79 @@ export interface ClientOverviewBlockedSends {
 export interface ClientOverviewLimits {
   emailLimitPerCampaign?: number | null;
   maxCampaigns?: number | null;
+}
+
+export type ClientDashboardWindowKey = "24h" | "7d" | "14d" | "30d" | "allTime";
+
+export interface ClientDashboardKpiValue {
+  value: number | null;
+  limit?: number | null;
+  available: boolean;
+}
+
+export interface ClientDashboardKpis {
+  activeCampaigns: ClientDashboardKpiValue;
+  sentLast7d: ClientDashboardKpiValue;
+  openedLast7d: ClientDashboardKpiValue;
+  readyCampaigns: ClientDashboardKpiValue;
+}
+
+export interface ClientDashboardWindowMetrics {
+  sent: number | null;
+  queued: number | null;
+  blocked: number | null;
+  opened: number | null;
+  sentAvailable: boolean;
+  queuedAvailable: boolean;
+  blockedAvailable: boolean;
+  openedAvailable: boolean;
+  windowStartedAt: string | null;
+  windowEndedAt: string;
+}
+
+export interface ClientDashboardPerformanceAnalytics {
+  defaultWindow: ClientDashboardWindowKey;
+  windows: Record<ClientDashboardWindowKey, ClientDashboardWindowMetrics>;
+}
+
+export interface ClientDashboardActionItem {
+  label: string;
+  count: number;
+  severity: "neutral" | "warning" | "danger";
+}
+
+export interface ClientDashboardActionsRequired {
+  campaignsToComplete: number;
+  blockedSendsToReview: number;
+  providerEventsIssues: number | null;
+  items: ClientDashboardActionItem[];
+}
+
+export interface ClientDashboardStatusSummary {
+  totalCampaigns: number;
+  running: number;
+  ready: number;
+  toComplete: number;
+  blocked: number;
+  completed: number;
+}
+
+export interface ClientDashboardPeriodUsage {
+  hasRealUsage: boolean;
+  sent: number | null;
+  queued: number | null;
+  blocked: number | null;
+  opened: number | null;
+}
+
+export interface ClientDashboardSummary {
+  greetingName: string;
+  cta: {
+    campaignsHref: string;
+  };
+  kpis: ClientDashboardKpis;
+  performanceAnalytics: ClientDashboardPerformanceAnalytics;
+  actionsRequired: ClientDashboardActionsRequired;
+  statusSummary: ClientDashboardStatusSummary;
+  periodUsage: ClientDashboardPeriodUsage;
 }

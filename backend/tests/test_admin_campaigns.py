@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 from typing import Any
 
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
 from app.core.auth import AuthenticatedUser, require_platform_admin
@@ -10,6 +11,7 @@ from app.main import app
 from app.repositories.blocked_sends import InMemoryBlockedSendRepository
 from app.repositories.campaign_slots import InMemoryCampaignSlotRepository
 from app.repositories.campaigns import CampaignRecord, InMemoryCampaignRepository
+from app.repositories.campaign_sending_limits import InMemoryCampaignSendingLimitRepository
 from app.repositories.clients import ClientCampaignRecord, ClientRecord
 from app.repositories.contacts import ContactRecord, InMemoryContactRepository
 from app.repositories.email_logs import InMemoryEmailLogRepository
@@ -51,6 +53,21 @@ class FakeClientRepository:
 
     def list_admin_campaigns(self) -> list[ClientCampaignRecord]:
         return list(self._campaigns)
+
+    def update_campaign_status(
+        self,
+        *,
+        client_id: str,
+        campaign_id: str,
+        status: str,
+    ) -> ClientCampaignRecord | None:
+        for index, campaign in enumerate(self._campaigns):
+            if campaign.client_id != client_id or campaign.id != campaign_id:
+                continue
+            updated = campaign.model_copy(update={"status": status})
+            self._campaigns[index] = updated
+            return updated
+        return None
 
 
 class FakeListmonkClient:
@@ -183,6 +200,7 @@ def build_admin_service(
     suppression_records: list[SuppressionRecord] | None = None,
     blocked_send_repository: InMemoryBlockedSendRepository | None = None,
     email_log_repository: InMemoryEmailLogRepository | None = None,
+    campaign_limit_repository: InMemoryCampaignSendingLimitRepository | None = None,
 ) -> AdminCampaignService:
     repository = campaign_repository or InMemoryCampaignRepository()
     slots = slot_repository or InMemoryCampaignSlotRepository()
@@ -190,6 +208,8 @@ def build_admin_service(
         settings=settings or Settings(),
         guard=DeliverabilityGuard(),
         repository=repository,
+        campaign_limit_repository=campaign_limit_repository
+        or InMemoryCampaignSendingLimitRepository(),
         client_repository=FakeClientRepository(clients=clients or [build_client()]),  # type: ignore[arg-type]
         campaign_slot_service=CampaignSlotService(
             slot_repository=slots,
@@ -244,6 +264,7 @@ def build_dispatch_service(
     campaign_contacts: set[tuple[str, str, str]],
     fake_listmonk: FakeListmonkClient | None = None,
     preparation_service: FakePreparationService | None = None,
+    campaign_limit_repository: InMemoryCampaignSendingLimitRepository | None = None,
 ) -> CampaignDispatchService:
     return CampaignDispatchService(
         settings=settings,
@@ -255,6 +276,8 @@ def build_dispatch_service(
             campaigns=[campaign],
         ),
         campaign_slot_repository=InMemoryCampaignSlotRepository(),
+        campaign_limit_repository=campaign_limit_repository
+        or InMemoryCampaignSendingLimitRepository(),
         contact_repository=InMemoryContactRepository(
             contacts=contacts,
             campaign_contacts=campaign_contacts,
@@ -284,6 +307,70 @@ def test_admin_create_campaign_for_valid_client() -> None:
     assert created.contacts_ready is False
     assert created.review_ready is False
     assert created.campaign_slot_id is None
+    assert created.period_email_limit == 1000
+    assert created.daily_email_limit == 50
+
+
+def test_admin_create_campaign_persists_default_sending_limits() -> None:
+    repository = InMemoryCampaignRepository()
+    limit_repository = InMemoryCampaignSendingLimitRepository()
+    service = build_admin_service(
+        campaign_repository=repository,
+        campaign_limit_repository=limit_repository,
+    )
+
+    created = service.create_campaign(
+        client_id="client_123",
+        name="Launch campaign",
+        subject="Spring launch",
+    )
+
+    limits = limit_repository.get_by_campaign_id(campaign_id=created.campaign_id)
+
+    assert limits is not None
+    assert limits.period_email_limit == 1000
+    assert limits.daily_email_limit == 50
+
+
+def test_admin_update_campaign_limits() -> None:
+    repository = InMemoryCampaignRepository()
+    campaign = repository.add_campaign(campaign_id="campaign_123", client_id="client_123")
+    limit_repository = InMemoryCampaignSendingLimitRepository()
+    service = build_admin_service(
+        campaign_repository=repository,
+        campaign_limit_repository=limit_repository,
+    )
+
+    updated = service.update_campaign(
+        campaign_id=campaign.id,
+        period_email_limit=2400,
+        daily_email_limit=120,
+    )
+
+    limits = limit_repository.get_by_campaign_id(campaign_id=campaign.id)
+
+    assert updated.period_email_limit == 2400
+    assert updated.daily_email_limit == 120
+    assert limits is not None
+    assert limits.period_email_limit == 2400
+    assert limits.daily_email_limit == 120
+
+
+def test_admin_update_campaign_rejects_non_positive_limits() -> None:
+    repository = InMemoryCampaignRepository()
+    campaign = repository.add_campaign(campaign_id="campaign_123", client_id="client_123")
+    service = build_admin_service(campaign_repository=repository)
+
+    try:
+        service.update_campaign(
+            campaign_id=campaign.id,
+            period_email_limit=0,
+        )
+    except HTTPException as error:
+        assert error.status_code == 422
+        assert error.detail == "period_email_limit must be greater than zero."
+    else:
+        raise AssertionError("Expected campaign period limit validation error")
 
 
 def test_admin_create_rejects_archived_blocked_and_suspended_clients() -> None:
@@ -595,6 +682,45 @@ def test_admin_summary_aggregates_email_logs_simulated_and_queued() -> None:
     assert result.logs.queued == 2
     assert result.logs.sent == 0
     assert result.logs.provider_events_available is False
+
+
+def test_admin_summary_exposes_limit_usage_and_client_safe_period_usage() -> None:
+    repository = InMemoryCampaignRepository()
+    campaign = repository.add_campaign(
+        campaign_id="campaign_123",
+        client_id="client_123",
+        status="running",
+    )
+    email_logs = InMemoryEmailLogRepository()
+    email_logs.create_email_log(
+        client_id="client_123",
+        campaign_id=campaign.id,
+        contact_id="contact_1",
+        status="queued",
+    )
+    limit_repository = InMemoryCampaignSendingLimitRepository()
+    limit_repository.ensure_for_campaign(
+        campaign_id=campaign.id,
+        period_email_limit=500,
+        daily_email_limit=25,
+    )
+    service = build_admin_service(
+        campaign_repository=repository,
+        email_log_repository=email_logs,
+        campaign_limit_repository=limit_repository,
+    )
+
+    result = service.get_campaign_summary(campaign.id)
+    period_payload = result.period_usage.model_dump()
+
+    assert result.daily_limit == 25
+    assert result.daily_used == 1
+    assert result.period_limit == 500
+    assert result.period_used == 1
+    assert result.period_usage.period_email_limit == 500
+    assert result.period_usage.period_used == 1
+    assert "daily_limit" not in period_payload
+    assert result.period_usage.has_real_usage is True
 
 
 def test_admin_summary_aggregates_blocked_sends() -> None:

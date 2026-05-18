@@ -1,7 +1,7 @@
 import json
 import time
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 
 import jwt
@@ -856,6 +856,8 @@ def install_test_dependencies(
     suppression_list_repository: InMemorySuppressionListRepository | None = None,
     blocked_send_repository: InMemoryBlockedSendRepository | None = None,
     email_log_repository: InMemoryEmailLogRepository | None = None,
+    provider_event_repository: InMemoryProviderEventRepository | None = None,
+    include_provider_event_repository: bool = True,
     database_available: bool = True,
     invitation_gateway: Optional[FakeClerkInvitationGateway] = None,
     deletion_gateway: Optional[FakeClerkUserDeletionGateway] = None,
@@ -888,7 +890,11 @@ def install_test_dependencies(
         suppression_list_repository=suppression_list_repository,
         blocked_send_repository=blocked_send_repository,
         email_log_repository=email_log_repository,
-        provider_event_repository=InMemoryProviderEventRepository(),
+        provider_event_repository=(
+            provider_event_repository or InMemoryProviderEventRepository()
+            if include_provider_event_repository
+            else None
+        ),
     )
     client_access_service = ClientAccessService(
         repository=client_access_repository,
@@ -2688,6 +2694,374 @@ def test_client_dashboard_endpoints_are_backend_owned_and_client_scoped(
     } <= blocked_sends[0].keys()
 
 
+def test_client_overview_exposes_backend_backed_dashboard_analytics(
+    client: TestClient,
+    signing_keypair: rsa.RSAPrivateKey,
+) -> None:
+    now = datetime.now(timezone.utc)
+    client_record = build_client_record(
+        client_id="client_alpha",
+        email="alpha@example.test",
+        personal_name="Mario Rossi",
+        max_campaigns=4,
+        daily_email_limit=50,
+    )
+    beta_record = build_client_record(
+        client_id="client_beta",
+        email="beta@example.test",
+        personal_name="Beta",
+    )
+    campaign_records = [
+        build_client_campaign_record(
+            campaign_id="campaign_running",
+            client_id=client_record.id,
+            name="Running",
+            status="running",
+            subject="Running",
+        ),
+        build_client_campaign_record(
+            campaign_id="campaign_ready",
+            client_id=client_record.id,
+            name="Ready",
+            status="ready",
+            subject="Ready",
+        ),
+        build_client_campaign_record(
+            campaign_id="campaign_paused",
+            client_id=client_record.id,
+            name="Paused",
+            status="paused",
+            subject="Paused",
+        ),
+        build_client_campaign_record(
+            campaign_id="campaign_failed",
+            client_id=client_record.id,
+            name="Failed",
+            status="failed",
+            subject="Failed",
+        ),
+        build_client_campaign_record(
+            campaign_id="campaign_beta",
+            client_id=beta_record.id,
+            name="Beta only",
+            status="running",
+            subject="Beta",
+        ),
+    ]
+    email_log_repository = InMemoryEmailLogRepository()
+    created_logs = [
+        email_log_repository.create_email_log(
+            client_id=client_record.id,
+            campaign_id="campaign_running",
+            contact_id="contact_a",
+            status="queued",
+        ),
+        email_log_repository.create_email_log(
+            client_id=client_record.id,
+            campaign_id="campaign_ready",
+            contact_id="contact_b",
+            status="sent",
+        ),
+        email_log_repository.create_email_log(
+            client_id=client_record.id,
+            campaign_id="campaign_paused",
+            contact_id="contact_c",
+            status="simulated",
+        ),
+        email_log_repository.create_email_log(
+            client_id=client_record.id,
+            campaign_id="campaign_running",
+            contact_id="contact_d",
+            status="sent",
+        ),
+        email_log_repository.create_email_log(
+            client_id=client_record.id,
+            campaign_id="campaign_ready",
+            contact_id="contact_e",
+            status="queued",
+        ),
+        email_log_repository.create_email_log(
+            client_id=beta_record.id,
+            campaign_id="campaign_beta",
+            contact_id="contact_beta",
+            status="sent",
+        ),
+    ]
+    retimed_logs = [
+        created_logs[0].model_copy(update={"created_at": now - timedelta(hours=6)}),
+        created_logs[1].model_copy(update={"created_at": now - timedelta(days=3)}),
+        created_logs[2].model_copy(update={"created_at": now - timedelta(days=2)}),
+        created_logs[3].model_copy(update={"created_at": now - timedelta(days=10)}),
+        created_logs[4].model_copy(update={"created_at": now - timedelta(days=20)}),
+        created_logs[5].model_copy(update={"created_at": now - timedelta(days=1)}),
+    ]
+    email_log_repository._records = retimed_logs
+
+    provider_event_repository = InMemoryProviderEventRepository()
+    for index, occurred_at in enumerate(
+        [now - timedelta(days=2), now - timedelta(days=16), now - timedelta(days=1)],
+        start=1,
+    ):
+        client_id = client_record.id if index < 3 else beta_record.id
+        campaign_id = "campaign_running" if index == 1 else ("campaign_ready" if index == 2 else "campaign_beta")
+        email_log_id = retimed_logs[index - 1].id if index < 3 else retimed_logs[5].id
+        event, _ = provider_event_repository.create_or_get_event(
+            client_id=client_id,
+            campaign_id=campaign_id,
+            contact_id=f"contact_event_{index}",
+            email_log_id=email_log_id,
+            provider="ses",
+            source="webhook",
+            provider_event_id=f"evt_{index}",
+            event_key=f"ses_open_{index}",
+            event_type="ses_open",
+            payload={"type": "open"},
+            occurred_at=occurred_at,
+        )
+        provider_event_repository.mark_processed(
+            event_id=event.id,
+            processed_at=occurred_at + timedelta(minutes=5),
+        )
+
+    blocked_send_repository = InMemoryBlockedSendRepository()
+    recent_block = blocked_send_repository.create_blocked_send(
+        client_id=client_record.id,
+        campaign_id="campaign_paused",
+        contact_id="contact_blocked_1",
+        reason="Blocked recently.",
+        decision="blocked",
+    )
+    older_block = blocked_send_repository.create_blocked_send(
+        client_id=client_record.id,
+        campaign_id="campaign_failed",
+        contact_id="contact_blocked_2",
+        reason="Blocked earlier.",
+        decision="blocked",
+    )
+    beta_block = blocked_send_repository.create_blocked_send(
+        client_id=beta_record.id,
+        campaign_id="campaign_beta",
+        contact_id="contact_blocked_beta",
+        reason="Other client blocked.",
+        decision="blocked",
+    )
+    blocked_send_repository._records = [
+        recent_block.model_copy(update={"created_at": now - timedelta(hours=12)}),
+        older_block.model_copy(update={"created_at": now - timedelta(days=9)}),
+        beta_block.model_copy(update={"created_at": now - timedelta(days=1)}),
+    ]
+
+    install_test_dependencies(
+        client_records=[client_record, beta_record],
+        access_records=[
+            build_access_record(
+                client_id=client_record.id,
+                email=client_record.email,
+                portal_slug="a" * 32,
+            ),
+            build_access_record(
+                access_id="access_beta",
+                client_id=beta_record.id,
+                email=beta_record.email,
+                clerk_user_id="user_beta",
+                portal_slug="b" * 32,
+            ),
+        ],
+        client_campaign_records=campaign_records,
+        blocked_send_repository=blocked_send_repository,
+        email_log_repository=email_log_repository,
+        provider_event_repository=provider_event_repository,
+    )
+    token = make_token(signing_keypair, clerk_user_id="user_client")
+
+    response = client.get("/client/overview", headers=auth_header(token))
+
+    assert response.status_code == 200
+    payload = response.json()
+    dashboard = payload["client_dashboard"]
+    assert payload["campaigns"]["active_campaigns"] == 1
+    assert dashboard["greeting_name"] == "Mario"
+    assert dashboard["cta"] == {"campaigns_href": f"/c/{'a' * 32}/campaigns"}
+    assert dashboard["kpis"]["active_campaigns"] == {
+        "value": 1,
+        "limit": 4,
+        "available": True,
+    }
+    assert dashboard["kpis"]["ready_campaigns"] == {
+        "value": 1,
+        "limit": None,
+        "available": True,
+    }
+    assert dashboard["kpis"]["sent_last_7d"] == {
+        "value": 2,
+        "limit": None,
+        "available": True,
+    }
+    assert dashboard["kpis"]["opened_last_7d"] == {
+        "value": 1,
+        "limit": None,
+        "available": True,
+    }
+    assert dashboard["performance_analytics"]["default_window"] == "7d"
+    assert dashboard["performance_analytics"]["windows"]["24h"]["sent"] == 1
+    assert dashboard["performance_analytics"]["windows"]["24h"]["queued"] == 1
+    assert dashboard["performance_analytics"]["windows"]["24h"]["blocked"] == 1
+    assert dashboard["performance_analytics"]["windows"]["24h"]["opened"] == 0
+    assert dashboard["performance_analytics"]["windows"]["7d"]["sent"] == 2
+    assert dashboard["performance_analytics"]["windows"]["7d"]["queued"] == 1
+    assert dashboard["performance_analytics"]["windows"]["7d"]["blocked"] == 1
+    assert dashboard["performance_analytics"]["windows"]["7d"]["opened"] == 1
+    assert dashboard["performance_analytics"]["windows"]["14d"]["sent"] == 3
+    assert dashboard["performance_analytics"]["windows"]["14d"]["blocked"] == 2
+    assert dashboard["performance_analytics"]["windows"]["30d"]["sent"] == 4
+    assert dashboard["performance_analytics"]["windows"]["30d"]["queued"] == 2
+    assert dashboard["performance_analytics"]["windows"]["30d"]["opened"] == 2
+    assert dashboard["performance_analytics"]["windows"]["allTime"]["sent"] == 4
+    assert dashboard["performance_analytics"]["windows"]["allTime"]["blocked"] == 2
+    assert dashboard["actions_required"]["campaigns_to_complete"] == 1
+    assert dashboard["actions_required"]["blocked_sends_to_review"] == 1
+    assert dashboard["actions_required"]["provider_events_issues"] is None
+    assert dashboard["actions_required"]["items"] == [
+        {"label": "Campagne da completare", "count": 1, "severity": "warning"},
+        {"label": "Blocchi da verificare", "count": 1, "severity": "danger"},
+    ]
+    assert dashboard["status_summary"] == {
+        "total_campaigns": 4,
+        "running": 1,
+        "ready": 1,
+        "to_complete": 1,
+        "blocked": 1,
+        "completed": 0,
+    }
+    assert dashboard["period_usage"] == {
+        "has_real_usage": True,
+        "sent": 2,
+        "queued": 1,
+        "blocked": 1,
+        "opened": 1,
+    }
+    assert "daily_email_limit" not in dashboard
+
+
+def test_client_overview_marks_missing_metric_sources_as_unavailable(
+    client: TestClient,
+    signing_keypair: rsa.RSAPrivateKey,
+) -> None:
+    client_record = build_client_record(
+        client_id="client_alpha",
+        email="alpha@example.test",
+        personal_name="Alpha",
+    )
+    install_test_dependencies(
+        client_records=[client_record],
+        access_records=[
+            build_access_record(
+                client_id=client_record.id,
+                email=client_record.email,
+                portal_slug="a" * 32,
+            )
+        ],
+        client_campaign_records=[
+            build_client_campaign_record(
+                campaign_id="campaign_ready",
+                client_id=client_record.id,
+                name="Ready",
+                status="ready",
+                subject="Ready",
+            )
+        ],
+        blocked_send_repository=None,
+        email_log_repository=None,
+        include_provider_event_repository=False,
+    )
+    token = make_token(signing_keypair, clerk_user_id="user_client")
+
+    response = client.get("/client/overview", headers=auth_header(token))
+
+    assert response.status_code == 200
+    dashboard = response.json()["client_dashboard"]
+    assert dashboard["kpis"]["sent_last_7d"] == {
+        "value": None,
+        "limit": None,
+        "available": False,
+    }
+    assert dashboard["kpis"]["opened_last_7d"] == {
+        "value": None,
+        "limit": None,
+        "available": False,
+    }
+    assert dashboard["performance_analytics"]["windows"]["7d"] == {
+        "sent": None,
+        "queued": None,
+        "blocked": None,
+        "opened": None,
+        "sent_available": False,
+        "queued_available": False,
+        "blocked_available": False,
+        "opened_available": False,
+        "window_started_at": dashboard["performance_analytics"]["windows"]["7d"]["window_started_at"],
+        "window_ended_at": dashboard["performance_analytics"]["windows"]["7d"]["window_ended_at"],
+    }
+    assert dashboard["period_usage"] == {
+        "has_real_usage": False,
+        "sent": None,
+        "queued": None,
+        "blocked": None,
+        "opened": None,
+    }
+
+
+def test_client_overview_keeps_zero_real_rows_available_when_sources_exist(
+    client: TestClient,
+    signing_keypair: rsa.RSAPrivateKey,
+) -> None:
+    client_record = build_client_record(
+        client_id="client_alpha",
+        email="alpha@example.test",
+        personal_name="Alpha",
+    )
+    install_test_dependencies(
+        client_records=[client_record],
+        access_records=[
+            build_access_record(
+                client_id=client_record.id,
+                email=client_record.email,
+                portal_slug="a" * 32,
+            )
+        ],
+        client_campaign_records=[
+            build_client_campaign_record(
+                campaign_id="campaign_running",
+                client_id=client_record.id,
+                name="Running",
+                status="running",
+                subject="Running",
+            )
+        ],
+        blocked_send_repository=InMemoryBlockedSendRepository(),
+        email_log_repository=InMemoryEmailLogRepository(),
+        provider_event_repository=InMemoryProviderEventRepository(),
+    )
+    token = make_token(signing_keypair, clerk_user_id="user_client")
+
+    response = client.get("/client/overview", headers=auth_header(token))
+
+    assert response.status_code == 200
+    dashboard = response.json()["client_dashboard"]
+    assert dashboard["kpis"]["sent_last_7d"] == {
+        "value": 0,
+        "limit": None,
+        "available": True,
+    }
+    assert dashboard["kpis"]["opened_last_7d"] == {
+        "value": 0,
+        "limit": None,
+        "available": True,
+    }
+    assert dashboard["performance_analytics"]["windows"]["7d"]["blocked"] == 0
+    assert dashboard["performance_analytics"]["windows"]["7d"]["blocked_available"] is True
+
+
 def test_client_campaign_detail_is_scoped_to_authenticated_client(
     client: TestClient,
     signing_keypair: rsa.RSAPrivateKey,
@@ -2985,3 +3359,4 @@ def test_client_campaign_stats_return_only_db_backed_metrics(
     assert payload["logs"]["complained"] == 0
     assert payload["logs"]["provider_events_available"] is False
     assert payload["blocked_sends"]["total"] == 1
+USE_DEFAULT_PROVIDER_EVENT_REPOSITORY = object()

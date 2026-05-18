@@ -122,6 +122,14 @@ export function AdminCampaignDetailView({
               label: "Aggiornata",
               value: formatDateLabel(campaign.updatedAt),
             },
+            {
+              label: "Limite invii 30 giorni",
+              value: campaign.periodEmailLimit.toLocaleString("it-IT"),
+            },
+            {
+              label: "Limite invii giornaliero",
+              value: campaign.dailyEmailLimit.toLocaleString("it-IT"),
+            },
           ].map((item) => (
             <article key={item.label}>
               <span className="admin-record-row__note">{item.label}</span>
@@ -246,6 +254,36 @@ export function AdminCampaignDetailView({
             <div>
               <dt>Bloccati</dt>
               <dd>{formatCampaignCount(summary.recipients.blocked)}</dd>
+            </div>
+            <div>
+              <dt>Invii oggi</dt>
+              <dd>
+                {summary.dailyUsed.toLocaleString("it-IT")} /{" "}
+                {(summary.dailyLimit ?? campaign.dailyEmailLimit).toLocaleString("it-IT")}
+              </dd>
+            </div>
+            <div>
+              <dt>Invii periodo</dt>
+              <dd>
+                {summary.periodUsed.toLocaleString("it-IT")} /{" "}
+                {(summary.periodLimit ?? campaign.periodEmailLimit).toLocaleString("it-IT")}
+              </dd>
+            </div>
+            <div>
+              <dt>Periodo</dt>
+              <dd>
+                {summary.periodStartedAt
+                  ? `Avviato ${formatDateLabel(summary.periodStartedAt)}`
+                  : "Periodo non ancora avviato"}
+              </dd>
+            </div>
+            <div>
+              <dt>Residuo oggi</dt>
+              <dd>{(summary.dailyRemaining ?? 0).toLocaleString("it-IT")}</dd>
+            </div>
+            <div>
+              <dt>Residuo periodo</dt>
+              <dd>{(summary.periodRemaining ?? 0).toLocaleString("it-IT")}</dd>
             </div>
           </dl>
 

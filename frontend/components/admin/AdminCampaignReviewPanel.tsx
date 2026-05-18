@@ -446,7 +446,38 @@ export function AdminCampaignReviewPanel({
           <span className="campaign-review-overview__label">Step attuale</span>
           <strong>{getCampaignStepLabel(state.currentStep)}</strong>
         </article>
+        <article className="campaign-review-overview__item">
+          <span className="campaign-review-overview__label">Invii oggi</span>
+          <strong>
+            {(reviewResult?.dailyUsed ?? summary?.dailyUsed ?? 0).toLocaleString("it-IT")} /{" "}
+            {(
+              reviewResult?.dailyLimit ??
+              summary?.dailyLimit ??
+              campaign.dailyEmailLimit
+            ).toLocaleString("it-IT")}
+          </strong>
+        </article>
+        <article className="campaign-review-overview__item">
+          <span className="campaign-review-overview__label">Invii periodo</span>
+          <strong>
+            {(reviewResult?.periodUsed ?? summary?.periodUsed ?? 0).toLocaleString("it-IT")} /{" "}
+            {(
+              reviewResult?.periodLimit ??
+              summary?.periodLimit ??
+              campaign.periodEmailLimit
+            ).toLocaleString("it-IT")}
+          </strong>
+        </article>
       </div>
+
+      <p className="admin-record-row__note" style={{ marginTop: 12 }}>
+        {reviewResult?.periodStartedAt ?? summary?.periodStartedAt
+          ? `Periodo avviato ${new Intl.DateTimeFormat("it-IT", {
+              dateStyle: "medium",
+              timeStyle: "short",
+            }).format(new Date((reviewResult?.periodStartedAt ?? summary?.periodStartedAt)!))}`
+          : "Periodo non ancora avviato"}
+      </p>
 
       <div className="campaign-review-checklist" style={{ marginTop: 18 }}>
         {checklistItems.map((item) => {

@@ -179,6 +179,15 @@ class ClientRepository:
     def list_client_campaigns(self, client_id: str) -> list[ClientCampaignRecord]:
         raise NotImplementedError
 
+    def update_campaign_status(
+        self,
+        *,
+        client_id: str,
+        campaign_id: str,
+        status: str,
+    ) -> Optional[ClientCampaignRecord]:
+        raise NotImplementedError
+
     def list_client_usage(self, client_id: str) -> list[ClientUsageRecord]:
         raise NotImplementedError
 
@@ -501,6 +510,46 @@ class PostgresClientRepository(ClientRepository):
                 rows = cursor.fetchall()
 
         return [ClientCampaignRecord.model_validate(row) for row in rows]
+
+    def update_campaign_status(
+        self,
+        *,
+        client_id: str,
+        campaign_id: str,
+        status: str,
+    ) -> Optional[ClientCampaignRecord]:
+        query = """
+            UPDATE campaigns
+            SET
+                status = %s,
+                updated_at = NOW()
+            WHERE client_id::text = %s
+                AND id::text = %s
+            RETURNING
+                id::text AS id,
+                client_id::text AS client_id,
+                name,
+                status,
+                subject,
+                campaign_slot_id::text AS campaign_slot_id,
+                preview_text,
+                body_html,
+                body_text,
+                content_ready,
+                contacts_ready,
+                review_ready,
+                current_step,
+                created_at,
+                updated_at
+        """
+
+        with postgres_connection(self._settings) as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(query, (status, client_id, campaign_id))
+                row = cursor.fetchone()
+            connection.commit()
+
+        return ClientCampaignRecord.model_validate(row) if row is not None else None
 
     def list_client_usage(self, client_id: str) -> list[ClientUsageRecord]:
         query = """

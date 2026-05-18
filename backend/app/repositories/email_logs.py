@@ -101,6 +101,34 @@ class EmailLogRepository:
     ) -> dict[str, int]:
         raise NotImplementedError
 
+    def count_real_campaign_logs_since(
+        self,
+        *,
+        client_id: str,
+        campaign_id: str,
+        started_at: datetime,
+        ended_at: Optional[datetime] = None,
+    ) -> int:
+        raise NotImplementedError
+
+    def get_first_real_campaign_log_at(
+        self,
+        *,
+        client_id: str,
+        campaign_id: str,
+    ) -> Optional[datetime]:
+        raise NotImplementedError
+
+    def count_client_real_logs(
+        self,
+        *,
+        client_id: str,
+        started_at: Optional[datetime] = None,
+        ended_at: Optional[datetime] = None,
+        statuses: Optional[tuple[str, ...]] = None,
+    ) -> int:
+        raise NotImplementedError
+
     def find_by_provider_message_id(
         self,
         *,
@@ -223,6 +251,96 @@ class PostgresEmailLogRepository(EmailLogRepository):
                 rows = cursor.fetchall()
 
         return {str(row["status"]): int(row["total"]) for row in rows}
+
+    def count_real_campaign_logs_since(
+        self,
+        *,
+        client_id: str,
+        campaign_id: str,
+        started_at: datetime,
+        ended_at: Optional[datetime] = None,
+    ) -> int:
+        query = """
+            SELECT COUNT(*)::int AS total
+            FROM email_logs
+            WHERE client_id::text = %s
+                AND campaign_id::text = %s
+                AND status <> 'simulated'
+                AND created_at >= %s
+        """
+        parameters: list[object] = [client_id, campaign_id, started_at]
+        if ended_at is not None:
+            query = f"{query}\n                AND created_at < %s"
+            parameters.append(ended_at)
+
+        with postgres_connection(self._settings) as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(query, tuple(parameters))
+                row = cursor.fetchone()
+
+        if row is None:
+            return 0
+        return int(row["total"])
+
+    def get_first_real_campaign_log_at(
+        self,
+        *,
+        client_id: str,
+        campaign_id: str,
+    ) -> Optional[datetime]:
+        query = """
+            SELECT MIN(created_at) AS first_created_at
+            FROM email_logs
+            WHERE client_id::text = %s
+                AND campaign_id::text = %s
+                AND status <> 'simulated'
+        """
+
+        with postgres_connection(self._settings) as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(query, (client_id, campaign_id))
+                row = cursor.fetchone()
+
+        if row is None:
+            return None
+        return row["first_created_at"]
+
+    def count_client_real_logs(
+        self,
+        *,
+        client_id: str,
+        started_at: Optional[datetime] = None,
+        ended_at: Optional[datetime] = None,
+        statuses: Optional[tuple[str, ...]] = None,
+    ) -> int:
+        query = """
+            SELECT COUNT(*)::int AS total
+            FROM email_logs
+            WHERE client_id::text = %s
+                AND status <> 'simulated'
+        """
+        parameters: list[object] = [client_id]
+
+        if statuses:
+            query = f"{query}\n                AND status = ANY(%s)"
+            parameters.append(list(statuses))
+
+        if started_at is not None:
+            query = f"{query}\n                AND created_at >= %s"
+            parameters.append(started_at)
+
+        if ended_at is not None:
+            query = f"{query}\n                AND created_at < %s"
+            parameters.append(ended_at)
+
+        with postgres_connection(self._settings) as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(query, tuple(parameters))
+                row = cursor.fetchone()
+
+        if row is None:
+            return 0
+        return int(row["total"])
 
     def find_by_provider_message_id(
         self,
@@ -366,6 +484,65 @@ class InMemoryEmailLogRepository(EmailLogRepository):
                 continue
             counts[record.status] = counts.get(record.status, 0) + 1
         return counts
+
+    def count_real_campaign_logs_since(
+        self,
+        *,
+        client_id: str,
+        campaign_id: str,
+        started_at: datetime,
+        ended_at: Optional[datetime] = None,
+    ) -> int:
+        total = 0
+        for record in self._records:
+            if record.client_id != client_id or record.campaign_id != campaign_id:
+                continue
+            if record.status == "simulated":
+                continue
+            if record.created_at < started_at:
+                continue
+            if ended_at is not None and record.created_at >= ended_at:
+                continue
+            total += 1
+        return total
+
+    def get_first_real_campaign_log_at(
+        self,
+        *,
+        client_id: str,
+        campaign_id: str,
+    ) -> Optional[datetime]:
+        matching = [
+            record.created_at
+            for record in self._records
+            if record.client_id == client_id
+            and record.campaign_id == campaign_id
+            and record.status != "simulated"
+        ]
+        if not matching:
+            return None
+        return min(matching)
+
+    def count_client_real_logs(
+        self,
+        *,
+        client_id: str,
+        started_at: Optional[datetime] = None,
+        ended_at: Optional[datetime] = None,
+        statuses: Optional[tuple[str, ...]] = None,
+    ) -> int:
+        total = 0
+        for record in self._records:
+            if record.client_id != client_id or record.status == "simulated":
+                continue
+            if statuses and record.status not in statuses:
+                continue
+            if started_at is not None and record.created_at < started_at:
+                continue
+            if ended_at is not None and record.created_at >= ended_at:
+                continue
+            total += 1
+        return total
 
     def find_by_provider_message_id(
         self,

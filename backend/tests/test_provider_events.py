@@ -10,6 +10,7 @@ from app.main import app
 from app.repositories.blocked_sends import InMemoryBlockedSendRepository
 from app.repositories.campaign_slots import InMemoryCampaignSlotRepository
 from app.repositories.campaigns import CampaignRecord, InMemoryCampaignRepository
+from app.repositories.campaign_sending_limits import InMemoryCampaignSendingLimitRepository
 from app.repositories.clients import ClientRecord
 from app.repositories.contacts import ContactRecord, InMemoryContactRepository
 from app.repositories.email_logs import InMemoryEmailLogRepository
@@ -41,6 +42,15 @@ class FakeClientRepository:
 
     def list_admin_campaigns(self) -> list[CampaignRecord]:
         return []
+
+    def update_campaign_status(
+        self,
+        *,
+        client_id: str,
+        campaign_id: str,
+        status: str,
+    ) -> CampaignRecord | None:
+        return None
 
 
 def build_client(
@@ -141,6 +151,7 @@ def build_runtime(
         settings=settings,
         guard=DeliverabilityGuard(),
         repository=campaign_repository,
+        campaign_limit_repository=InMemoryCampaignSendingLimitRepository(),
         client_repository=FakeClientRepository([client]),  # type: ignore[arg-type]
         campaign_slot_service=CampaignSlotService(
             slot_repository=InMemoryCampaignSlotRepository(),

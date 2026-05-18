@@ -8,11 +8,12 @@ import {
   isApiError,
   updateAdminCampaign,
 } from "../../lib/api";
-import type { AdminCampaignDetail } from "../../types";
+import type { AdminCampaignDetail, AdminCampaignReadinessSummary } from "../../types";
 import { Button } from "../ui/button";
 
 interface AdminCampaignSetupFormProps {
   campaign: AdminCampaignDetail;
+  summary?: AdminCampaignReadinessSummary | null;
   onContinue?: () => void;
 }
 
@@ -56,12 +57,19 @@ function getSafeUpdateErrorMessage(error: unknown): string {
 
 export function AdminCampaignSetupForm({
   campaign,
+  summary,
   onContinue,
 }: AdminCampaignSetupFormProps) {
   const router = useRouter();
   const { getToken } = useAuth();
   const [name, setName] = useState(campaign.name);
   const [subject, setSubject] = useState(getValue(campaign.subject));
+  const [periodEmailLimit, setPeriodEmailLimit] = useState(
+    String(campaign.periodEmailLimit),
+  );
+  const [dailyEmailLimit, setDailyEmailLimit] = useState(
+    String(campaign.dailyEmailLimit),
+  );
   const [isEditingBase, setIsEditingBase] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -82,8 +90,21 @@ export function AdminCampaignSetupForm({
     const nameChanged = name.trim() !== campaign.name;
     const subjectValue = normalizeText(subject);
     const subjectChanged = subjectValue !== normalizeText(campaign.subject);
+    const periodLimitValue = Number(periodEmailLimit);
+    const dailyLimitValue = Number(dailyEmailLimit);
+    if (
+      !Number.isInteger(periodLimitValue) ||
+      periodLimitValue <= 0 ||
+      !Number.isInteger(dailyLimitValue) ||
+      dailyLimitValue <= 0
+    ) {
+      setErrorMessage("Inserisci limiti interi maggiori di zero per periodo e giorno.");
+      return;
+    }
+    const periodLimitChanged = periodLimitValue !== campaign.periodEmailLimit;
+    const dailyLimitChanged = dailyLimitValue !== campaign.dailyEmailLimit;
 
-    if (!nameChanged && !subjectChanged) {
+    if (!nameChanged && !subjectChanged && !periodLimitChanged && !dailyLimitChanged) {
       setSuccessMessage("Dati base invariati.");
       setErrorMessage(null);
       onContinue?.();
@@ -102,6 +123,8 @@ export function AdminCampaignSetupForm({
         {
           ...(nameChanged ? { name: name.trim() } : {}),
           ...(subjectChanged ? { subject: subjectValue } : {}),
+          ...(periodLimitChanged ? { periodEmailLimit: periodLimitValue } : {}),
+          ...(dailyLimitChanged ? { dailyEmailLimit: dailyLimitValue } : {}),
         },
         token,
       );
@@ -154,6 +177,8 @@ export function AdminCampaignSetupForm({
             ["Cliente", campaign.clientName],
             ["Nome campagna", campaign.name],
             ["Oggetto email", campaign.subject?.trim() || "Da completare"],
+            ["Limite invii 30 giorni", campaign.periodEmailLimit.toLocaleString("it-IT")],
+            ["Limite invii giornaliero", campaign.dailyEmailLimit.toLocaleString("it-IT")],
           ].map(([label, value]) => (
             <article
               key={label}
@@ -185,8 +210,70 @@ export function AdminCampaignSetupForm({
               value={subject}
             />
           </label>
+          <label className="campaign-field">
+            <span className="campaign-field__label">Limite invii 30 giorni</span>
+            <input
+              className="campaign-input"
+              disabled={isSubmitting}
+              min={1}
+              onChange={(event) => setPeriodEmailLimit(event.target.value)}
+              required
+              type="number"
+              value={periodEmailLimit}
+            />
+          </label>
+          <label className="campaign-field">
+            <span className="campaign-field__label">Limite invii giornaliero</span>
+            <input
+              className="campaign-input"
+              disabled={isSubmitting}
+              min={1}
+              onChange={(event) => setDailyEmailLimit(event.target.value)}
+              required
+              type="number"
+              value={dailyEmailLimit}
+            />
+          </label>
         </div>
       )}
+
+      {summary ? (
+        <div
+          style={{
+            display: "grid",
+            gap: 14,
+            gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+          }}
+        >
+          {[
+            [
+              "Invii oggi",
+              `${summary.dailyUsed.toLocaleString("it-IT")} / ${(summary.dailyLimit ?? campaign.dailyEmailLimit).toLocaleString("it-IT")}`,
+            ],
+            [
+              "Residuo oggi",
+              (summary.dailyRemaining ?? 0).toLocaleString("it-IT"),
+            ],
+            [
+              "Invii periodo",
+              `${summary.periodUsed.toLocaleString("it-IT")} / ${(summary.periodLimit ?? campaign.periodEmailLimit).toLocaleString("it-IT")}`,
+            ],
+            [
+              "Periodo",
+              summary.periodStartedAt ? "Avviato" : "Periodo non ancora avviato",
+            ],
+            [
+              "Residuo periodo",
+              (summary.periodRemaining ?? 0).toLocaleString("it-IT"),
+            ],
+          ].map(([label, value]) => (
+            <article key={label} className="campaign-callout">
+              <span className="admin-record-row__note">{label}</span>
+              <strong style={{ color: "#0f172a" }}>{value}</strong>
+            </article>
+          ))}
+        </div>
+      ) : null}
 
       <div className="campaign-action-row">
         <Button

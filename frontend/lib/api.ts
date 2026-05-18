@@ -28,6 +28,7 @@ import type {
   CampaignSlotSummary,
   CampaignSummaryItem,
   Client,
+  ClientDashboardSummary,
   ClientContext,
   ClientCampaignStatsReadModel,
   ClientOverviewSummary,
@@ -133,6 +134,14 @@ interface CampaignReadModelApiResponse {
     unsubscribed: number;
     provider_events_available: boolean;
   };
+  period_usage?: {
+    period_email_limit?: number | null;
+    period_used: number;
+    period_remaining?: number | null;
+    period_started_at?: string | null;
+    period_ends_at?: string | null;
+    has_real_usage: boolean;
+  };
   runtime: {
     email_sending_enabled: boolean;
     email_provider: string;
@@ -160,6 +169,14 @@ interface AdminCampaignSummaryApiResponse extends CampaignReadModelApiResponse {
   sending_enabled: boolean;
   blocking_errors: string[];
   warnings: string[];
+  daily_limit?: number | null;
+  daily_used: number;
+  daily_remaining?: number | null;
+  period_limit?: number | null;
+  period_used: number;
+  period_remaining?: number | null;
+  period_started_at?: string | null;
+  period_ends_at?: string | null;
 }
 
 interface AdminCampaignDetailApiResponse {
@@ -178,6 +195,9 @@ interface AdminCampaignDetailApiResponse {
   content_ready: boolean;
   contacts_ready: boolean;
   review_ready: boolean;
+  period_email_limit: number;
+  daily_email_limit: number;
+  period_started_at?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -251,6 +271,14 @@ interface AdminCampaignReviewApiResponse {
   contacts_ready: boolean;
   review_ready: boolean;
   current_step: string;
+  daily_limit?: number | null;
+  daily_used: number;
+  daily_remaining?: number | null;
+  period_limit?: number | null;
+  period_used: number;
+  period_remaining?: number | null;
+  period_started_at?: string | null;
+  period_ends_at?: string | null;
 }
 
 interface AdminCampaignDispatchApiResponse {
@@ -274,6 +302,14 @@ interface AdminCampaignDispatchApiResponse {
   diagnostic?: string | null;
   limit_source?: string | null;
   limit_value?: number | null;
+  daily_limit?: number | null;
+  daily_used: number;
+  daily_remaining?: number | null;
+  period_limit?: number | null;
+  period_used: number;
+  period_remaining?: number | null;
+  period_started_at?: string | null;
+  period_ends_at?: string | null;
   dispatch_attempted: boolean;
   real_send_attempted: boolean;
   content_ready: boolean;
@@ -476,6 +512,77 @@ interface ClientOverviewApiResponse {
   limits: {
     email_limit_per_campaign?: number | null;
     max_campaigns?: number | null;
+  };
+  client_dashboard?: {
+    greeting_name: string;
+    cta: {
+      campaigns_href: string;
+    };
+    kpis: {
+      active_campaigns: {
+        value: number | null;
+        limit?: number | null;
+        available: boolean;
+      };
+      sent_last_7d: {
+        value: number | null;
+        limit?: number | null;
+        available: boolean;
+      };
+      opened_last_7d: {
+        value: number | null;
+        limit?: number | null;
+        available: boolean;
+      };
+      ready_campaigns: {
+        value: number | null;
+        limit?: number | null;
+        available: boolean;
+      };
+    };
+    performance_analytics: {
+      default_window: "24h" | "7d" | "14d" | "30d" | "allTime";
+      windows: Record<
+        "24h" | "7d" | "14d" | "30d" | "allTime",
+        {
+          sent: number | null;
+          queued: number | null;
+          blocked: number | null;
+          opened: number | null;
+          sent_available: boolean;
+          queued_available: boolean;
+          blocked_available: boolean;
+          opened_available: boolean;
+          window_started_at?: string | null;
+          window_ended_at: string;
+        }
+      >;
+    };
+    actions_required: {
+      campaigns_to_complete: number;
+      blocked_sends_to_review: number;
+      provider_events_issues?: number | null;
+      items: Array<{
+        label: string;
+        count: number;
+        severity: "neutral" | "warning" | "danger";
+      }>;
+    };
+    status_summary: {
+      total_campaigns: number;
+      running: number;
+      ready: number;
+      to_complete: number;
+      blocked: number;
+      completed: number;
+    };
+    period_usage: {
+      has_real_usage: boolean;
+      sent: number | null;
+      queued: number | null;
+      blocked: number | null;
+      opened: number | null;
+    };
   };
 }
 
@@ -778,12 +885,16 @@ async function patchAdminCampaign(
     {
       name?: string;
       subject?: string | null;
+      period_email_limit?: number | null;
+      daily_email_limit?: number | null;
     }
   >(
     `/admin/campaigns/${campaignId}`,
     {
       name: payload.name,
       subject: payload.subject,
+      period_email_limit: payload.periodEmailLimit,
+      daily_email_limit: payload.dailyEmailLimit,
     },
     accessToken,
   );
@@ -885,8 +996,22 @@ async function postAdminClientCampaign(
 ): Promise<AdminCampaignDetailApiResponse> {
   return apiPost<
     AdminCampaignDetailApiResponse,
-    Omit<AdminCampaignCreateInput, "clientId">
-  >(`/admin/clients/${clientId}/campaigns`, payload, accessToken);
+    {
+      name: string;
+      subject: string;
+      period_email_limit?: number | null;
+      daily_email_limit?: number | null;
+    }
+  >(
+    `/admin/clients/${clientId}/campaigns`,
+    {
+      name: payload.name,
+      subject: payload.subject,
+      period_email_limit: payload.periodEmailLimit,
+      daily_email_limit: payload.dailyEmailLimit,
+    },
+    accessToken,
+  );
 }
 
 async function postAdminCampaign(
@@ -897,12 +1022,16 @@ async function postAdminCampaign(
     client_id: string;
     name: string;
     subject: string;
+    period_email_limit?: number | null;
+    daily_email_limit?: number | null;
   }>(
     "/admin/campaigns",
     {
       client_id: payload.clientId,
       name: payload.name,
       subject: payload.subject,
+      period_email_limit: payload.periodEmailLimit,
+      daily_email_limit: payload.dailyEmailLimit,
     },
     accessToken,
   );
@@ -1214,6 +1343,9 @@ function mapAdminCampaignDetail(
     contentReady: payload.content_ready,
     contactsReady: payload.contacts_ready,
     reviewReady: payload.review_ready,
+    periodEmailLimit: payload.period_email_limit,
+    dailyEmailLimit: payload.daily_email_limit,
+    periodStartedAt: payload.period_started_at ?? null,
     createdAt: payload.created_at,
     updatedAt: payload.updated_at,
   };
@@ -1299,6 +1431,14 @@ function mapAdminCampaignReviewResult(
     contactsReady: payload.contacts_ready,
     reviewReady: payload.review_ready,
     currentStep: payload.current_step,
+    dailyLimit: payload.daily_limit ?? null,
+    dailyUsed: payload.daily_used,
+    dailyRemaining: payload.daily_remaining ?? null,
+    periodLimit: payload.period_limit ?? null,
+    periodUsed: payload.period_used,
+    periodRemaining: payload.period_remaining ?? null,
+    periodStartedAt: payload.period_started_at ?? null,
+    periodEndsAt: payload.period_ends_at ?? null,
   };
 }
 
@@ -1390,6 +1530,14 @@ function mapCampaignReadModel(
     slot: mapCampaignSlotSummary(payload.slot),
     recipients: mapCampaignRecipientsSummary(payload.recipients),
     logs: mapCampaignLogsSummary(payload.logs),
+    periodUsage: {
+      periodEmailLimit: payload.period_usage?.period_email_limit ?? null,
+      periodUsed: payload.period_usage?.period_used ?? 0,
+      periodRemaining: payload.period_usage?.period_remaining ?? null,
+      periodStartedAt: payload.period_usage?.period_started_at ?? null,
+      periodEndsAt: payload.period_usage?.period_ends_at ?? null,
+      hasRealUsage: payload.period_usage?.has_real_usage ?? false,
+    },
     runtime: mapProviderRuntimeSummary(payload.runtime),
     blockedSends: mapCampaignBlockedSendsSummary(payload.blocked_sends),
   };
@@ -1411,6 +1559,14 @@ function mapAdminCampaignReadinessSummary(
     sendingEnabled: payload.sending_enabled,
     blockingErrors: payload.blocking_errors,
     warnings: payload.warnings,
+    dailyLimit: payload.daily_limit ?? null,
+    dailyUsed: payload.daily_used,
+    dailyRemaining: payload.daily_remaining ?? null,
+    periodLimit: payload.period_limit ?? null,
+    periodUsed: payload.period_used,
+    periodRemaining: payload.period_remaining ?? null,
+    periodStartedAt: payload.period_started_at ?? null,
+    periodEndsAt: payload.period_ends_at ?? null,
   };
 }
 
@@ -1442,6 +1598,14 @@ function mapAdminCampaignDispatchResult(
     diagnostic: payload.diagnostic ?? null,
     limitSource: payload.limit_source ?? null,
     limitValue: payload.limit_value ?? null,
+    dailyLimit: payload.daily_limit ?? null,
+    dailyUsed: payload.daily_used,
+    dailyRemaining: payload.daily_remaining ?? null,
+    periodLimit: payload.period_limit ?? null,
+    periodUsed: payload.period_used,
+    periodRemaining: payload.period_remaining ?? null,
+    periodStartedAt: payload.period_started_at ?? null,
+    periodEndsAt: payload.period_ends_at ?? null,
     dispatchAttempted: payload.dispatch_attempted,
     realSendAttempted: payload.real_send_attempted,
     providerPrepared: Boolean(rawPayload[providerPreparedKey]),
@@ -1559,6 +1723,86 @@ function mapClientOverviewSummary(
       emailLimitPerCampaign: payload.limits.email_limit_per_campaign ?? null,
       maxCampaigns: payload.limits.max_campaigns ?? null,
     },
+    clientDashboard: payload.client_dashboard
+      ? {
+          greetingName: payload.client_dashboard.greeting_name,
+          cta: {
+            campaignsHref: payload.client_dashboard.cta.campaigns_href,
+          },
+          kpis: {
+            activeCampaigns: {
+              value: payload.client_dashboard.kpis.active_campaigns.value,
+              limit: payload.client_dashboard.kpis.active_campaigns.limit ?? null,
+              available: payload.client_dashboard.kpis.active_campaigns.available,
+            },
+            sentLast7d: {
+              value: payload.client_dashboard.kpis.sent_last_7d.value,
+              limit: payload.client_dashboard.kpis.sent_last_7d.limit ?? null,
+              available: payload.client_dashboard.kpis.sent_last_7d.available,
+            },
+            openedLast7d: {
+              value: payload.client_dashboard.kpis.opened_last_7d.value,
+              limit: payload.client_dashboard.kpis.opened_last_7d.limit ?? null,
+              available: payload.client_dashboard.kpis.opened_last_7d.available,
+            },
+            readyCampaigns: {
+              value: payload.client_dashboard.kpis.ready_campaigns.value,
+              limit: payload.client_dashboard.kpis.ready_campaigns.limit ?? null,
+              available: payload.client_dashboard.kpis.ready_campaigns.available,
+            },
+          },
+          performanceAnalytics: {
+            defaultWindow: payload.client_dashboard.performance_analytics.default_window,
+            windows: Object.fromEntries(
+              Object.entries(payload.client_dashboard.performance_analytics.windows).map(
+                ([windowKey, metrics]) => [
+                  windowKey,
+                  {
+                    sent: metrics.sent,
+                    queued: metrics.queued,
+                    blocked: metrics.blocked,
+                    opened: metrics.opened,
+                    sentAvailable: metrics.sent_available,
+                    queuedAvailable: metrics.queued_available,
+                    blockedAvailable: metrics.blocked_available,
+                    openedAvailable: metrics.opened_available,
+                    windowStartedAt: metrics.window_started_at ?? null,
+                    windowEndedAt: metrics.window_ended_at,
+                  },
+                ],
+              ),
+            ) as ClientDashboardSummary["performanceAnalytics"]["windows"],
+          },
+          actionsRequired: {
+            campaignsToComplete:
+              payload.client_dashboard.actions_required.campaigns_to_complete,
+            blockedSendsToReview:
+              payload.client_dashboard.actions_required.blocked_sends_to_review,
+            providerEventsIssues:
+              payload.client_dashboard.actions_required.provider_events_issues ?? null,
+            items: payload.client_dashboard.actions_required.items.map((item) => ({
+              label: item.label,
+              count: item.count,
+              severity: item.severity,
+            })),
+          },
+          statusSummary: {
+            totalCampaigns: payload.client_dashboard.status_summary.total_campaigns,
+            running: payload.client_dashboard.status_summary.running,
+            ready: payload.client_dashboard.status_summary.ready,
+            toComplete: payload.client_dashboard.status_summary.to_complete,
+            blocked: payload.client_dashboard.status_summary.blocked,
+            completed: payload.client_dashboard.status_summary.completed,
+          },
+          periodUsage: {
+            hasRealUsage: payload.client_dashboard.period_usage.has_real_usage,
+            sent: payload.client_dashboard.period_usage.sent,
+            queued: payload.client_dashboard.period_usage.queued,
+            blocked: payload.client_dashboard.period_usage.blocked,
+            opened: payload.client_dashboard.period_usage.opened,
+          },
+        }
+      : null,
   };
 }
 

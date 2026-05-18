@@ -55,6 +55,15 @@ class BlockedSendRepository:
     ) -> list[BlockedSendRecord]:
         raise NotImplementedError
 
+    def count_by_client(
+        self,
+        *,
+        client_id: str,
+        started_at: datetime | None = None,
+        ended_at: datetime | None = None,
+    ) -> int:
+        raise NotImplementedError
+
 
 class PostgresBlockedSendRepository(BlockedSendRepository):
     def __init__(self, settings: Settings) -> None:
@@ -193,6 +202,37 @@ class PostgresBlockedSendRepository(BlockedSendRepository):
 
         return [BlockedSendRecord.model_validate(row) for row in rows]
 
+    def count_by_client(
+        self,
+        *,
+        client_id: str,
+        started_at: datetime | None = None,
+        ended_at: datetime | None = None,
+    ) -> int:
+        query = """
+            SELECT COUNT(*)::int AS total
+            FROM blocked_sends
+            WHERE client_id::text = %s
+        """
+        parameters: list[object] = [client_id]
+
+        if started_at is not None:
+            query = f"{query}\n                AND created_at >= %s"
+            parameters.append(started_at)
+
+        if ended_at is not None:
+            query = f"{query}\n                AND created_at < %s"
+            parameters.append(ended_at)
+
+        with postgres_connection(self._settings) as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(query, tuple(parameters))
+                row = cursor.fetchone()
+
+        if row is None:
+            return 0
+        return int(row["total"])
+
 
 class InMemoryBlockedSendRepository(BlockedSendRepository):
     def __init__(self) -> None:
@@ -259,6 +299,21 @@ class InMemoryBlockedSendRepository(BlockedSendRepository):
         ]
         rows.sort(key=lambda item: (item.created_at, item.id), reverse=True)
         return rows[:limit]
+
+    def count_by_client(
+        self,
+        *,
+        client_id: str,
+        started_at: datetime | None = None,
+        ended_at: datetime | None = None,
+    ) -> int:
+        return sum(
+            1
+            for record in self._records
+            if record.client_id == client_id
+            and (started_at is None or record.created_at >= started_at)
+            and (ended_at is None or record.created_at < ended_at)
+        )
 
 
 def get_blocked_send_repository() -> BlockedSendRepository:

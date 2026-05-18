@@ -88,12 +88,12 @@ Current verified fields:
 - `updated_at`
 
 Legacy compatibility:
-- `email_limit_per_campaign` is the current Guard-enforced per-campaign limit.
-- `max_campaigns` is the current Guard-enforced active-campaign-count limit.
+- `email_limit_per_campaign` is deprecated as a Guard source for send volume.
+- `max_campaigns` remains the Guard-enforced active-campaign-count limit.
 
 Recommended direction:
 - keep these fields during migration
-- treat `email_limit_per_campaign` as legacy fallback once `campaign_slots` exists
+- treat `email_limit_per_campaign` as deprecated compatibility data only
 - treat `max_campaigns` as legacy compatibility until slot-count policy is formalized
 
 ### client_access
@@ -139,6 +139,28 @@ Current verified fields:
 - `created_at`
 - `updated_at`
 
+Lifecycle notes:
+- `running` remains the active dispatch state in the current runtime.
+- there is no dedicated `started_at` column on `campaigns`.
+
+### campaign_sending_limits
+
+Purpose: Campaign-scoped send limits and campaign period anchor.
+
+Current verified fields:
+- `campaign_id`
+- `period_email_limit`
+- `daily_email_limit`
+- `period_started_at`
+- `created_at`
+- `updated_at`
+
+Contract rules:
+- limits are per campaign, not per client
+- `period_email_limit` is the 30-day campaign limit
+- `daily_email_limit` is internal pacing only and must stay hidden from client UI
+- `period_started_at` begins when a campaign first enters `running`; existing real dispatch logs may backfill it when reliable
+
 Current audited limitations:
 - no per-campaign review snapshot table
 - no dedicated product template entity yet
@@ -158,6 +180,10 @@ Contract rules:
 - admin creates and updates campaign content/state on behalf of a validated client
 - client portal reads campaign state and metrics scoped to its own `client_id`
 - `current_step`, `content_ready`, `contacts_ready`, and `review_ready` describe the admin flow state, not a client-owned write flow
+- client dashboard business metrics are API read-model fields, not frontend-derived calculations
+- client dashboard send analytics use real non-simulated `email_logs` rows, real `blocked_sends` rows, and real processed provider events
+- provider-event-backed dashboard metrics must stay unavailable when the source is missing; they must not be synthesized from recipient counts, status totals, or configured daily limits
+- `clients.daily_email_limit` remains backend/internal pacing data and must stay hidden from client-facing dashboard responses
 
 ### contacts
 
@@ -214,6 +240,7 @@ Current audited behavior:
 - simulation writes `status="simulated"`
 - controlled dev dispatch writes `status="queued"`
 - provider and unsubscribe events may update `status` for correlated logs without adding a separate delivery-state table yet
+- limit usage counts rely on real `email_logs.created_at` rows and exclude `simulated`
 
 ### api_usage
 

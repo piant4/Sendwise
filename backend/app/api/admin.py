@@ -203,6 +203,8 @@ def create_client_campaign(
         client_id=client_id,
         name=payload.name,
         subject=payload.subject,
+        period_email_limit=payload.period_email_limit,
+        daily_email_limit=payload.daily_email_limit,
     )
 
 
@@ -255,6 +257,8 @@ def create_campaign(
         client_id=payload.client_id,
         name=payload.name,
         subject=payload.subject,
+        period_email_limit=payload.period_email_limit,
+        daily_email_limit=payload.daily_email_limit,
     )
 
 
@@ -300,6 +304,8 @@ def update_campaign(
         subject=payload.subject,
         status_value=payload.status,
         current_step=payload.current_step,
+        period_email_limit=payload.period_email_limit,
+        daily_email_limit=payload.daily_email_limit,
     )
 
 

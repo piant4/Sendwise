@@ -12,13 +12,8 @@ import { StatusBadge } from "../../../../components/ui/StatusBadge";
 import {
   getClientCampaignDetail,
   getClientCampaigns,
-  getClientCampaignStats,
 } from "../../../../lib/api";
-import type {
-  Campaign,
-  CampaignReadModel,
-  ClientCampaignStatsReadModel,
-} from "../../../../types";
+import type { Campaign, CampaignReadModel } from "../../../../types";
 import { requireClientPortalRequest } from "../portalPageData";
 
 export const dynamic = "force-dynamic";
@@ -54,20 +49,12 @@ function buildCampaignStats(campaigns: Campaign[]): CampaignStatusSummary {
 async function loadCampaignReadModels(
   campaigns: Campaign[],
   accessToken: string | null,
-): Promise<
-  Record<
-    string,
-    { detail: CampaignReadModel; stats: ClientCampaignStatsReadModel } | Error
-  >
-> {
+): Promise<Record<string, { detail: CampaignReadModel } | Error>> {
   const entries = await Promise.all(
     campaigns.map(async (campaign) => {
       try {
-        const [detail, stats] = await Promise.all([
-          getClientCampaignDetail(campaign.id, accessToken),
-          getClientCampaignStats(campaign.id, accessToken),
-        ]);
-        return [campaign.id, { detail, stats }] as const;
+        const detail = await getClientCampaignDetail(campaign.id, accessToken);
+        return [campaign.id, { detail }] as const;
       } catch (error) {
         return [
           campaign.id,
@@ -121,8 +108,7 @@ export default async function ClientCampaignsPage({
       <section className="client-page-shell">
         <ClientPageHeader
           title="Campagne"
-          description=""
-          actions={<StatusBadge label="Dati reali" variant="success" />}
+          description="Stato, readiness e uso periodo quando il backend espone dati reali."
         />
 
         <section className="client-page-stat-grid" aria-label="Riepilogo campagne">
@@ -232,17 +218,21 @@ export default async function ClientCampaignsPage({
                             </strong>
                           </div>
                           <div className="client-row__stat">
-                            <span>Eventi provider</span>
+                            <span>Invii periodo</span>
                             <strong>
-                              {readModel.stats.logs.providerEventsAvailable
-                                ? "Disponibili"
-                                : "Non disponibili"}
+                              {readModel.detail.periodUsage.hasRealUsage
+                                ? formatCampaignCount(readModel.detail.periodUsage.periodUsed)
+                                : "Invii non disponibili"}
                             </strong>
                           </div>
                         </div>
-                        {!readModel.stats.logs.providerEventsAvailable ? (
+                        {!readModel.detail.periodUsage.hasRealUsage ? (
                           <p className="client-row__support client-note--compact">
-                            Nessun evento provider registrato.
+                            Invii non disponibili.
+                          </p>
+                        ) : readModel.detail.periodUsage.periodEmailLimit ? (
+                          <p className="client-row__support client-note--compact">
+                            Limite periodo {formatCampaignCount(readModel.detail.periodUsage.periodEmailLimit)}.
                           </p>
                         ) : null}
                       </>

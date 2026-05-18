@@ -58,6 +58,8 @@ export function AdminCampaignCreateWizard({
   const [clientId, setClientId] = useState(clients[0]?.id ?? "");
   const [name, setName] = useState("");
   const [subject, setSubject] = useState("");
+  const [periodEmailLimit, setPeriodEmailLimit] = useState("1000");
+  const [dailyEmailLimit, setDailyEmailLimit] = useState("50");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -78,6 +80,18 @@ export function AdminCampaignCreateWizard({
       return;
     }
 
+    const periodLimitValue = Number(periodEmailLimit);
+    const dailyLimitValue = Number(dailyEmailLimit);
+    if (
+      !Number.isInteger(periodLimitValue) ||
+      periodLimitValue <= 0 ||
+      !Number.isInteger(dailyLimitValue) ||
+      dailyLimitValue <= 0
+    ) {
+      setErrorMessage("Inserisci limiti interi maggiori di zero per periodo e giorno.");
+      return;
+    }
+
     setIsSubmitting(true);
     setErrorMessage(null);
 
@@ -88,6 +102,8 @@ export function AdminCampaignCreateWizard({
           clientId,
           name: name.trim(),
           subject: subject.trim(),
+          periodEmailLimit: periodLimitValue,
+          dailyEmailLimit: dailyLimitValue,
         },
         token,
       );
@@ -179,6 +195,30 @@ export function AdminCampaignCreateWizard({
             onChange={(event) => setSubject(event.target.value)}
             required
             value={subject}
+          />
+        </label>
+        <label className="campaign-field">
+          <span className="campaign-field__label">Limite invii 30 giorni</span>
+          <input
+            className="campaign-input"
+            disabled={isSubmitting}
+            min={1}
+            onChange={(event) => setPeriodEmailLimit(event.target.value)}
+            required
+            type="number"
+            value={periodEmailLimit}
+          />
+        </label>
+        <label className="campaign-field">
+          <span className="campaign-field__label">Limite invii giornaliero</span>
+          <input
+            className="campaign-input"
+            disabled={isSubmitting}
+            min={1}
+            onChange={(event) => setDailyEmailLimit(event.target.value)}
+            required
+            type="number"
+            value={dailyEmailLimit}
           />
         </label>
         <div className="campaign-callout">

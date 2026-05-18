@@ -1,5 +1,77 @@
 # Audit Log
 
+## Milestone 17.2F - Polish Client Dashboard Header And Performance Card
+
+Date: 2026-05-18
+Branch: develop
+
+Header greeting audit summary:
+- Audited the frontend-only client dashboard mapping path in `frontend/lib/api.ts`, `frontend/types/index.ts`, `frontend/components/client/dashboardModel.ts`, and `frontend/components/client/ClientDashboardHeader.tsx`.
+- Confirmed the frontend already maps the backend-owned `client_dashboard.greeting_name` directly into `summary.clientDashboard.greetingName`; no API contract or backend mapping bug was present in the touched frontend path.
+- Identified the visible `Bentornato, cliente` fallback as a header rendering issue: the component trusted `greetingName` even when it contained the backend generic fallback instead of a real first name.
+- Added a safe frontend fallback that keeps backend ownership first, but derives the display first name from the existing backend-owned `summary.client.name` only when `greetingName` is missing, empty, or equal to the generic fallback `cliente`.
+- Kept the greeting first-name only and removed the header CTA so the hero stays shorter and cleaner.
+
+Performance card layout audit summary:
+- Audited `frontend/components/client/ClientRecentCampaignsCard.tsx`, the shared `ClientSurface` shell, and the dashboard card CSS in `frontend/app/globals.css`.
+- Kept performance metrics fully backend-backed from `summary.clientDashboard.performanceAnalytics` and changed no metric semantics or fallback values.
+- Tightened the card shell spacing, anchored the period selector into the top-right header slot, improved responsive wrapping on narrow widths, and increased internal rhythm for the summary tiles, chart rows, and footer.
+- Compacted the empty state spacing without altering the existing backend-driven empty-state meaning.
+
+Files touched:
+- `frontend/components/client/ClientDashboardHeader.tsx`
+- `frontend/components/client/ClientRecentCampaignsCard.tsx`
+- `frontend/components/client/ClientSurface.tsx`
+- `frontend/app/globals.css`
+- `docs/audit_log.md`
+
+Scope confirmation:
+- No backend, DB schema, migration, API contract, auth, send/dispatch, SES, listmonk, Docker, env, or config changes were made for this milestone.
+- No fake metrics, frontend-derived business metrics, recipient-count usage, or daily limit display were introduced.
+
+## Milestone 17.2D - Backend-Backed Client Dashboard Analytics
+
+Date: 2026-05-18
+Branch: develop
+
+Client dashboard backend sync audit summary:
+- Extended `GET /client/overview` so the backend now owns a dedicated `client_dashboard` read model for client greeting, campaigns CTA, KPI values, performance analytics windows, required actions, status summary, and period usage.
+- Removed dashboard business-metric dependence on frontend-derived campaign snapshots. The dashboard route now renders from the overview read model only.
+- Verified backend metric sources before implementation:
+  - campaign status counts and `max_campaigns` come from client-scoped campaign/client records
+  - real send counts come from non-simulated `email_logs`
+  - blocked counts come from timestamped client-scoped `blocked_sends`
+  - opened counts come from processed `provider_events` with `event_type=\"ses_open\"`
+- Kept unavailable vs zero semantics explicit: missing repositories return `null` plus `available=false`, while real zero-row windows return `0` plus `available=true`.
+- Confirmed client daily pacing limits remain hidden from the dashboard read model and UI.
+
+Implemented:
+- Added client dashboard analytics windows for `24h`, `7d`, `14d`, `30d`, and `allTime`.
+- Defined KPI semantics on the backend: active campaigns use `running` only, ready campaigns do not consume active capacity, sent analytics exclude simulated rows, and opened analytics use provider events only.
+- Replaced the client dashboard status chart with a backend-fed `Performance campagne` chart plus selector and compact backend-fed status summary pills.
+- Kept the client campaigns page on backend `periodUsage` only and removed the unused client campaign stats fetch from that page.
+
+Checks executed:
+- `git diff --check`
+- `docker run ... PYTHONPATH=/src/backend pytest backend/tests/test_clerk_auth.py -k "client_overview or client_dashboard_endpoints_are_backend_owned_and_client_scoped"`
+- `cd frontend && npm run lint`
+- `cd frontend && npm run build`
+- `bash scripts/audit.sh`
+- `bash scripts/smoke_test.sh`
+- `docker compose config`
+- `docker compose -f docker-compose.yml -f docker-compose.dev.yml config`
+- touched frontend scan for direct listmonk references
+
+Checks result:
+- `git diff --check`, frontend lint, frontend build, audit script, smoke test, and both Docker Compose config validations passed.
+- Targeted backend coverage passed in Docker with Python 3.12: 4 selected tests passed.
+- The frontend listmonk scan remained clean.
+
+Scope confirmation:
+- No DB schema or migration changes were made.
+- No send/dispatch, SES, listmonk, auth, Docker, env, or config behavior was changed.
+- No fake metrics, fake windows, recipient-count usage, or fake trends were introduced.
+
 ## Milestone 17.1C - Fix Client Dashboard Limits Semantics
 
 Date: 2026-05-18
@@ -8,6 +80,9 @@ Branch: develop
 Dashboard limits audit summary:
 - Reviewed the client dashboard composition in `frontend/app/c/[portalSlug]/page.tsx`, the dashboard read-model builder in `frontend/components/client/dashboardModel.ts`, the campaign overview cards, and the frontend API/type mappings used by the client portal.
 - Identified all capacity uses tied to `summary.campaigns.totalCampaigns` in `dashboardModel.ts`, `ClientKpiGrid.tsx`, and `ClientDeliveryCard.tsx`; these were incorrectly treating total campaigns as active-capacity usage.
+- Added campaign-scoped `campaign_sending_limits` persistence with default `period_email_limit=1000`, `daily_email_limit=50`, optional `period_started_at`, and idempotent backfill from existing non-simulated `email_logs.created_at`.
+- Moved Guard send-volume enforcement away from `clients.email_limit_per_campaign`; runtime dispatch now evaluates table-backed campaign daily and 30-day usage before queueing and returns admin-facing usage metadata.
+- Updated admin campaign create/edit flows to manage `Limite invii 30 giorni` and `Limite invii giornaliero`, while client pages now avoid configured daily-limit exposure and avoid recipient-count fallbacks for send usage.
 - Confirmed the active-capacity fix can stay frontend-only because the existing overview payload already exposes `status_counts.running`, `running_campaigns`, `total_campaigns`, `max_campaigns`, and `email_limit_per_campaign`.
 - Confirmed the frontend already receives backend-backed per-campaign log totals through `CampaignReadModel.logs` and `ClientCampaignStatsReadModel.logs`, with available fields `sent`, `queued`, `simulated`, `opened`, `clicked`, `bounced`, `complained`, `unsubscribed`, and `providerEventsAvailable`.
 - Confirmed no `attempted` field is exposed to the frontend today; the only real per-campaign send-volume fields available for honest usage display are `logs.sent` and `logs.queued`.
@@ -3104,6 +3179,36 @@ Checks result:
 Scope confirmation:
 - No backend, schema, API contract, auth model, send/dispatch flow, SES enablement, listmonk integration, Docker/env/config, or frontend API boundary behavior was changed.
 - No fake delivered, open, click, click-rate, queued, sent-attempted, or provider-event metric claims were added.
+
+## Milestone 17.2B - Align UI With Campaign Sending Limits
+
+Date: 2026-05-18
+Branch: develop
+
+Verified state:
+- Client dashboard header now shows only `Bentornato, {firstName}` plus the campaigns CTA, with workspace labels, badges, descriptive copy, and header metric pills removed.
+- Client dashboard KPI row now exposes exactly four cards: active campaigns, sent mail last 7 days, opened mail last 7 days, and ready campaigns. The two 7-day cards stay on `Non disponibili` unless real backend-backed windows exist, and no configured daily limit is shown to the client.
+- Client dashboard main area keeps the status distribution donut, uses the neutral gray incomplete segment, removes the recent campaign list, and adds a bottom CTA to the campaigns page.
+- Client side rail now keeps `Azioni richieste` and a single `Invii periodo` block that renders only real period usage from backend campaign detail models; otherwise it shows `Avvia la prima campagna per ricevere dati.`.
+- Client campaigns page now keeps readiness and recipient health but uses only `periodUsage.hasRealUsage` plus `periodUsage.periodUsed` for send usage, never recipient counts, and never exposes the configured daily limit.
+- Admin creation and setup continue to expose both `Limite invii 30 giorni` and `Limite invii giornaliero`, while admin detail and review keep `Invii oggi`, `Invii periodo`, remaining values, and `Periodo non ancora avviato` when no period start exists.
+
+Checks executed:
+- `git diff --check`
+- `cd frontend && npm run lint`
+- `cd frontend && npm run build`
+- `bash scripts/audit.sh`
+- `bash scripts/smoke_test.sh`
+- `docker compose config`
+- `docker compose -f docker-compose.yml -f docker-compose.dev.yml config`
+- touched frontend file scan for direct listmonk calls
+- touched frontend file scan for fake delivered/open/click/open-rate/click-rate/sent claims
+- touched client file scan for `daily_email_limit` or `Limite invii giornaliero`
+- changed file scan for env/secrets/config changes
+
+Scope confirmation:
+- No backend, schema, API contract, auth model, send/dispatch flow, SES enablement, listmonk integration, Docker/env/config, or secrets were changed.
+- No fake sent, delivered, opened, clicked, open-rate, or click-rate metrics were added.
 
 ## Milestone 17.1 - Client Dashboard Product Polish
 

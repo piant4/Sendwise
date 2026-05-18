@@ -75,6 +75,7 @@ export function AdminCampaignWizardShell({
       {currentStep === "setup" ? (
         <AdminCampaignSetupForm
           campaign={campaign}
+          summary={summary}
           onContinue={goNext}
         />
       ) : null}

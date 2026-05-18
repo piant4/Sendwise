@@ -8,8 +8,8 @@ import type {
 type DashboardStatusTone =
   | "ready"
   | "running"
-  | "paused"
-  | "attention"
+  | "incomplete"
+  | "blocked"
   | "completed";
 
 export interface ClientDashboardCampaignSnapshot {
@@ -295,49 +295,34 @@ function buildActionItems(
   return items;
 }
 
-export function getCampaignUsageLimit(
-  detail: CampaignReadModel | null,
-  fallbackLimit?: number | null,
-): number | null {
-  if (typeof detail?.slot.maxEmails === "number" && detail.slot.maxEmails > 0) {
-    return detail.slot.maxEmails;
-  }
-
-  if (typeof fallbackLimit === "number" && fallbackLimit > 0) {
-    return fallbackLimit;
-  }
-
-  return null;
-}
-
 export function buildCampaignProgress(
   snapshot: ClientDashboardCampaignSnapshot,
-  fallbackLimit?: number | null,
 ): {
   current: number;
   detail: string;
-  limit: number;
-  ratio: number;
+  limit: number | null;
+  ratio: number | null;
 } | null {
   if (!snapshot.detail) {
     return null;
   }
 
-  const limit = getCampaignUsageLimit(snapshot.detail, fallbackLimit);
-
-  if (!limit) {
+  if (!snapshot.detail.periodUsage.hasRealUsage) {
     return null;
   }
 
-  const logs = snapshot.stats?.logs ?? snapshot.detail.logs;
+  const usage = snapshot.detail.periodUsage;
+  const limit =
+    typeof usage.periodEmailLimit === "number" && usage.periodEmailLimit > 0
+      ? usage.periodEmailLimit
+      : null;
   return {
-    current: logs.sent + logs.queued,
-    detail:
-      logs.sent + logs.queued > 0
-        ? `Conteggio basato su ${logs.sent.toLocaleString("it-IT")} inviati e ${logs.queued.toLocaleString("it-IT")} in coda registrati dal backend.`
-        : "Nessun invio registrato dal backend per questa campagna.",
+    current: usage.periodUsed,
+    detail: limit
+      ? `Conteggio periodo basato sui log reali registrati dal backend per questa campagna.`
+      : "Conteggio periodo basato sui log reali registrati dal backend per questa campagna.",
     limit,
-    ratio: (logs.sent + logs.queued) / limit,
+    ratio: limit ? usage.periodUsed / limit : null,
   };
 }
 
@@ -427,20 +412,20 @@ export function buildClientDashboardModel(
       tone: "ready",
     },
     {
-      label: "In corso",
+      label: "Attive",
       value: summary.campaigns.statusCounts.running,
       tone: "running",
     },
     {
       label: "Da completare",
       value: campaignsToComplete,
-      tone: "paused",
+      tone: "incomplete",
     },
     {
       label: "Bloccate",
       value:
         summary.campaigns.statusCounts.blocked + summary.campaigns.statusCounts.failed,
-      tone: "attention",
+      tone: "blocked",
     },
     {
       label: "Completate",

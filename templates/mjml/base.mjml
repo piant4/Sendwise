@@ -1,13 +1,101 @@
 <mjml>
   <mj-head>
-    <mj-title>Base Placeholder</mj-title>
+    <mj-title>{{subject}}</mj-title>
+    <mj-preview>{{preview_text}}</mj-preview>
+    <mj-attributes>
+      <mj-all font-family="Arial, Helvetica, sans-serif" color="#14213d" />
+      <mj-body background-color="#f4f7fb" />
+      <mj-section padding="0" />
+      <mj-column padding="0" />
+      <mj-text font-size="16px" line-height="24px" color="#243b53" />
+      <mj-button
+        background-color="#0f172a"
+        color="#ffffff"
+        border-radius="999px"
+        inner-padding="14px 24px"
+      />
+    </mj-attributes>
+    <mj-style inline="inline">
+      .shell {
+        border-radius: 24px;
+        overflow: hidden;
+      }
+      .eyebrow div {
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+      }
+      .footer a {
+        color: #476582 !important;
+      }
+      @media (prefers-color-scheme: dark) {
+        .dark-surface {
+          background: #0f172a !important;
+        }
+        .dark-copy div,
+        .dark-copy p,
+        .dark-copy a {
+          color: #e2e8f0 !important;
+        }
+      }
+    </mj-style>
   </mj-head>
   <mj-body>
-    <!-- Milestone 0 placeholder only. Real layout and AI placeholders come later. -->
-    <mj-section>
-      <mj-column>
-        <mj-text>Base email template placeholder.</mj-text>
-      </mj-column>
-    </mj-section>
+    <mj-wrapper css-class="shell" padding="24px 16px">
+      <mj-section
+        background-color="#0f172a"
+        padding="24px 24px 16px 24px"
+        css-class="dark-surface"
+      >
+        <mj-column>
+          <mj-text
+            css-class="eyebrow dark-copy"
+            color="#93c5fd"
+            font-size="11px"
+            font-weight="700"
+            padding-bottom="12px"
+          >
+            Sendwise email foundation
+          </mj-text>
+          <mj-text
+            css-class="dark-copy"
+            color="#ffffff"
+            font-size="28px"
+            font-weight="700"
+            line-height="34px"
+            padding="0"
+          >
+            {{subject}}
+          </mj-text>
+          <mj-text
+            css-class="dark-copy"
+            color="#cbd5e1"
+            font-size="15px"
+            padding-top="12px"
+          >
+            {{preview_text}}
+          </mj-text>
+        </mj-column>
+      </mj-section>
+      <mj-section background-color="#ffffff" padding="24px">
+        <mj-column>
+          <mj-text font-size="14px" color="#476582" padding-bottom="8px">
+            Prepared for {{client_name}}
+          </mj-text>
+          <mj-text padding="0">
+            {{body}}
+          </mj-text>
+        </mj-column>
+      </mj-section>
+      <mj-section background-color="#e2e8f0" padding="20px 24px" css-class="footer">
+        <mj-column>
+          <mj-text font-size="12px" color="#476582" padding-bottom="8px">
+            You are seeing a Sendwise technical email preview.
+          </mj-text>
+          <mj-text font-size="12px" color="#476582" padding="0">
+            To unsubscribe, visit <a href="{{unsubscribe_url}}">this link</a>.
+          </mj-text>
+        </mj-column>
+      </mj-section>
+    </mj-wrapper>
   </mj-body>
 </mjml>

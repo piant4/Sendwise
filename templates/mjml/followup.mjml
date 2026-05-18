@@ -1,13 +1,109 @@
 <mjml>
   <mj-head>
-    <mj-title>Followup Placeholder</mj-title>
+    <mj-title>{{subject}}</mj-title>
+    <mj-preview>{{preview_text}}</mj-preview>
+    <mj-attributes>
+      <mj-all font-family="Arial, Helvetica, sans-serif" color="#1f2937" />
+      <mj-body background-color="#f3efe8" />
+      <mj-section padding="0" />
+      <mj-column padding="0" />
+      <mj-text font-size="16px" line-height="24px" color="#374151" />
+    </mj-attributes>
+    <mj-style inline="inline">
+      .followup-shell {
+        border-radius: 24px;
+        overflow: hidden;
+      }
+      .footer a {
+        color: #9a3412 !important;
+      }
+      @media (prefers-color-scheme: dark) {
+        .dark-banner {
+          background: #1f2937 !important;
+        }
+        .dark-panel {
+          background: #111827 !important;
+        }
+        .dark-copy div,
+        .dark-copy p,
+        .dark-copy a {
+          color: #f3f4f6 !important;
+        }
+      }
+    </mj-style>
   </mj-head>
   <mj-body>
-    <!-- Milestone 0 placeholder only. Real follow-up copy and AI placeholders come later. -->
-    <mj-section>
-      <mj-column>
-        <mj-text>Follow-up email template placeholder.</mj-text>
-      </mj-column>
-    </mj-section>
+    <mj-wrapper css-class="followup-shell" padding="24px 16px">
+      <mj-section
+        background-color="#fdba74"
+        padding="20px 24px"
+        css-class="dark-banner"
+      >
+        <mj-column>
+          <mj-text
+            color="#7c2d12"
+            font-size="12px"
+            font-weight="700"
+            text-transform="uppercase"
+            letter-spacing="1px"
+            padding-bottom="10px"
+          >
+            Follow-up template
+          </mj-text>
+          <mj-text
+            css-class="dark-copy"
+            color="#111827"
+            font-size="28px"
+            font-weight="700"
+            line-height="34px"
+            padding="0"
+          >
+            {{subject}}
+          </mj-text>
+          <mj-text
+            css-class="dark-copy"
+            color="#7c2d12"
+            font-size="14px"
+            padding-top="12px"
+          >
+            {{preview_text}}
+          </mj-text>
+        </mj-column>
+      </mj-section>
+      <mj-section background-color="#fffaf5" padding="24px" css-class="dark-panel">
+        <mj-column>
+          <mj-text
+            css-class="dark-copy"
+            font-size="14px"
+            color="#9a3412"
+            padding-bottom="10px"
+          >
+            Follow-up prepared for {{client_name}}
+          </mj-text>
+          <mj-text css-class="dark-copy" padding="0">
+            {{body}}
+          </mj-text>
+        </mj-column>
+      </mj-section>
+      <mj-section
+        background-color="#ffedd5"
+        padding="18px 24px"
+        css-class="footer dark-panel"
+      >
+        <mj-column>
+          <mj-text
+            css-class="dark-copy"
+            font-size="12px"
+            color="#9a3412"
+            padding-bottom="8px"
+          >
+            This template keeps a clear unsubscribe path in every follow-up.
+          </mj-text>
+          <mj-text css-class="dark-copy" font-size="12px" color="#9a3412" padding="0">
+            Unsubscribe link: <a href="{{unsubscribe_url}}">{{unsubscribe_url}}</a>
+          </mj-text>
+        </mj-column>
+      </mj-section>
+    </mj-wrapper>
   </mj-body>
 </mjml>

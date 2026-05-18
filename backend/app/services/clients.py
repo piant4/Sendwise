@@ -1,0 +1,1487 @@
+from __future__ import annotations
+
+from datetime import datetime, timedelta, timezone
+from typing import Optional
+
+from fastapi import Depends, HTTPException, status
+
+from app.core.config import Settings, get_settings
+from app.repositories.blocked_sends import BlockedSendRepository, get_blocked_send_repository
+from app.repositories.campaign_slots import CampaignSlotRepository, get_campaign_slot_repository
+from app.repositories.campaigns import CampaignRepository, get_campaign_repository
+from app.repositories.client_access import ClientAccessRecord
+from app.repositories.clients import (
+    AdminBlockedSendRecord,
+    AdminCampaignEmailVolumeRecord,
+    AdminCampaignRecord,
+    AdminTopClientVolumeRecord,
+    ClientBlockedSendRecord,
+    ClientCampaignRecord,
+    ClientRecord,
+    ClientRepository,
+    ClientUsageRecord,
+    get_client_repository,
+)
+from app.repositories.contacts import ContactRepository, PostgresContactRepository
+from app.repositories.email_logs import EmailLogRepository, get_email_log_repository
+from app.repositories.provider_events import (
+    ProviderEventRepository,
+    get_provider_event_repository,
+)
+from app.repositories.suppression_list import (
+    SuppressionListRepository,
+    get_suppression_list_repository,
+)
+from app.schemas.clients import (
+    AdminBlockedSendItem,
+    AdminCampaignStatusCounts,
+    AdminCampaignSummary,
+    AdminClientNearLimit,
+    AdminClientStatusCounts,
+    AdminCriticalEvent,
+    AdminEmailLimitRow,
+    AdminEmailLimitsResponse,
+    AdminEmailLimitsSummary,
+    AdminOverviewBlocksSummary,
+    AdminOverviewCampaignsSummary,
+    AdminOverviewClientsSummary,
+    AdminOverviewLimitsSummary,
+    AdminOverviewSendingSummary,
+    AdminOverviewSummary,
+    AdminRecentCampaign,
+    AdminSystemStatus,
+    AdminTopClientByVolume,
+    Client,
+    ClientDashboardActionItem,
+    ClientDashboardActionsRequired,
+    ClientDashboardCta,
+    ClientDashboardKpis,
+    ClientDashboardKpiValue,
+    ClientDashboardPerformanceAnalytics,
+    ClientDashboardPeriodUsage,
+    ClientDashboardStatusSummary,
+    ClientDashboardSummary,
+    ClientDashboardWindowKey,
+    ClientDashboardWindowMetrics,
+    ClientCampaignStatusCounts,
+    ClientAccessSummary,
+    ClientContext,
+    ClientOverviewBlockedSends,
+    ClientOverviewCampaigns,
+    ClientOverviewIdentity,
+    ClientOverviewLimits,
+    ClientOverviewSummary,
+    ClientOverviewUsage,
+    ClientUsageSummaryItem,
+    ClientUser,
+)
+from app.schemas.blocked_sends import BlockedSend
+from app.schemas.campaigns import (
+    Campaign,
+    CampaignBlockedSendsSummary,
+    CampaignLogsSummary,
+    CampaignRecipientsSummary,
+    CampaignSlotSummary,
+    CampaignSummaryItem,
+    ClientCampaignDetailResponse,
+    ClientCampaignStatsResponse,
+)
+from app.schemas.common import CampaignStatus
+from app.schemas.usage import ApiUsage
+from app.services.provider_runtime import build_provider_runtime_summary
+
+ACTIVE_CAMPAIGN_STATUSES = {CampaignStatus.ready.value, CampaignStatus.running.value}
+RUNNING_CAMPAIGN_STATUSES = {CampaignStatus.running.value}
+LIMITED_CAMPAIGN_STATUSES = {
+    CampaignStatus.draft.value,
+    CampaignStatus.ready.value,
+    CampaignStatus.running.value,
+    CampaignStatus.paused.value,
+    CampaignStatus.blocked.value,
+}
+NEAR_LIMIT_THRESHOLD = 0.8
+RECENT_ADMIN_CAMPAIGNS_LIMIT = 5
+RECENT_ADMIN_BLOCKED_SENDS_LIMIT = 5
+TOP_CLIENTS_LIMIT = 5
+CLIENTS_NEAR_LIMIT_LIMIT = 5
+CLIENT_DASHBOARD_DEFAULT_WINDOW: ClientDashboardWindowKey = "7d"
+CLIENT_DASHBOARD_WINDOW_DELTAS: tuple[tuple[ClientDashboardWindowKey, timedelta | None], ...] = (
+    ("24h", timedelta(hours=24)),
+    ("7d", timedelta(days=7)),
+    ("14d", timedelta(days=14)),
+    ("30d", timedelta(days=30)),
+    ("allTime", None),
+)
+
+
+def _prefer_provider_metric(
+    *,
+    status_counts: dict[str, int],
+    event_counts: dict[str, int],
+    status_keys: tuple[str, ...],
+    event_types: tuple[str, ...],
+) -> int:
+    provider_total = sum(event_counts.get(event_type, 0) for event_type in event_types)
+    if provider_total > 0:
+        return provider_total
+    return sum(status_counts.get(status_key, 0) for status_key in status_keys)
+RECENT_CAMPAIGNS_LIMIT = 5
+RECENT_USAGE_LIMIT = 5
+RECENT_BLOCKED_SENDS_LIMIT = 5
+CAMPAIGN_BLOCKED_SENDS_LATEST_LIMIT = 5
+
+
+def _build_client_name(client: ClientRecord) -> str:
+    if client.personal_name:
+        return client.personal_name
+
+    return client.email
+
+
+def _build_greeting_name(client: ClientRecord) -> str:
+    display_name = _build_client_name(client).strip()
+    if not display_name:
+        return "cliente"
+
+    local_part = display_name.split("@", 1)[0].strip() if "@" in display_name else display_name
+    first_token = next((token for token in local_part.split() if token), "")
+    return first_token or "cliente"
+
+
+def normalize_profile_value(
+    value: Optional[str],
+    *,
+    field_label: str,
+    required: bool = False,
+) -> Optional[str]:
+    if value is None:
+        if required:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"{field_label} is required.",
+            )
+        return None
+
+    normalized_value = value.strip()
+
+    if not normalized_value:
+        if required:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"{field_label} is required.",
+            )
+        return None
+
+    return normalized_value
+
+
+def is_client_profile_complete(client: ClientRecord) -> bool:
+    return bool(
+        normalize_profile_value(
+            client.personal_name,
+            field_label="personal_name",
+        )
+    )
+
+
+def validate_non_negative_int(
+    value: Optional[int],
+    *,
+    field_label: str,
+) -> Optional[int]:
+    if value is None:
+        return None
+
+    if value < 0:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"{field_label} must be greater than or equal to zero.",
+        )
+
+    return value
+
+
+def build_client_schema(
+    client: ClientRecord,
+    *,
+    access: Optional[ClientAccessRecord] = None,
+) -> Client:
+    access_summary = (
+        ClientAccessSummary.model_validate(access.model_dump()) if access else None
+    )
+    return Client(
+        id=client.id,
+        email=client.email,
+        personal_name=client.personal_name,
+        name=_build_client_name(client),
+        status=client.status,
+        email_limit_per_campaign=client.email_limit_per_campaign,
+        max_campaigns=client.max_campaigns,
+        monthly_email_limit=client.monthly_email_limit,
+        daily_email_limit=client.daily_email_limit,
+        created_at=client.created_at,
+        updated_at=client.updated_at,
+        access=access_summary,
+    )
+
+
+def build_admin_email_limit_row(
+    client: ClientRecord,
+    *,
+    access: Optional[ClientAccessRecord] = None,
+) -> AdminEmailLimitRow:
+    return AdminEmailLimitRow(
+        client_id=client.id,
+        client_name=_build_client_name(client),
+        client_email=client.email,
+        client_status=client.status,
+        access_status=access.status if access else None,
+        invitation_status=access.invitation_status if access else None,
+        email_limit_per_campaign=client.email_limit_per_campaign,
+        max_campaigns=client.max_campaigns,
+        updated_at=client.updated_at,
+    )
+
+
+def has_any_email_limit_configured(client: ClientRecord) -> bool:
+    return (
+        client.email_limit_per_campaign is not None
+        or client.max_campaigns is not None
+    )
+
+
+class ClientsService:
+    def __init__(
+        self,
+        repository: ClientRepository,
+        settings: Optional[Settings] = None,
+        campaign_repository: CampaignRepository | None = None,
+        campaign_slot_repository: CampaignSlotRepository | None = None,
+        contact_repository: ContactRepository | None = None,
+        suppression_list_repository: SuppressionListRepository | None = None,
+        blocked_send_repository: BlockedSendRepository | None = None,
+        email_log_repository: EmailLogRepository | None = None,
+        provider_event_repository: ProviderEventRepository | None = None,
+    ) -> None:
+        self._repository = repository
+        self._settings = settings or get_settings()
+        self._campaign_repository = campaign_repository
+        self._campaign_slot_repository = campaign_slot_repository
+        self._contact_repository = contact_repository
+        self._suppression_list_repository = suppression_list_repository
+        self._blocked_send_repository = blocked_send_repository
+        self._email_log_repository = email_log_repository
+        self._provider_event_repository = provider_event_repository
+
+    def list_clients(self) -> list[ClientRecord]:
+        return self._repository.list_clients()
+
+    def get_client_by_id(self, client_id: str) -> ClientRecord:
+        client = self._repository.get_by_id(client_id)
+
+        if client is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Client not found.",
+            )
+
+        return client
+
+    def get_client_by_email(self, email: str) -> Optional[ClientRecord]:
+        return self._repository.get_by_email(email)
+
+    def upsert_client_profile(
+        self,
+        *,
+        email: str,
+        personal_name: Optional[str],
+    ) -> ClientRecord:
+        existing = self._repository.get_by_email(email)
+
+        if existing is None:
+            return self._repository.create_client(
+                email=email,
+                personal_name=personal_name,
+                status="active",
+            )
+
+        return self._repository.update_client(
+            client_id=existing.id,
+            email=email,
+            personal_name=personal_name,
+            status=existing.status,
+            email_limit_per_campaign=existing.email_limit_per_campaign,
+            max_campaigns=existing.max_campaigns,
+            monthly_email_limit=existing.monthly_email_limit,
+            daily_email_limit=existing.daily_email_limit,
+        )
+
+    def update_client(
+        self,
+        *,
+        client_id: str,
+        email: str,
+        personal_name: Optional[str],
+        status: Optional[str] = None,
+        email_limit_per_campaign: Optional[int] = None,
+        max_campaigns: Optional[int] = None,
+        monthly_email_limit: Optional[int] = None,
+        daily_email_limit: Optional[int] = None,
+    ) -> ClientRecord:
+        return self._repository.update_client(
+            client_id=client_id,
+            email=email,
+            personal_name=normalize_profile_value(
+                personal_name,
+                field_label="personal_name",
+            ),
+            status=status,
+            email_limit_per_campaign=validate_non_negative_int(
+                email_limit_per_campaign,
+                field_label="email_limit_per_campaign",
+            ),
+            max_campaigns=validate_non_negative_int(
+                max_campaigns,
+                field_label="max_campaigns",
+            ),
+            monthly_email_limit=validate_non_negative_int(
+                monthly_email_limit,
+                field_label="monthly_email_limit",
+            ),
+            daily_email_limit=validate_non_negative_int(
+                daily_email_limit,
+                field_label="daily_email_limit",
+            ),
+        )
+
+    def complete_onboarding_profile(
+        self,
+        *,
+        client_id: str,
+        personal_name: str,
+    ) -> ClientRecord:
+        existing = self.get_client_by_id(client_id)
+        normalized_personal_name = normalize_profile_value(
+            personal_name,
+            field_label="personal_name",
+            required=True,
+        )
+
+        return self.update_client(
+            client_id=existing.id,
+            email=existing.email,
+            personal_name=normalized_personal_name,
+            status=existing.status,
+            email_limit_per_campaign=existing.email_limit_per_campaign,
+            max_campaigns=existing.max_campaigns,
+            monthly_email_limit=existing.monthly_email_limit,
+            daily_email_limit=existing.daily_email_limit,
+        )
+
+    def archive_client(self, client_id: str) -> ClientRecord:
+        existing = self.get_client_by_id(client_id)
+        return self.update_client(
+            client_id=existing.id,
+            email=existing.email,
+            personal_name=existing.personal_name,
+            status="archived",
+            email_limit_per_campaign=existing.email_limit_per_campaign,
+            max_campaigns=existing.max_campaigns,
+            monthly_email_limit=existing.monthly_email_limit,
+            daily_email_limit=existing.daily_email_limit,
+        )
+
+    def get_client_context(
+        self,
+        *,
+        client_id: str,
+        portal_slug: str,
+        client_access_service,
+    ) -> ClientContext:
+        client, access = self._require_active_client_access(
+            client_id=client_id,
+            portal_slug=portal_slug,
+            client_access_service=client_access_service,
+        )
+        return ClientContext(
+            client=build_client_schema(client, access=access),
+            user=ClientUser(
+                id=access.id,
+                client_id=client.id,
+                email=access.email,
+                portal_slug=access.portal_slug,
+                status=access.status,
+                created_at=access.created_at,
+                updated_at=access.updated_at,
+            ),
+        )
+
+    def get_client_overview(
+        self,
+        *,
+        client_id: str,
+        portal_slug: str,
+        client_access_service,
+        now: Optional[datetime] = None,
+    ) -> ClientOverviewSummary:
+        client, access = self._require_active_client_access(
+            client_id=client_id,
+            portal_slug=portal_slug,
+            client_access_service=client_access_service,
+        )
+        current_time = now or datetime.now(timezone.utc)
+        current_period_started_at = current_time.astimezone(timezone.utc).replace(
+            day=1,
+            hour=0,
+            minute=0,
+            second=0,
+            microsecond=0,
+        )
+        campaigns = self._repository.list_client_campaigns(client_id)
+        usage = self._repository.list_client_usage(client_id)
+        blocked_sends = self._repository.list_client_blocked_sends(client_id)
+
+        status_counts = ClientCampaignStatusCounts()
+        running_campaigns = 0
+
+        for campaign in campaigns:
+            if campaign.status in status_counts.model_fields:
+                setattr(
+                    status_counts,
+                    campaign.status,
+                    getattr(status_counts, campaign.status) + 1,
+                )
+
+            if campaign.status in RUNNING_CAMPAIGN_STATUSES:
+                running_campaigns += 1
+
+        usage_totals: dict[str, int] = {}
+        for entry in usage:
+            if entry.created_at < current_period_started_at:
+                continue
+
+            usage_totals[entry.usage_type] = usage_totals.get(entry.usage_type, 0) + entry.quantity
+
+        client_dashboard = self._build_client_dashboard_summary(
+            client=client,
+            portal_slug=access.portal_slug,
+            campaigns=campaigns,
+            status_counts=status_counts,
+            now=current_time,
+        )
+
+        return ClientOverviewSummary(
+            client=ClientOverviewIdentity(
+                id=client.id,
+                name=_build_client_name(client),
+                email=client.email,
+                portal_slug=access.portal_slug,
+                client_status=client.status,
+                access_status=access.status,
+                invitation_status=access.invitation_status,
+            ),
+            campaigns=ClientOverviewCampaigns(
+                total_campaigns=len(campaigns),
+                active_campaigns=running_campaigns,
+                running_campaigns=running_campaigns,
+                status_counts=status_counts,
+                recent_campaigns=[
+                    self._build_client_campaign(campaign)
+                    for campaign in campaigns[:RECENT_CAMPAIGNS_LIMIT]
+                ],
+            ),
+            usage=ClientOverviewUsage(
+                has_data=bool(usage),
+                total_records=len(usage),
+                current_period_started_at=current_period_started_at,
+                current_period_totals=[
+                    ClientUsageSummaryItem(
+                        usage_type=usage_type,
+                        total_quantity=usage_totals[usage_type],
+                    )
+                    for usage_type in sorted(usage_totals)
+                ],
+                recent_usage=[
+                    self._build_client_usage(entry)
+                    for entry in usage[:RECENT_USAGE_LIMIT]
+                ],
+            ),
+            blocked_sends=ClientOverviewBlockedSends(
+                current_period_started_at=current_period_started_at,
+                current_period_count=sum(
+                    1
+                    for blocked_send in blocked_sends
+                    if blocked_send.created_at >= current_period_started_at
+                ),
+                recent_blocked_sends=[
+                    self._build_client_blocked_send(blocked_send)
+                    for blocked_send in blocked_sends[:RECENT_BLOCKED_SENDS_LIMIT]
+                ],
+            ),
+            limits=ClientOverviewLimits(
+                email_limit_per_campaign=client.email_limit_per_campaign,
+                max_campaigns=client.max_campaigns,
+            ),
+            client_dashboard=client_dashboard,
+        )
+
+    def _build_client_dashboard_summary(
+        self,
+        *,
+        client: ClientRecord,
+        portal_slug: str,
+        campaigns: list[ClientCampaignRecord],
+        status_counts: ClientCampaignStatusCounts,
+        now: datetime,
+    ) -> ClientDashboardSummary:
+        performance_windows = self._build_client_dashboard_windows(
+            client_id=client.id,
+            now=now,
+        )
+        default_window = performance_windows[CLIENT_DASHBOARD_DEFAULT_WINDOW]
+        campaigns_to_complete = status_counts.draft + status_counts.paused
+        blocked_campaigns = status_counts.blocked + status_counts.failed
+        blocked_sends_to_review = (
+            default_window.blocked if default_window.blocked_available else 0
+        ) or 0
+        action_items: list[ClientDashboardActionItem] = []
+
+        if campaigns_to_complete > 0:
+            action_items.append(
+                ClientDashboardActionItem(
+                    label="Campagne da completare",
+                    count=campaigns_to_complete,
+                    severity="warning",
+                )
+            )
+
+        if blocked_sends_to_review > 0:
+            action_items.append(
+                ClientDashboardActionItem(
+                    label="Blocchi da verificare",
+                    count=blocked_sends_to_review,
+                    severity="danger",
+                )
+            )
+
+        has_period_usage = (
+            (default_window.sent_available and (default_window.sent or 0) > 0)
+            or (default_window.queued_available and (default_window.queued or 0) > 0)
+            or (default_window.blocked_available and (default_window.blocked or 0) > 0)
+            or (default_window.opened_available and (default_window.opened or 0) > 0)
+        )
+
+        return ClientDashboardSummary(
+            greeting_name=_build_greeting_name(client),
+            cta=ClientDashboardCta(campaigns_href=f"/c/{portal_slug}/campaigns"),
+            kpis=ClientDashboardKpis(
+                active_campaigns=ClientDashboardKpiValue(
+                    value=status_counts.running,
+                    limit=client.max_campaigns,
+                    available=True,
+                ),
+                sent_last_7d=ClientDashboardKpiValue(
+                    value=performance_windows["7d"].sent,
+                    available=performance_windows["7d"].sent_available,
+                ),
+                opened_last_7d=ClientDashboardKpiValue(
+                    value=performance_windows["7d"].opened,
+                    available=performance_windows["7d"].opened_available,
+                ),
+                ready_campaigns=ClientDashboardKpiValue(
+                    value=status_counts.ready,
+                    available=True,
+                ),
+            ),
+            performance_analytics=ClientDashboardPerformanceAnalytics(
+                default_window=CLIENT_DASHBOARD_DEFAULT_WINDOW,
+                windows=performance_windows,
+            ),
+            actions_required=ClientDashboardActionsRequired(
+                campaigns_to_complete=campaigns_to_complete,
+                blocked_sends_to_review=blocked_sends_to_review,
+                provider_events_issues=None,
+                items=action_items,
+            ),
+            status_summary=ClientDashboardStatusSummary(
+                total_campaigns=len(campaigns),
+                running=status_counts.running,
+                ready=status_counts.ready,
+                to_complete=campaigns_to_complete,
+                blocked=blocked_campaigns,
+                completed=status_counts.completed,
+            ),
+            period_usage=ClientDashboardPeriodUsage(
+                has_real_usage=has_period_usage,
+                sent=default_window.sent if default_window.sent_available else None,
+                queued=default_window.queued if default_window.queued_available else None,
+                blocked=default_window.blocked if default_window.blocked_available else None,
+                opened=default_window.opened if default_window.opened_available else None,
+            ),
+        )
+
+    def _build_client_dashboard_windows(
+        self,
+        *,
+        client_id: str,
+        now: datetime,
+    ) -> dict[ClientDashboardWindowKey, ClientDashboardWindowMetrics]:
+        windows: dict[ClientDashboardWindowKey, ClientDashboardWindowMetrics] = {}
+
+        email_log_repository = self._email_log_repository
+        blocked_send_repository = self._blocked_send_repository
+        provider_event_repository = self._provider_event_repository
+
+        for window_key, delta in CLIENT_DASHBOARD_WINDOW_DELTAS:
+            started_at = now - delta if delta is not None else None
+            sent_available = email_log_repository is not None
+            queued_available = email_log_repository is not None
+            blocked_available = blocked_send_repository is not None
+            opened_available = provider_event_repository is not None
+
+            windows[window_key] = ClientDashboardWindowMetrics(
+                sent=(
+                    email_log_repository.count_client_real_logs(
+                        client_id=client_id,
+                        started_at=started_at,
+                        ended_at=now,
+                    )
+                    if email_log_repository is not None
+                    else None
+                ),
+                queued=(
+                    email_log_repository.count_client_real_logs(
+                        client_id=client_id,
+                        started_at=started_at,
+                        ended_at=now,
+                        statuses=("queued",),
+                    )
+                    if email_log_repository is not None
+                    else None
+                ),
+                blocked=(
+                    blocked_send_repository.count_by_client(
+                        client_id=client_id,
+                        started_at=started_at,
+                        ended_at=now,
+                    )
+                    if blocked_send_repository is not None
+                    else None
+                ),
+                opened=(
+                    provider_event_repository.count_client_events(
+                        client_id=client_id,
+                        event_types=("ses_open",),
+                        started_at=started_at,
+                        ended_at=now,
+                    )
+                    if provider_event_repository is not None
+                    else None
+                ),
+                sent_available=sent_available,
+                queued_available=queued_available,
+                blocked_available=blocked_available,
+                opened_available=opened_available,
+                window_started_at=started_at,
+                window_ended_at=now,
+            )
+
+        return windows
+
+    def list_client_campaigns(
+        self,
+        *,
+        client_id: str,
+        portal_slug: str,
+        client_access_service,
+    ) -> list[Campaign]:
+        self._require_active_client_access(
+            client_id=client_id,
+            portal_slug=portal_slug,
+            client_access_service=client_access_service,
+        )
+        return [
+            self._build_client_campaign(campaign)
+            for campaign in self._repository.list_client_campaigns(client_id)
+        ]
+
+    def get_client_campaign_detail(
+        self,
+        *,
+        client_id: str,
+        portal_slug: str,
+        campaign_id: str,
+        client_access_service,
+    ) -> ClientCampaignDetailResponse:
+        self._require_active_client_access(
+            client_id=client_id,
+            portal_slug=portal_slug,
+            client_access_service=client_access_service,
+        )
+        return self._build_client_campaign_read_model(
+            client_id=client_id,
+            campaign_id=campaign_id,
+        )
+
+    def get_client_campaign_stats(
+        self,
+        *,
+        client_id: str,
+        portal_slug: str,
+        campaign_id: str,
+        client_access_service,
+    ) -> ClientCampaignStatsResponse:
+        self._require_active_client_access(
+            client_id=client_id,
+            portal_slug=portal_slug,
+            client_access_service=client_access_service,
+        )
+        detail = self._build_client_campaign_read_model(
+            client_id=client_id,
+            campaign_id=campaign_id,
+        )
+        return ClientCampaignStatsResponse(
+            campaign_id=detail.campaign.id,
+            client_id=detail.campaign.client_id,
+            recipients=detail.recipients,
+            logs=detail.logs,
+            blocked_sends=detail.blocked_sends,
+        )
+
+    def list_client_usage(
+        self,
+        *,
+        client_id: str,
+        portal_slug: str,
+        client_access_service,
+    ) -> list[ApiUsage]:
+        self._require_active_client_access(
+            client_id=client_id,
+            portal_slug=portal_slug,
+            client_access_service=client_access_service,
+        )
+        return [
+            self._build_client_usage(entry)
+            for entry in self._repository.list_client_usage(client_id)
+        ]
+
+    def list_client_blocked_sends(
+        self,
+        *,
+        client_id: str,
+        portal_slug: str,
+        client_access_service,
+    ) -> list[BlockedSend]:
+        self._require_active_client_access(
+            client_id=client_id,
+            portal_slug=portal_slug,
+            client_access_service=client_access_service,
+        )
+        return [
+            self._build_client_blocked_send(blocked_send)
+            for blocked_send in self._repository.list_client_blocked_sends(client_id)
+        ]
+
+    def list_admin_campaigns(self) -> list[AdminCampaignSummary]:
+        return [
+            AdminCampaignSummary(
+                id=campaign.id,
+                client_id=campaign.client_id,
+                client_name=campaign.client_name,
+                client_email=campaign.client_email,
+                name=campaign.name,
+                status=campaign.status,
+                subject=campaign.subject,
+                created_at=campaign.created_at,
+                updated_at=campaign.updated_at,
+                blocked_sends_count=campaign.blocked_sends_count,
+            )
+            for campaign in self._repository.list_admin_campaigns()
+        ]
+
+    def get_admin_overview(
+        self,
+        *,
+        client_access_service,
+        now: Optional[datetime] = None,
+    ) -> AdminOverviewSummary:
+        current_time = now or datetime.now(timezone.utc)
+        clients = self.list_clients()
+        campaigns = self._repository.list_admin_campaigns()
+        campaign_email_volumes = self._repository.list_admin_campaign_email_volumes()
+
+        client_status_counts = AdminClientStatusCounts()
+        for client in clients:
+            if client.status in client_status_counts.model_fields:
+                setattr(
+                    client_status_counts,
+                    client.status,
+                    getattr(client_status_counts, client.status) + 1,
+                )
+
+        campaign_status_counts = AdminCampaignStatusCounts()
+        running_campaigns = 0
+        for campaign in campaigns:
+            if campaign.status in ACTIVE_CAMPAIGN_STATUSES:
+                campaign_status_counts.active += 1
+                if campaign.status in RUNNING_CAMPAIGN_STATUSES:
+                    running_campaigns += 1
+                continue
+
+            if campaign.status == CampaignStatus.paused.value:
+                campaign_status_counts.paused += 1
+                continue
+
+            if campaign.status == CampaignStatus.blocked.value:
+                campaign_status_counts.blocked += 1
+                continue
+
+            if campaign.status == CampaignStatus.draft.value:
+                campaign_status_counts.draft += 1
+                continue
+
+            if campaign.status == CampaignStatus.completed.value:
+                campaign_status_counts.completed += 1
+                continue
+
+            if campaign.status == CampaignStatus.failed.value:
+                campaign_status_counts.failed += 1
+
+        recent_campaigns = [
+            self._build_recent_campaign_summary(campaign)
+            for campaign in campaigns[:RECENT_ADMIN_CAMPAIGNS_LIMIT]
+        ]
+        recent_critical_events = [
+            self._build_recent_critical_event(blocked_send)
+            for blocked_send in self._repository.list_recent_admin_blocked_sends(
+                limit=RECENT_ADMIN_BLOCKED_SENDS_LIMIT,
+            )
+        ]
+        start_of_day = current_time.astimezone(timezone.utc).replace(
+            hour=0,
+            minute=0,
+            second=0,
+            microsecond=0,
+        )
+        start_of_month = start_of_day.replace(day=1)
+        configured_limits_count = sum(
+            1 for client in clients if has_any_email_limit_configured(client)
+        )
+        client_access_by_client_id = {
+            client.id: client_access_service.get_access_by_client_id(client.id)
+            for client in clients
+        }
+
+        return AdminOverviewSummary(
+            clients=AdminOverviewClientsSummary(
+                total_clients=len(clients),
+                active_clients=sum(1 for client in clients if client.status == "active"),
+                invited_or_pending_clients=sum(
+                    1
+                    for access in client_access_by_client_id.values()
+                    if access
+                    and (
+                        access.status == "invited"
+                        or (access.invitation_status or "pending") == "pending"
+                    )
+                ),
+                archived_or_blocked_clients=sum(
+                    1
+                    for client in clients
+                    if client.status in {"archived", "blocked"}
+                ),
+                status_counts=client_status_counts,
+            ),
+            campaigns=AdminOverviewCampaignsSummary(
+                total_campaigns=len(campaigns),
+                running_campaigns=running_campaigns,
+                paused_campaigns=campaign_status_counts.paused,
+                blocked_campaigns=campaign_status_counts.blocked,
+                status_counts=campaign_status_counts,
+                recent_campaigns=recent_campaigns,
+            ),
+            sending=AdminOverviewSendingSummary(
+                emails_sent_today=self._repository.count_admin_email_logs_since(
+                    start_of_day
+                ),
+                emails_sent_this_month=self._repository.count_admin_email_logs_since(
+                    start_of_month
+                ),
+                top_clients_by_volume=[
+                    self._build_top_client_volume(record)
+                    for record in self._repository.list_admin_top_sending_clients_since(
+                        started_at=start_of_month,
+                        limit=TOP_CLIENTS_LIMIT,
+                    )
+                ],
+            ),
+            blocks=AdminOverviewBlocksSummary(
+                blocked_sends_today=self._repository.count_admin_blocked_sends_since(
+                    start_of_day
+                ),
+                recent_critical_events=recent_critical_events,
+            ),
+            limits=AdminOverviewLimitsSummary(
+                clients_near_limit=self._build_clients_near_limit(
+                    clients=clients,
+                    campaigns=campaigns,
+                    campaign_email_volumes=campaign_email_volumes,
+                ),
+                configured_limits_count=configured_limits_count,
+                unconfigured_limits_count=max(len(clients) - configured_limits_count, 0),
+            ),
+            system=self.get_admin_system_status(now=current_time),
+        )
+
+    def get_admin_email_limits(
+        self,
+        *,
+        client_access_service,
+    ) -> AdminEmailLimitsResponse:
+        clients = self.list_clients()
+        rows = [
+            build_admin_email_limit_row(
+                client,
+                access=client_access_service.get_access_by_client_id(client.id),
+            )
+            for client in clients
+        ]
+        configured_clients = sum(
+            1 for client in clients if has_any_email_limit_configured(client)
+        )
+        return AdminEmailLimitsResponse(
+            summary=AdminEmailLimitsSummary(
+                total_clients=len(rows),
+                configured_clients=configured_clients,
+                unconfigured_clients=max(len(rows) - configured_clients, 0),
+            ),
+            rows=rows,
+        )
+
+    def get_admin_blocked_sends(
+        self,
+        *,
+        limit: Optional[int] = None,
+    ) -> list[AdminBlockedSendItem]:
+        return [
+            AdminBlockedSendItem(
+                id=blocked_send.id,
+                client_id=blocked_send.client_id,
+                client_name=blocked_send.client_name,
+                client_email=blocked_send.client_email,
+                campaign_id=blocked_send.campaign_id,
+                campaign_name=blocked_send.campaign_name,
+                reason=blocked_send.reason,
+                decision=blocked_send.decision,
+                created_at=blocked_send.created_at,
+            )
+            for blocked_send in self._repository.list_admin_blocked_sends(limit=limit)
+        ]
+
+    def get_admin_system_status(
+        self,
+        *,
+        now: Optional[datetime] = None,
+    ) -> AdminSystemStatus:
+        current_time = now or datetime.now(timezone.utc)
+        auth_provider_configured = bool(
+            self._settings.clerk_issuer.strip() and self._settings.clerk_jwks_url.strip()
+        )
+        runtime = build_provider_runtime_summary(self._settings)
+        return AdminSystemStatus(
+            api_status="ok",
+            db_status="ok" if self._repository.is_database_available() else "degraded",
+            email_sending_enabled=self._settings.email_sending_enabled,
+            email_provider=runtime.email_provider,
+            provider_mode_label=runtime.provider_mode_label,
+            real_send_available=runtime.real_send_available,
+            ses_live_validation_status=runtime.ses_live_validation_status,
+            provider_events_available=runtime.provider_events_available,
+            mailpit_dev_mode=runtime.mailpit_dev_mode,
+            runtime=runtime,
+            environment=self._settings.environment.strip() or "unknown",
+            auth_provider_configured=auth_provider_configured,
+            clerk_management_api_configured=bool(self._settings.clerk_secret_key.strip()),
+            frontend_origin_configured=bool(self._settings.frontend_origin),
+            delivery_engine_configured=bool(self._settings.listmonk_url.strip()),
+            generated_at=current_time,
+        )
+
+    def _require_active_client_access(
+        self,
+        *,
+        client_id: str,
+        portal_slug: str,
+        client_access_service,
+    ):
+        client = self.get_client_by_id(client_id)
+        access = client_access_service.get_access_by_client_id(client_id)
+
+        if access is None or access.status != "active":
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Client access is not available for this Sendwise account.",
+            )
+
+        if access.portal_slug != portal_slug:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Authenticated client scope does not match the requested portal.",
+            )
+
+        return client, access
+
+    def _build_client_campaign(self, campaign: ClientCampaignRecord) -> Campaign:
+        return Campaign(
+            id=campaign.id,
+            client_id=campaign.client_id,
+            name=campaign.name,
+            status=campaign.status,
+            subject=campaign.subject,
+            created_at=campaign.created_at,
+            updated_at=campaign.updated_at,
+        )
+
+    def _build_client_campaign_read_model(
+        self,
+        *,
+        client_id: str,
+        campaign_id: str,
+    ) -> ClientCampaignDetailResponse:
+        campaign = self._require_client_campaign_record(
+            client_id=client_id,
+            campaign_id=campaign_id,
+        )
+        client = self.get_client_by_id(client_id)
+        contacts = self._require_contact_repository().list_campaign_contacts(
+            client_id=client_id,
+            campaign_id=campaign_id,
+        )
+        suppressed_emails = self._require_suppression_list_repository().list_suppressed_emails_for_campaign(
+            client_id=client_id,
+            emails=[contact.email for contact in contacts],
+        )
+        recipients = self._build_campaign_recipients_summary(
+            contacts=contacts,
+            suppressed_emails=suppressed_emails,
+        )
+        slot_repository = self._campaign_slot_repository
+        slot = None
+        if campaign.campaign_slot_id and slot_repository is not None:
+            slot = slot_repository.get_by_id(
+                client_id=client_id,
+                slot_id=campaign.campaign_slot_id,
+            )
+
+        logs = self._build_campaign_logs_summary(
+            client_id=client_id,
+            campaign_id=campaign_id,
+        )
+        return ClientCampaignDetailResponse(
+            campaign=CampaignSummaryItem(
+                id=campaign.id,
+                client_id=campaign.client_id,
+                name=campaign.name,
+                status=campaign.status,
+                subject=campaign.subject,
+                preview_text=campaign.preview_text,
+                current_step=campaign.current_step,
+                content_ready=campaign.content_ready,
+                contacts_ready=campaign.contacts_ready,
+                review_ready=campaign.review_ready,
+            ),
+            slot=CampaignSlotSummary(
+                id=campaign.campaign_slot_id,
+                label=slot.label if slot is not None else None,
+                max_emails=slot.max_emails if slot is not None else client.email_limit_per_campaign,
+                status=slot.status if slot is not None else (
+                    "legacy" if client.email_limit_per_campaign is not None else None
+                ),
+                limit_source="campaign_slot" if slot is not None else "legacy_client_limit",
+            ),
+            recipients=recipients,
+            logs=logs,
+            runtime=build_provider_runtime_summary(
+                self._settings,
+                provider_events_available=logs.provider_events_available,
+            ),
+            blocked_sends=self._build_campaign_blocked_sends_summary(
+                client_id=client_id,
+                campaign_id=campaign_id,
+                campaign_name=campaign.name,
+            ),
+        )
+
+    def _require_client_campaign_record(
+        self,
+        *,
+        client_id: str,
+        campaign_id: str,
+    ) -> ClientCampaignRecord:
+        if self._campaign_repository is not None:
+            campaign = self._campaign_repository.get_by_id(
+                campaign_id=campaign_id,
+                client_id=client_id,
+            )
+            if campaign is not None:
+                return ClientCampaignRecord(
+                    id=campaign.id,
+                    client_id=campaign.client_id,
+                    name=campaign.name,
+                    status=campaign.status,
+                    subject=campaign.subject,
+                    campaign_slot_id=campaign.campaign_slot_id,
+                    preview_text=campaign.preview_text,
+                    body_html=campaign.body_html,
+                    body_text=campaign.body_text,
+                    content_ready=campaign.content_ready,
+                    contacts_ready=campaign.contacts_ready,
+                    review_ready=campaign.review_ready,
+                    current_step=campaign.current_step,
+                    created_at=campaign.created_at,
+                    updated_at=campaign.updated_at,
+                )
+
+        for campaign in self._repository.list_client_campaigns(client_id):
+            if campaign.id == campaign_id:
+                return campaign
+
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Campaign not found.",
+        )
+
+    def _build_campaign_recipients_summary(
+        self,
+        *,
+        contacts,
+        suppressed_emails: set[str],
+    ) -> CampaignRecipientsSummary:
+        total = len(contacts)
+        eligible = 0
+        invalid = 0
+        suppressed = 0
+
+        for contact in contacts:
+            normalized_email = contact.email.strip().lower()
+            is_valid = "@" in contact.email and "." in contact.email.rsplit("@", 1)[-1]
+            is_suppressed = (
+                contact.status.strip().lower() == "suppressed"
+                or normalized_email in suppressed_emails
+            )
+
+            if not is_valid:
+                invalid += 1
+            if is_suppressed:
+                suppressed += 1
+            if is_valid and contact.status.strip().lower() == "sendable" and not is_suppressed:
+                eligible += 1
+
+        return CampaignRecipientsSummary(
+            total=total,
+            eligible=eligible,
+            invalid=invalid,
+            suppressed=suppressed,
+            blocked=max(total - eligible, 0),
+        )
+
+    def _build_campaign_logs_summary(
+        self,
+        *,
+        client_id: str,
+        campaign_id: str,
+    ) -> CampaignLogsSummary:
+        status_counts = self._require_email_log_repository().get_campaign_status_counts(
+            client_id=client_id,
+            campaign_id=campaign_id,
+        )
+        provider_event_repository = self._require_provider_event_repository()
+        event_counts = provider_event_repository.get_campaign_event_counts(
+            client_id=client_id,
+            campaign_id=campaign_id,
+        )
+        provider_events_available = provider_event_repository.has_events_for_campaign(
+            client_id=client_id,
+            campaign_id=campaign_id,
+        )
+        return CampaignLogsSummary(
+            simulated=status_counts.get("simulated", 0),
+            queued=status_counts.get("queued", 0),
+            sent=_prefer_provider_metric(
+                status_counts=status_counts,
+                event_counts=event_counts,
+                status_keys=("sent", "dispatched", "delivered"),
+                event_types=("ses_send", "ses_delivery"),
+            ),
+            opened=_prefer_provider_metric(
+                status_counts=status_counts,
+                event_counts=event_counts,
+                status_keys=("opened",),
+                event_types=("ses_open",),
+            ),
+            clicked=_prefer_provider_metric(
+                status_counts=status_counts,
+                event_counts=event_counts,
+                status_keys=("clicked",),
+                event_types=("ses_click",),
+            ),
+            bounced=_prefer_provider_metric(
+                status_counts=status_counts,
+                event_counts=event_counts,
+                status_keys=("bounced",),
+                event_types=("ses_bounce",),
+            ),
+            complained=_prefer_provider_metric(
+                status_counts=status_counts,
+                event_counts=event_counts,
+                status_keys=("complained", "spam"),
+                event_types=("ses_complaint",),
+            ),
+            unsubscribed=_prefer_provider_metric(
+                status_counts=status_counts,
+                event_counts=event_counts,
+                status_keys=("unsubscribed",),
+                event_types=("sendwise_unsubscribe",),
+            ),
+            provider_events_available=provider_events_available,
+        )
+
+    def _build_campaign_blocked_sends_summary(
+        self,
+        *,
+        client_id: str,
+        campaign_id: str,
+        campaign_name: str,
+    ) -> CampaignBlockedSendsSummary:
+        repository = self._require_blocked_send_repository()
+        latest = [
+            BlockedSend(
+                id=record.id,
+                client_id=record.client_id,
+                campaign_id=record.campaign_id,
+                campaign_name=campaign_name,
+                contact_id=record.contact_id,
+                reason=record.reason,
+                decision=record.decision,
+                created_at=record.created_at,
+            )
+            for record in repository.list_recent_by_campaign(
+                client_id=client_id,
+                campaign_id=campaign_id,
+                limit=CAMPAIGN_BLOCKED_SENDS_LATEST_LIMIT,
+            )
+        ]
+        return CampaignBlockedSendsSummary(
+            total=repository.count_by_campaign(
+                client_id=client_id,
+                campaign_id=campaign_id,
+            ),
+            latest=latest,
+        )
+
+    def _require_contact_repository(self) -> ContactRepository:
+        if self._contact_repository is None:
+            raise RuntimeError("Contact repository is required for client campaign reads.")
+        return self._contact_repository
+
+    def _require_suppression_list_repository(self) -> SuppressionListRepository:
+        if self._suppression_list_repository is None:
+            raise RuntimeError(
+                "Suppression list repository is required for client campaign reads."
+            )
+        return self._suppression_list_repository
+
+    def _require_blocked_send_repository(self) -> BlockedSendRepository:
+        if self._blocked_send_repository is None:
+            raise RuntimeError(
+                "Blocked send repository is required for client campaign reads."
+            )
+        return self._blocked_send_repository
+
+    def _require_email_log_repository(self) -> EmailLogRepository:
+        if self._email_log_repository is None:
+            raise RuntimeError("Email log repository is required for client campaign reads.")
+        return self._email_log_repository
+
+    def _require_provider_event_repository(self) -> ProviderEventRepository:
+        if self._provider_event_repository is None:
+            raise RuntimeError(
+                "Provider event repository is required for client campaign reads."
+            )
+        return self._provider_event_repository
+
+    def _build_client_usage(self, entry: ClientUsageRecord) -> ApiUsage:
+        return ApiUsage(
+            id=entry.id,
+            client_id=entry.client_id,
+            usage_type=entry.usage_type,
+            quantity=entry.quantity,
+            metadata=entry.metadata,
+            created_at=entry.created_at,
+        )
+
+    def _build_client_blocked_send(
+        self,
+        blocked_send: ClientBlockedSendRecord,
+    ) -> BlockedSend:
+        return BlockedSend(
+            id=blocked_send.id,
+            client_id=blocked_send.client_id,
+            campaign_id=blocked_send.campaign_id,
+            campaign_name=blocked_send.campaign_name,
+            contact_id=blocked_send.contact_id,
+            reason=blocked_send.reason,
+            decision=blocked_send.decision,
+            created_at=blocked_send.created_at,
+        )
+
+    def _build_recent_campaign_summary(
+        self,
+        campaign: AdminCampaignRecord,
+    ) -> AdminRecentCampaign:
+        return AdminRecentCampaign(
+            id=campaign.id,
+            client_id=campaign.client_id,
+            client_name=campaign.client_name,
+            client_email=campaign.client_email,
+            campaign_name=campaign.name,
+            subject=campaign.subject,
+            status=campaign.status,
+            created_at=campaign.created_at,
+            updated_at=campaign.updated_at,
+        )
+
+    def _build_recent_critical_event(
+        self,
+        blocked_send: AdminBlockedSendRecord,
+    ) -> AdminCriticalEvent:
+        return AdminCriticalEvent(
+            id=blocked_send.id,
+            client_id=blocked_send.client_id,
+            client_name=blocked_send.client_name,
+            client_email=blocked_send.client_email,
+            campaign_id=blocked_send.campaign_id,
+            campaign_name=blocked_send.campaign_name,
+            reason=blocked_send.reason,
+            decision=blocked_send.decision,
+            created_at=blocked_send.created_at,
+        )
+
+    def _build_top_client_volume(
+        self,
+        record: AdminTopClientVolumeRecord,
+    ) -> AdminTopClientByVolume:
+        return AdminTopClientByVolume(
+            client_id=record.client_id,
+            client_name=record.client_name,
+            client_email=record.client_email,
+            emails_sent=record.emails_sent,
+        )
+
+    def _build_clients_near_limit(
+        self,
+        *,
+        clients: list[ClientRecord],
+        campaigns: list[AdminCampaignRecord],
+        campaign_email_volumes: list[AdminCampaignEmailVolumeRecord],
+    ) -> list[AdminClientNearLimit]:
+        campaigns_in_use_by_client_id: dict[str, int] = {}
+        for campaign in campaigns:
+            if campaign.status not in LIMITED_CAMPAIGN_STATUSES:
+                continue
+
+            campaigns_in_use_by_client_id[campaign.client_id] = (
+                campaigns_in_use_by_client_id.get(campaign.client_id, 0) + 1
+            )
+
+        highest_campaign_volume_by_client_id: dict[str, AdminCampaignEmailVolumeRecord] = {}
+        for volume in campaign_email_volumes:
+            existing = highest_campaign_volume_by_client_id.get(volume.client_id)
+            if existing is None or volume.emails_sent > existing.emails_sent:
+                highest_campaign_volume_by_client_id[volume.client_id] = volume
+
+        near_limit_clients: list[AdminClientNearLimit] = []
+        for client in clients:
+            campaigns_in_use = campaigns_in_use_by_client_id.get(client.id, 0)
+            highest_campaign_volume = highest_campaign_volume_by_client_id.get(client.id)
+            max_campaigns_ratio = self._compute_ratio(
+                campaigns_in_use,
+                client.max_campaigns,
+            )
+            email_limit_ratio = self._compute_ratio(
+                highest_campaign_volume.emails_sent if highest_campaign_volume else 0,
+                client.email_limit_per_campaign,
+            )
+            usage_ratio = max(max_campaigns_ratio or 0.0, email_limit_ratio or 0.0)
+
+            if usage_ratio < NEAR_LIMIT_THRESHOLD:
+                continue
+
+            if (
+                max_campaigns_ratio is not None
+                and max_campaigns_ratio >= NEAR_LIMIT_THRESHOLD
+                and email_limit_ratio is not None
+                and email_limit_ratio >= NEAR_LIMIT_THRESHOLD
+            ):
+                limiting_factor = "both"
+            elif max_campaigns_ratio is not None and max_campaigns_ratio >= NEAR_LIMIT_THRESHOLD:
+                limiting_factor = "campaign_slots"
+            else:
+                limiting_factor = "email_limit_per_campaign"
+
+            near_limit_clients.append(
+                AdminClientNearLimit(
+                    client_id=client.id,
+                    client_name=_build_client_name(client),
+                    client_email=client.email,
+                    usage_ratio=usage_ratio,
+                    limiting_factor=limiting_factor,
+                    campaigns_in_use=campaigns_in_use,
+                    max_campaigns=client.max_campaigns,
+                    highest_usage_campaign_id=(
+                        highest_campaign_volume.campaign_id if highest_campaign_volume else None
+                    ),
+                    highest_usage_campaign_name=(
+                        highest_campaign_volume.campaign_name if highest_campaign_volume else None
+                    ),
+                    highest_usage_campaign_volume=(
+                        highest_campaign_volume.emails_sent if highest_campaign_volume else 0
+                    ),
+                    email_limit_per_campaign=client.email_limit_per_campaign,
+                    max_campaigns_ratio=max_campaigns_ratio,
+                    email_limit_ratio=email_limit_ratio,
+                )
+            )
+
+        near_limit_clients.sort(
+            key=lambda item: (item.usage_ratio, item.campaigns_in_use, item.client_name),
+            reverse=True,
+        )
+        return near_limit_clients[:CLIENTS_NEAR_LIMIT_LIMIT]
+
+    def _compute_ratio(
+        self,
+        used_value: int,
+        configured_limit: Optional[int],
+    ) -> Optional[float]:
+        if configured_limit is None or configured_limit <= 0:
+            return None
+
+        return min(used_value / configured_limit, 1.0)
+
+
+def get_clients_service(
+    repository: ClientRepository = Depends(get_client_repository),
+    settings: Settings = Depends(get_settings),
+) -> ClientsService:
+    return ClientsService(
+        repository,
+        settings=settings,
+        campaign_repository=get_campaign_repository(),
+        campaign_slot_repository=get_campaign_slot_repository(),
+        contact_repository=PostgresContactRepository(settings),
+        suppression_list_repository=get_suppression_list_repository(),
+        blocked_send_repository=get_blocked_send_repository(),
+        email_log_repository=get_email_log_repository(),
+        provider_event_repository=get_provider_event_repository(),
+    )

@@ -106,6 +106,24 @@ Mailpit:
 
 Mailpit is dev/staging only and must not be used for production sending.
 
+### Apply database migrations
+
+`db/init.sql` initializes fresh PostgreSQL volumes. Existing dev or staging
+volumes must be updated explicitly with the migration runner:
+
+```bash
+./scripts/apply_migrations.sh
+```
+
+The runner uses the `postgres` Docker Compose service, creates
+`schema_migrations` if needed, applies pending files from `db/migrations` in
+lexicographic order, and skips files already recorded. To inspect status without
+changing the database:
+
+```bash
+./scripts/apply_migrations.sh --dry-run
+```
+
 ## 🧪 Development Commands
 
 ```bash
@@ -145,12 +163,20 @@ Expected response:
 Sendwise is conservative by default:
 
 - `EMAIL_SENDING_ENABLED=false` in `.env.example`.
+- `EMAIL_PROVIDER=mailpit` in `.env.example`; SES is never the default.
+- SES controlled send requires explicit runtime overrides plus `REAL_SEND_ALLOWED_RECIPIENTS` and `REAL_SEND_MAX_RECIPIENTS`.
 - Only the exact string `"true"` may enable future send logic.
 - PostgreSQL is not publicly exposed in the production compose file.
 - Mailpit is excluded from the production compose file.
 - listmonk admin access must be protected before production use.
 - Client data must be isolated by `client_id`.
 - No email may be sent without backend authorization.
+
+### SES controlled send
+
+Milestone 12 adds a dev/staging SES controlled-send gate for 1-3 explicitly allowed recipients. It remains fail-closed unless `EMAIL_SENDING_ENABLED=true`, `EMAIL_PROVIDER=ses`, SES SMTP env is complete, `BACKEND_PUBLIC_URL` is public, Guard authorizes the campaign, and every eligible recipient is listed in `REAL_SEND_ALLOWED_RECIPIENTS`.
+
+Use `docs/runbook_ses_controlled_send.md` and `scripts/validate_ses_readiness.sh` before any SES live test. Do not commit SMTP credentials, AWS secrets, or real recipient allowlists.
 
 ## 📚 Documentation
 
@@ -163,6 +189,8 @@ The main project contracts live in `docs/`:
 - `docs/ownership_v1.md`
 - `docs/structural_contracts_v1.md`
 - `docs/audit_checklist_v1.md`
+- `docs/runbook_backup_restore.md`
+- `docs/runbook_vps_staging.md`
 
 These docs define how the product should evolve. When behavior changes, update the matching contract document with the code.
 

@@ -1,9 +1,11 @@
 import type { Metadata } from "next";
+import { ClerkProvider } from "@clerk/nextjs";
+import { AppShell } from "../components/layout/AppShell";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Email AI Platform V1 Skeleton",
-  description: "Milestone 0 repository skeleton",
+  title: "Sendwise",
+  description: "Campagne email, AI e controllo operativonello stesso workspace.",
 };
 
 export default function RootLayout({
@@ -12,8 +14,19 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
-      <body>{children}</body>
+    <html lang="it">
+      <body className="theme">
+        <ClerkProvider
+          afterSignOutUrl="/login"
+          signInFallbackRedirectUrl="/auth/redirect"
+          signInForceRedirectUrl="/auth/redirect"
+          signInUrl="/login"
+          signUpForceRedirectUrl="/auth/redirect"
+          signUpFallbackRedirectUrl="/auth/redirect"
+        >
+          <AppShell>{children}</AppShell>
+        </ClerkProvider>
+      </body>
     </html>
   );
 }

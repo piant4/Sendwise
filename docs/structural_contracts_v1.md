@@ -7,222 +7,162 @@ These contracts are binding for V1 until explicitly changed. Older files are his
 ## Mandatory Rules
 
 - Backend is the only gatekeeper.
-- UI talks only to backend.
-- Backend talks to Business PostgreSQL and listmonk.
-- listmonk is not the business source of truth.
-- Mailpit is dev/staging only.
-- n8n is optional future integration layer only.
+- UI talks only to FastAPI backend APIs.
+- Backend talks to Business PostgreSQL, Deliverability Guard, and listmonk.
+- Business PostgreSQL remains the product and business source of truth.
+- listmonk remains an engine-only technical system.
+- Frontend never calls listmonk directly.
+- Frontend never decides trusted `client_id`.
+- Frontend never decides limits, Guard result, or provider.
 - No component may bypass the Deliverability Guard.
-- No email may be sent without backend authorization.
+- No email may be simulated or sent without backend-controlled checks.
+- `EMAIL_SENDING_ENABLED` remains fail-closed for real dispatch.
+- Mailpit is dev/staging only.
+- SES remains controlled and outside this milestone's implementation scope.
+- AI is editorial assistance only; it does not authorize or send.
 - Codex must not change contracts without explicit instruction.
+
+## Product Direction
+
+The admin portal is the only V1 operational surface for campaign creation, setup, review, simulation, and controlled send on behalf of a client.
+
+Target V1 admin-managed flow:
+
+1. New campaign
+2. Select client
+3. Setup campaign
+4. Create content or apply a template
+5. Add or import recipients
+6. Review content and delivery readiness
+7. Request simulation or controlled send
+
+Client portal V1 scope:
+
+- read campaign overview, detail, state, usage, blocked sends, and delivery metrics when available
+- no campaign create, edit, template, contact-import, slot-assignment, simulation, or send actions
+
+This milestone updates contracts only. It does not implement the wizard, template CRUD, AI generation, or new dispatch behavior.
 
 ## Components
 
-### UI Custom Next.js
+### Frontend Custom Next.js
 
 Can do:
-- Render admin and client dashboards.
-- Call FastAPI backend endpoints.
-- Display states, metrics, blocked-send reasons, and usage data returned by backend.
-- Use mock API data during skeleton and early frontend development.
+- Render admin dashboards and future admin-managed campaign wizard screens.
+- Render read-only client dashboards and campaign detail/metrics screens.
+- Collect admin form input for campaign setup, content, recipients, review, simulation, and send actions.
+- Call FastAPI backend endpoints only.
+- Display backend-owned states, readiness flags, blocked-send reasons, slot summaries, and usage data.
 
 Cannot do:
 - Decide business logic.
 - Call listmonk directly.
 - Write to PostgreSQL directly.
+- Decide `client_id`.
+- Decide slot or campaign limits.
+- Decide Guard or review outcome.
 - Authorize sending.
+- Expose client campaign write actions in V1.
 - Bypass Deliverability Guard.
-
-Can communicate with:
-- FastAPI backend only.
-
-Cannot communicate with:
-- Business PostgreSQL.
-- listmonk.
-- SMTP / Amazon SES.
-- Mailpit.
 
 ### FastAPI Backend
 
 Can do:
-- Serve admin and client APIs.
-- Enforce business rules and client isolation.
-- Own send authorization.
-- Call Deliverability Guard.
-- Read/write Business PostgreSQL.
-- Call listmonk API after authorization.
-- Receive provider/listmonk events.
+- Serve admin, client, auth, campaign, contact, and future AI-assist APIs.
+- Resolve trusted `client_id` from auth and `client_access`.
+- Validate admin-selected `client_id` before creating or mutating a campaign on behalf of that client.
+- Enforce client isolation and cross-client denial.
+- Create and update admin-managed campaigns for a validated client.
+- Validate step progression, readiness, slot assignment, and state transitions.
+- Own final review and Deliverability Guard evaluation.
+- Read and write Business PostgreSQL.
+- Call listmonk after backend authorization only.
+- Call AI providers in future as editorial assistants only, with usage logging.
 
 Cannot do:
-- Send directly through SMTP / Amazon SES as the default V1 path.
-- Bypass Deliverability Guard.
+- Trust frontend-supplied `client_id`, limits, Guard result, or provider choice.
 - Treat listmonk as source of truth.
-- Implement real sending in Milestone 0.
-
-Can communicate with:
-- UI Custom Next.js.
-- Business PostgreSQL.
-- listmonk.
-- Future n8n/Activepieces/webhook callers through backend API.
-
-Cannot communicate with:
-- SMTP / Amazon SES directly for default V1 campaign sending.
+- Let AI publish or send autonomously.
+- Allow client campaign write operations in V1 without an approved contract change.
+- Bypass Deliverability Guard.
 
 ### Business PostgreSQL
 
 Can do:
-- Store business source-of-truth data.
-- Store clients, campaigns, contacts, send decisions, events, usage, mappings, and blocked sends.
+- Store business source-of-truth data for clients, client access, campaigns, contacts, campaign-contact links, blocked sends, usage, template records, slot records, and future review artifacts.
 
 Cannot do:
-- Replace listmonk's operational email engine database.
+- Replace listmonk's operational database.
 - Be accessed directly by UI.
-- Decide sending policy.
+- Decide send authorization by itself.
 
-Can communicate with:
-- FastAPI backend.
+### Deliverability Guard
 
-Cannot communicate with:
-- UI.
-- listmonk directly.
-- n8n directly in core V1.
+Can do:
+- Enforce backend-owned dispatch rules.
+- Fail closed when runtime prerequisites, client scope, limits, or contact eligibility are invalid.
+- Apply campaign-level limits from the active contract model.
+
+Cannot do:
+- Be bypassed by review, AI, frontend, or listmonk.
+- Be replaced by client-side validation.
 
 ### listmonk
 
 Can do:
-- Operate as the email engine.
-- Manage technical lists, subscribers, campaigns, tracking, and unsubscribe handling.
-- Send through configured SMTP / Amazon SES after backend authorization.
+- Operate technical lists, subscribers, campaigns, and dispatch mechanics.
+- Receive backend-approved HTML and subscriber/list mappings.
+- Send through Mailpit in dev/staging and SMTP/provider infrastructure in approved environments.
 
 Cannot do:
-- Decide business logic.
-- Own client source-of-truth data.
-- Authorize sending by itself.
-- Be accessed directly by UI or n8n.
+- Own business campaign lifecycle.
+- Own business template truth.
+- Decide `client_id`, limits, readiness, or authorization.
+- Be accessed directly by frontend.
 
-Can communicate with:
-- FastAPI backend.
-- SMTP / Amazon SES provider.
-- Mailpit in dev/staging only.
-
-Cannot communicate with:
-- Business PostgreSQL directly.
-- UI directly.
-- n8n directly.
-
-### SMTP / Amazon SES
+### AI Assistant
 
 Can do:
-- Act as the production delivery provider behind listmonk.
+- Generate or improve email copy, subject, preview text, and structured editorial suggestions in a future milestone.
+- Analyze copy risk and propose alternatives.
 
 Cannot do:
-- Be called directly by the backend as the default V1 path.
-- Be called directly by UI or n8n.
-- Decide business logic.
+- Send email.
+- Decide slot assignment or limits.
+- Decide `client_id`.
+- Decide Guard or review results.
+- Apply output without explicit user approval.
 
-Can communicate with:
-- listmonk.
+### Mailpit / SMTP / SES
 
-Cannot communicate with:
-- UI.
-- Business PostgreSQL.
-- n8n.
+Mailpit:
+- can capture safe dev/staging traffic for inspection
+- cannot be used as production delivery
 
-### Mailpit
-
-Can do:
-- Capture dev/staging email for inspection.
-- Support safe HTML, subject, unsubscribe, and event testing.
-
-Cannot do:
-- Be used in production.
-- Be treated as the production sending provider.
-- Decide business logic.
-
-Can communicate with:
-- listmonk in dev/staging.
-
-Cannot communicate with:
-- Production traffic.
-- UI directly.
-- Business PostgreSQL.
-
-### MJML
-
-Can do:
-- Define responsive email template placeholders.
-- Provide future integration points for AI-generated content.
-
-Cannot do:
-- Contain real campaign copy in Milestone 0.
-- Decide sending or business rules.
-
-Can communicate with:
-- Backend/template rendering pipeline in future milestones.
-
-Cannot communicate with:
-- listmonk, SMTP, PostgreSQL, or UI directly.
-
-### Worker Python Minimal
-
-Can do:
-- Run future technical background tasks.
-- Sync listmonk stats.
-- Normalize provider/listmonk events.
-- Process simple retries and KPI updates.
-
-Cannot do:
-- Become a second business brain.
-- Authorize sending independently.
-- Bypass backend or Deliverability Guard.
-- Require full Celery setup in Milestone 0.
-
-Can communicate with:
-- FastAPI backend modules and Business PostgreSQL in future milestones.
-- listmonk through backend-owned integration code in future milestones.
-
-Cannot communicate with:
-- SMTP / Amazon SES directly for default V1 sending.
-
-### n8n Optional Future Layer
-
-Can do:
-- Serve as a future integration layer for CRM, Google Sheets, external webhooks, and notifications.
-
-Cannot do:
-- Be core V1.
-- Call listmonk directly.
-- Call SMTP directly.
-- Decide business rules.
-- Bypass backend or Deliverability Guard.
-
-Can communicate with:
-- FastAPI backend only.
-
-Cannot communicate with:
-- listmonk directly.
-- SMTP / Amazon SES directly.
-- Business PostgreSQL directly.
+SMTP / SES:
+- can remain provider infrastructure behind approved backend/listmonk flows
+- cannot be directly chosen or controlled by frontend
 
 ## Authorized Flows
 
-- Dashboard Admin -> Backend
-- Dashboard Client -> Backend
-- Backend -> Business PostgreSQL
-- Backend -> listmonk
-- listmonk -> SMTP provider
+- Client portal -> FastAPI backend
+- Admin portal -> FastAPI backend
+- FastAPI backend -> Deliverability Guard
+- FastAPI backend -> Business PostgreSQL
+- FastAPI backend -> listmonk
 - listmonk -> Mailpit in dev/staging
-- future n8n/Activepieces/webhook -> Backend
+- listmonk -> SMTP/provider infrastructure in controlled environments
+- future AI assist request -> FastAPI backend -> AI provider -> FastAPI backend
 
 ## Forbidden Flows
 
 - UI -> PostgreSQL direct
 - UI -> listmonk direct
-- n8n -> listmonk direct
-- n8n -> SMTP direct
+- UI -> SMTP/provider direct
 - listmonk -> Business PostgreSQL direct
-- Mailpit in production
+- AI -> listmonk direct
+- AI -> provider direct
 - email sending without backend authorization
 - email sending without Deliverability Guard
-- dashboard deciding business logic
-- Codex changing contracts without explicit instruction
+- frontend deciding `client_id`, limits, Guard result, or provider
+- AI applying content without explicit user action

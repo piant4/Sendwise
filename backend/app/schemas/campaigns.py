@@ -1,7 +1,10 @@
 from datetime import datetime
 
-from pydantic import BaseModel
+from typing import Optional
 
+from pydantic import BaseModel, ConfigDict, Field
+
+from app.schemas.blocked_sends import BlockedSend
 from app.schemas.common import CampaignStats, CampaignStatus
 
 
@@ -10,7 +13,289 @@ class Campaign(BaseModel):
     client_id: str
     name: str
     status: CampaignStatus
-    subject: str
-    stats: CampaignStats | None = None
+    subject: Optional[str] = None
+    stats: Optional[CampaignStats] = None
     created_at: datetime
     updated_at: datetime
+
+
+class AdminCampaignCreateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    client_id: str
+    name: str
+    subject: str
+    period_email_limit: Optional[int] = None
+    daily_email_limit: Optional[int] = None
+
+
+class AdminClientCampaignCreateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: str
+    subject: str
+    period_email_limit: Optional[int] = None
+    daily_email_limit: Optional[int] = None
+
+
+class AdminCampaignUpdateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    name: Optional[str] = None
+    subject: Optional[str] = None
+    status: Optional[CampaignStatus] = None
+    current_step: Optional[str] = None
+    period_email_limit: Optional[int] = None
+    daily_email_limit: Optional[int] = None
+
+
+class AdminCampaignContentRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    subject: Optional[str] = None
+    preview_text: Optional[str] = None
+    body_html: Optional[str] = None
+    body_text: Optional[str] = None
+    current_step: Optional[str] = None
+
+
+class AdminCampaignSelectSlotRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    slot_id: str
+
+
+class AdminCampaignDetail(BaseModel):
+    campaign_id: str
+    client_id: str
+    client_name: str
+    client_status: str
+    name: str
+    status: CampaignStatus
+    subject: Optional[str] = None
+    preview_text: Optional[str] = None
+    body_html: Optional[str] = None
+    body_text: Optional[str] = None
+    current_step: str
+    campaign_slot_id: Optional[str] = None
+    content_ready: bool
+    contacts_ready: bool
+    review_ready: bool
+    period_email_limit: int = 1000
+    daily_email_limit: int = 50
+    period_started_at: Optional[datetime] = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class AdminCampaignSlotAssignmentResponse(BaseModel):
+    campaign_id: str
+    client_id: str
+    campaign_slot_id: str
+    slot_status: str
+    slot_max_emails: int
+    review_ready: bool
+
+
+class AdminCampaignReviewResponse(BaseModel):
+    campaign_id: str
+    client_id: str
+    status: CampaignStatus
+    allowed_to_send: bool
+    can_send_when_enabled: bool
+    sending_enabled: bool
+    warnings: list[str]
+    blocking_errors: list[str]
+    eligible_contact_count: int
+    blocked_contact_count: int
+    slot_limit: Optional[int] = None
+    limit_source: Optional[str] = None
+    content_ready: bool
+    contacts_ready: bool
+    review_ready: bool
+    current_step: str
+    daily_limit: Optional[int] = None
+    daily_used: int = 0
+    daily_remaining: Optional[int] = None
+    period_limit: Optional[int] = None
+    period_used: int = 0
+    period_remaining: Optional[int] = None
+    period_started_at: Optional[datetime] = None
+    period_ends_at: Optional[datetime] = None
+
+
+class AdminCampaignContactPayload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    email: str
+    metadata: dict[str, object] = Field(default_factory=dict)
+
+
+class AdminCampaignContactsImportRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    contacts: list[AdminCampaignContactPayload]
+
+
+class AdminCampaignContactError(BaseModel):
+    email: str
+    reason: str
+
+
+class AdminCampaignContactItem(BaseModel):
+    contact_id: str
+    email: str
+    metadata: dict[str, str] = Field(default_factory=dict)
+    status: str
+    is_valid: bool
+    is_eligible: bool
+    blocked_reasons: list[str]
+
+
+class AdminCampaignContactsResponse(BaseModel):
+    campaign_id: str
+    client_id: str
+    total: int
+    valid: int
+    invalid: int
+    suppressed: int
+    unsubscribed: int
+    blacklisted: int
+    bounced: int
+    eligible: int
+    contacts_ready: bool
+    contacts: list[AdminCampaignContactItem]
+
+
+class AdminCampaignContactsImportResponse(BaseModel):
+    campaign_id: str
+    client_id: str
+    received: int
+    created_contacts: int
+    reused_contacts: int
+    attached_contacts: int
+    duplicate_contacts: int
+    invalid_contacts: int
+    contacts_ready: bool
+    errors: list[AdminCampaignContactError]
+
+
+class AdminCampaignContactRemoveResponse(BaseModel):
+    campaign_id: str
+    client_id: str
+    contact_id: str
+    removed: bool
+    contacts_ready: bool
+
+
+class CampaignSummaryItem(BaseModel):
+    id: str
+    client_id: str
+    name: str
+    status: CampaignStatus
+    subject: Optional[str] = None
+    preview_text: Optional[str] = None
+    current_step: str
+    content_ready: bool
+    contacts_ready: bool
+    review_ready: bool
+
+
+class CampaignClientSummary(BaseModel):
+    id: str
+    email: str
+    personal_name: Optional[str] = None
+    status: str
+
+
+class CampaignSlotSummary(BaseModel):
+    id: Optional[str] = None
+    label: Optional[str] = None
+    max_emails: Optional[int] = None
+    status: Optional[str] = None
+    limit_source: Optional[str] = None
+
+
+class CampaignRecipientsSummary(BaseModel):
+    total: int
+    eligible: int
+    invalid: int
+    suppressed: int
+    blocked: int
+
+
+class CampaignLogsSummary(BaseModel):
+    simulated: int = 0
+    queued: int = 0
+    sent: int = 0
+    opened: int = 0
+    clicked: int = 0
+    bounced: int = 0
+    complained: int = 0
+    unsubscribed: int = 0
+    provider_events_available: bool = False
+
+
+class CampaignPeriodUsageSummary(BaseModel):
+    period_email_limit: Optional[int] = None
+    period_used: int = 0
+    period_remaining: Optional[int] = None
+    period_started_at: Optional[datetime] = None
+    period_ends_at: Optional[datetime] = None
+    has_real_usage: bool = False
+
+
+class ProviderRuntimeSummary(BaseModel):
+    email_sending_enabled: bool
+    email_provider: str
+    provider_mode_label: str
+    real_send_available: bool = False
+    ses_live_validation_status: Optional[str] = None
+    provider_events_available: bool = False
+    mailpit_dev_mode: bool = False
+
+
+class CampaignBlockedSendsSummary(BaseModel):
+    total: int
+    latest: list[BlockedSend]
+
+
+class CampaignReadModel(BaseModel):
+    campaign: CampaignSummaryItem
+    slot: CampaignSlotSummary
+    recipients: CampaignRecipientsSummary
+    logs: CampaignLogsSummary
+    period_usage: CampaignPeriodUsageSummary = Field(
+        default_factory=CampaignPeriodUsageSummary
+    )
+    runtime: ProviderRuntimeSummary
+    blocked_sends: CampaignBlockedSendsSummary
+
+
+class AdminCampaignSummaryResponse(CampaignReadModel):
+    client: CampaignClientSummary
+    can_send: bool
+    can_send_when_enabled: bool
+    sending_enabled: bool
+    blocking_errors: list[str]
+    warnings: list[str]
+    daily_limit: Optional[int] = None
+    daily_used: int = 0
+    daily_remaining: Optional[int] = None
+    period_limit: Optional[int] = None
+    period_used: int = 0
+    period_remaining: Optional[int] = None
+    period_started_at: Optional[datetime] = None
+    period_ends_at: Optional[datetime] = None
+
+
+class ClientCampaignDetailResponse(CampaignReadModel):
+    pass
+
+
+class ClientCampaignStatsResponse(BaseModel):
+    campaign_id: str
+    client_id: str
+    recipients: CampaignRecipientsSummary
+    logs: CampaignLogsSummary
+    blocked_sends: CampaignBlockedSendsSummary

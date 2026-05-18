@@ -1,3 +1,5 @@
+from typing import Optional
+
 from fastapi import Depends, HTTPException, status
 from fastapi.security import APIKeyHeader
 
@@ -7,7 +9,7 @@ api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 
 
 def require_api_key(
-    api_key: str | None = Depends(api_key_header),
+    api_key: Optional[str] = Depends(api_key_header),
     settings: Settings = Depends(get_settings),
 ) -> None:
     """Placeholder API key dependency.

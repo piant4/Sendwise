@@ -1,0 +1,156 @@
+"use client";
+
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import type { LucideIcon } from "lucide-react";
+import {
+  Gauge,
+  LayoutGrid,
+  Megaphone,
+  ServerCog,
+  ShieldAlert,
+  Users,
+} from "lucide-react";
+
+export type AppRole = "admin" | "client";
+
+export interface NavItem {
+  href: string;
+  label: string;
+  icon: LucideIcon;
+}
+
+interface ClientNavDefinition {
+  suffix: "" | "/campaigns" | "/email-limits" | "/blocked-sends";
+  label: string;
+  icon: LucideIcon;
+}
+
+export const ADMIN_NAV_ITEMS: NavItem[] = [
+  { href: "/admin", label: "Panoramica", icon: LayoutGrid },
+  { href: "/admin/clients", label: "Clienti", icon: Users },
+  { href: "/admin/campaigns", label: "Campagne", icon: Megaphone },
+  { href: "/admin/email-limits", label: "Limiti email", icon: Gauge },
+  { href: "/admin/blocked-sends", label: "Invii bloccati", icon: ShieldAlert },
+  { href: "/admin/system", label: "Sistema", icon: ServerCog },
+];
+
+export const CLIENT_NAV_ITEMS: ClientNavDefinition[] = [
+  { suffix: "", label: "Panoramica", icon: LayoutGrid },
+  { suffix: "/campaigns", label: "Campagne", icon: Megaphone },
+  { suffix: "/email-limits", label: "Limiti email", icon: Gauge },
+  { suffix: "/blocked-sends", label: "Invii bloccati", icon: ShieldAlert },
+];
+
+export function getNavigationRole(pathname: string): AppRole | null {
+  if (pathname === "/admin" || pathname.startsWith("/admin/")) {
+    return "admin";
+  }
+
+  if (pathname === "/c" || pathname.startsWith("/c/")) {
+    return "client";
+  }
+
+  return null;
+}
+
+export function getClientPortalBaseHref(pathname: string): string | null {
+  const portalSlugMatch = pathname.match(/^\/c\/([A-Za-z0-9]+)(?:\/|$)/);
+
+  if (!portalSlugMatch) {
+    return null;
+  }
+
+  return `/c/${portalSlugMatch[1]}`;
+}
+
+export function getNavItems(role: AppRole, pathname: string): NavItem[] {
+  if (role === "admin") {
+    return ADMIN_NAV_ITEMS;
+  }
+
+  const baseHref = getClientPortalBaseHref(pathname);
+
+  return CLIENT_NAV_ITEMS.map((item) => ({
+    href: baseHref
+      ? item.suffix
+        ? `${baseHref}${item.suffix}`
+        : baseHref
+      : "/auth/redirect",
+    label: item.label,
+    icon: item.icon,
+  }));
+}
+
+export function isNavItemActive(pathname: string, href: string) {
+  if (pathname === href) {
+    return true;
+  }
+
+  if (
+    href === "/admin" ||
+    href === "/auth/redirect" ||
+    /^\/c\/[A-Za-z0-9]+$/.test(href)
+  ) {
+    return false;
+  }
+
+  return pathname.startsWith(`${href}/`) || pathname === href;
+}
+
+export function getActiveNavItem(pathname: string) {
+  const role = getNavigationRole(pathname);
+
+  if (!role) {
+    return null;
+  }
+
+  return (
+    getNavItems(role, pathname).find((item) => isNavItemActive(pathname, item.href)) ??
+    getNavItems(role, pathname)[0]
+  );
+}
+
+interface MainNavProps {
+  role: AppRole;
+  onNavigate?: () => void;
+  className?: string;
+}
+
+export function MainNav({ role, onNavigate, className }: MainNavProps) {
+  const pathname = usePathname();
+  const navItems = getNavItems(role, pathname);
+
+  if (navItems.length === 0) {
+    return null;
+  }
+
+  return (
+    <nav
+      className={["main-nav", className].filter(Boolean).join(" ")}
+      aria-label="Navigazione principale Sendwise"
+    >
+      <ul className="main-nav__list">
+        {navItems.map((item) => {
+          const active = isNavItemActive(pathname, item.href);
+          const Icon = item.icon;
+
+          return (
+            <li key={item.href}>
+              <Link
+                href={item.href}
+                className="main-nav__link"
+                data-active={active}
+                aria-current={active ? "page" : undefined}
+                onClick={onNavigate}
+              >
+                <Icon className="main-nav__icon" aria-hidden="true" />
+                <span>{item.label}</span>
+              </Link>
+            </li>
+          );
+        })}
+      </ul>
+    </nav>
+  );
+}

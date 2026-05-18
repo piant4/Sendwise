@@ -2,85 +2,176 @@
 
 Source of truth: `project_handoff_v1.md`.
 
-State checks are owned by the backend and Deliverability Guard. UI displays states; it does not decide sendability.
+State checks are owned by the backend and Deliverability Guard. UI displays state; it does not decide sendability.
 
 ## Client Lifecycle
 
-States:
+Current and planned usable states:
 
 ```txt
-trial -> active -> paused -> active
-active -> blocked
-paused -> blocked
-trial -> archived
-active -> archived
-paused -> archived
-blocked -> archived
+trial
+active
+paused
+blocked
+archived
 ```
 
 Rules:
-- `trial` may send only if future limits and guard checks allow it.
-- `active` may send only if campaign/contact/send checks pass.
-- `paused`, `blocked`, and `archived` cannot send.
-- `archived` is terminal for V1 unless explicitly changed later.
+- `trial` and `active` may proceed only if backend checks pass.
+- `paused`, `blocked`, and `archived` are not sendable.
+- `archived` is terminal unless an explicit future migration says otherwise.
 
 ## Campaign Lifecycle
 
-States:
+### Current verified runtime-compatible states
 
 ```txt
-draft -> ready -> running -> completed
-ready -> paused -> ready
-running -> paused -> running
-draft -> blocked
-ready -> blocked
-running -> blocked
-running -> failed
-paused -> blocked
+draft
+ready
+running
+paused
+blocked
+completed
+failed
+```
+
+Current runtime rules:
+- `draft` cannot simulate or send.
+- `ready` is the current sendable state.
+- `running` is currently treated as sendable by the Guard.
+- `paused`, `blocked`, `completed`, and `failed` are not sendable.
+
+### Recommended product contract states
+
+```txt
+draft
+ready
+queued
+sending
+sent
+paused
+blocked
+archived
+```
+
+Recommended rules:
+- `draft` is editable and not sendable.
+- `ready` is editable with care and eligible for review/send checks.
+- `queued` is not editable except for operational controls.
+- `sending` is operational and not normally editable.
+- `sent` is terminal for dispatch and read-only for business content.
+- `paused` blocks dispatch until resumed.
+- `blocked` blocks dispatch until the blocking condition is cleared.
+- `archived` is terminal and not sendable.
+
+Compatibility mapping plan:
+- current `running` can map to future `sending`
+- current `completed` can map to future `sent`
+- current `failed` remains a legacy operational failure state until a richer retry contract exists
+
+## Campaign Wizard Step Contract
+
+Recommended `current_step` values:
+
+```txt
+setup
+content
+recipients
+review
+send
+```
+
+Recommended readiness flags:
+
+```txt
+content_ready
+contacts_ready
+review_ready
 ```
 
 Rules:
-- `draft` cannot send until ready/authorized.
-- `ready` can be evaluated for authorization.
-- `running` can continue only while guard checks pass.
-- `paused`, `blocked`, `completed`, and `failed` cannot send.
+- V1 admin UX flow is:
+  1. New campaign
+  2. Select client
+  3. Setup campaign
+  4. Email/template
+  5. Recipients
+  6. Review/analysis
+  7. Simulation/send
+- persisted `current_step` values stay `setup`, `content`, `recipients`, `review`, `send` in the current schema
+- `setup` captures admin-created campaign shell, validated client selection, name, and baseline campaign metadata.
+- `content` owns admin template selection, content draft, and future AI assist application.
+- `recipients` owns admin recipient import/selection and deduped association.
+- `review` owns backend/admin preflight analysis and warnings.
+- `send` is the admin simulation/send action step, not a trust boundary; backend still rechecks.
+- `current_step`, `content_ready`, `contacts_ready`, and `review_ready` are now persisted on `campaigns`.
+- `content_ready=true` requires persisted `body_html` in Business PostgreSQL for real dispatch.
+- `contacts_ready` may be refreshed from persisted `campaign_contacts`, but Guard still performs the final eligibility check.
+- client portal may display wizard-derived state, but does not mutate it in V1
 
 ## Contact Sendability
 
-States:
+Current and planned states:
 
 ```txt
-pending -> sendable
-pending -> error
-sendable -> suppressed
-sendable -> bounced
-sendable -> unsubscribed
-sendable -> blacklisted
-error -> pending
+pending
+sendable
+suppressed
+bounced
+unsubscribed
+blacklisted
+error
 ```
 
 Rules:
-- `sendable` is the only normal sendable state.
-- `unsubscribed`, `blacklisted`, `bounced`, and `suppressed` cannot send.
-- `pending` cannot send until validated.
-- `error` cannot send until resolved.
+- `sendable` is the only normal sendable contact state.
+- `pending`, `suppressed`, `bounced`, `unsubscribed`, `blacklisted`, and `error` are not sendable.
+- suppression and invalid recipient handling must remain backend-owned.
+
+## Final Review Contract
+
+Recommended review output fields:
+
+- `allowed_to_send`
+- `warnings`
+- `blocking_errors`
+- `eligible_contact_count`
+- `blocked_contact_count`
+- `slot_limit`
+- `content_ready`
+- `contacts_ready`
+- `review_ready`
+
+Rules:
+- review does not send
+- review does not replace the Guard
+- `review_ready` is produced by backend-owned review flow requested from the admin surface
+- send must re-run or revalidate backend authorization before dispatch
 
 ## Send Authorization
 
+Current Guard decisions:
+
 ```txt
-SendDecision:
 authorized
 blocked
 dry_run
 ```
 
 Rules:
+- if client is paused, blocked, suspended, or archived -> no send
+- if campaign is not in a sendable state -> no send
+- if contact eligibility is invalid -> no send
+- if slot or limit is invalid -> no send
+- if `EMAIL_SENDING_ENABLED` is not exactly `true` -> no real dispatch
+- simulation and real dispatch remain distinct outcomes
+- only admin requests simulation or send in V1
 
-```txt
-If client is paused, blocked, or archived -> no sending.
-If campaign is paused, blocked, completed, or failed -> no sending.
-If contact is unsubscribed, blacklisted, bounced, or suppressed -> no sending.
-If EMAIL_SENDING_ENABLED is not exactly "true" -> dry_run or blocked depending on context.
-```
+## Editability Matrix
 
-Milestone 0 default is fail-closed. The skeleton does not send email.
+- editable: `draft`, recommended `ready`
+- limited operational editability only: `paused`
+- not editable for content changes: `queued`, `sending`, `sent`, `blocked`, `archived`
+- terminal: `sent`, `archived`
+
+This matrix is the recommended product contract. Current runtime still uses `running`, `completed`, and `failed` compatibility states.

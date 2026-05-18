@@ -1,0 +1,25 @@
+services:
+  backend:
+    environment:
+      ENVIRONMENT: staging
+      FRONTEND_URL: https://staging-app.mailerpro.it
+      BACKEND_PUBLIC_URL: https://staging-api.mailerpro.it
+      EMAIL_SENDING_ENABLED: "false"
+      EMAIL_PROVIDER: mailpit
+      REAL_SEND_REQUIRE_ALLOWED_RECIPIENTS: "true"
+      REAL_SEND_MAX_RECIPIENTS: "1"
+      REAL_SEND_ALLOWED_RECIPIENTS: ""
+    ports: !override
+      - "127.0.0.1:8000:8000"
+
+  frontend:
+    build:
+      args:
+        NEXT_PUBLIC_API_BASE_URL: https://staging-api.mailerpro.it
+    environment:
+      NEXT_PUBLIC_API_BASE_URL: https://staging-api.mailerpro.it
+    ports: !override
+      - "127.0.0.1:3000:3000"
+
+  listmonk:
+    ports: !override []

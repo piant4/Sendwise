@@ -55,7 +55,7 @@ services:
       FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
       BACKEND_PUBLIC_URL: ${BACKEND_PUBLIC_URL:-http://localhost:8000}
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     depends_on:
       postgres:
         condition: service_healthy
@@ -84,7 +84,7 @@ services:
       NEXT_PUBLIC_USE_MOCK_API: ${NEXT_PUBLIC_USE_MOCK_API:-false}
       BACKEND_URL: ${BACKEND_URL:-http://backend:8000}
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
     depends_on:
       - backend
 
@@ -100,7 +100,7 @@ services:
       LISTMONK_db__database: listmonk
       LISTMONK_db__ssl_mode: disable
     ports:
-      - "9000:9000"
+      - "127.0.0.1:9000:9000"
     depends_on:
       postgres:
         condition: service_healthy

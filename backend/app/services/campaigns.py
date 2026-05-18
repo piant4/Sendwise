@@ -845,9 +845,14 @@ class AdminCampaignService:
         limits: CampaignSendingLimitRecord | None = None,
     ) -> CampaignLimitContext:
         limit_record = limits or self._ensure_campaign_limits(campaign.id)
+        first_activity_at = self.email_log_repository.get_first_real_campaign_log_at(
+            client_id=campaign.client_id,
+            campaign_id=campaign.id,
+        )
         normalized_record = self._normalize_period_started_at(
             campaign=campaign,
             limits=limit_record,
+            first_activity_at=first_activity_at,
         )
         period_started_at = normalized_record.period_started_at
         period_ends_at = (
@@ -890,20 +895,22 @@ class AdminCampaignService:
         *,
         campaign: CampaignRecord,
         limits: CampaignSendingLimitRecord,
+        first_activity_at: datetime | None = None,
     ) -> CampaignSendingLimitRecord:
-        if limits.period_started_at is not None:
-            return limits
-        if campaign.status.lower() != CampaignStatus.running.value:
-            return limits
-        first_activity_at = self.email_log_repository.get_first_real_campaign_log_at(
+        resolved_first_activity_at = first_activity_at or self.email_log_repository.get_first_real_campaign_log_at(
             client_id=campaign.client_id,
             campaign_id=campaign.id,
         )
-        if first_activity_at is None:
+        if resolved_first_activity_at is None:
+            return limits
+        if (
+            limits.period_started_at is not None
+            and limits.period_started_at <= resolved_first_activity_at
+        ):
             return limits
         return self.campaign_limit_repository.update_for_campaign(
             campaign_id=campaign.id,
-            period_started_at=first_activity_at,
+            period_started_at=resolved_first_activity_at,
         )
 
     def _build_period_usage_summary(
@@ -1833,16 +1840,18 @@ class CampaignDispatchService:
             period_email_limit=DEFAULT_CAMPAIGN_PERIOD_EMAIL_LIMIT,
             daily_email_limit=DEFAULT_CAMPAIGN_DAILY_EMAIL_LIMIT,
         )
-        if limits.period_started_at is None and campaign.status.lower() == CampaignStatus.running.value:
-            first_activity_at = email_log_repository.get_first_real_campaign_log_at(
-                client_id=client_id,
+        first_activity_at = email_log_repository.get_first_real_campaign_log_at(
+            client_id=client_id,
+            campaign_id=campaign.id,
+        )
+        if first_activity_at is not None and (
+            limits.period_started_at is None
+            or limits.period_started_at > first_activity_at
+        ):
+            limits = campaign_limit_repository.update_for_campaign(
                 campaign_id=campaign.id,
+                period_started_at=first_activity_at,
             )
-            if first_activity_at is not None:
-                limits = campaign_limit_repository.update_for_campaign(
-                    campaign_id=campaign.id,
-                    period_started_at=first_activity_at,
-                )
         period_started_at = limits.period_started_at
         period_ends_at = (
             period_started_at + CAMPAIGN_PERIOD_WINDOW

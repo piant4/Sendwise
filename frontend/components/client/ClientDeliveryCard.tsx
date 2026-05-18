@@ -1,4 +1,3 @@
-import Link from "next/link";
 import type { ClientOverviewSummary } from "../../types";
 import { ClientSurface } from "./ClientSurface";
 import type {
@@ -21,6 +20,7 @@ export function ClientDeliveryCard({
 }: ClientDeliveryCardProps) {
   const dashboardModel =
     model ?? {
+      actionItems: [],
       blockedSendsCount: summary.blockedSends.currentPeriodCount,
       campaignsNeedingAttention:
         summary.campaigns.statusCounts.blocked +
@@ -29,9 +29,21 @@ export function ClientDeliveryCard({
       campaignsToComplete:
         summary.campaigns.statusCounts.draft + summary.campaigns.statusCounts.paused,
       capacityRatio: null,
+      limitStatus: {
+        detail: "Capacità campagne non disponibile.",
+        label: "Limiti",
+        tone: "neutral" as const,
+      },
       readyCampaigns: summary.campaigns.statusCounts.ready,
+      recentCampaignsVisible: summary.campaigns.recentCampaigns.length,
       recentProviderEventsCount: 0,
-      recentReadyCampaignsCount: 0,
+      readinessSummary: {
+        withDetailsCount: 0,
+        readyCount: 0,
+        needsSetupCount: 0,
+        blockedRecipientsCount: 0,
+        providerEventsUnavailableCount: 0,
+      },
       recentRecipientIssuesCount: 0,
       remainingCampaignSlots: null,
       statusSegments: [],
@@ -49,57 +61,19 @@ export function ClientDeliveryCard({
       },
     };
   const campaignSnapshots = snapshots ?? [];
-  const recentCampaignsChecked = campaignSnapshots.filter(
-    (snapshot) => snapshot.detail,
-  ).length;
+  const recentCampaignsChecked = campaignSnapshots.filter((snapshot) => snapshot.detail)
+    .length;
+  const capacityFill =
+    dashboardModel.capacityRatio === null
+      ? "0%"
+      : `${Math.max(10, Math.min(dashboardModel.capacityRatio * 100, 100))}%`;
 
   return (
     <div className="client-rail client-dashboard-rail">
       <ClientSurface
-        title="Prontezza invio"
-        description="Solo segnali reali ricavati dalle campagne recenti."
+        title="Limiti"
+        description="Capacità reale del workspace e utilizzo registrato nel periodo corrente."
       >
-        <div className="client-fact-grid">
-          <article className="client-fact-card">
-            <span>Campagne recenti pronte</span>
-            <strong>
-              {dashboardModel.recentReadyCampaignsCount.toLocaleString("it-IT")}
-            </strong>
-            <p>
-              {recentCampaignsChecked > 0
-                ? `Calcolate su ${recentCampaignsChecked.toLocaleString("it-IT")} campagne recenti con dettaglio disponibile.`
-                : "Dettaglio campagne non disponibile in questo momento."}
-            </p>
-          </article>
-          <article className="client-fact-card">
-            <span>Destinatari da verificare</span>
-            <strong>
-              {dashboardModel.recentRecipientIssuesCount.toLocaleString("it-IT")}
-            </strong>
-            <p>Campagne recenti senza destinatari pronti o con blocchi visibili.</p>
-          </article>
-          <article className="client-fact-card">
-            <span>Eventi provider</span>
-            <strong>
-              {dashboardModel.recentProviderEventsCount > 0
-                ? dashboardModel.recentProviderEventsCount.toLocaleString("it-IT")
-                : "Assenti"}
-            </strong>
-            <p>
-              {dashboardModel.recentProviderEventsCount > 0
-                ? "Disponibili nelle campagne recenti con dati provider esposti."
-                : "Il dashboard non mostra tassi o aperture quando gli eventi non sono esposti."}
-            </p>
-          </article>
-          <article className="client-fact-card">
-            <span>Invii bloccati</span>
-            <strong>{dashboardModel.blockedSendsCount.toLocaleString("it-IT")}</strong>
-            <p>Blocchi registrati nel periodo corrente del workspace.</p>
-          </article>
-        </div>
-      </ClientSurface>
-
-      <ClientSurface title="Limiti e utilizzo" description="Capacità disponibile e utilizzo registrato nel periodo.">
         <div className="client-progress-panel">
           <div className="client-progress-panel__row">
             <span>Capacità campagne</span>
@@ -110,23 +84,38 @@ export function ClientDeliveryCard({
                 : summary.campaigns.totalCampaigns.toLocaleString("it-IT")}
             </strong>
           </div>
-          <div className="client-progress" aria-hidden="true">
-            <div
-              className="client-progress__fill"
-              style={{
-                width:
-                  dashboardModel.capacityRatio === null
-                    ? "18%"
-                    : `${Math.max(8, Math.min(dashboardModel.capacityRatio * 100, 100))}%`,
-              }}
-            />
-          </div>
+          {dashboardModel.capacityRatio === null ? (
+            <div className="client-empty-state client-empty-state--compact">
+              Limite campagne non configurato.
+            </div>
+          ) : (
+            <div className="client-limit-gauge">
+              <div className="client-progress" aria-hidden="true">
+                <div
+                  className="client-progress__fill"
+                  style={{ width: capacityFill }}
+                />
+              </div>
+              <div className="client-limit-gauge__meta">
+                <strong>{dashboardModel.limitStatus.label}</strong>
+                <span>{dashboardModel.limitStatus.detail}</span>
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="client-fact-grid">
           <article className="client-fact-card">
             <span>Campagne massime</span>
             <strong>{formatOptionalLimit(summary.limits.maxCampaigns)}</strong>
+          </article>
+          <article className="client-fact-card">
+            <span>Slot disponibili</span>
+            <strong>
+              {dashboardModel.remainingCampaignSlots === null
+                ? "N/D"
+                : dashboardModel.remainingCampaignSlots.toLocaleString("it-IT")}
+            </strong>
           </article>
           <article className="client-fact-card">
             <span>Email per campagna</span>
@@ -149,20 +138,49 @@ export function ClientDeliveryCard({
       </ClientSurface>
 
       <ClientSurface
-        title="Prossimo passo"
-        description={dashboardModel.recommendation.description}
+        title="Prontezza recenti"
+        description="Segnali ricavati solo dalle campagne recenti con dettaglio disponibile."
       >
-        <div className="client-next-step">
-          <strong className="client-next-step__title">
-            {dashboardModel.recommendation.title}
-          </strong>
-          <Link
-            className="client-dashboard-hero__action client-dashboard-hero__action--inline"
-            href={dashboardModel.recommendation.href}
-          >
-            {dashboardModel.recommendation.actionLabel}
-          </Link>
-        </div>
+        {recentCampaignsChecked > 0 ? (
+          <div className="client-fact-grid client-fact-grid--dense">
+            <article className="client-fact-card">
+              <span>Pronte</span>
+              <strong>
+                {dashboardModel.readinessSummary.readyCount.toLocaleString("it-IT")}
+              </strong>
+              <p>Campagne con contenuto, destinatari e verifica già pronti.</p>
+            </article>
+            <article className="client-fact-card">
+              <span>Da completare</span>
+              <strong>
+                {dashboardModel.readinessSummary.needsSetupCount.toLocaleString("it-IT")}
+              </strong>
+              <p>Campagne recenti senza destinatari idonei o con setup incompleto.</p>
+            </article>
+            <article className="client-fact-card">
+              <span>Con destinatari bloccati</span>
+              <strong>
+                {dashboardModel.readinessSummary.blockedRecipientsCount.toLocaleString(
+                  "it-IT",
+                )}
+              </strong>
+              <p>Campagne recenti con destinatari esclusi dall&apos;invio.</p>
+            </article>
+            <article className="client-fact-card">
+              <span>Eventi provider assenti</span>
+              <strong>
+                {dashboardModel.readinessSummary.providerEventsUnavailableCount.toLocaleString(
+                  "it-IT",
+                )}
+              </strong>
+              <p>Mostrato solo quando la campagna espone segnali utili ma non eventi provider.</p>
+            </article>
+          </div>
+        ) : (
+          <div className="client-empty-state">
+            Dettagli campagne recenti non disponibili in questo momento.
+          </div>
+        )}
       </ClientSurface>
     </div>
   );

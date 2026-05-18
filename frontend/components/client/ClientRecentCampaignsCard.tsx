@@ -5,7 +5,7 @@ import type {
   ClientDashboardCampaignSnapshot,
   ClientDashboardModel,
 } from "./dashboardModel";
-import { formatDateTimeLabel } from "./clientStatus";
+import { buildCampaignProgress } from "./dashboardModel";
 import {
   formatCampaignCount,
   getCampaignReadinessShortLabel,
@@ -24,8 +24,9 @@ export function ClientRecentCampaignsCard({
   model,
   snapshots,
 }: ClientRecentCampaignsCardProps) {
-  const dashboardModel =
+  const fallbackModel =
     model ?? {
+      actionItems: [],
       blockedSendsCount: summary.blockedSends.currentPeriodCount,
       campaignsNeedingAttention:
         summary.campaigns.statusCounts.blocked +
@@ -34,9 +35,21 @@ export function ClientRecentCampaignsCard({
       campaignsToComplete:
         summary.campaigns.statusCounts.draft + summary.campaigns.statusCounts.paused,
       capacityRatio: null,
+      limitStatus: {
+        detail: "Capacità campagne non disponibile.",
+        label: "Limiti",
+        tone: "neutral" as const,
+      },
       readyCampaigns: summary.campaigns.statusCounts.ready,
+      recentCampaignsVisible: summary.campaigns.recentCampaigns.length,
       recentProviderEventsCount: 0,
-      recentReadyCampaignsCount: 0,
+      readinessSummary: {
+        withDetailsCount: 0,
+        readyCount: 0,
+        needsSetupCount: 0,
+        blockedRecipientsCount: 0,
+        providerEventsUnavailableCount: 0,
+      },
       recentRecipientIssuesCount: 0,
       remainingCampaignSlots: null,
       statusSegments: [],
@@ -53,6 +66,7 @@ export function ClientRecentCampaignsCard({
         actionLabel: "Vai alle campagne",
       },
     };
+  const dashboardModel = model ?? fallbackModel;
   const campaignSnapshots =
     snapshots ??
     summary.campaigns.recentCampaigns.map((campaign) => ({
@@ -60,40 +74,62 @@ export function ClientRecentCampaignsCard({
       detail: null,
       stats: null,
     }));
+  const totalCampaigns = Math.max(summary.campaigns.totalCampaigns, 1);
+  const toneStops: Record<string, string> = {
+    attention: "#dc2626",
+    completed: "#94a3b8",
+    paused: "#f59e0b",
+    ready: "#60a5fa",
+    running: "#2563eb",
+  };
+  let accumulated = 0;
+  const chartGradient =
+    dashboardModel.statusSegments.length > 0
+      ? `conic-gradient(${dashboardModel.statusSegments
+          .map((segment) => {
+            const start = accumulated;
+            const end = accumulated + (segment.value / totalCampaigns) * 100;
+            accumulated = end;
+            return `${toneStops[segment.tone]} ${start}% ${end}%`;
+          })
+          .join(", ")})`
+      : undefined;
 
   return (
     <ClientSurface
       title="Panoramica campagne"
-      description="Distribuzione stati e attività recente del workspace."
+      description="Stati reali del workspace e ultimi elementi operativi esposti dal backend."
       aside={
         <span className="client-surface__eyebrow">
-          {summary.campaigns.totalCampaigns.toLocaleString("it-IT")} campagne
+          {summary.campaigns.totalCampaigns.toLocaleString("it-IT")} campagne totali
         </span>
       }
     >
       {dashboardModel.statusSegments.length > 0 ? (
-        <div className="client-status-visual client-status-visual--panel">
-          <div className="client-progress-panel__row">
-            <span>Stato campagne</span>
-            <strong>{formatCampaignCount(summary.campaigns.totalCampaigns)}</strong>
+        <div className="client-status-overview">
+          <div className="client-status-ring-card">
+            <div
+              aria-hidden="true"
+              className="client-status-ring"
+              style={{ backgroundImage: chartGradient }}
+            >
+              <div className="client-status-ring__center">
+                <span>Totale</span>
+                <strong>{formatCampaignCount(summary.campaigns.totalCampaigns)}</strong>
+              </div>
+            </div>
           </div>
-          <div className="client-status-visual__bar" aria-hidden="true">
-            {dashboardModel.statusSegments.map((segment) => (
-              <div
-                key={segment.label}
-                className="client-status-visual__segment"
-                data-tone={segment.tone}
-                style={{
-                  width: `${(segment.value / summary.campaigns.totalCampaigns) * 100}%`,
-                }}
-              />
-            ))}
-          </div>
-          <div className="client-status-visual__legend">
+          <div className="client-status-visual client-status-visual--dense">
             {dashboardModel.statusSegments.map((segment) => (
               <article key={segment.label} className="client-status-visual__legend-item">
                 <span>{segment.label}</span>
                 <strong>{formatCampaignCount(segment.value)}</strong>
+                <small>
+                  {Math.round((segment.value / totalCampaigns) * 100).toLocaleString(
+                    "it-IT",
+                  )}
+                  %
+                </small>
               </article>
             ))}
           </div>
@@ -103,14 +139,9 @@ export function ClientRecentCampaignsCard({
       {campaignSnapshots.length > 0 ? (
         <div className="client-list client-list--compact">
           {campaignSnapshots.map((snapshot) => (
-            <article key={snapshot.campaign.id} className="client-row client-row--compact">
+            <article key={snapshot.campaign.id} className="client-row client-row--minimal">
               <div className="client-row__header">
-                <div className="client-row__copy">
-                  <strong className="client-row__title">{snapshot.campaign.name}</strong>
-                  <span className="client-row__meta">
-                    Aggiornata {formatDateTimeLabel(snapshot.campaign.updated_at)}
-                  </span>
-                </div>
+                <strong className="client-row__title">{snapshot.campaign.name}</strong>
                 <StatusBadge
                   label={getCampaignStatusLabel(snapshot.campaign.status)}
                   variant={getCampaignStatusVariant(snapshot.campaign.status)}
@@ -118,48 +149,78 @@ export function ClientRecentCampaignsCard({
               </div>
 
               {snapshot.detail ? (
-                <div className="client-row__stats">
-                  <div className="client-row__stat">
-                    <span>Prontezza</span>
-                    <strong>
-                      {getCampaignReadinessShortLabel(snapshot.detail.campaign)}
-                    </strong>
+                <>
+                  <div className="client-row__chips">
+                    <span className="client-row__chip">
+                      Prontezza: {getCampaignReadinessShortLabel(snapshot.detail.campaign)}
+                    </span>
+                    <span className="client-row__chip">
+                      {formatCampaignCount(snapshot.detail.recipients.eligible)} destinatari
+                      idonei
+                    </span>
+                    {snapshot.detail.recipients.blocked > 0 ? (
+                      <span className="client-row__chip client-row__chip--warning">
+                        {formatCampaignCount(snapshot.detail.recipients.blocked)} bloccati
+                      </span>
+                    ) : null}
+                    {(snapshot.stats?.logs ?? snapshot.detail.logs)
+                      .providerEventsAvailable ? (
+                      <span className="client-row__chip">Eventi provider disponibili</span>
+                    ) : null}
                   </div>
-                  <div className="client-row__stat">
-                    <span>Destinatari</span>
-                    <strong>
-                      {formatCampaignCount(snapshot.detail.recipients.eligible)} idonei
-                    </strong>
-                  </div>
-                  <div className="client-row__stat">
-                    <span>Blocchi destinatari</span>
-                    <strong>
-                      {formatCampaignCount(snapshot.detail.recipients.blocked)}
-                    </strong>
-                  </div>
-                  <div className="client-row__stat">
-                    <span>Eventi provider</span>
-                    <strong>
-                      {snapshot.stats?.logs.providerEventsAvailable
-                        ? "Disponibili"
-                        : "Non disponibili"}
-                    </strong>
-                  </div>
-                </div>
+
+                  {(() => {
+                    const progress = buildCampaignProgress(
+                      snapshot,
+                      summary.limits.emailLimitPerCampaign,
+                    );
+
+                    if (!progress) {
+                      return (
+                        <div className="client-row__progress client-row__progress--muted">
+                          <div className="client-row__progress-header">
+                            <span>Limite per campagna</span>
+                            <strong>Non disponibile</strong>
+                          </div>
+                          <p className="client-row__support client-note--compact">
+                            Nessun limite esposto per questa campagna.
+                          </p>
+                        </div>
+                      );
+                    }
+
+                    return (
+                      <div className="client-row__progress">
+                        <div className="client-row__progress-header">
+                          <span>{progress.label}</span>
+                          <strong>
+                            {formatCampaignCount(progress.current)} /{" "}
+                            {formatCampaignCount(progress.limit)}
+                          </strong>
+                        </div>
+                        <div className="client-progress" aria-hidden="true">
+                          <div
+                            className="client-progress__fill"
+                            style={{
+                              width: `${Math.max(
+                                6,
+                                Math.min(progress.ratio * 100, 100),
+                              )}%`,
+                            }}
+                          />
+                        </div>
+                        <p className="client-row__support client-note--compact">
+                          {progress.detail}
+                        </p>
+                      </div>
+                    );
+                  })()}
+                </>
               ) : (
                 <p className="client-row__support client-note--compact">
                   Dettagli campagna non disponibili.
                 </p>
               )}
-
-              <div className="client-row__summary">
-                <span>
-                  {snapshot.campaign.subject?.trim()
-                    ? snapshot.campaign.subject
-                    : "Oggetto non disponibile"}
-                </span>
-                <span>Creata {formatDateTimeLabel(snapshot.campaign.created_at)}</span>
-              </div>
             </article>
           ))}
         </div>

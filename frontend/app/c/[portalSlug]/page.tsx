@@ -101,12 +101,12 @@ export default async function ClientPortalPage({
           </div>
 
           <div className="client-dashboard__content-side">
+            <ClientRecentBlockedSendsCard summary={result.summary} model={model} />
             <ClientDeliveryCard
               summary={result.summary}
               model={model}
               snapshots={result.snapshots}
             />
-            <ClientRecentBlockedSendsCard summary={result.summary} />
           </div>
         </div>
       </section>

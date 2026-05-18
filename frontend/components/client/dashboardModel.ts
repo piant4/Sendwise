@@ -24,6 +24,28 @@ export interface ClientDashboardStatusSegment {
   tone: DashboardStatusTone;
 }
 
+export interface ClientDashboardActionItem {
+  count: number;
+  description: string;
+  href: string;
+  title: string;
+  tone: "danger" | "neutral" | "warning";
+}
+
+export interface ClientDashboardLimitStatus {
+  detail: string;
+  label: string;
+  tone: "danger" | "neutral" | "success" | "warning";
+}
+
+export interface ClientDashboardReadinessSummary {
+  withDetailsCount: number;
+  readyCount: number;
+  needsSetupCount: number;
+  blockedRecipientsCount: number;
+  providerEventsUnavailableCount: number;
+}
+
 export interface ClientDashboardRecommendation {
   title: string;
   description: string;
@@ -32,13 +54,16 @@ export interface ClientDashboardRecommendation {
 }
 
 export interface ClientDashboardModel {
+  actionItems: ClientDashboardActionItem[];
   blockedSendsCount: number;
   campaignsNeedingAttention: number;
   campaignsToComplete: number;
   capacityRatio: number | null;
+  limitStatus: ClientDashboardLimitStatus;
   readyCampaigns: number;
+  recentCampaignsVisible: number;
   recentProviderEventsCount: number;
-  recentReadyCampaignsCount: number;
+  readinessSummary: ClientDashboardReadinessSummary;
   recentRecipientIssuesCount: number;
   remainingCampaignSlots: number | null;
   statusSegments: ClientDashboardStatusSegment[];
@@ -166,6 +191,169 @@ function buildRecommendation(
   };
 }
 
+function buildLimitStatus(
+  totalCampaigns: number,
+  maxCampaigns?: number | null,
+): ClientDashboardLimitStatus {
+  if (typeof maxCampaigns !== "number" || maxCampaigns <= 0) {
+    return {
+      label: "Limite non configurato",
+      detail: "La capacità campagne non è stata definita nel workspace.",
+      tone: "neutral",
+    };
+  }
+
+  const ratio = totalCampaigns / maxCampaigns;
+
+  if (ratio >= 1) {
+    return {
+      label: "Limite raggiunto",
+      detail: "Nessuno slot aggiuntivo disponibile finché il totale non si riduce.",
+      tone: "danger",
+    };
+  }
+
+  if (ratio >= 0.8) {
+    return {
+      label: "Capacità quasi satura",
+      detail: "Conviene pianificare i prossimi slot prima di aprire nuove campagne.",
+      tone: "warning",
+    };
+  }
+
+  return {
+    label: "Capacità disponibile",
+    detail: "Il numero di campagne attive resta entro il limite configurato.",
+    tone: "success",
+  };
+}
+
+function hasRecentProviderSignal(
+  snapshot: ClientDashboardCampaignSnapshot,
+): boolean {
+  const logs = snapshot.stats?.logs ?? snapshot.detail?.logs;
+
+  if (!logs) {
+    return false;
+  }
+
+  return logs.sent > 0 || logs.queued > 0 || snapshot.campaign.status === "running";
+}
+
+function buildActionItems(
+  summary: ClientOverviewSummary,
+  campaignsToComplete: number,
+  blockedSendsCount: number,
+  providerEventsUnavailableCount: number,
+): ClientDashboardActionItem[] {
+  const portalBase = `/c/${summary.client.portalSlug}`;
+  const items: ClientDashboardActionItem[] = [];
+
+  if (campaignsToComplete > 0) {
+    items.push({
+      count: campaignsToComplete,
+      description:
+        campaignsToComplete === 1
+          ? "campagna recente ancora da completare"
+          : "campagne recenti ancora da completare",
+      href: `${portalBase}/campaigns`,
+      title: "Completa le campagne",
+      tone: "warning",
+    });
+  }
+
+  if (blockedSendsCount > 0) {
+    items.push({
+      count: blockedSendsCount,
+      description:
+        blockedSendsCount === 1
+          ? "blocco registrato nel periodo corrente"
+          : "blocchi registrati nel periodo corrente",
+      href: `${portalBase}/blocked-sends`,
+      title: "Verifica i blocchi",
+      tone: "danger",
+    });
+  }
+
+  if (providerEventsUnavailableCount > 0) {
+    items.push({
+      count: providerEventsUnavailableCount,
+      description:
+        providerEventsUnavailableCount === 1
+          ? "campagna recente senza eventi provider esposti"
+          : "campagne recenti senza eventi provider esposti",
+      href: `${portalBase}/campaigns`,
+      title: "Controlla gli eventi provider",
+      tone: "neutral",
+    });
+  }
+
+  return items;
+}
+
+export function getCampaignUsageLimit(
+  detail: CampaignReadModel | null,
+  fallbackLimit?: number | null,
+): number | null {
+  if (typeof detail?.slot.maxEmails === "number" && detail.slot.maxEmails > 0) {
+    return detail.slot.maxEmails;
+  }
+
+  if (typeof fallbackLimit === "number" && fallbackLimit > 0) {
+    return fallbackLimit;
+  }
+
+  return null;
+}
+
+export function buildCampaignProgress(
+  snapshot: ClientDashboardCampaignSnapshot,
+  fallbackLimit?: number | null,
+): {
+  current: number;
+  detail: string;
+  label: string;
+  limit: number;
+  ratio: number;
+} | null {
+  if (!snapshot.detail) {
+    return null;
+  }
+
+  const limit = getCampaignUsageLimit(snapshot.detail, fallbackLimit);
+
+  if (!limit) {
+    return null;
+  }
+
+  const logs = snapshot.stats?.logs ?? snapshot.detail.logs;
+  const trackedSendVolume = logs.sent + logs.queued;
+
+  if (trackedSendVolume > 0) {
+    return {
+      current: trackedSendVolume,
+      detail:
+        trackedSendVolume === 1
+          ? "1 invio registrato tra coda e tentativi"
+          : `${trackedSendVolume.toLocaleString("it-IT")} invii registrati tra coda e tentativi`,
+      label: "Invii registrati sul limite",
+      limit,
+      ratio: trackedSendVolume / limit,
+    };
+  }
+
+  return {
+    current: snapshot.detail.recipients.eligible,
+    detail:
+      snapshot.detail.recipients.eligible === 1
+        ? "1 destinatario idoneo rispetto al limite"
+        : `${snapshot.detail.recipients.eligible.toLocaleString("it-IT")} destinatari idonei rispetto al limite`,
+    label: "Destinatari sul limite",
+    limit,
+    ratio: snapshot.detail.recipients.eligible / limit,
+  };
+}
+
 export function getUsageTypeLabel(usageType: string): string {
   switch (usageType) {
     case "api_requests":
@@ -203,6 +391,17 @@ export function buildClientDashboardModel(
       snapshot.detail.recipients.eligible > 0
     );
   }).length;
+  const recentCampaignsVisible = summary.campaigns.recentCampaigns.length;
+  const recentCampaignsWithDetailsCount = snapshots.filter(
+    (snapshot) => snapshot.detail,
+  ).length;
+  const recentBlockedRecipientsCount = snapshots.filter((snapshot) => {
+    if (!snapshot.detail) {
+      return false;
+    }
+
+    return snapshot.detail.recipients.blocked > 0;
+  }).length;
   const recentRecipientIssuesCount = snapshots.filter((snapshot) => {
     if (!snapshot.detail) {
       return false;
@@ -215,9 +414,20 @@ export function buildClientDashboardModel(
       !snapshot.detail.campaign.contactsReady
     );
   }).length;
-  const recentProviderEventsCount = snapshots.filter(
-    (snapshot) => snapshot.stats?.logs.providerEventsAvailable,
-  ).length;
+  const recentProviderEventsCount = snapshots.filter((snapshot) => {
+    const logs = snapshot.stats?.logs ?? snapshot.detail?.logs;
+
+    return logs?.providerEventsAvailable;
+  }).length;
+  const providerEventsUnavailableCount = snapshots.filter((snapshot) => {
+    if (!snapshot.detail) {
+      return false;
+    }
+
+    const logs = snapshot.stats?.logs ?? snapshot.detail.logs;
+
+    return !logs.providerEventsAvailable && hasRecentProviderSignal(snapshot);
+  }).length;
   const remainingCampaignSlots =
     typeof summary.limits.maxCampaigns === "number" && summary.limits.maxCampaigns > 0
       ? Math.max(summary.limits.maxCampaigns - summary.campaigns.totalCampaigns, 0)
@@ -252,6 +462,12 @@ export function buildClientDashboardModel(
   ] as ClientDashboardStatusSegment[];
 
   return {
+    actionItems: buildActionItems(
+      summary,
+      campaignsToComplete,
+      summary.blockedSends.currentPeriodCount,
+      providerEventsUnavailableCount,
+    ),
     blockedSendsCount: summary.blockedSends.currentPeriodCount,
     campaignsNeedingAttention,
     campaignsToComplete,
@@ -259,9 +475,20 @@ export function buildClientDashboardModel(
       summary.campaigns.totalCampaigns,
       summary.limits.maxCampaigns,
     ),
+    limitStatus: buildLimitStatus(
+      summary.campaigns.totalCampaigns,
+      summary.limits.maxCampaigns,
+    ),
     readyCampaigns: summary.campaigns.statusCounts.ready,
+    recentCampaignsVisible,
     recentProviderEventsCount,
-    recentReadyCampaignsCount,
+    readinessSummary: {
+      withDetailsCount: recentCampaignsWithDetailsCount,
+      readyCount: recentReadyCampaignsCount,
+      needsSetupCount: recentRecipientIssuesCount,
+      blockedRecipientsCount: recentBlockedRecipientsCount,
+      providerEventsUnavailableCount,
+    },
     recentRecipientIssuesCount,
     remainingCampaignSlots,
     statusSegments: statusSegments.filter((segment) => segment.value > 0),

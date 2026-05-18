@@ -2,6 +2,11 @@ import Link from "next/link";
 import { StatusBadge } from "../ui/StatusBadge";
 import type { ClientOverviewSummary } from "../../types";
 import type { ClientDashboardModel } from "./dashboardModel";
+import {
+  getClientAccessStatusLabel,
+  getClientAccountVariant,
+  getClientStatusLabel,
+} from "./clientStatus";
 
 interface ClientDashboardHeaderProps {
   summary: ClientOverviewSummary;
@@ -14,6 +19,7 @@ export function ClientDashboardHeader({
 }: ClientDashboardHeaderProps) {
   const dashboardModel =
     model ?? {
+      actionItems: [],
       blockedSendsCount: summary.blockedSends.currentPeriodCount,
       campaignsNeedingAttention:
         summary.campaigns.statusCounts.blocked +
@@ -22,9 +28,21 @@ export function ClientDashboardHeader({
       campaignsToComplete:
         summary.campaigns.statusCounts.draft + summary.campaigns.statusCounts.paused,
       capacityRatio: null,
+      limitStatus: {
+        detail: "Capacità campagne non disponibile.",
+        label: "Limiti",
+        tone: "neutral" as const,
+      },
       readyCampaigns: summary.campaigns.statusCounts.ready,
+      recentCampaignsVisible: summary.campaigns.recentCampaigns.length,
       recentProviderEventsCount: 0,
-      recentReadyCampaignsCount: 0,
+      readinessSummary: {
+        withDetailsCount: 0,
+        readyCount: 0,
+        needsSetupCount: 0,
+        blockedRecipientsCount: 0,
+        providerEventsUnavailableCount: 0,
+      },
       recentRecipientIssuesCount: 0,
       remainingCampaignSlots: null,
       statusSegments: [],
@@ -46,11 +64,14 @@ export function ClientDashboardHeader({
     <section className="client-hero client-dashboard-hero">
       <div className="client-dashboard-hero__copy">
         <div className="client-dashboard-hero__headline">
-          <p className="client-hero__eyebrow">Dashboard cliente</p>
-          <h1 className="client-hero__title">{summary.client.name}</h1>
+          <p className="client-hero__eyebrow">Dashboard</p>
+          <div className="client-dashboard-hero__title-row">
+            <h1 className="client-hero__title">{summary.client.name}</h1>
+            <span className="client-dashboard-hero__workspace">Workspace cliente</span>
+          </div>
           <p className="client-dashboard-hero__lead">
-            Vista operativa del workspace con campagne, limiti e blocchi realmente
-            registrati.
+            Vista operativa con campagne visibili, prontezza reale e limiti attivi del
+            workspace.
           </p>
         </div>
 
@@ -59,26 +80,42 @@ export function ClientDashboardHeader({
             label={dashboardModel.workspaceStatus.label}
             variant={dashboardModel.workspaceStatus.variant}
           />
-          <span className="client-dashboard-hero__status-detail">
-            {dashboardModel.workspaceStatus.detail}
-          </span>
+          <StatusBadge
+            label={getClientAccessStatusLabel(summary.client.accessStatus)}
+            variant={summary.client.accessStatus === "active" ? "success" : "warning"}
+          />
+          <StatusBadge
+            label={getClientStatusLabel(summary.client.clientStatus)}
+            variant={getClientAccountVariant(summary.client.clientStatus)}
+          />
+        </div>
+
+        <div className="client-dashboard-hero__facts">
+          <div className="client-dashboard-hero__fact-pill">
+            <span>Campagne visibili</span>
+            <strong>
+              {dashboardModel.recentCampaignsVisible.toLocaleString("it-IT")}
+            </strong>
+          </div>
+          <div className="client-dashboard-hero__fact-pill">
+            <span>Campagne pronte</span>
+            <strong>{dashboardModel.readyCampaigns.toLocaleString("it-IT")}</strong>
+          </div>
         </div>
       </div>
 
       <div className="client-dashboard-hero__actions">
         <div className="client-dashboard-hero__focus">
-          <span className="client-dashboard-hero__focus-label">Stato attuale</span>
+          <span className="client-dashboard-hero__focus-label">Contesto operativo</span>
           <strong className="client-dashboard-hero__focus-value">
             {dashboardModel.readyCampaigns > 0
-              ? `${dashboardModel.readyCampaigns.toLocaleString("it-IT")} campagne pronte`
+              ? `${dashboardModel.readyCampaigns.toLocaleString("it-IT")} ${dashboardModel.readyCampaigns === 1 ? "campagna pronta" : "campagne pronte"}`
               : dashboardModel.campaignsNeedingAttention > 0
-                ? `${dashboardModel.campaignsNeedingAttention.toLocaleString("it-IT")} campagne da seguire`
+                ? `${dashboardModel.campaignsNeedingAttention.toLocaleString("it-IT")} ${dashboardModel.campaignsNeedingAttention === 1 ? "campagna da seguire" : "campagne da seguire"}`
                 : "Nessuna urgenza visibile"}
           </strong>
           <p className="client-dashboard-hero__focus-copy">
-            {summary.blockedSends.currentPeriodCount > 0
-              ? `Sono presenti ${summary.blockedSends.currentPeriodCount.toLocaleString("it-IT")} blocchi nel periodo corrente.`
-              : "Usa l'elenco campagne per seguire i prossimi passaggi del workspace."}
+            {dashboardModel.workspaceStatus.detail}
           </p>
         </div>
 

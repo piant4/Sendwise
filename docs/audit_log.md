@@ -1,5 +1,40 @@
 # Audit Log
 
+## Milestone 17.1B - Refine Client Dashboard Header And Campaign Analytics
+
+Date: 2026-05-18
+Branch: develop
+
+Verified state:
+- The client dashboard still consumes only the existing client overview summary plus existing recent campaign detail and stats read models; no API contract or backend logic changed.
+- The header now anchors the client name higher, adds real workspace context next to it, and keeps one primary CTA to open campaigns without the previous empty left-side gap.
+- The top summary is reduced to four compact cards with clearer hierarchy: ready campaigns, campaigns to complete, blocked sends in the current period, and campaign capacity versus the configured limit.
+- The campaign overview now uses a compact CSS conic chart backed by real status counts, tighter spacing, and lighter campaign rows that only show real readiness, recipient, blocked-recipient, provider-event, and honest per-campaign limit progress signals.
+- Side content no longer uses filler blocks: it now shows real limit saturation, current-period usage totals, actionable follow-up items, and recent readiness summaries derived from recent campaign detail snapshots only.
+- Per-campaign progress uses `sent + queued` versus the real campaign limit only when those backend-backed values are present; otherwise it falls back to eligible recipients versus the exposed per-campaign limit and labels that fallback explicitly as recipient usage.
+
+Checks executed:
+- `git diff --check`
+- `cd frontend && npm run lint`
+- `cd frontend && npm run build`
+- `bash scripts/audit.sh`
+- `bash scripts/smoke_test.sh`
+- `docker compose config`
+- `docker compose -f docker-compose.yml -f docker-compose.dev.yml config`
+- touched dashboard file scan for direct listmonk calls
+- touched dashboard file scan for fake delivered/open/click/open-rate/click-rate claims
+- changed file scan for env/secrets/config changes
+
+Checks result:
+- All listed local validation commands passed in this workspace.
+- Direct scan of touched dashboard files found no frontend listmonk calls.
+- The fake-metric scan only matched existing helper field names in shared campaign utilities; no new fake delivery, open, click, open-rate, or click-rate UI claims were added by this milestone.
+- Browser-based manual QA for a valid `/c/{portalSlug}` route could not be completed here because the available Playwright browser integration failed to start without a local Chrome distribution.
+
+Scope confirmation:
+- No backend, schema, API contract, auth, send/dispatch, SES/listmonk integration, Docker/env/config, or database changes were made.
+- No fake delivered/open/click/delivery-rate/open-rate/click-rate metrics or fake time-series trends were introduced.
+
 ## Milestone 18.0B - VPS Backup And Restore Safety Runbook
 
 Date: 2026-05-16

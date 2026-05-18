@@ -1,62 +1,87 @@
-import { StatusBadge } from "../ui/StatusBadge";
+import Link from "next/link";
 import type { ClientOverviewSummary } from "../../types";
 import { ClientSurface } from "./ClientSurface";
-import {
-  formatDateTimeLabel,
-  getSendDecisionLabel,
-  getSendDecisionVariant,
-} from "./clientStatus";
-import { getReadableBackendReason } from "../shared/campaignUi";
+import type { ClientDashboardModel } from "./dashboardModel";
 
 interface ClientRecentBlockedSendsCardProps {
   summary: ClientOverviewSummary;
+  model?: ClientDashboardModel;
 }
 
 export function ClientRecentBlockedSendsCard({
   summary,
+  model,
 }: ClientRecentBlockedSendsCardProps) {
+  const dashboardModel =
+    model ?? {
+      actionItems: [],
+      blockedSendsCount: summary.blockedSends.currentPeriodCount,
+      campaignsNeedingAttention:
+        summary.campaigns.statusCounts.blocked +
+        summary.campaigns.statusCounts.failed +
+        summary.campaigns.statusCounts.paused,
+      campaignsToComplete:
+        summary.campaigns.statusCounts.draft + summary.campaigns.statusCounts.paused,
+      capacityRatio: null,
+      limitStatus: {
+        detail: "Capacità campagne non disponibile.",
+        label: "Limiti",
+        tone: "neutral" as const,
+      },
+      readyCampaigns: summary.campaigns.statusCounts.ready,
+      recentCampaignsVisible: summary.campaigns.recentCampaigns.length,
+      recentProviderEventsCount: 0,
+      readinessSummary: {
+        withDetailsCount: 0,
+        readyCount: 0,
+        needsSetupCount: 0,
+        blockedRecipientsCount: 0,
+        providerEventsUnavailableCount: 0,
+      },
+      recentRecipientIssuesCount: 0,
+      remainingCampaignSlots: null,
+      statusSegments: [],
+      totalCampaigns: summary.campaigns.totalCampaigns,
+      workspaceStatus: {
+        detail: "Riepilogo operativo disponibile.",
+        label: "Workspace",
+        variant: "neutral" as const,
+      },
+      recommendation: {
+        title: "Vai alle campagne",
+        description: "Apri l'elenco campagne per i dettagli operativi.",
+        href: `/c/${summary.client.portalSlug}/campaigns`,
+        actionLabel: "Vai alle campagne",
+      },
+    };
+
   return (
     <ClientSurface
-      title="Blocchi recenti"
-      description="Ultimi stop registrati nel periodo corrente."
-      aside={
-        <span className="client-surface__eyebrow">
-          {summary.blockedSends.currentPeriodCount.toLocaleString("it-IT")} nel periodo
-        </span>
-      }
+      title="Azioni richieste"
+      description="Solo attività reali emerse da campagne, blocchi e disponibilità eventi."
     >
-      {summary.blockedSends.recentBlockedSends.length > 0 ? (
-        <div className="client-list client-list--compact">
-          {summary.blockedSends.recentBlockedSends.map((blockedSend) => (
-            <article
-              key={blockedSend.id}
-              className="client-row client-row--alert client-row--compact"
+      {dashboardModel.actionItems.length > 0 ? (
+        <div className="client-action-list">
+          {dashboardModel.actionItems.map((item) => (
+            <Link
+              key={`${item.title}-${item.href}`}
+              className="client-action-card"
+              data-tone={item.tone}
+              href={item.href}
             >
-              <div className="client-row__header">
-                <div className="client-row__copy">
-                  <strong className="client-row__title">
-                    {blockedSend.campaign_name?.trim()
-                      ? blockedSend.campaign_name
-                      : "Campagna non disponibile"}
-                  </strong>
-                  <span className="client-row__meta">
-                    {formatDateTimeLabel(blockedSend.created_at)}
-                  </span>
-                </div>
-                <StatusBadge
-                  label={getSendDecisionLabel(blockedSend.decision)}
-                  variant={getSendDecisionVariant(blockedSend.decision)}
-                />
+              <div className="client-action-card__count">
+                {item.count.toLocaleString("it-IT")}
               </div>
-              <p className="client-row__support client-note--compact">
-                {getReadableBackendReason(blockedSend.reason).label}
-              </p>
-            </article>
+              <div className="client-action-card__copy">
+                <strong>{item.title}</strong>
+                <span>{item.description}</span>
+              </div>
+            </Link>
           ))}
         </div>
       ) : (
         <div className="client-empty-state client-empty-state--compact">
-          Nessun blocco registrato nel periodo corrente.
+          Nessuna azione urgente nel workspace.
         </div>
       )}
     </ClientSurface>

@@ -9,6 +9,7 @@ interface ClientKpiGridProps {
 export function ClientKpiGrid({ summary, model }: ClientKpiGridProps) {
   const dashboardModel =
     model ?? {
+      actionItems: [],
       blockedSendsCount: summary.blockedSends.currentPeriodCount,
       campaignsNeedingAttention:
         summary.campaigns.statusCounts.blocked +
@@ -17,9 +18,21 @@ export function ClientKpiGrid({ summary, model }: ClientKpiGridProps) {
       campaignsToComplete:
         summary.campaigns.statusCounts.draft + summary.campaigns.statusCounts.paused,
       capacityRatio: null,
+      limitStatus: {
+        detail: "Capacità campagne non disponibile.",
+        label: "Limiti",
+        tone: "neutral" as const,
+      },
       readyCampaigns: summary.campaigns.statusCounts.ready,
+      recentCampaignsVisible: summary.campaigns.recentCampaigns.length,
       recentProviderEventsCount: 0,
-      recentReadyCampaignsCount: 0,
+      readinessSummary: {
+        withDetailsCount: 0,
+        readyCount: 0,
+        needsSetupCount: 0,
+        blockedRecipientsCount: 0,
+        providerEventsUnavailableCount: 0,
+      },
       recentRecipientIssuesCount: 0,
       remainingCampaignSlots: null,
       statusSegments: [],
@@ -44,25 +57,25 @@ export function ClientKpiGrid({ summary, model }: ClientKpiGridProps) {
       detail:
         dashboardModel.readyCampaigns > 0
           ? "Pronte per il prossimo passaggio operativo."
-          : "Nessuna campagna pronta in questo momento.",
+          : "Nessuna campagna pronta al momento.",
     },
     {
       title: "Da completare",
       value: dashboardModel.campaignsToComplete.toLocaleString("it-IT"),
-      tone: "sent",
+      tone: "attention",
       detail:
         dashboardModel.campaignsToComplete > 0
-          ? "Bozze o pause ancora da completare."
+          ? "Bozze o pause ancora da rifinire."
           : "Nessuna campagna incompleta visibile.",
     },
     {
-      title: "Da seguire",
-      value: dashboardModel.campaignsNeedingAttention.toLocaleString("it-IT"),
+      title: "Blocchi nel periodo",
+      value: dashboardModel.blockedSendsCount.toLocaleString("it-IT"),
       tone: "blocked",
       detail:
-        dashboardModel.campaignsNeedingAttention > 0
-          ? "Pause, errori o blocchi da verificare."
-          : "Nessuna campagna richiede attenzione immediata.",
+        dashboardModel.blockedSendsCount > 0
+          ? "Invii fermati dal backend nel periodo corrente."
+          : "Nessun blocco registrato nel periodo corrente.",
     },
     {
       title: "Limite campagne",
@@ -71,17 +84,20 @@ export function ClientKpiGrid({ summary, model }: ClientKpiGridProps) {
           ? `${summary.campaigns.totalCampaigns.toLocaleString("it-IT")} / ${summary.limits.maxCampaigns.toLocaleString("it-IT")}`
           : "Non configurato",
       tone: "limits",
-      detail:
-        dashboardModel.remainingCampaignSlots === null
-          ? "Capacità massima non definita."
-          : `${dashboardModel.remainingCampaignSlots.toLocaleString("it-IT")} slot ancora disponibili.`,
+      detail: dashboardModel.limitStatus.detail,
+      emphasis: dashboardModel.limitStatus.tone === "danger" ? "warning" : undefined,
     },
   ];
 
   return (
     <section className="client-kpi-grid" aria-label="Riepilogo dashboard cliente">
       {cards.map((card) => (
-        <article key={card.title} className="client-kpi-card" data-tone={card.tone}>
+        <article
+          key={card.title}
+          className="client-kpi-card"
+          data-emphasis={card.emphasis}
+          data-tone={card.tone}
+        >
           <div className="client-kpi-card__topline">
             <span className="client-kpi-card__title">{card.title}</span>
             <span className="client-kpi-card__pulse" aria-hidden="true" />

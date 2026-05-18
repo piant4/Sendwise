@@ -14,6 +14,7 @@ export function ClientRecentBlockedSendsCard({
 }: ClientRecentBlockedSendsCardProps) {
   const dashboardModel =
     model ?? {
+      activeCampaigns: summary.campaigns.statusCounts.running,
       actionItems: [],
       blockedSendsCount: summary.blockedSends.currentPeriodCount,
       campaignsNeedingAttention:

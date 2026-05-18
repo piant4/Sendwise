@@ -9,6 +9,7 @@ interface ClientKpiGridProps {
 export function ClientKpiGrid({ summary, model }: ClientKpiGridProps) {
   const dashboardModel =
     model ?? {
+      activeCampaigns: summary.campaigns.statusCounts.running,
       actionItems: [],
       blockedSendsCount: summary.blockedSends.currentPeriodCount,
       campaignsNeedingAttention:
@@ -51,13 +52,19 @@ export function ClientKpiGrid({ summary, model }: ClientKpiGridProps) {
     };
   const cards = [
     {
-      title: "Campagne pronte",
-      value: dashboardModel.readyCampaigns.toLocaleString("it-IT"),
+      title: "Campagne attive",
+      value:
+        typeof summary.limits.maxCampaigns === "number" && summary.limits.maxCampaigns > 0
+          ? `${dashboardModel.activeCampaigns.toLocaleString("it-IT")} / ${summary.limits.maxCampaigns.toLocaleString("it-IT")}`
+          : dashboardModel.activeCampaigns.toLocaleString("it-IT"),
       tone: "campaigns",
       detail:
-        dashboardModel.readyCampaigns > 0
-          ? "Pronte per il prossimo passaggio operativo."
-          : "Nessuna campagna pronta al momento.",
+        dashboardModel.remainingCampaignSlots === null
+          ? "Conta solo le campagne in corso."
+          : dashboardModel.remainingCampaignSlots === 0
+            ? "Tutti gli slot attivi risultano occupati."
+            : `${dashboardModel.remainingCampaignSlots.toLocaleString("it-IT")} ${dashboardModel.remainingCampaignSlots === 1 ? "slot disponibile" : "slot disponibili"}.`,
+      emphasis: dashboardModel.limitStatus.tone === "danger" ? "warning" : undefined,
     },
     {
       title: "Da completare",
@@ -67,6 +74,7 @@ export function ClientKpiGrid({ summary, model }: ClientKpiGridProps) {
         dashboardModel.campaignsToComplete > 0
           ? "Bozze o pause ancora da rifinire."
           : "Nessuna campagna incompleta visibile.",
+      emphasis: undefined,
     },
     {
       title: "Blocchi nel periodo",
@@ -76,16 +84,18 @@ export function ClientKpiGrid({ summary, model }: ClientKpiGridProps) {
         dashboardModel.blockedSendsCount > 0
           ? "Invii fermati dal backend nel periodo corrente."
           : "Nessun blocco registrato nel periodo corrente.",
+      emphasis: undefined,
     },
     {
-      title: "Limite campagne",
+      title: "Campagne pronte",
       value:
-        typeof summary.limits.maxCampaigns === "number" && summary.limits.maxCampaigns > 0
-          ? `${summary.campaigns.totalCampaigns.toLocaleString("it-IT")} / ${summary.limits.maxCampaigns.toLocaleString("it-IT")}`
-          : "Non configurato",
+        dashboardModel.readyCampaigns.toLocaleString("it-IT"),
       tone: "limits",
-      detail: dashboardModel.limitStatus.detail,
-      emphasis: dashboardModel.limitStatus.tone === "danger" ? "warning" : undefined,
+      detail:
+        dashboardModel.readyCampaigns > 0
+          ? "Pronte da avviare, ma fuori dalla capacità attiva."
+          : "Nessuna campagna pronta al momento.",
+      emphasis: undefined,
     },
   ];
 

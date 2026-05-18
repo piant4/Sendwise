@@ -54,6 +54,7 @@ export interface ClientDashboardRecommendation {
 }
 
 export interface ClientDashboardModel {
+  activeCampaigns: number;
   actionItems: ClientDashboardActionItem[];
   blockedSendsCount: number;
   campaignsNeedingAttention: number;
@@ -77,14 +78,14 @@ export interface ClientDashboardModel {
 }
 
 function getCapacityRatio(
-  totalCampaigns: number,
+  activeCampaigns: number,
   maxCampaigns?: number | null,
 ): number | null {
   if (typeof maxCampaigns !== "number" || maxCampaigns <= 0) {
     return null;
   }
 
-  return totalCampaigns / maxCampaigns;
+  return activeCampaigns / maxCampaigns;
 }
 
 function buildWorkspaceStatus(
@@ -174,10 +175,13 @@ function buildRecommendation(
     };
   }
 
-  if (summary.limits.maxCampaigns && summary.campaigns.totalCampaigns >= summary.limits.maxCampaigns) {
+  if (
+    summary.limits.maxCampaigns &&
+    summary.campaigns.statusCounts.running >= summary.limits.maxCampaigns
+  ) {
     return {
       title: "Capacità campagne esaurita",
-      description: "Valuta se chiudere campagne concluse o rivedere i limiti disponibili.",
+      description: "Le campagne in corso hanno già occupato tutti gli slot attivi.",
       href: limitsHref,
       actionLabel: "Controlla i limiti",
     };
@@ -192,7 +196,7 @@ function buildRecommendation(
 }
 
 function buildLimitStatus(
-  totalCampaigns: number,
+  activeCampaigns: number,
   maxCampaigns?: number | null,
 ): ClientDashboardLimitStatus {
   if (typeof maxCampaigns !== "number" || maxCampaigns <= 0) {
@@ -203,12 +207,12 @@ function buildLimitStatus(
     };
   }
 
-  const ratio = totalCampaigns / maxCampaigns;
+  const ratio = activeCampaigns / maxCampaigns;
 
   if (ratio >= 1) {
     return {
       label: "Limite raggiunto",
-      detail: "Nessuno slot aggiuntivo disponibile finché il totale non si riduce.",
+      detail: "Tutti gli slot per campagne attive sono occupati.",
       tone: "danger",
     };
   }
@@ -216,14 +220,14 @@ function buildLimitStatus(
   if (ratio >= 0.8) {
     return {
       label: "Capacità quasi satura",
-      detail: "Conviene pianificare i prossimi slot prima di aprire nuove campagne.",
+      detail: "Restano pochi slot per avviare nuove campagne in corso.",
       tone: "warning",
     };
   }
 
   return {
     label: "Capacità disponibile",
-    detail: "Il numero di campagne attive resta entro il limite configurato.",
+    detail: "Le campagne in corso restano entro il limite configurato.",
     tone: "success",
   };
 }
@@ -312,7 +316,6 @@ export function buildCampaignProgress(
 ): {
   current: number;
   detail: string;
-  label: string;
   limit: number;
   ratio: number;
 } | null {
@@ -327,30 +330,14 @@ export function buildCampaignProgress(
   }
 
   const logs = snapshot.stats?.logs ?? snapshot.detail.logs;
-  const trackedSendVolume = logs.sent + logs.queued;
-
-  if (trackedSendVolume > 0) {
-    return {
-      current: trackedSendVolume,
-      detail:
-        trackedSendVolume === 1
-          ? "1 invio registrato tra coda e tentativi"
-          : `${trackedSendVolume.toLocaleString("it-IT")} invii registrati tra coda e tentativi`,
-      label: "Invii registrati sul limite",
-      limit,
-      ratio: trackedSendVolume / limit,
-    };
-  }
-
   return {
-    current: snapshot.detail.recipients.eligible,
+    current: logs.sent + logs.queued,
     detail:
-      snapshot.detail.recipients.eligible === 1
-        ? "1 destinatario idoneo rispetto al limite"
-        : `${snapshot.detail.recipients.eligible.toLocaleString("it-IT")} destinatari idonei rispetto al limite`,
-    label: "Destinatari sul limite",
+      logs.sent + logs.queued > 0
+        ? `Conteggio basato su ${logs.sent.toLocaleString("it-IT")} inviati e ${logs.queued.toLocaleString("it-IT")} in coda registrati dal backend.`
+        : "Nessun invio registrato dal backend per questa campagna.",
     limit,
-    ratio: snapshot.detail.recipients.eligible / limit,
+    ratio: (logs.sent + logs.queued) / limit,
   };
 }
 
@@ -373,6 +360,7 @@ export function buildClientDashboardModel(
   summary: ClientOverviewSummary,
   snapshots: ClientDashboardCampaignSnapshot[],
 ): ClientDashboardModel {
+  const activeCampaigns = summary.campaigns.statusCounts.running;
   const campaignsNeedingAttention =
     summary.campaigns.statusCounts.blocked +
     summary.campaigns.statusCounts.failed +
@@ -430,7 +418,7 @@ export function buildClientDashboardModel(
   }).length;
   const remainingCampaignSlots =
     typeof summary.limits.maxCampaigns === "number" && summary.limits.maxCampaigns > 0
-      ? Math.max(summary.limits.maxCampaigns - summary.campaigns.totalCampaigns, 0)
+      ? Math.max(summary.limits.maxCampaigns - activeCampaigns, 0)
       : null;
   const statusSegments = [
     {
@@ -462,6 +450,7 @@ export function buildClientDashboardModel(
   ] as ClientDashboardStatusSegment[];
 
   return {
+    activeCampaigns,
     actionItems: buildActionItems(
       summary,
       campaignsToComplete,
@@ -471,14 +460,8 @@ export function buildClientDashboardModel(
     blockedSendsCount: summary.blockedSends.currentPeriodCount,
     campaignsNeedingAttention,
     campaignsToComplete,
-    capacityRatio: getCapacityRatio(
-      summary.campaigns.totalCampaigns,
-      summary.limits.maxCampaigns,
-    ),
-    limitStatus: buildLimitStatus(
-      summary.campaigns.totalCampaigns,
-      summary.limits.maxCampaigns,
-    ),
+    capacityRatio: getCapacityRatio(activeCampaigns, summary.limits.maxCampaigns),
+    limitStatus: buildLimitStatus(activeCampaigns, summary.limits.maxCampaigns),
     readyCampaigns: summary.campaigns.statusCounts.ready,
     recentCampaignsVisible,
     recentProviderEventsCount,

@@ -26,6 +26,7 @@ export function ClientRecentCampaignsCard({
 }: ClientRecentCampaignsCardProps) {
   const fallbackModel =
     model ?? {
+      activeCampaigns: summary.campaigns.statusCounts.running,
       actionItems: [],
       blockedSendsCount: summary.blockedSends.currentPeriodCount,
       campaignsNeedingAttention:
@@ -78,7 +79,7 @@ export function ClientRecentCampaignsCard({
   const toneStops: Record<string, string> = {
     attention: "#dc2626",
     completed: "#94a3b8",
-    paused: "#f59e0b",
+    paused: "#cbd5e1",
     ready: "#60a5fa",
     running: "#2563eb",
   };
@@ -137,7 +138,7 @@ export function ClientRecentCampaignsCard({
       ) : null}
 
       {campaignSnapshots.length > 0 ? (
-        <div className="client-list client-list--compact">
+        <div className="client-campaign-list client-list client-list--compact">
           {campaignSnapshots.map((snapshot) => (
             <article key={snapshot.campaign.id} className="client-row client-row--minimal">
               <div className="client-row__header">
@@ -152,20 +153,15 @@ export function ClientRecentCampaignsCard({
                 <>
                   <div className="client-row__chips">
                     <span className="client-row__chip">
-                      Prontezza: {getCampaignReadinessShortLabel(snapshot.detail.campaign)}
+                      {getCampaignReadinessShortLabel(snapshot.detail.campaign)}
                     </span>
                     <span className="client-row__chip">
-                      {formatCampaignCount(snapshot.detail.recipients.eligible)} destinatari
-                      idonei
+                      {formatCampaignCount(snapshot.detail.recipients.eligible)} idonei
                     </span>
                     {snapshot.detail.recipients.blocked > 0 ? (
                       <span className="client-row__chip client-row__chip--warning">
                         {formatCampaignCount(snapshot.detail.recipients.blocked)} bloccati
                       </span>
-                    ) : null}
-                    {(snapshot.stats?.logs ?? snapshot.detail.logs)
-                      .providerEventsAvailable ? (
-                      <span className="client-row__chip">Eventi provider disponibili</span>
                     ) : null}
                   </div>
 
@@ -179,11 +175,11 @@ export function ClientRecentCampaignsCard({
                       return (
                         <div className="client-row__progress client-row__progress--muted">
                           <div className="client-row__progress-header">
-                            <span>Limite per campagna</span>
-                            <strong>Non disponibile</strong>
+                            <span>Invii nel periodo</span>
+                            <strong>Invii non ancora disponibili</strong>
                           </div>
                           <p className="client-row__support client-note--compact">
-                            Nessun limite esposto per questa campagna.
+                            Nessun conteggio reale disponibile per mostrare l&apos;uso della campagna.
                           </p>
                         </div>
                       );
@@ -192,20 +188,22 @@ export function ClientRecentCampaignsCard({
                     return (
                       <div className="client-row__progress">
                         <div className="client-row__progress-header">
-                          <span>{progress.label}</span>
-                          <strong>
-                            {formatCampaignCount(progress.current)} /{" "}
-                            {formatCampaignCount(progress.limit)}
-                          </strong>
+                          <span>Invii nel periodo</span>
+                          <strong>{formatCampaignCount(progress.current)}</strong>
+                        </div>
+                        <div className="client-row__usage-facts">
+                          <span>
+                            Invii registrati <strong>{formatCampaignCount(progress.current)}</strong>
+                          </span>
+                          <span>
+                            Limite campagna <strong>{formatCampaignCount(progress.limit)}</strong>
+                          </span>
                         </div>
                         <div className="client-progress" aria-hidden="true">
                           <div
                             className="client-progress__fill"
                             style={{
-                              width: `${Math.max(
-                                6,
-                                Math.min(progress.ratio * 100, 100),
-                              )}%`,
+                              width: `${Math.min(progress.ratio * 100, 100)}%`,
                             }}
                           />
                         </div>

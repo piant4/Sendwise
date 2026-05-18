@@ -20,6 +20,7 @@ export function ClientDeliveryCard({
 }: ClientDeliveryCardProps) {
   const dashboardModel =
     model ?? {
+      activeCampaigns: summary.campaigns.statusCounts.running,
       actionItems: [],
       blockedSendsCount: summary.blockedSends.currentPeriodCount,
       campaignsNeedingAttention:
@@ -63,10 +64,10 @@ export function ClientDeliveryCard({
   const campaignSnapshots = snapshots ?? [];
   const recentCampaignsChecked = campaignSnapshots.filter((snapshot) => snapshot.detail)
     .length;
-  const capacityFill =
+  const activeCapacityFill =
     dashboardModel.capacityRatio === null
       ? "0%"
-      : `${Math.max(10, Math.min(dashboardModel.capacityRatio * 100, 100))}%`;
+      : `${Math.min(dashboardModel.capacityRatio * 100, 100)}%`;
 
   return (
     <div className="client-rail client-dashboard-rail">
@@ -76,12 +77,12 @@ export function ClientDeliveryCard({
       >
         <div className="client-progress-panel">
           <div className="client-progress-panel__row">
-            <span>Capacità campagne</span>
+            <span>Campagne attive</span>
             <strong>
               {typeof summary.limits.maxCampaigns === "number" &&
               summary.limits.maxCampaigns > 0
-                ? `${summary.campaigns.totalCampaigns.toLocaleString("it-IT")} / ${summary.limits.maxCampaigns.toLocaleString("it-IT")}`
-                : summary.campaigns.totalCampaigns.toLocaleString("it-IT")}
+                ? `${dashboardModel.activeCampaigns.toLocaleString("it-IT")} / ${summary.limits.maxCampaigns.toLocaleString("it-IT")}`
+                : dashboardModel.activeCampaigns.toLocaleString("it-IT")}
             </strong>
           </div>
           {dashboardModel.capacityRatio === null ? (
@@ -93,7 +94,7 @@ export function ClientDeliveryCard({
               <div className="client-progress" aria-hidden="true">
                 <div
                   className="client-progress__fill"
-                  style={{ width: capacityFill }}
+                  style={{ width: activeCapacityFill }}
                 />
               </div>
               <div className="client-limit-gauge__meta">
@@ -110,7 +111,7 @@ export function ClientDeliveryCard({
             <strong>{formatOptionalLimit(summary.limits.maxCampaigns)}</strong>
           </article>
           <article className="client-fact-card">
-            <span>Slot disponibili</span>
+            <span>Slot attivi liberi</span>
             <strong>
               {dashboardModel.remainingCampaignSlots === null
                 ? "N/D"
@@ -118,7 +119,7 @@ export function ClientDeliveryCard({
             </strong>
           </article>
           <article className="client-fact-card">
-            <span>Email per campagna</span>
+            <span>Limite campagna</span>
             <strong>{formatOptionalLimit(summary.limits.emailLimitPerCampaign)}</strong>
           </article>
         </div>

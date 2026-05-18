@@ -1,5 +1,48 @@
 # Audit Log
 
+## Milestone 17.1C - Fix Client Dashboard Limits Semantics
+
+Date: 2026-05-18
+Branch: develop
+
+Dashboard limits audit summary:
+- Reviewed the client dashboard composition in `frontend/app/c/[portalSlug]/page.tsx`, the dashboard read-model builder in `frontend/components/client/dashboardModel.ts`, the campaign overview cards, and the frontend API/type mappings used by the client portal.
+- Identified all capacity uses tied to `summary.campaigns.totalCampaigns` in `dashboardModel.ts`, `ClientKpiGrid.tsx`, and `ClientDeliveryCard.tsx`; these were incorrectly treating total campaigns as active-capacity usage.
+- Confirmed the active-capacity fix can stay frontend-only because the existing overview payload already exposes `status_counts.running`, `running_campaigns`, `total_campaigns`, `max_campaigns`, and `email_limit_per_campaign`.
+- Confirmed the frontend already receives backend-backed per-campaign log totals through `CampaignReadModel.logs` and `ClientCampaignStatsReadModel.logs`, with available fields `sent`, `queued`, `simulated`, `opened`, `clicked`, `bounced`, `complained`, `unsubscribed`, and `providerEventsAvailable`.
+- Confirmed no `attempted` field is exposed to the frontend today; the only real per-campaign send-volume fields available for honest usage display are `logs.sent` and `logs.queued`.
+- Removed the incorrect eligible-recipient fallback for campaign usage so recipient counts are never presented as send usage.
+
+Implemented:
+- Rebased dashboard active-capacity semantics on `statusCounts.running` only, including the KPI card, limit rail, remaining-slot math, saturation copy, and recommendation logic.
+- Kept `ready` campaigns visible as ready-to-start inventory without letting them consume active capacity.
+- Reworked per-campaign usage rendering to use only backend log totals (`logs.sent + logs.queued`) against the configured campaign limit, with concise Italian copy: `Invii nel periodo`, `Invii registrati`, and `Limite campagna`.
+- Simplified campaign rows by removing provider-event repetition, tightening chips, softening card styling, and adding explicit vertical separation below the status chart.
+- Replaced the incomplete-status chart segment from orange to neutral gray while preserving blue for ready/running and red for blocked/error states.
+
+Checks executed:
+- `git diff --check`
+- `cd frontend && npm run lint`
+- `cd frontend && npm run build`
+- `bash scripts/audit.sh`
+- `bash scripts/smoke_test.sh`
+- `docker compose config`
+- `docker compose -f docker-compose.yml -f docker-compose.dev.yml config`
+- touched dashboard file scan for direct listmonk calls
+- touched dashboard file scan for fake delivered/open/click/open-rate/click-rate/sent claims
+- changed file scan for env/secrets/config changes
+- browser open attempt for `http://localhost:3000`
+
+Checks result:
+- `git diff --check`, frontend lint, frontend build, audit script, smoke test, and both Docker Compose config checks passed after the patch.
+- Touched frontend file scans found no direct listmonk calls and no fake delivered/open/click/open-rate/click-rate claims.
+- No env, secret, Docker, or config file changes were introduced by this milestone.
+- Browser-based manual QA could not be completed here because the available Playwright browser tool failed to initialize Chrome on this machine (`Chromium distribution 'chrome' is not found at /Applications/Google Chrome.app/Contents/MacOS/Google Chrome`).
+
+Scope confirmation:
+- No backend, DB schema, API contract, auth, send/dispatch, SES, or listmonk integration changes were made.
+- No fake sent, delivered, opened, clicked, open-rate, or click-rate metrics were introduced.
+
 ## Milestone 17.1B - Refine Client Dashboard Header And Campaign Analytics
 
 Date: 2026-05-18

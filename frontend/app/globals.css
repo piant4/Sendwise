@@ -5951,43 +5951,47 @@ p {
   background: #94a3b8;
 }
 
+.client-campaign-list {
+  margin-top: 18px;
+}
+
 .client-row {
-  background: rgba(248, 250, 252, 0.92);
-  border-color: rgba(202, 213, 225, 0.8);
+  background: rgba(248, 250, 252, 0.7);
+  border-color: rgba(202, 213, 225, 0.64);
 }
 
 .client-row--minimal {
-  gap: 12px;
-  padding: 14px;
+  gap: 10px;
+  padding: 12px 13px;
 }
 
 .client-row__chips {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 6px;
 }
 
 .client-row__chip {
-  background: rgba(239, 246, 255, 0.95);
-  border: 1px solid rgba(191, 219, 254, 0.72);
+  background: rgba(241, 245, 249, 0.92);
+  border: 1px solid rgba(203, 213, 225, 0.86);
   border-radius: 999px;
-  color: #1e3a8a;
+  color: #334155;
   display: inline-flex;
-  font-size: 0.77rem;
+  font-size: 0.74rem;
   font-weight: 600;
   line-height: 1.35;
-  padding: 6px 10px;
+  padding: 5px 9px;
 }
 
 .client-row__chip--warning {
-  background: rgba(255, 247, 237, 0.96);
-  border-color: rgba(251, 191, 36, 0.32);
+  background: rgba(254, 242, 242, 0.96);
+  border-color: rgba(252, 165, 165, 0.5);
   color: #9a3412;
 }
 
 .client-row__progress {
   display: grid;
-  gap: 8px;
+  gap: 7px;
 }
 
 .client-row__progress--muted {
@@ -6020,6 +6024,22 @@ p {
 .client-row__progress-header strong {
   color: #0f172a;
   font-size: 0.86rem;
+}
+
+.client-row__usage-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+}
+
+.client-row__usage-facts span {
+  color: #526177;
+  font-size: 0.79rem;
+}
+
+.client-row__usage-facts strong {
+  color: #0f172a;
+  font-size: inherit;
 }
 
 .client-limit-gauge {

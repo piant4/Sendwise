@@ -100,7 +100,7 @@ Start the local stack:
 
 ```bash
 cp .env.example .env
-docker compose up -d
+docker compose --env-file .env up -d
 ```
 
 Local services:
@@ -113,7 +113,7 @@ Local services:
 Start with the dev Mailpit overlay:
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+docker compose --env-file .env -f docker-compose.yml -f docker-compose.dev.yml up -d
 ```
 
 Mailpit:
@@ -140,8 +140,8 @@ The runner applies pending files from `db/migrations` through the Docker Compose
 bash scripts/audit.sh
 bash scripts/smoke_test.sh
 bash scripts/healthcheck.sh
-docker compose config
-docker compose -f docker-compose.yml -f docker-compose.dev.yml config
+SENDWISE_ENV_FILE=.env.example docker compose --env-file .env.example config
+SENDWISE_ENV_FILE=.env.example docker compose --env-file .env.example -f docker-compose.yml -f docker-compose.dev.yml config
 cd frontend && npm run lint
 cd frontend && npm run build
 ```
@@ -153,9 +153,11 @@ cd frontend && npm run build
 Staging uses the base Compose file plus `docker-compose.staging.yml`:
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.staging.yml config
-docker compose -f docker-compose.yml -f docker-compose.staging.yml up -d --build
+SENDWISE_ENV_FILE=.env.example docker compose --env-file .env.example -f docker-compose.yml -f docker-compose.staging.yml config
+docker compose --env-file .env -f docker-compose.yml -f docker-compose.staging.yml up -d --build
 ```
+
+The VPS `.env` is the source of truth for runtime builds and container runtime environment. `--env-file` controls Docker Compose interpolation, while service-level `env_file` controls container environment injection. For safe validation against `.env.example`, set `SENDWISE_ENV_FILE=.env.example` so service-level `env_file` does not read the real `.env`. Never run public or shared config dumps against a real `.env`, and never commit `.env`.
 
 Recommended staging domains:
 

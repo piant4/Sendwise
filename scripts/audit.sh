@@ -127,11 +127,81 @@ else
   echo "OK Mailpit present in dev compose"
 fi
 
-if ! grep -q 'LISTMONK_smtp__host: ${SMTP_HOST:-mailpit}' docker-compose.dev.yml; then
-  echo "FAIL dev compose must wire listmonk SMTP host to Mailpit"
+if ! grep -q 'LISTMONK_smtp__host: ${SMTP_HOST}' docker-compose.dev.yml; then
+  echo "FAIL dev compose must read listmonk SMTP host from selected env file"
   failures=$((failures + 1))
 else
-  echo "OK dev compose wires listmonk SMTP host to Mailpit"
+  echo "OK dev compose reads listmonk SMTP host from selected env file"
+fi
+
+if ! grep -q 'env_file:' docker-compose.yml || ! grep -q '${SENDWISE_ENV_FILE:-.env}' docker-compose.yml; then
+  echo "FAIL docker-compose.yml must default service env_file to .env through SENDWISE_ENV_FILE"
+  failures=$((failures + 1))
+else
+  echo "OK docker-compose.yml defaults service env_file to .env through SENDWISE_ENV_FILE"
+fi
+
+if ! grep -q 'SENDWISE_ENV_FILE=.env.example docker compose --env-file .env.example config' scripts/smoke_test.sh; then
+  echo "FAIL smoke test must safely validate base compose with .env.example"
+  failures=$((failures + 1))
+else
+  echo "OK smoke test safely validates base compose with .env.example"
+fi
+
+if ! grep -q 'SENDWISE_ENV_FILE=.env.example docker compose --env-file .env.example -f docker-compose.yml -f docker-compose.dev.yml config' scripts/smoke_test.sh; then
+  echo "FAIL smoke test must safely validate dev compose with .env.example"
+  failures=$((failures + 1))
+else
+  echo "OK smoke test safely validates dev compose with .env.example"
+fi
+
+if ! grep -q 'SENDWISE_ENV_FILE=.env.example docker compose --env-file .env.example -f docker-compose.yml -f docker-compose.staging.yml config' scripts/smoke_test.sh; then
+  echo "FAIL smoke test must safely validate staging compose with .env.example"
+  failures=$((failures + 1))
+else
+  echo "OK smoke test safely validates staging compose with .env.example"
+fi
+
+if grep -qE '^[[:space:]]*docker compose( -f [^[:space:]]+)* config' scripts/smoke_test.sh; then
+  echo "FAIL smoke test must not run compose config without SENDWISE_ENV_FILE=.env.example and --env-file .env.example"
+  failures=$((failures + 1))
+else
+  echo "OK smoke test compose config calls use safe env selection"
+fi
+
+if grep -qE '^[[:space:]]*docker compose( -f [^[:space:]]+)* config' scripts/audit.sh; then
+  echo "FAIL audit script must not run compose config without safe env selection"
+  failures=$((failures + 1))
+else
+  echo "OK audit script does not run unsafe compose config"
+fi
+
+if grep -qE '"?0\.0\.0\.0:(5432|9000|1025|8025)|"?[0-9.]*:(5432|9000|1025|8025):(5432|9000|1025|8025)' docker-compose.staging.yml; then
+  echo "FAIL staging compose must not publicly expose postgres/listmonk/mailpit"
+  failures=$((failures + 1))
+else
+  echo "OK staging compose does not publicly expose postgres/listmonk/mailpit"
+fi
+
+if ! grep -q '"127.0.0.1:8000:8000"' docker-compose.staging.yml; then
+  echo "FAIL staging backend must bind to localhost"
+  failures=$((failures + 1))
+else
+  echo "OK staging backend binds to localhost"
+fi
+
+if ! grep -q '"127.0.0.1:3000:3000"' docker-compose.staging.yml; then
+  echo "FAIL staging frontend must bind to localhost"
+  failures=$((failures + 1))
+else
+  echo "OK staging frontend binds to localhost"
+fi
+
+if grep -qE 'EMAIL_SENDING_ENABLED|REAL_SEND_(ALLOWED_RECIPIENTS|REQUIRE_ALLOWED_RECIPIENTS|MAX_RECIPIENTS|ENVIRONMENTS|CONFIRMATION_TOKEN)' docker-compose.staging.yml; then
+  echo "FAIL staging compose must not hardcode test send gates"
+  failures=$((failures + 1))
+else
+  echo "OK staging compose does not hardcode test send gates"
 fi
 
 if ! grep -qi 'n8n is optional' README.md; then

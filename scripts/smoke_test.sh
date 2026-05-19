@@ -11,8 +11,9 @@ if ! docker compose version >/dev/null 2>&1; then
   exit 1
 fi
 
-docker compose config >/dev/null
-docker compose -f docker-compose.yml -f docker-compose.dev.yml config >/dev/null
+SENDWISE_ENV_FILE=.env.example docker compose --env-file .env.example config >/dev/null
+SENDWISE_ENV_FILE=.env.example docker compose --env-file .env.example -f docker-compose.yml -f docker-compose.dev.yml config >/dev/null
+SENDWISE_ENV_FILE=.env.example docker compose --env-file .env.example -f docker-compose.yml -f docker-compose.staging.yml config >/dev/null
 bash scripts/audit.sh
 
 if [ ! -f scripts/apply_migrations.sh ]; then

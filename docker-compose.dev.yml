@@ -5,15 +5,15 @@ services:
 
   listmonk:
     environment:
-      LISTMONK_ADMIN_USER: ${LISTMONK_USERNAME:-admin}
-      LISTMONK_ADMIN_PASSWORD: ${LISTMONK_PASSWORD:-change_me}
+      LISTMONK_ADMIN_USER: ${LISTMONK_USERNAME}
+      LISTMONK_ADMIN_PASSWORD: ${LISTMONK_PASSWORD}
       LISTMONK_smtp__enabled: "true"
-      LISTMONK_smtp__host: ${SMTP_HOST:-mailpit}
-      LISTMONK_smtp__port: ${SMTP_PORT:-1025}
-      LISTMONK_smtp__username: ${SMTP_USERNAME:-}
-      LISTMONK_smtp__password: ${SMTP_PASSWORD:-}
-      LISTMONK_smtp__tls_enabled: ${SMTP_TLS:-false}
-      LISTMONK_smtp__from_email: ${SMTP_FROM_EMAIL:-dev@sendwise.local}
+      LISTMONK_smtp__host: ${SMTP_HOST}
+      LISTMONK_smtp__port: ${SMTP_PORT}
+      LISTMONK_smtp__username: ${SMTP_USERNAME}
+      LISTMONK_smtp__password: ${SMTP_PASSWORD}
+      LISTMONK_smtp__tls_enabled: ${SMTP_TLS}
+      LISTMONK_smtp__from_email: ${SMTP_FROM_EMAIL}
     depends_on:
       mailpit:
         condition: service_started

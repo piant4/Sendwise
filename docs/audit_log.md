@@ -1,5 +1,57 @@
 # Audit Log
 
+## Milestone 18.5E-FIX2 - Align Audit And Smoke Scripts With Selectable Env File
+
+Date: 2026-05-19
+
+Script alignment summary:
+- `scripts/smoke_test.sh` now runs base, dev, and staging Compose config validation with `SENDWISE_ENV_FILE=.env.example` and `--env-file .env.example`.
+- `scripts/audit.sh` no longer expects dev Compose to hardcode the Mailpit SMTP fallback; it checks that Listmonk SMTP host comes from the selected env file.
+- `scripts/audit.sh` now guards the smoke/audit scripts against unsafe bare `docker compose config` calls.
+- `scripts/audit.sh` checks that runtime service env files default to `.env`, staging keeps backend/frontend localhost-bound, staging does not publicly expose postgres/listmonk/mailpit, and staging does not hardcode test send gates.
+
+Safety confirmation:
+- No backend/frontend product logic, DB schema, migration, DB reset, Docker volume deletion, send/dispatch endpoint, direct Listmonk send, or direct SES send was changed or executed.
+- No real `.env` contents were read, printed, staged, or committed.
+
+## Milestone 18.5E-FIX - Prevent Compose Validation From Reading Real Env
+
+Date: 2026-05-19
+
+Compose/env audit summary:
+- Base Compose service-level `env_file` entries now use `${SENDWISE_ENV_FILE:-.env}` for `postgres`, `backend`, `frontend`, and `listmonk`.
+- VPS runtime remains defaulted to `.env` when `SENDWISE_ENV_FILE` is not set.
+- Safe validation can use `SENDWISE_ENV_FILE=.env.example docker compose --env-file .env.example ... config` so Compose interpolation and service env injection both resolve to `.env.example`.
+
+Docs/runbook changes:
+- README and VPS staging runbook document that `--env-file` controls Compose interpolation, while service-level `env_file` controls container environment injection.
+- README and VPS staging runbook now show safe validation with `SENDWISE_ENV_FILE=.env.example` and keep the runtime staging `up -d --build` command on `--env-file .env`.
+- Docs warn not to run public or shared config dumps against a real `.env`.
+
+Safety confirmation:
+- No backend/frontend product logic, DB schema, migration, DB reset, Docker volume deletion, send/dispatch endpoint, direct Listmonk send, or direct SES send was changed or executed.
+- Safe validation commands did not print real `.env` values, and `.env` was not modified, staged, or committed.
+- `scripts/smoke_test.sh` still calls `docker compose config` without the safe `SENDWISE_ENV_FILE=.env.example --env-file .env.example` guard; on a workspace where `.env` exists, that script is unsafe for this milestone and remains a validation blocker until updated in a later allowed scope.
+
+## Milestone 18.5E - Make VPS Env The Container Source Of Truth
+
+Date: 2026-05-19
+
+Compose/env audit summary:
+- Base Compose now attaches `env_file: .env` to `postgres`, `backend`, `frontend`, and `listmonk`.
+- Backend runtime env, frontend runtime env, frontend build args, Postgres credentials, Listmonk credentials, send gates, Listmonk API config, and SES/SMTP/provider settings are interpolated from `.env` instead of Compose defaults.
+- The staging override no longer forces `EMAIL_PROVIDER=mailpit`, `EMAIL_SENDING_ENABLED=false`, real-send gate values, public URLs, or frontend API build args; those values must come from the VPS `.env`.
+- The staging override keeps localhost-only backend/frontend ports and removes Listmonk host port publishing.
+
+Docs/runbook changes:
+- README and VPS staging runbook now use `docker compose --env-file .env -f docker-compose.yml -f docker-compose.staging.yml config`.
+- README and VPS staging runbook now use `docker compose --env-file .env -f docker-compose.yml -f docker-compose.staging.yml up -d --build`.
+- Runbook documents that `.env` edits require recreating affected containers and `.env` must never be committed.
+
+Safety confirmation:
+- No backend/frontend product logic, DB schema, migration, DB reset, Docker volume deletion, send/dispatch endpoint, direct Listmonk send, or direct SES send was changed or executed.
+- Exact `docker compose --env-file .env.example config` validation expands service `env_file: .env` in this local workspace when `.env` exists; use `--no-env-resolution` for safe rendered inspection when validating against `.env.example` on a machine that also has a real `.env`.
+
 ## Milestone 18.5B - Switch Real Send Gates To Public Product Mode
 
 Date: 2026-05-19

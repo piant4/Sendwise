@@ -48,6 +48,7 @@ Required public URLs:
 ## Staging Environment Requirements
 
 Configure real values only on the VPS environment. Do not place secrets in versioned files.
+The VPS `.env` is the source of truth for Docker Compose runtime builds and container runtime environment. Always pass `--env-file .env` to staging runtime commands. `--env-file` controls Docker Compose interpolation, while service-level `env_file` controls container environment injection. For safe validation against `.env.example`, set `SENDWISE_ENV_FILE=.env.example` so service-level `env_file` does not read the real `.env`. After editing `.env`, recreate the affected containers; old containers keep their old environment. Never commit `.env`.
 
 Required non-secret staging values:
 
@@ -99,8 +100,8 @@ bash scripts/audit.sh
 bash scripts/smoke_test.sh
 ./scripts/backup_postgres.sh
 git pull
-docker compose -f docker-compose.yml -f docker-compose.staging.yml config
-docker compose -f docker-compose.yml -f docker-compose.staging.yml up -d --build
+SENDWISE_ENV_FILE=.env.example docker compose --env-file .env.example -f docker-compose.yml -f docker-compose.staging.yml config
+docker compose --env-file .env -f docker-compose.yml -f docker-compose.staging.yml up -d --build
 ./scripts/apply_migrations.sh
 bash scripts/healthcheck.sh
 bash scripts/smoke_test.sh
@@ -122,9 +123,10 @@ The staging Compose stack must not publish public host ports for:
 Use this command before every staging restart:
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.staging.yml config
+SENDWISE_ENV_FILE=.env.example docker compose --env-file .env.example -f docker-compose.yml -f docker-compose.staging.yml config
 ```
 
+Never run public or shared config dumps against a real `.env`.
 Stop if the rendered config shows `0.0.0.0:3000`, `0.0.0.0:8000`, public `9000`, public `5432`, public `8025`, or public `1025`.
 
 ## First Deploy QA Checklist
@@ -197,7 +199,7 @@ Campaign limits configured by the admin are the real product daily and 30-day li
 If a deploy is bad but data is intact:
 
 1. Roll code back to the last known-good revision.
-2. Rebuild and restart the stack with `docker compose -f docker-compose.yml -f docker-compose.staging.yml up -d --build`.
+2. Rebuild and restart the stack with `docker compose --env-file .env -f docker-compose.yml -f docker-compose.staging.yml up -d --build`.
 3. Re-run `bash scripts/healthcheck.sh` and `bash scripts/smoke_test.sh`.
 
 If data recovery is required:

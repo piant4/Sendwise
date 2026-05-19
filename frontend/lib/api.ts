@@ -127,6 +127,7 @@ interface CampaignReadModelApiResponse {
     simulated: number;
     queued: number;
     sent: number;
+    delivered: number;
     opened: number;
     clicked: number;
     bounced: number;
@@ -1494,6 +1495,7 @@ function mapCampaignLogsSummary(
     simulated: payload.simulated,
     queued: payload.queued,
     sent: payload.sent,
+    delivered: payload.delivered,
     opened: payload.opened,
     clicked: payload.clicked,
     bounced: payload.bounced,

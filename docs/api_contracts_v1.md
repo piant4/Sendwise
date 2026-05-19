@@ -84,10 +84,10 @@ Current contract note:
 - client scoping comes from auth + backend mapping, not from frontend input
 - business metrics shown on the client dashboard are backend-owned through `client_dashboard`; the frontend may format and switch windows but must not derive send/open/block metrics from unrelated fields
 - `client_dashboard.kpis.active_campaigns.value` uses `running` campaigns only; `ready` campaigns never consume active capacity
-- `client_dashboard.performance_analytics.windows` exposes `24h`, `7d`, `14d`, `30d`, and `allTime` with backend counts for `sent`, `queued`, `blocked`, and `opened`
+- `client_dashboard.performance_analytics.windows` exposes `24h`, `7d`, `14d`, `30d`, and `allTime` with backend counts for `sent`, `queued`, `blocked`, and provider-event-backed `opened`
 - `client_dashboard.period_usage` mirrors the backend default dashboard window and is intended for compact send-activity UI only
-- unavailable metric sources must remain `null` with `available=false`; real zero-row windows must remain `0` with `available=true`
-- `opened` metrics are provider-event-backed only, `blocked` metrics are `blocked_sends` rows only, and client daily pacing limits stay hidden from client responses
+- unavailable metric sources must remain `null` with `available=false`; real zero-row send/block windows may remain `0` with `available=true`, while provider-event-backed windows stay unavailable until processed events exist
+- `delivered`, `opened`, `clicked`, `bounced`, `complained`, and `unsubscribed` campaign metrics are provider-event-backed only, `blocked` metrics are `blocked_sends` rows only, and client daily pacing limits stay hidden from client responses
 
 ## Campaign Runtime Endpoints Current
 
@@ -167,7 +167,7 @@ Client read-only notes:
 - V1 client routes do not create, edit, delete, import, simulate, send, assign slots, or mutate templates
 - backend derives `client_id` from auth and `client_access`
 - backend denies cross-client access even for read-only campaign data
-- client-visible metrics may include queued, sent, opens, clicks, bounce, complaint/spam, unsubscribe, blocked sends, and period usage only when backed by real logs or provider events
+- client-visible metrics may include queued, sent, delivered, opens, clicks, bounce, complaint/spam, unsubscribe, blocked sends, and period usage only when backed by real logs or provider events
 - client responses must not expose configured `daily_email_limit`
 
 ## Admin Template API Future
@@ -223,5 +223,5 @@ Contacts notes:
 | Endpoint | Purpose | Allowed caller | Required access | High-level input | High-level output | Main errors | Status |
 |---|---|---|---|---|---|---|---|
 | `GET /unsubscribe/{token}` | Public Sendwise-managed unsubscribe endpoint. | Email recipient. | None. | Signed opaque token and optional `campaign_id`. | Minimal HTML confirmation and backend-owned suppression side effects. | `400`. | `implemented` |
-| `POST /events/listmonk` | Receive listmonk webhook events. | listmonk. | Webhook secret or API key. | Event payload. | Accepted ignored result for legacy compatibility. | `400`, `401`, `403`, `409`. | `implemented` |
-| `POST /events/provider` | Receive normalized provider events and minimal SES/SNS-like payloads. | SMTP/provider webhook. | Webhook secret or API key. | Event payload. | Accepted normalized event persistence plus correlated side effects when resolvable. | `400`, `401`, `403`, `409`. | `implemented` |
+| `POST /events/listmonk` | Receive supported listmonk event payloads. | listmonk. | Webhook secret or API key. | Event payload. | Accepted unsubscribe ingestion for supported normalized payloads; unsupported payloads are ignored. | `400`, `401`, `403`, `409`. | `implemented` |
+| `POST /events/provider` | Receive normalized provider events and minimal SES/SNS-like payloads. | SMTP/provider webhook. | Webhook secret or API key. | Event payload. | Accepted idempotent event persistence plus correlated email-log, suppression, and campaign-metric side effects when resolvable. | `400`, `401`, `403`, `409`. | `implemented` |

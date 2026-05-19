@@ -294,7 +294,7 @@ Current verified fields:
 
 Current audited behavior:
 - events are persisted idempotently by `event_key`
-- correlated bounce, complaint, and unsubscribe events may update `email_logs`, `contacts`, `suppression_list`, and campaign read-model metrics
+- correlated delivery, bounce, complaint, open, click, and unsubscribe events may update `email_logs`, `contacts`, `suppression_list`, and campaign read-model metrics
 
 ### blocked_sends
 

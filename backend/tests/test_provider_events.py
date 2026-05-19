@@ -303,6 +303,94 @@ def test_provider_event_endpoint_accepts_valid_api_key() -> None:
     assert response.json()["event_type"] == "ses_bounce"
 
 
+def test_provider_event_endpoint_accepts_sns_delivery_notification() -> None:
+    runtime = build_runtime()
+    provider_event_service: ProviderEventIngestionService = runtime["provider_event_service"]  # type: ignore[assignment]
+    email_log_repository: InMemoryEmailLogRepository = runtime["email_log_repository"]  # type: ignore[assignment]
+    settings = Settings(
+        environment="development",
+        backend_api_key="test-api-key",
+        backend_public_url="http://localhost:8000",
+        unsubscribe_token_secret="unsubscribe-secret",
+    )
+    app.dependency_overrides[get_settings] = lambda: settings
+    app.dependency_overrides[get_provider_event_ingestion_service] = (
+        lambda: provider_event_service
+    )
+    try:
+        response = TestClient(app).post(
+            "/events/provider",
+            headers={"X-API-Key": "test-api-key"},
+            json={
+                "Type": "Notification",
+                "Message": {
+                    "eventType": "Delivery",
+                    "mail": {
+                        "timestamp": "2026-05-19T10:00:00Z",
+                        "messageId": "msg-1",
+                        "destination": ["person@example.test"],
+                        "tags": {
+                            "sendwise_client_id": ["client_123"],
+                            "sendwise_campaign_id": ["campaign_123"],
+                            "sendwise_contact_id": ["contact_123"],
+                        },
+                    },
+                },
+            },
+        )
+    finally:
+        app.dependency_overrides.pop(get_provider_event_ingestion_service, None)
+        app.dependency_overrides.pop(get_settings, None)
+
+    assert response.status_code == 202
+    assert response.json()["event_type"] == "ses_delivery"
+    assert response.json()["created"] is True
+    assert email_log_repository.find_latest_for_contact(
+        client_id="client_123",
+        campaign_id="campaign_123",
+        contact_id="contact_123",
+    ).status == "delivered"
+
+
+def test_listmonk_event_endpoint_accepts_supported_unsubscribe_payload() -> None:
+    runtime = build_runtime()
+    provider_event_service: ProviderEventIngestionService = runtime["provider_event_service"]  # type: ignore[assignment]
+    suppression_repository: InMemorySuppressionListRepository = runtime["suppression_repository"]  # type: ignore[assignment]
+    settings = Settings(
+        environment="development",
+        backend_api_key="test-api-key",
+        backend_public_url="http://localhost:8000",
+        unsubscribe_token_secret="unsubscribe-secret",
+    )
+    app.dependency_overrides[get_settings] = lambda: settings
+    app.dependency_overrides[get_provider_event_ingestion_service] = (
+        lambda: provider_event_service
+    )
+    try:
+        response = TestClient(app).post(
+            "/events/listmonk",
+            headers={"X-API-Key": "test-api-key"},
+            json={
+                "event_type": "unsubscribe",
+                "campaign_id": "campaign_123",
+                "contact_id": "contact_123",
+                "client_id": "client_123",
+                "email": "person@example.test",
+                "provider_event_id": "listmonk-unsub-1",
+            },
+        )
+    finally:
+        app.dependency_overrides.pop(get_provider_event_ingestion_service, None)
+        app.dependency_overrides.pop(get_settings, None)
+
+    assert response.status_code == 202
+    assert response.json()["event_type"] == "sendwise_unsubscribe"
+    assert suppression_repository.list_suppressed_emails_for_campaign(
+        client_id="client_123",
+        emails=["person@example.test"],
+    ) == {"person@example.test"}
+
+
 def test_unsubscribe_is_idempotent() -> None:
     runtime = build_runtime()
     token_service: UnsubscribeTokenService = runtime["token_service"]  # type: ignore[assignment]
@@ -381,6 +469,33 @@ def test_ses_bounce_updates_provider_events_email_logs_and_suppression_list() ->
         client_id="client_123",
         emails=["person@example.test"],
     ) == {"person@example.test"}
+
+
+def test_ses_delivery_updates_email_log_and_campaign_metrics() -> None:
+    runtime = build_runtime()
+    provider_event_service: ProviderEventIngestionService = runtime["provider_event_service"]  # type: ignore[assignment]
+    email_log_repository: InMemoryEmailLogRepository = runtime["email_log_repository"]  # type: ignore[assignment]
+    admin_service: AdminCampaignService = runtime["admin_service"]  # type: ignore[assignment]
+
+    provider_event_service.ingest_event(
+        NormalizedProviderEvent(
+            provider="ses",
+            source="provider_webhook",
+            provider_event_id="delivery-1",
+            event_type="ses_delivery",
+            campaign_id="campaign_123",
+            contact_id="contact_123",
+            provider_message_id="msg-1",
+            email="person@example.test",
+        )
+    )
+
+    assert email_log_repository.find_latest_for_contact(
+        client_id="client_123",
+        campaign_id="campaign_123",
+        contact_id="contact_123",
+    ).status == "delivered"
+    assert admin_service.get_campaign_summary("campaign_123").logs.delivered == 1
 
 
 def test_ses_complaint_updates_provider_events_email_logs_and_suppression_list() -> None:
@@ -505,6 +620,35 @@ def test_duplicate_event_does_not_duplicate_side_effects() -> None:
     assert len(suppression_repository._records) == 1
 
 
+def test_deterministic_event_key_deduplicates_provider_events_without_event_id() -> None:
+    runtime = build_runtime()
+    provider_event_service: ProviderEventIngestionService = runtime["provider_event_service"]  # type: ignore[assignment]
+    provider_event_repository: InMemoryProviderEventRepository = runtime["provider_event_repository"]  # type: ignore[assignment]
+
+    event = NormalizedProviderEvent(
+        provider="ses",
+        source="provider_webhook",
+        provider_event_id=None,
+        event_type="ses_open",
+        occurred_at=datetime(2026, 5, 19, 10, 0, tzinfo=timezone.utc),
+        campaign_id="campaign_123",
+        contact_id="contact_123",
+        provider_message_id="msg-1",
+        email="person@example.test",
+    )
+    first = provider_event_service.ingest_event(event)
+    second = provider_event_service.ingest_event(event)
+
+    assert first.created is True
+    assert second.created is False
+    assert len(
+        provider_event_repository.list_by_campaign(
+            client_id="client_123",
+            campaign_id="campaign_123",
+        )
+    ) == 1
+
+
 def test_guard_blocks_contact_after_suppression_event() -> None:
     runtime = build_runtime()
     provider_event_service: ProviderEventIngestionService = runtime["provider_event_service"]  # type: ignore[assignment]
@@ -618,6 +762,7 @@ def test_campaign_stats_read_model_counts_event_metrics() -> None:
     )
 
     summary = admin_service.get_campaign_summary("campaign_123")
+    assert summary.logs.delivered == 0
     assert summary.logs.opened == 1
     assert summary.logs.clicked == 1
     assert summary.logs.bounced == 1

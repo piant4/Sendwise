@@ -124,12 +124,16 @@ def _prefer_provider_metric(
     *,
     status_counts: dict[str, int],
     event_counts: dict[str, int],
+    provider_events_available: bool,
     status_keys: tuple[str, ...],
     event_types: tuple[str, ...],
+    fallback_to_statuses: bool = True,
 ) -> int:
     provider_total = sum(event_counts.get(event_type, 0) for event_type in event_types)
     if provider_total > 0:
         return provider_total
+    if provider_events_available and not fallback_to_statuses:
+        return 0
     return sum(status_counts.get(status_key, 0) for status_key in status_keys)
 
 
@@ -1282,38 +1286,57 @@ class AdminCampaignService:
             sent=_prefer_provider_metric(
                 status_counts=status_counts,
                 event_counts=event_counts,
+                provider_events_available=provider_events_available,
                 status_keys=("sent", "dispatched", "delivered"),
-                event_types=("ses_send", "ses_delivery"),
+                event_types=("ses_send",),
+            ),
+            delivered=_prefer_provider_metric(
+                status_counts=status_counts,
+                event_counts=event_counts,
+                provider_events_available=provider_events_available,
+                status_keys=("delivered",),
+                event_types=("ses_delivery",),
+                fallback_to_statuses=False,
             ),
             opened=_prefer_provider_metric(
                 status_counts=status_counts,
                 event_counts=event_counts,
+                provider_events_available=provider_events_available,
                 status_keys=("opened",),
                 event_types=("ses_open",),
+                fallback_to_statuses=False,
             ),
             clicked=_prefer_provider_metric(
                 status_counts=status_counts,
                 event_counts=event_counts,
+                provider_events_available=provider_events_available,
                 status_keys=("clicked",),
                 event_types=("ses_click",),
+                fallback_to_statuses=False,
             ),
             bounced=_prefer_provider_metric(
                 status_counts=status_counts,
                 event_counts=event_counts,
+                provider_events_available=provider_events_available,
                 status_keys=("bounced",),
                 event_types=("ses_bounce",),
+                fallback_to_statuses=False,
             ),
             complained=_prefer_provider_metric(
                 status_counts=status_counts,
                 event_counts=event_counts,
+                provider_events_available=provider_events_available,
                 status_keys=("complained", "spam"),
                 event_types=("ses_complaint",),
+                fallback_to_statuses=False,
             ),
             unsubscribed=_prefer_provider_metric(
                 status_counts=status_counts,
                 event_counts=event_counts,
+                provider_events_available=provider_events_available,
                 status_keys=("unsubscribed",),
                 event_types=("sendwise_unsubscribe",),
+                fallback_to_statuses=False,
             ),
             provider_events_available=provider_events_available,
         )

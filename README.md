@@ -66,7 +66,7 @@ Client dashboard business metrics are backend owned through `client_dashboard`.
 
 - The frontend may format data and switch periods, but it must not derive fake sent/open/block metrics from unrelated fields.
 - Performance windows are `24h`, `7d`, `14d`, `30d`, and `allTime`.
-- Open metrics are provider-event-backed only.
+- Delivery, open, click, bounce, complaint, and unsubscribe metrics are provider-event-backed only.
 - Blocked metrics come from `blocked_sends`.
 - Unavailable metric sources remain unavailable rather than being synthesized.
 

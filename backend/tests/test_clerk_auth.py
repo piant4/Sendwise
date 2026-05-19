@@ -2907,6 +2907,7 @@ def test_client_overview_exposes_backend_backed_dashboard_analytics(
     assert dashboard["performance_analytics"]["windows"]["24h"]["queued"] == 1
     assert dashboard["performance_analytics"]["windows"]["24h"]["blocked"] == 1
     assert dashboard["performance_analytics"]["windows"]["24h"]["opened"] == 0
+    assert dashboard["performance_analytics"]["windows"]["24h"]["opened_available"] is True
     assert dashboard["performance_analytics"]["windows"]["7d"]["sent"] == 2
     assert dashboard["performance_analytics"]["windows"]["7d"]["queued"] == 1
     assert dashboard["performance_analytics"]["windows"]["7d"]["blocked"] == 1
@@ -3054,12 +3055,14 @@ def test_client_overview_keeps_zero_real_rows_available_when_sources_exist(
         "available": True,
     }
     assert dashboard["kpis"]["opened_last_7d"] == {
-        "value": 0,
+        "value": None,
         "limit": None,
-        "available": True,
+        "available": False,
     }
     assert dashboard["performance_analytics"]["windows"]["7d"]["blocked"] == 0
     assert dashboard["performance_analytics"]["windows"]["7d"]["blocked_available"] is True
+    assert dashboard["performance_analytics"]["windows"]["7d"]["opened"] is None
+    assert dashboard["performance_analytics"]["windows"]["7d"]["opened_available"] is False
 
 
 def test_client_campaign_detail_is_scoped_to_authenticated_client(
@@ -3354,6 +3357,7 @@ def test_client_campaign_stats_return_only_db_backed_metrics(
     assert payload["logs"]["simulated"] == 1
     assert payload["logs"]["queued"] == 1
     assert payload["logs"]["sent"] == 0
+    assert payload["logs"]["delivered"] == 0
     assert payload["logs"]["opened"] == 0
     assert payload["logs"]["clicked"] == 0
     assert payload["logs"]["complained"] == 0

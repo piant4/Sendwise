@@ -189,6 +189,12 @@ REAL_SEND_REQUIRE_ALLOWED_RECIPIENTS=false
 
 Campaign limits configured by the admin are the real product daily and 30-day limits. `EMAIL_SENDING_ENABLED=false` remains the emergency global off switch. Do not bypass Deliverability Guard, suppression checks, unsubscribe readiness, or the backend send path with direct Listmonk or SES sends.
 
+Provider-event semantics:
+- `queued` means prepared and not yet accepted.
+- `sent` means accepted by Listmonk/provider, not inbox delivery.
+- `delivered`, `opened`, `clicked`, `bounced`, `complained`, and `unsubscribed` must come only from processed provider or unsubscribe events.
+- If provider events are missing, those metrics must stay unavailable rather than being inferred from recipient totals or send attempts.
+
 ## Restore Safety
 
 - Never restore directly into `email_ai` or `listmonk` as a first step.

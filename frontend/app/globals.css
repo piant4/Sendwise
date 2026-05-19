@@ -717,6 +717,7 @@ button {
   display: flex;
   justify-content: space-between;
   gap: 16px;
+  margin-bottom: 16px;
 }
 
 .admin-clients-card__title {
@@ -2865,7 +2866,6 @@ button {
   border: 1px solid rgba(203, 213, 225, 0.72);
   border-radius: 18px;
   box-shadow: 0 16px 36px rgba(15, 23, 42, 0.05);
-  display: grid;
   gap: 14px;
   padding: 18px;
 }

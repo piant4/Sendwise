@@ -1,5 +1,19 @@
 # Audit Log
 
+## Milestone 18.6F - Provider Events Ingestion And Metrics Truth
+
+Date: 2026-05-19
+
+Provider-event ingestion audit summary:
+- Audited `events`, provider-event repositories, campaign/client read models, and frontend metric surfaces without reading secrets or calling live provider APIs.
+- Confirmed the current schema already contains the required `provider_events`, `email_logs.provider_message_id`, and `suppression_list` fields, so no migration was required.
+- Extended provider-event ingestion to keep SES delivery/open/click/bounce/complaint handling idempotent, accept supported normalized listmonk unsubscribe payloads, and map provider-event side effects back to correlated `email_logs`, `contacts`, and suppressions.
+- Campaign and client read models now expose truthful provider-event-backed delivery metrics, keep delivery/open/click/bounce-style metrics unavailable until real processed events exist, and avoid synthesizing those values from recipient counts or queued/sent logs alone.
+- Admin campaign detail UI now renders explicit provider metric cards for delivered, opened, clicked, bounced, complained, and unsubscribed counts with honest unavailable states when events are missing.
+
+Safety confirmation:
+- No schema change, migration, DB reset, Docker volume deletion, direct Listmonk send, direct SES send, Deliverability Guard bypass, suppression bypass, unsubscribe bypass, or fake delivered/open/click metric path was introduced.
+
 ## Milestone 18.6D - Reconcile Email Logs After Listmonk SMTP Dispatch
 
 Email-log reconciliation audit summary:

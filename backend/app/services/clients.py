@@ -112,19 +112,33 @@ CLIENT_DASHBOARD_WINDOW_DELTAS: tuple[tuple[ClientDashboardWindowKey, timedelta 
     ("30d", timedelta(days=30)),
     ("allTime", None),
 )
+PROVIDER_EVENT_METRIC_TYPES = (
+    "ses_delivery",
+    "ses_bounce",
+    "ses_complaint",
+    "ses_open",
+    "ses_click",
+    "sendwise_unsubscribe",
+)
 
 
 def _prefer_provider_metric(
     *,
     status_counts: dict[str, int],
     event_counts: dict[str, int],
+    provider_events_available: bool,
     status_keys: tuple[str, ...],
     event_types: tuple[str, ...],
+    fallback_to_statuses: bool = True,
 ) -> int:
     provider_total = sum(event_counts.get(event_type, 0) for event_type in event_types)
     if provider_total > 0:
         return provider_total
+    if provider_events_available and not fallback_to_statuses:
+        return 0
     return sum(status_counts.get(status_key, 0) for status_key in status_keys)
+
+
 RECENT_CAMPAIGNS_LIMIT = 5
 RECENT_USAGE_LIMIT = 5
 RECENT_BLOCKED_SENDS_LIMIT = 5
@@ -637,7 +651,24 @@ class ClientsService:
             sent_available = email_log_repository is not None
             queued_available = email_log_repository is not None
             blocked_available = blocked_send_repository is not None
-            opened_available = provider_event_repository is not None
+            opened_available = False
+            opened_value: int | None = None
+
+            if provider_event_repository is not None:
+                provider_events_available = provider_event_repository.count_client_events(
+                    client_id=client_id,
+                    event_types=PROVIDER_EVENT_METRIC_TYPES,
+                    started_at=started_at,
+                    ended_at=now,
+                ) > 0
+                opened_available = provider_events_available
+                if provider_events_available:
+                    opened_value = provider_event_repository.count_client_events(
+                        client_id=client_id,
+                        event_types=("ses_open",),
+                        started_at=started_at,
+                        ended_at=now,
+                    )
 
             windows[window_key] = ClientDashboardWindowMetrics(
                 sent=(
@@ -668,16 +699,7 @@ class ClientsService:
                     if blocked_send_repository is not None
                     else None
                 ),
-                opened=(
-                    provider_event_repository.count_client_events(
-                        client_id=client_id,
-                        event_types=("ses_open",),
-                        started_at=started_at,
-                        ended_at=now,
-                    )
-                    if provider_event_repository is not None
-                    else None
-                ),
+                opened=opened_value,
                 sent_available=sent_available,
                 queued_available=queued_available,
                 blocked_available=blocked_available,
@@ -1210,38 +1232,57 @@ class ClientsService:
             sent=_prefer_provider_metric(
                 status_counts=status_counts,
                 event_counts=event_counts,
+                provider_events_available=provider_events_available,
                 status_keys=("sent", "dispatched", "delivered"),
-                event_types=("ses_send", "ses_delivery"),
+                event_types=("ses_send",),
+            ),
+            delivered=_prefer_provider_metric(
+                status_counts=status_counts,
+                event_counts=event_counts,
+                provider_events_available=provider_events_available,
+                status_keys=("delivered",),
+                event_types=("ses_delivery",),
+                fallback_to_statuses=False,
             ),
             opened=_prefer_provider_metric(
                 status_counts=status_counts,
                 event_counts=event_counts,
+                provider_events_available=provider_events_available,
                 status_keys=("opened",),
                 event_types=("ses_open",),
+                fallback_to_statuses=False,
             ),
             clicked=_prefer_provider_metric(
                 status_counts=status_counts,
                 event_counts=event_counts,
+                provider_events_available=provider_events_available,
                 status_keys=("clicked",),
                 event_types=("ses_click",),
+                fallback_to_statuses=False,
             ),
             bounced=_prefer_provider_metric(
                 status_counts=status_counts,
                 event_counts=event_counts,
+                provider_events_available=provider_events_available,
                 status_keys=("bounced",),
                 event_types=("ses_bounce",),
+                fallback_to_statuses=False,
             ),
             complained=_prefer_provider_metric(
                 status_counts=status_counts,
                 event_counts=event_counts,
+                provider_events_available=provider_events_available,
                 status_keys=("complained", "spam"),
                 event_types=("ses_complaint",),
+                fallback_to_statuses=False,
             ),
             unsubscribed=_prefer_provider_metric(
                 status_counts=status_counts,
                 event_counts=event_counts,
+                provider_events_available=provider_events_available,
                 status_keys=("unsubscribed",),
                 event_types=("sendwise_unsubscribe",),
+                fallback_to_statuses=False,
             ),
             provider_events_available=provider_events_available,
         )

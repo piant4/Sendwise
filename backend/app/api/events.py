@@ -104,11 +104,21 @@ def unsubscribe(
 )
 def receive_listmonk_event(
     payload: dict[str, object],
-) -> dict[str, str]:
+    provider_event_service: ProviderEventIngestionService = Depends(
+        get_provider_event_ingestion_service
+    ),
+) -> ProviderEventIngestResponse | dict[str, str]:
+    event_type = str(payload.get("event_type") or "").strip().lower()
+    if event_type in {"unsubscribe", "sendwise_unsubscribe", "listmonk_unsubscribe"}:
+        normalized_payload = dict(payload)
+        normalized_payload.setdefault("provider", "listmonk")
+        normalized_payload["event_type"] = event_type
+        return provider_event_service.ingest_payload(normalized_payload)
+
     return {
         "status": "ignored",
         "endpoint": "POST /events/listmonk",
-        "reason": "listmonk event ingestion is not implemented in this milestone.",
+        "reason": "unsupported listmonk event payload for this milestone.",
         "event_type": str(payload.get("event_type") or "unknown"),
     }
 

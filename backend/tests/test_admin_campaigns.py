@@ -681,6 +681,7 @@ def test_admin_summary_aggregates_email_logs_simulated_and_queued() -> None:
     assert result.logs.simulated == 1
     assert result.logs.queued == 2
     assert result.logs.sent == 0
+    assert result.logs.delivered == 0
     assert result.logs.provider_events_available is False
 
 

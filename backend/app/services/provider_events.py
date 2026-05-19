@@ -24,6 +24,21 @@ from app.repositories.suppression_list import (
 from app.schemas.provider_events import ProviderEventIngestResponse
 
 PROVIDER_EVENT_TERMINAL = {"ses_bounce", "ses_complaint", "sendwise_unsubscribe"}
+GENERIC_SES_EVENT_TYPE_ALIASES = {
+    "send": "ses_send",
+    "delivery": "ses_delivery",
+    "bounce": "ses_bounce",
+    "complaint": "ses_complaint",
+    "spam": "ses_complaint",
+    "open": "ses_open",
+    "click": "ses_click",
+    "reject": "ses_reject",
+}
+GENERIC_UNSUBSCRIBE_EVENT_TYPE_ALIASES = {
+    "unsubscribe": "sendwise_unsubscribe",
+    "sendwise_unsubscribe": "sendwise_unsubscribe",
+    "listmonk_unsubscribe": "sendwise_unsubscribe",
+}
 
 
 @dataclass(frozen=True)
@@ -145,7 +160,11 @@ class ProviderEventIngestionService:
 
     def _normalize_generic_payload(self, payload: dict[str, Any]) -> NormalizedProviderEvent:
         provider = str(payload.get("provider") or "").strip().lower()
-        event_type = str(payload.get("event_type") or "").strip()
+        raw_event_type = str(payload.get("event_type") or "").strip()
+        event_type = self._canonicalize_generic_event_type(
+            provider=provider,
+            event_type=raw_event_type,
+        )
         if not provider or not event_type:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -169,6 +188,21 @@ class ProviderEventIngestionService:
             email=self._coerce_optional_string(payload.get("email")),
             payload=raw_payload,
         )
+
+    def _canonicalize_generic_event_type(
+        self,
+        *,
+        provider: str,
+        event_type: str,
+    ) -> str:
+        normalized = event_type.strip().lower()
+        if not normalized:
+            return ""
+        if provider == "ses":
+            return GENERIC_SES_EVENT_TYPE_ALIASES.get(normalized, normalized)
+        if provider in {"sendwise", "listmonk"}:
+            return GENERIC_UNSUBSCRIBE_EVENT_TYPE_ALIASES.get(normalized, normalized)
+        return normalized
 
     def _normalize_ses_payload(
         self,

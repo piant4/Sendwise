@@ -49,6 +49,14 @@ function getExcerpt(value?: string | null): string {
   return normalized.length > 180 ? `${normalized.slice(0, 177)}...` : normalized;
 }
 
+function formatProviderMetric(value: number, available: boolean): string {
+  if (!available) {
+    return "Non disponibili";
+  }
+
+  return value.toLocaleString("it-IT");
+}
+
 export function AdminCampaignDetailView({
   campaign,
   summary,
@@ -290,6 +298,41 @@ export function AdminCampaignDetailView({
           <p className="admin-record-row__note" style={{ marginTop: 16 }}>
             {getProviderEventsLabel(summary.logs)}. {getProviderEventsDetail(summary.logs)}
           </p>
+
+          <div
+            style={{
+              display: "grid",
+              gap: 12,
+              gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))",
+              marginTop: 16,
+            }}
+          >
+            {[
+              { label: "Consegnate", value: summary.logs.delivered },
+              { label: "Aperte", value: summary.logs.opened },
+              { label: "Clic", value: summary.logs.clicked },
+              { label: "Bounce", value: summary.logs.bounced },
+              { label: "Reclami", value: summary.logs.complained },
+              { label: "Disiscrizioni", value: summary.logs.unsubscribed },
+            ].map((item) => (
+              <article
+                key={item.label}
+                style={{
+                  background: "rgba(248, 250, 252, 0.94)",
+                  border: "1px solid rgba(226, 232, 240, 0.94)",
+                  borderRadius: 14,
+                  display: "grid",
+                  gap: 6,
+                  padding: 14,
+                }}
+              >
+                <span className="admin-record-row__note">{item.label}</span>
+                <strong style={{ color: "#0f172a" }}>
+                  {formatProviderMetric(item.value, summary.logs.providerEventsAvailable)}
+                </strong>
+              </article>
+            ))}
+          </div>
 
           {blockingReasons.length > 0 ? (
             <>

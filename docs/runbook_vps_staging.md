@@ -168,6 +168,24 @@ SES readiness is intentionally separated from first VPS deploy. A later controll
 - No direct Listmonk send is used.
 - No SES console send is used outside the approved validation plan.
 
+## Official Product Trial Send Posture
+
+Use the one-recipient gate only for first SES validation:
+
+```env
+REAL_SEND_MAX_RECIPIENTS=1
+REAL_SEND_REQUIRE_ALLOWED_RECIPIENTS=true
+```
+
+For official product trials, keep backend safety gates active while allowing the campaign audience:
+
+```env
+REAL_SEND_MAX_RECIPIENTS=0
+REAL_SEND_REQUIRE_ALLOWED_RECIPIENTS=false
+```
+
+Campaign limits configured by the admin are the real product daily and 30-day limits. `EMAIL_SENDING_ENABLED=false` remains the emergency global off switch. Do not bypass Deliverability Guard, suppression checks, unsubscribe readiness, or the backend send path with direct Listmonk or SES sends.
+
 ## Restore Safety
 
 - Never restore directly into `email_ai` or `listmonk` as a first step.

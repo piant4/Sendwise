@@ -1957,7 +1957,7 @@ class CampaignDispatchService:
                 code="mailpit_controlled_dispatch",
                 reason="Mailpit controlled dispatch does not require SES safety gates.",
                 eligible_contact_count=guard_result.eligible_contact_count,
-                max_real_send_recipients=self.settings.real_send_max_recipients,
+                max_real_send_recipients=self.settings.effective_real_send_max_recipients,
                 allowed_recipients_checked=False,
                 unsubscribe_ready=True,
             )
@@ -1981,19 +1981,22 @@ class CampaignDispatchService:
                     code=str(check["code"]),
                     reason=str(check["reason"]),
                     eligible_contact_count=guard_result.eligible_contact_count,
-                    max_real_send_recipients=self.settings.real_send_max_recipients,
+                    max_real_send_recipients=self.settings.effective_real_send_max_recipients,
                     allowed_recipients_checked=bool(check.get("allowed_recipients_checked", True)),
                     unsubscribe_ready=bool(check.get("unsubscribe_ready", False)),
                 )
 
+        allowed_recipients_checked = any(
+            bool(check.get("allowed_recipients_checked", False)) for check in checks
+        )
         return self._safety_result(
             provider=provider,
             safety_passed=True,
             code="ses_safety_passed",
             reason="SES controlled-send safety gate passed.",
             eligible_contact_count=guard_result.eligible_contact_count,
-            max_real_send_recipients=self.settings.real_send_max_recipients,
-            allowed_recipients_checked=True,
+            max_real_send_recipients=self.settings.effective_real_send_max_recipients,
+            allowed_recipients_checked=allowed_recipients_checked,
             unsubscribe_ready=preparation is None or self._unsubscribe_ready(preparation),
         )
 
@@ -2058,7 +2061,8 @@ class CampaignDispatchService:
         return {"passed": True}
 
     def _check_real_send_recipient_limit(self, eligible_contact_count: int) -> dict[str, Any]:
-        if eligible_contact_count > self.settings.real_send_max_recipients:
+        max_recipients = self.settings.effective_real_send_max_recipients
+        if max_recipients is not None and eligible_contact_count > max_recipients:
             return {
                 "passed": False,
                 "code": "real_send_max_recipients_exceeded",
@@ -2067,8 +2071,11 @@ class CampaignDispatchService:
         return {"passed": True}
 
     def _check_allowed_recipients(self, contacts: list[ContactRecord]) -> dict[str, Any]:
+        if not self.settings.real_send_require_allowed_recipients:
+            return {"passed": True, "allowed_recipients_checked": False}
+
         allowed_recipients = self.settings.real_send_allowed_recipients
-        if self.settings.real_send_require_allowed_recipients and not allowed_recipients:
+        if not allowed_recipients:
             return {
                 "passed": False,
                 "code": "real_send_allowed_recipients_missing",
@@ -2121,7 +2128,7 @@ class CampaignDispatchService:
         code: str,
         reason: str,
         eligible_contact_count: int,
-        max_real_send_recipients: int,
+        max_real_send_recipients: int | None,
         allowed_recipients_checked: bool,
         unsubscribe_ready: bool,
     ) -> dict[str, Any]:
@@ -2208,7 +2215,7 @@ class CampaignDispatchService:
             "safety_passed": False,
             "allowed_recipients_checked": False,
             "eligible_contact_count": guard_result.eligible_contact_count,
-            "max_real_send_recipients": self.settings.real_send_max_recipients,
+            "max_real_send_recipients": self.settings.effective_real_send_max_recipients,
             "blocked_contact_count": guard_result.blocked_contact_count,
             "blocked_reasons": dict(guard_result.blocked_reasons or {}),
             "diagnostic": guard_result.diagnostic,

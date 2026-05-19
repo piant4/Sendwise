@@ -1,5 +1,26 @@
 # Audit Log
 
+## Milestone 18.5B - Switch Real Send Gates To Public Product Mode
+
+Date: 2026-05-19
+
+Real-send gate audit summary:
+- `REAL_SEND_MAX_RECIPIENTS` is read by `Settings` and enforced in `CampaignDispatchService._check_real_send_recipient_limit`.
+- `real_send_max_recipients_exceeded` is produced only by the SES safety gate before listmonk dispatch.
+- `REAL_SEND_REQUIRE_ALLOWED_RECIPIENTS` is enforced by `CampaignDispatchService._check_allowed_recipients`.
+- Dispatch gate order remains: `EMAIL_SENDING_ENABLED`, Deliverability Guard provider/runtime prerequisites, unsubscribe public URL readiness, eligible campaign contacts, optional max recipient cap and allowlist, prepared unsubscribe link, then listmonk dispatch.
+- Campaign daily and 30-day period limits remain enforced by Deliverability Guard before provider dispatch.
+- Send targets still come only from campaign-associated contacts returned by `list_campaign_contacts`; partial sends remain unsupported and suppressed or non-eligible mixed batches still block before dispatch.
+
+Changes:
+- Made `REAL_SEND_MAX_RECIPIENTS` optional: unset, empty, `0`, or negative disables the global test cap; a positive value still blocks over-cap sends.
+- Made allowlist enforcement conditional on `REAL_SEND_REQUIRE_ALLOWED_RECIPIENTS=true`.
+- Updated admin UI reason mapping so environment cap and allowlist blockers do not expose raw env variable names, while campaign limit blockers stay actionable.
+- Updated API contract, staging runbook, README, and this audit log with first SES validation versus official product trial posture.
+
+Safety confirmation:
+- No schema change, migration, DB reset, Docker volume deletion, direct Listmonk send, direct SES send, Deliverability Guard bypass, suppression bypass, unsubscribe bypass, or campaign limit bypass was introduced.
+
 ## Milestone 17.2F - Polish Client Dashboard Header And Performance Card
 
 Date: 2026-05-18

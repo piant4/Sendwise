@@ -181,6 +181,9 @@ Backups cover both the Sendwise business database and listmonk database. Restore
 
 - Keep `EMAIL_SENDING_ENABLED=false` for first staging deploy and any no-send validation.
 - Do not run real sends before SES readiness and controlled validation are explicitly approved.
+- First SES validation may use `REAL_SEND_MAX_RECIPIENTS=1` and `REAL_SEND_REQUIRE_ALLOWED_RECIPIENTS=true`.
+- Official product trials should use `REAL_SEND_MAX_RECIPIENTS=0` and `REAL_SEND_REQUIRE_ALLOWED_RECIPIENTS=false`; admin-configured campaign daily and 30-day limits are the real product limits.
+- `EMAIL_SENDING_ENABLED=false` remains the emergency global off switch.
 - Do not call send/dispatch endpoints during first VPS deploy.
 - Do not use direct listmonk send or SES console send as a shortcut around backend gates.
 - Do not commit `.env` files, secrets, tokens, passwords, API keys, AWS credentials, SMTP credentials, Clerk secrets, Listmonk credentials, unsubscribe secrets, or real recipient allowlists.
@@ -236,6 +239,7 @@ Explicitly out of scope for core V1:
 - n8n as core V1.
 - Direct provider sending as the default product path.
 - Direct UI access to listmonk or PostgreSQL.
+- n8n is optional, not core V1.
 
 ## Contributing
 

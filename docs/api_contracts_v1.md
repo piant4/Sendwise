@@ -142,9 +142,11 @@ Admin-managed contract notes:
 - `DELETE /admin/campaigns/{campaign_id}/contacts/{contact_id}` removes only the `campaign_contacts` association, keeps the underlying `contacts` row and suppression data untouched, and returns backend-owned `contacts_ready`
 - Guard remains mandatory for simulation and real dispatch
 - `EMAIL_SENDING_ENABLED` remains the real-dispatch kill switch
-- `EMAIL_PROVIDER=ses` adds a backend safety gate requiring explicit dev/staging runtime, complete SES SMTP env, public unsubscribe URL, review readiness, allowed recipients, and recipient max before listmonk dispatch
+- `EMAIL_PROVIDER=ses` adds a backend safety gate requiring explicit dev/staging runtime, complete SES SMTP env, public unsubscribe URL, review readiness, optional allowlist enforcement, and an optional positive recipient max before listmonk dispatch
 - controlled send responses include provider and safety diagnostics such as `safety_checked`, `safety_passed`, `allowed_recipients_checked`, `eligible_contact_count`, `max_real_send_recipients`, `listmonk_dispatched`, `real_send_attempted`, `email_logs_created`, `unsubscribe_ready`, and `provider_events_ready`
 - Deliverability Guard blocks campaign dispatch with `campaign_daily_limit_reached` and `campaign_period_limit_reached` when campaign usage would exceed the configured table-backed limits
+- First SES validation may keep `REAL_SEND_MAX_RECIPIENTS=1` and `REAL_SEND_REQUIRE_ALLOWED_RECIPIENTS=true`; official product trials should use `REAL_SEND_MAX_RECIPIENTS=0` and `REAL_SEND_REQUIRE_ALLOWED_RECIPIENTS=false`
+- Campaign limits configured by admins are the real product limits; `EMAIL_SENDING_ENABLED=false` remains the emergency global off switch
 - listmonk remains a technical engine only
 
 ## Client Read-Only Campaign API Contract

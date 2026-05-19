@@ -6,6 +6,16 @@ from urllib.parse import quote, urlsplit
 from pydantic import BaseModel, Field
 
 
+def _parse_optional_non_negative_int(value: object) -> int | None:
+    if value is None:
+        return None
+    try:
+        parsed = int(str(value).strip())
+    except ValueError:
+        return None
+    return parsed if parsed > 0 else None
+
+
 class Settings(BaseModel):
     project_name: str = Field(
         default_factory=lambda: getenv("PROJECT_NAME", "email_ai_platform")
@@ -42,8 +52,8 @@ class Settings(BaseModel):
     real_send_require_allowed_recipients_raw: str = Field(
         default_factory=lambda: getenv("REAL_SEND_REQUIRE_ALLOWED_RECIPIENTS", "true")
     )
-    real_send_max_recipients: int = Field(
-        default_factory=lambda: int(getenv("REAL_SEND_MAX_RECIPIENTS", "3"))
+    real_send_max_recipients: int | str | None = Field(
+        default_factory=lambda: getenv("REAL_SEND_MAX_RECIPIENTS", "0")
     )
     real_send_environments_raw: str = Field(
         default_factory=lambda: getenv(
@@ -111,6 +121,10 @@ class Settings(BaseModel):
     @property
     def real_send_require_allowed_recipients(self) -> bool:
         return self.real_send_require_allowed_recipients_raw.strip().lower() == "true"
+
+    @property
+    def effective_real_send_max_recipients(self) -> int | None:
+        return _parse_optional_non_negative_int(self.real_send_max_recipients)
 
     @property
     def real_send_environments(self) -> set[str]:

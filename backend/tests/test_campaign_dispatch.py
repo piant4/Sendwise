@@ -75,6 +75,26 @@ class FakePreparationService:
         }
 
 
+class SesReadyPreparationService(FakePreparationService):
+    def prepare_campaign(
+        self,
+        campaign_id: str,
+        _current_user: AuthenticatedUser | None = None,
+    ) -> dict[str, Any]:
+        prepared = super().prepare_campaign(campaign_id, _current_user)
+        unsubscribe_url = (
+            "https://sendwise.example.test/unsubscribe/token"
+            f"?campaign_id={campaign_id}"
+        )
+        prepared["content"]["unsubscribe_url"] = unsubscribe_url
+        prepared["content"]["body"] = (
+            "<html><body><p>Body</p>"
+            f'<a href="{unsubscribe_url}">unsubscribe</a>'
+            "</body></html>"
+        )
+        return prepared
+
+
 class FakeClientRepository:
     def __init__(
         self,
@@ -224,6 +244,39 @@ def build_dispatch_service(
         email_log_repository=email_log_repository or InMemoryEmailLogRepository(),
         campaign_preparation_service=preparation_service,
     )
+
+
+def build_multi_contact_repository() -> InMemoryContactRepository:
+    return InMemoryContactRepository(
+        contacts=[
+            build_contact(contact_id="contact_1", email="one@example.test"),
+            build_contact(contact_id="contact_2", email="two@example.test"),
+        ],
+        campaign_contacts={
+            ("client_123", "campaign_123", "contact_1"),
+            ("client_123", "campaign_123", "contact_2"),
+        },
+    )
+
+
+def build_ready_ses_settings(**overrides: Any) -> Settings:
+    values: dict[str, Any] = {
+        "email_sending_enabled_raw": "true",
+        "email_provider": "ses",
+        "environment": "development",
+        "smtp_host": "email-smtp.eu-west-1.amazonaws.com",
+        "smtp_port": 587,
+        "smtp_username": "dummy",
+        "smtp_password": "dummy",
+        "smtp_tls_raw": "true",
+        "smtp_from_email": "sender@example.test",
+        "backend_public_url": "https://sendwise.example.test",
+        "real_send_allowed_recipients_raw": "one@example.test,two@example.test",
+        "real_send_require_allowed_recipients_raw": "true",
+        "real_send_max_recipients": 1,
+    }
+    values.update(overrides)
+    return Settings(**values)
 
 
 def test_upsert_mapping_creates_new_mapping() -> None:
@@ -522,6 +575,95 @@ def test_ses_send_blocked_when_eligible_count_exceeds_real_send_max() -> None:
     assert result["listmonk_dispatched"] is False
     assert email_log_repository.list_by_campaign("campaign_123") == []
     assert fake_listmonk.sent_campaign_ids == []
+
+
+def test_ses_send_allows_multi_recipient_campaign_when_real_send_max_is_zero() -> None:
+    fake_listmonk = FakeListmonkClient()
+    email_log_repository = InMemoryEmailLogRepository()
+    service = build_dispatch_service(
+        settings=build_ready_ses_settings(
+            real_send_max_recipients=0,
+            real_send_require_allowed_recipients_raw="false",
+            real_send_allowed_recipients_raw="",
+        ),
+        fake_listmonk=fake_listmonk,
+        contact_repository=build_multi_contact_repository(),
+        email_log_repository=email_log_repository,
+        preparation_service=SesReadyPreparationService(content_ready=True),
+    )
+
+    result = service.send_campaign("campaign_123")
+
+    assert result["status"] == "queued"
+    assert result["provider"] == "ses"
+    assert result["eligible_contact_count"] == 2
+    assert result["max_real_send_recipients"] is None
+    assert result["allowed_recipients_checked"] is False
+    assert result["listmonk_dispatched"] is True
+    assert len(email_log_repository.list_by_campaign("campaign_123")) == 2
+    assert fake_listmonk.sent_campaign_ids == ["lm_1"]
+
+
+def test_ses_send_allows_multi_recipient_campaign_when_real_send_max_is_unset() -> None:
+    fake_listmonk = FakeListmonkClient()
+    service = build_dispatch_service(
+        settings=build_ready_ses_settings(
+            real_send_max_recipients=None,
+            real_send_require_allowed_recipients_raw="false",
+            real_send_allowed_recipients_raw="",
+        ),
+        fake_listmonk=fake_listmonk,
+        contact_repository=build_multi_contact_repository(),
+        preparation_service=SesReadyPreparationService(content_ready=True),
+    )
+
+    result = service.send_campaign("campaign_123")
+
+    assert result["status"] == "queued"
+    assert result["eligible_contact_count"] == 2
+    assert result["max_real_send_recipients"] is None
+    assert fake_listmonk.sent_campaign_ids == ["lm_1"]
+
+
+def test_ses_send_allows_multi_recipient_campaign_when_real_send_max_is_empty() -> None:
+    fake_listmonk = FakeListmonkClient()
+    service = build_dispatch_service(
+        settings=build_ready_ses_settings(
+            real_send_max_recipients="",
+            real_send_require_allowed_recipients_raw="false",
+            real_send_allowed_recipients_raw="",
+        ),
+        fake_listmonk=fake_listmonk,
+        contact_repository=build_multi_contact_repository(),
+        preparation_service=SesReadyPreparationService(content_ready=True),
+    )
+
+    result = service.send_campaign("campaign_123")
+
+    assert result["status"] == "queued"
+    assert result["eligible_contact_count"] == 2
+    assert result["max_real_send_recipients"] is None
+    assert fake_listmonk.sent_campaign_ids == ["lm_1"]
+
+
+def test_ses_send_allows_normal_recipients_when_allowlist_is_disabled() -> None:
+    fake_listmonk = FakeListmonkClient()
+    service = build_dispatch_service(
+        settings=build_ready_ses_settings(
+            real_send_max_recipients=0,
+            real_send_require_allowed_recipients_raw="false",
+            real_send_allowed_recipients_raw="allowed@example.test",
+        ),
+        fake_listmonk=fake_listmonk,
+        contact_repository=build_multi_contact_repository(),
+        preparation_service=SesReadyPreparationService(content_ready=True),
+    )
+
+    result = service.send_campaign("campaign_123")
+
+    assert result["status"] == "queued"
+    assert result["allowed_recipients_checked"] is False
+    assert fake_listmonk.sent_campaign_ids == ["lm_1"]
 
 
 def test_ses_send_blocked_when_unsubscribe_public_url_is_not_ready() -> None:

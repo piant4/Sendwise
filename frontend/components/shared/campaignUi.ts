@@ -66,15 +66,23 @@ const BACKEND_REASON_LABELS: Array<[RegExp, string]> = [
   ],
   [
     /^Eligible contact count exceeds REAL_SEND_MAX_RECIPIENTS\.$/i,
-    "I destinatari idonei superano il limite REAL_SEND_MAX_RECIPIENTS.",
+    "Invio bloccato dal limite di sicurezza dell'ambiente.",
   ],
   [
     /^REAL_SEND_ALLOWED_RECIPIENTS is required for SES controlled send\.$/i,
-    "Serve una allowlist REAL_SEND_ALLOWED_RECIPIENTS prima dell'invio SES.",
+    "Invio limitato agli indirizzi autorizzati in questo ambiente.",
   ],
   [
     /^SES controlled send includes recipients outside REAL_SEND_ALLOWED_RECIPIENTS\.$/i,
-    "Almeno un destinatario non è presente nella allowlist REAL_SEND_ALLOWED_RECIPIENTS.",
+    "Invio limitato agli indirizzi autorizzati in questo ambiente.",
+  ],
+  [
+    /^Campaign daily email limit reached for the current pacing window\.$/i,
+    "Limite giornaliero della campagna raggiunto: aumenta il limite o riprova domani.",
+  ],
+  [
+    /^Campaign 30-day period email limit reached\.$/i,
+    "Limite di 30 giorni della campagna raggiunto: aumenta il limite o attendi il rinnovo del periodo.",
   ],
   [
     /^Prepared SES campaign content does not include a real unsubscribe URL\.$/i,

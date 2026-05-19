@@ -233,7 +233,7 @@ Explicitly out of scope for core V1:
 - Rspamd.
 - Mautic.
 - Keila.
-- n8n as core V1.
+- n8n as core V1. n8n is optional and is not part of the Sendwise core V1 runtime.
 - Direct provider sending as the default product path.
 - Direct UI access to listmonk or PostgreSQL.
 

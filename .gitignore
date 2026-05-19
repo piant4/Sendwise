@@ -10,3 +10,6 @@ build/
 .DS_Store
 !templates/dist/
 !templates/dist/*.html
+
+# Runtime backups
+backups/

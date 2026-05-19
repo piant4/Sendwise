@@ -465,6 +465,7 @@ export interface CampaignLogsSummary {
   simulated: number;
   queued: number;
   sent: number;
+  failed: number;
   delivered: number;
   opened: number;
   clicked: number;

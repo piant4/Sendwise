@@ -389,7 +389,7 @@ export function getProviderEventsLabel(logs: CampaignLogsSummary): string {
     return "Eventi provider disponibili";
   }
 
-  return "Nessun evento provider registrato";
+  return "Metriche provider non disponibili";
 }
 
 export function getProviderEventsDetail(logs: CampaignLogsSummary): string {
@@ -397,19 +397,7 @@ export function getProviderEventsDetail(logs: CampaignLogsSummary): string {
     return "Le metriche evento usano solo dati provider processati.";
   }
 
-  if (
-    logs.queued === 0 &&
-    logs.sent === 0 &&
-    logs.opened === 0 &&
-    logs.clicked === 0 &&
-    logs.bounced === 0 &&
-    logs.complained === 0 &&
-    logs.unsubscribed === 0
-  ) {
-    return "Nessun evento provider registrato.";
-  }
-
-  return "Le metriche provider restano pending finche non arrivano eventi processati.";
+  return "In attesa di eventi provider.";
 }
 
 export function getCampaignLogStatItems(
@@ -421,6 +409,7 @@ export function getCampaignLogStatItems(
       label: "Accettate dal sistema di invio",
       value: formatCampaignCount(logs.sent),
     },
+    { label: "Fallite", value: formatCampaignCount(logs.failed) },
     { label: "Bounce", value: formatCampaignCount(logs.bounced) },
     { label: "Disiscritti", value: formatCampaignCount(logs.unsubscribed) },
     { label: "Reclami", value: formatCampaignCount(logs.complained) },

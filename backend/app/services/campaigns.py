@@ -1290,6 +1290,7 @@ class AdminCampaignService:
                 status_keys=("sent", "dispatched", "delivered"),
                 event_types=("ses_send",),
             ),
+            failed=status_counts.get("failed", 0),
             delivered=_prefer_provider_metric(
                 status_counts=status_counts,
                 event_counts=event_counts,

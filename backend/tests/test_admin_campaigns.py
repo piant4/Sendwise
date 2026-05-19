@@ -649,7 +649,7 @@ def test_admin_summary_returns_recipients_summary() -> None:
     assert result.recipients.blocked == 2
 
 
-def test_admin_summary_aggregates_email_logs_simulated_and_queued() -> None:
+def test_admin_summary_aggregates_email_logs_for_operational_reporting() -> None:
     repository = InMemoryCampaignRepository()
     campaign = repository.add_campaign(campaign_id="campaign_123", client_id="client_123")
     email_logs = InMemoryEmailLogRepository()
@@ -671,6 +671,12 @@ def test_admin_summary_aggregates_email_logs_simulated_and_queued() -> None:
         contact_id="contact_3",
         status="queued",
     )
+    email_logs.create_email_log(
+        client_id="client_123",
+        campaign_id=campaign.id,
+        contact_id="contact_4",
+        status="failed",
+    )
     service = build_admin_service(
         campaign_repository=repository,
         email_log_repository=email_logs,
@@ -681,6 +687,7 @@ def test_admin_summary_aggregates_email_logs_simulated_and_queued() -> None:
     assert result.logs.simulated == 1
     assert result.logs.queued == 2
     assert result.logs.sent == 0
+    assert result.logs.failed == 1
     assert result.logs.delivered == 0
     assert result.logs.provider_events_available is False
 

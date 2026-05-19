@@ -228,6 +228,7 @@ class CampaignLogsSummary(BaseModel):
     simulated: int = 0
     queued: int = 0
     sent: int = 0
+    failed: int = 0
     delivered: int = 0
     opened: int = 0
     clicked: int = 0

@@ -1,99 +1,116 @@
 # Sendwise
 
-> 🚀 Docker-first foundation for a multi-client email automation platform powered by a custom dashboard, FastAPI, PostgreSQL, and listmonk.
+Sendwise is a Docker-first, multi-client email automation platform with a custom Next.js dashboard, FastAPI backend, Business PostgreSQL, and listmonk as the email engine.
 
-Sendwise is the V1 skeleton for an installable Email AI Automation Platform. It defines the product boundary, service topology, API contracts, data ownership rules, and local/VPS deployment path for a controlled email system.
+The repository is the public reference for the current product/runtime shape. Detailed contracts and runbooks live in `docs/`; this README intentionally stays concise.
 
-⚠️ **Milestone status:** this repository is a platform skeleton. Real email sending and AI generation are intentionally disabled in the current milestone.
+## Current Status
 
-## ✨ Highlights
+- Local product runtime is verified for admin-managed campaign setup, campaign-level sending limits, Deliverability Guard checks, backend-backed client dashboard analytics, contact metadata, and unsubscribe handling.
+- VPS staging assets are present, including `docker-compose.staging.yml` and deployment runbooks.
+- VPS deployment is not marked complete by this repository. First deploy must follow the staging runbook and keep real sends disabled.
+- SES live sending is not generally enabled. Controlled send paths remain fail-closed behind backend safety gates and runtime configuration.
+- The first staging deploy must use a no-send posture: `EMAIL_SENDING_ENABLED=false`.
 
-- 🧠 **FastAPI backend as the gatekeeper** for business rules, client isolation, send authorization, and Deliverability Guard checks.
-- 🖥️ **Custom Next.js dashboard** for admin and client-facing product workflows.
-- 🗄️ **Business PostgreSQL** as the source of truth for clients, campaigns, contacts, usage, suppressions, and send decisions.
-- 📬 **listmonk engine integration** for email mechanics, subscribers, technical campaigns, tracking, and SMTP/SES delivery.
-- 🧪 **Mailpit dev overlay** for safe local and staging email capture.
-- 🐳 **Docker Compose target** for local development and Linux VPS deployment.
-- 🔒 **Audit scripts and structural contracts** to protect the architecture from accidental shortcuts.
+## Product Summary
 
-## 🧱 Architecture
+- Admin campaign creation and setup for selected clients.
+- Campaign content management and review readiness without dispatching.
+- Manual and CSV contact management for campaigns.
+- Recipient metadata in `contacts.metadata`, including `nome` and optional `cognome` for `{{nome}}` / `{{cognome}}` personalization.
+- Campaign-level sending limits through `campaign_sending_limits`.
+- Backend Deliverability Guard enforcement before simulation or controlled send.
+- Client dashboard analytics backed by backend-owned `client_dashboard` read models.
+- Public unsubscribe route with backend-owned suppression side effects.
+- VPS staging deployment assets with Caddy HTTPS reverse proxy guidance.
+
+## Architecture
 
 ```txt
 Custom Next.js UI
-        ↓
+        |
 FastAPI Backend
-        ↓
+        |
 Deliverability Guard + Business Logic
-        ↓
+        |
 Business PostgreSQL
-        ↓
+        |
 listmonk
-        ↓
+        |
 SMTP / Amazon SES
 ```
 
 Core ownership rules:
 
-- **Backend is gatekeeper.** All product APIs, send decisions, client isolation, and business rules go through FastAPI.
-- **listmonk is engine only.** It handles operational email mechanics, but it does not own product state.
-- **PostgreSQL is the business source of truth.** Client data, campaigns, contacts, usage, suppressions, and mappings live there.
-- **UI calls the backend only.** The frontend must not call listmonk or write directly to PostgreSQL.
-- **n8n is optional, not core V1.** If n8n or Activepieces are added later, they must call the backend only.
+- FastAPI is the gatekeeper for product APIs, send decisions, client isolation, and business rules.
+- Business PostgreSQL is the source of truth for clients, campaigns, contacts, usage, suppressions, provider events, blocked sends, and limit state.
+- listmonk is the email mechanics engine only. It does not own product state.
+- The frontend calls the backend only. It must not call listmonk or PostgreSQL directly.
+- Real dispatch remains backend-authorized and fail-closed unless all safety gates pass.
 
-## 📦 Repository Structure
+## Sending Limits
+
+Sending limits are campaign scoped, not client email quotas.
+
+- `campaign_sending_limits.period_email_limit` is the campaign 30-day period limit.
+- `campaign_sending_limits.daily_email_limit` is an admin/internal pacing control.
+- The client dashboard must not expose the configured daily limit.
+- Deliverability Guard blocks dispatch with campaign limit reasons when daily or 30-day usage would exceed configured limits.
+- Usage counts are based on real non-simulated send log rows, not recipient counts.
+
+See `docs/api_contracts_v1.md` and `docs/data_model_v1.md` for the full contract.
+
+## Client Dashboard Analytics
+
+Client dashboard business metrics are backend owned through `client_dashboard`.
+
+- The frontend may format data and switch periods, but it must not derive fake sent/open/block metrics from unrelated fields.
+- Performance windows are `24h`, `7d`, `14d`, `30d`, and `allTime`.
+- Open metrics are provider-event-backed only.
+- Blocked metrics come from `blocked_sends`.
+- Unavailable metric sources remain unavailable rather than being synthesized.
+
+## Repository Structure
 
 ```txt
 .
-├── backend/                 # FastAPI service, API stubs, schemas, guard layer
-├── frontend/                # Next.js dashboard skeleton
-├── db/                      # PostgreSQL init and migration placeholders
-├── docs/                    # Architecture, API contracts, data model, audit docs
-├── listmonk/                # listmonk configuration boundary
-├── mailpit/                 # Dev/staging email capture boundary
-├── scripts/                 # Install, audit, healthcheck, and smoke scripts
-├── templates/               # MJML email template placeholders
-├── docker-compose.yml       # Core stack
-├── docker-compose.dev.yml   # Mailpit dev/staging overlay
-└── Makefile                 # Common developer commands
+|-- backend/                  # FastAPI service, schemas, repositories, guard layer
+|-- frontend/                 # Next.js dashboard
+|-- db/                       # PostgreSQL init and migrations
+|-- docs/                     # Architecture, contracts, audit notes, runbooks
+|-- listmonk/                 # listmonk boundary/configuration
+|-- mailpit/                  # Dev/staging email capture boundary
+|-- scripts/                  # Install, audit, healthcheck, backup, restore, smoke scripts
+|-- templates/                # Email template placeholders
+|-- docker-compose.yml        # Local development stack
+|-- docker-compose.dev.yml    # Mailpit dev overlay
+|-- docker-compose.staging.yml # VPS staging override
+`-- Makefile                  # Common developer commands
 ```
 
-## 🛠️ Tech Stack
+## Quick Start
 
-| Layer | Technology |
-| --- | --- |
-| Frontend | Next.js 15, React 19, TypeScript, Tailwind CSS |
-| Backend | FastAPI, Python |
-| Database | PostgreSQL 16 |
-| Email engine | listmonk |
-| Dev email capture | Mailpit |
-| Runtime | Docker, Docker Compose |
-
-## 🚀 Quick Start
-
-### Prerequisites
+Prerequisites:
 
 - Docker
 - Docker Compose
 - Make
 
-### Start the stack
+Start the local stack:
 
 ```bash
-git clone <repo-url>
-cd Sendwise
 cp .env.example .env
-bash scripts/install.sh
 docker compose up -d
 ```
 
-Services:
+Local services:
 
 - Frontend: <http://localhost:3000>
 - Backend: <http://localhost:8000>
 - Backend health: <http://localhost:8000/health>
 - listmonk: <http://localhost:9000>
 
-### Start with Mailpit for dev/staging
+Start with the dev Mailpit overlay:
 
 ```bash
 docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d
@@ -104,83 +121,74 @@ Mailpit:
 - Web UI: <http://localhost:8025>
 - SMTP: `localhost:1025`
 
-Mailpit is dev/staging only and must not be used for production sending.
+Mailpit is for development/staging capture only and must not be used as a production send posture.
 
-### Apply database migrations
+## Migrations
 
-`db/init.sql` initializes fresh PostgreSQL volumes. Existing dev or staging
-volumes must be updated explicitly with the migration runner:
+Fresh PostgreSQL volumes are initialized by `db/init.sql`. Existing local or staging volumes must be updated with the migration runner:
 
 ```bash
 ./scripts/apply_migrations.sh
-```
-
-The runner uses the `postgres` Docker Compose service, creates
-`schema_migrations` if needed, applies pending files from `db/migrations` in
-lexicographic order, and skips files already recorded. To inspect status without
-changing the database:
-
-```bash
 ./scripts/apply_migrations.sh --dry-run
 ```
 
-## 🧪 Development Commands
+The runner applies pending files from `db/migrations` through the Docker Compose `postgres` service and records them in `schema_migrations`.
+
+## Checks
 
 ```bash
-make audit
-make smoke
-make health
-make compose-config
+bash scripts/audit.sh
+bash scripts/smoke_test.sh
+bash scripts/healthcheck.sh
+docker compose config
+docker compose -f docker-compose.yml -f docker-compose.dev.yml config
+cd frontend && npm run lint
+cd frontend && npm run build
 ```
 
-What they do:
+`make audit`, `make smoke`, `make health`, and `make compose-config` are also available shortcuts.
 
-| Command | Purpose |
-| --- | --- |
-| `make audit` | Validates required files, service boundaries, and architectural guardrails. |
-| `make smoke` | Validates Docker Compose config and runs the audit. |
-| `make health` | Checks the backend health endpoint. |
-| `make compose-config` | Renders the effective Docker Compose configuration. |
+## Staging Deployment
 
-## ✅ Health Check
+Staging uses the base Compose file plus `docker-compose.staging.yml`:
 
-```txt
-GET /health
+```bash
+docker compose -f docker-compose.yml -f docker-compose.staging.yml config
+docker compose -f docker-compose.yml -f docker-compose.staging.yml up -d --build
 ```
 
-Expected response:
+Recommended staging domains:
 
-```json
-{
-  "status": "ok",
-  "service": "email-ai-platform",
-  "version": "v1-skeleton"
-}
-```
+- `staging-app.mailerpro.it`
+- `staging-api.mailerpro.it`
 
-## 🔐 Safety Defaults
+Caddy is the intended public HTTPS reverse proxy. Containers should bind frontend/backend ports to localhost on the VPS, while PostgreSQL, listmonk, and Mailpit remain non-public.
 
-Sendwise is conservative by default:
+Use `docs/runbook_vps_staging.md` for the full deploy flow, port policy, first-deploy QA checklist, rollback guidance, and forbidden destructive command policy.
 
-- `EMAIL_SENDING_ENABLED=false` in `.env.example`.
-- `EMAIL_PROVIDER=mailpit` in `.env.example`; SES is never the default.
-- SES controlled send requires explicit runtime overrides plus `REAL_SEND_ALLOWED_RECIPIENTS` and `REAL_SEND_MAX_RECIPIENTS`.
-- Only the exact string `"true"` may enable future send logic.
-- PostgreSQL is not publicly exposed in the production compose file.
-- Mailpit is excluded from the production compose file.
-- listmonk admin access must be protected before production use.
-- Client data must be isolated by `client_id`.
-- No email may be sent without backend authorization.
+## Backup And Restore
 
-### SES controlled send
+Backup and restore validation are documented in `docs/runbook_backup_restore.md`.
 
-Milestone 12 adds a dev/staging SES controlled-send gate for 1-3 explicitly allowed recipients. It remains fail-closed unless `EMAIL_SENDING_ENABLED=true`, `EMAIL_PROVIDER=ses`, SES SMTP env is complete, `BACKEND_PUBLIC_URL` is public, Guard authorizes the campaign, and every eligible recipient is listed in `REAL_SEND_ALLOWED_RECIPIENTS`.
+Relevant scripts:
 
-Use `docs/runbook_ses_controlled_send.md` and `scripts/validate_ses_readiness.sh` before any SES live test. Do not commit SMTP credentials, AWS secrets, or real recipient allowlists.
+- `scripts/backup_postgres.sh`
+- `scripts/restore_postgres_check.sh`
 
-## 📚 Documentation
+Backups cover both the Sendwise business database and listmonk database. Restore checks must validate into temporary databases before any live restore is considered.
 
-The main project contracts live in `docs/`:
+## Safety Defaults
+
+- Keep `EMAIL_SENDING_ENABLED=false` for first staging deploy and any no-send validation.
+- Do not run real sends before SES readiness and controlled validation are explicitly approved.
+- Do not call send/dispatch endpoints during first VPS deploy.
+- Do not use direct listmonk send or SES console send as a shortcut around backend gates.
+- Do not commit `.env` files, secrets, tokens, passwords, API keys, AWS credentials, SMTP credentials, Clerk secrets, Listmonk credentials, unsubscribe secrets, or real recipient allowlists.
+- Consult the runbooks for destructive command policy instead of copying those procedures into ad hoc workflows.
+
+## Documentation
+
+Main reference documents:
 
 - `docs/architecture_v1.md`
 - `docs/api_contracts_v1.md`
@@ -189,58 +197,57 @@ The main project contracts live in `docs/`:
 - `docs/ownership_v1.md`
 - `docs/structural_contracts_v1.md`
 - `docs/audit_checklist_v1.md`
-- `docs/runbook_backup_restore.md`
 - `docs/runbook_vps_staging.md`
+- `docs/runbook_backup_restore.md`
+- `docs/runbook_ses_controlled_send.md`
 
-These docs define how the product should evolve. When behavior changes, update the matching contract document with the code.
+When behavior changes, update the matching contract or runbook with the code.
 
-## 🗺️ Roadmap
+## Roadmap And Boundaries
 
-Current milestone:
+Implemented or repository-backed:
 
-- ✅ Docker Compose foundation
-- ✅ FastAPI skeleton and typed API stubs
-- ✅ Next.js dashboard skeleton
-- ✅ PostgreSQL schema stubs
-- ✅ listmonk as email engine boundary
-- ✅ Mailpit dev/staging overlay
-- ✅ Audit and smoke scripts
-- ⏳ Real send authorization flow
-- ⏳ Production authentication and roles
-- ⏳ AI content generation
-- ⏳ Provider/webhook event ingestion
-- ⏳ Background workers and scheduling
+- Docker Compose local stack.
+- FastAPI backend with admin/client product APIs.
+- Next.js admin and client dashboard workflows.
+- Business PostgreSQL persistence and migrations.
+- listmonk engine boundary.
+- Mailpit dev/staging capture.
+- Campaign-level sending limits and Guard enforcement.
+- Backend-backed client dashboard analytics.
+- Public unsubscribe route.
+- VPS staging and backup/restore assets.
 
-Future optional integrations:
+Still constrained or future:
 
-- n8n or Activepieces as backend-only integration layers
-- Keycloak for a later auth milestone
-- Celery if background task volume justifies it
-- Metabase for internal read-only analytics
+- VPS staging deploy execution is not complete unless tracked separately outside this repository.
+- SES live send is not generally enabled.
+- Production authentication/role hardening remains an active boundary.
+- AI content generation remains future work.
+- Background worker/scheduling expansion remains future work.
 
-## 🚫 Explicitly Out of Scope
+Explicitly out of scope for core V1:
 
-These are not part of core V1:
+- Budibase as the final dashboard.
+- Postal.
+- Rspamd.
+- Mautic.
+- Keila.
+- n8n as core V1.
+- Direct provider sending as the default product path.
+- Direct UI access to listmonk or PostgreSQL.
 
-- Budibase as the final dashboard
-- Postal
-- Rspamd
-- Mautic
-- Keila
-- n8n as core V1
-- Direct provider sending from the backend as the default V1 path
-- Direct UI access to listmonk or PostgreSQL
+## Contributing
 
-## 🤝 Contributing
-
-Keep changes aligned with the repository contracts:
+Keep changes aligned with repository contracts:
 
 1. Update code and docs together.
 2. Keep FastAPI as the single business gatekeeper.
-3. Keep listmonk as the engine, not the source of truth.
-4. Preserve `EMAIL_SENDING_ENABLED=false` as the safe default.
-5. Run `make audit` before opening a pull request.
+3. Keep Business PostgreSQL as the product source of truth.
+4. Keep listmonk as the engine, not the owner.
+5. Preserve safe no-send defaults unless an approved controlled validation explicitly changes runtime configuration.
+6. Run the relevant audit, smoke, lint, and build checks before opening a pull request.
 
-## 📄 License
+## License
 
 License information has not been added yet.

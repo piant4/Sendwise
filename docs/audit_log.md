@@ -3298,3 +3298,26 @@ Checks executed:
 Scope confirmation:
 - No backend, schema, API contract, auth model, send/dispatch flow, SES enablement, listmonk integration, Docker/env/config, or frontend API boundary behavior was changed.
 - No fake delivered, open, click, click-rate, queued, sent-attempted, or provider-event metric claims were added.
+
+## Milestone 18.1B - Align README With Current Repository State
+
+Date: 2026-05-19
+Branch: develop
+
+Verified state:
+- README was updated as public/reference documentation instead of agent startup context.
+- Stale skeleton/simulation-only wording was replaced with current local runtime status for campaign-level limits, Deliverability Guard enforcement, backend-backed client dashboard analytics, contact metadata, unsubscribe handling, and staging assets.
+- Sending-limit wording now states that limits are per campaign through `campaign_sending_limits`, with `period_email_limit` as the 30-day campaign limit and `daily_email_limit` as admin/internal pacing that must stay hidden from client dashboard responses.
+- Dashboard wording now states that business metrics are backend-owned through `client_dashboard`, with windows `24h`, `7d`, `14d`, `30d`, and `allTime`, and no frontend-synthesized sent/open/block metrics.
+- VPS staging and backup/restore sections now link to `docs/runbook_vps_staging.md` and `docs/runbook_backup_restore.md` instead of duplicating full runbooks.
+- Safety wording now preserves a no-send first staging posture with `EMAIL_SENDING_ENABLED=false`, no direct listmonk/SES shortcut, and no committed env or secret files.
+
+Checks executed:
+- `git diff --check`
+- README referenced-file existence check for staging runbook, backup/restore runbook, API contracts, data model, staging compose, backup script, and restore-check script
+- README diff scan for secret-like values and forbidden claims
+- README markdown/link sanity check by inspection
+
+Scope confirmation:
+- Only `README.md` and `docs/audit_log.md` were modified.
+- No backend, frontend, schema, migration, Docker, env, secret, config, send, SES, or listmonk action was performed.

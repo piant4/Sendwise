@@ -285,6 +285,7 @@ interface AdminCampaignDispatchApiResponse {
   status: string;
   mode: string;
   provider?: string | null;
+  provider_status?: string | null;
   campaign_id: string;
   client_id?: string | null;
   allowed: boolean;
@@ -317,6 +318,9 @@ interface AdminCampaignDispatchApiResponse {
   provider_events_ready?: boolean;
   email_logs_created: number;
   email_logs_updated: number;
+  queued_count?: number;
+  sent_or_accepted_count?: number;
+  failed_count?: number;
 }
 
 interface ClientCampaignStatsApiResponse {
@@ -1581,6 +1585,7 @@ function mapAdminCampaignDispatchResult(
     status: payload.status,
     mode: payload.mode,
     provider: payload.provider ?? null,
+    providerStatus: payload.provider_status ?? null,
     campaignId: payload.campaign_id,
     clientId: payload.client_id ?? null,
     allowed: payload.allowed,
@@ -1615,6 +1620,9 @@ function mapAdminCampaignDispatchResult(
     providerEventsReady: payload.provider_events_ready,
     emailLogsCreated: payload.email_logs_created,
     emailLogsUpdated: payload.email_logs_updated,
+    queuedCount: payload.queued_count ?? 0,
+    sentOrAcceptedCount: payload.sent_or_accepted_count ?? 0,
+    failedCount: payload.failed_count ?? 0,
   };
 }
 

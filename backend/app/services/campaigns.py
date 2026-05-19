@@ -1685,6 +1685,19 @@ class CampaignDispatchService:
         try:
             listmonk_result = self.listmonk_client.trigger_campaign_send(mapping.listmonk_id)
         except ListmonkError as error:
+            failed_logs = email_log_repository.create_campaign_logs(
+                client_id=campaign.client_id,
+                campaign_id=campaign.id,
+                contact_ids=[contact.id for contact in contacts],
+                status="failed",
+                body=str(content.get("body") or ""),
+            )
+            limit_usage = self._build_dispatch_limit_usage(
+                campaign=campaign,
+                client_id=campaign.client_id,
+                campaign_limit_repository=campaign_limit_repository,
+                email_log_repository=email_log_repository,
+            )
             return self._failed_response(
                 campaign_id=campaign_id,
                 client_id=campaign.client_id,
@@ -1695,14 +1708,51 @@ class CampaignDispatchService:
                 dispatch_attempted=True,
                 preparation=preparation,
                 content_ready=True,
+                provider_status="dispatch_failed",
+                queued_count=0,
+                sent_or_accepted_count=0,
+                failed_count=len(failed_logs),
+                email_logs_created=len(failed_logs),
+                email_logs_updated=0,
+                limit_usage=limit_usage,
             )
 
-        logs = email_log_repository.create_dispatched_campaign_logs(
+        log_status, provider_status = self._classify_listmonk_dispatch_result(
+            listmonk_result
+        )
+        logs = email_log_repository.create_campaign_logs(
             client_id=campaign.client_id,
             campaign_id=campaign.id,
             contact_ids=[contact.id for contact in contacts],
+            status=log_status,
             body=str(content.get("body") or ""),
         )
+        if log_status == "failed":
+            limit_usage = self._build_dispatch_limit_usage(
+                campaign=campaign,
+                client_id=campaign.client_id,
+                campaign_limit_repository=campaign_limit_repository,
+                email_log_repository=email_log_repository,
+            )
+            return self._failed_response(
+                campaign_id=campaign_id,
+                client_id=campaign.client_id,
+                guard_result=guard_result,
+                reason=self._extract_listmonk_failure_reason(listmonk_result),
+                provider=runtime_provider,
+                stage="dispatch",
+                dispatch_attempted=True,
+                preparation=preparation,
+                content_ready=True,
+                provider_status=provider_status,
+                queued_count=0,
+                sent_or_accepted_count=0,
+                failed_count=len(logs),
+                email_logs_created=len(logs),
+                email_logs_updated=0,
+                limit_usage=limit_usage,
+            )
+
         campaign = self._mark_campaign_running(
             campaign=campaign,
             client_repository=client_repository,
@@ -1716,9 +1766,10 @@ class CampaignDispatchService:
             email_log_repository=email_log_repository,
         )
         response = {
-            "status": "queued",
+            "status": "accepted",
             "mode": "controlled_dev",
             "provider": runtime_provider,
+            "provider_status": provider_status,
             "campaign_id": campaign_id,
             "client_id": campaign.client_id,
             "allowed": True,
@@ -1754,6 +1805,9 @@ class CampaignDispatchService:
             "provider_events_ready": True,
             "email_logs_created": len(logs),
             "email_logs_updated": 0,
+            "queued_count": 0,
+            "sent_or_accepted_count": len(logs),
+            "failed_count": 0,
             "listmonk_mapping": {
                 "entity_type": mapping.entity_type,
                 "entity_id": mapping.entity_id,
@@ -1765,6 +1819,87 @@ class CampaignDispatchService:
         }
         response["preparation"] = preparation
         return response
+
+    def _classify_listmonk_dispatch_result(
+        self,
+        payload: dict[str, Any],
+    ) -> tuple[str, str]:
+        provider_status = self._extract_provider_status(payload)
+        if provider_status in {
+            "failed",
+            "failure",
+            "error",
+            "errored",
+            "cancelled",
+            "canceled",
+            "rejected",
+        }:
+            return "failed", provider_status
+        if self._payload_signals_dispatch_failure(payload):
+            return "failed", provider_status or "dispatch_failed"
+        return "sent", provider_status or "accepted_by_listmonk"
+
+    def _extract_provider_status(self, payload: Any) -> str | None:
+        if not isinstance(payload, dict):
+            return None
+
+        candidates = [
+            payload.get("status"),
+            payload.get("state"),
+            payload.get("campaign_status"),
+        ]
+        data = payload.get("data")
+        if isinstance(data, dict):
+            candidates.extend(
+                [
+                    data.get("status"),
+                    data.get("state"),
+                    data.get("campaign_status"),
+                ]
+            )
+
+        for candidate in candidates:
+            normalized = str(candidate or "").strip().lower()
+            if normalized:
+                return normalized
+        return None
+
+    def _payload_signals_dispatch_failure(self, payload: Any) -> bool:
+        if not isinstance(payload, dict):
+            return False
+        for key in ("error", "errors"):
+            value = payload.get(key)
+            if isinstance(value, str) and value.strip():
+                return True
+            if isinstance(value, list) and any(str(item).strip() for item in value):
+                return True
+        message = str(payload.get("message") or "").strip().lower()
+        if message and any(token in message for token in ("failed", "error", "smtp")):
+            return True
+        return False
+
+    def _extract_listmonk_failure_reason(self, payload: Any) -> str:
+        if not isinstance(payload, dict):
+            return "Listmonk reported a dispatch failure."
+
+        error_value = payload.get("error")
+        if isinstance(error_value, str) and error_value.strip():
+            return error_value.strip()
+
+        errors_value = payload.get("errors")
+        if isinstance(errors_value, list):
+            normalized_errors = [str(item).strip() for item in errors_value if str(item).strip()]
+            if normalized_errors:
+                return "; ".join(normalized_errors)
+
+        message = str(payload.get("message") or "").strip()
+        if message:
+            return message
+
+        provider_status = self._extract_provider_status(payload)
+        if provider_status:
+            return f"Listmonk reported campaign status {provider_status}."
+        return "Listmonk reported a dispatch failure."
 
     def _get_campaign_for_dispatch(
         self,
@@ -2205,6 +2340,7 @@ class CampaignDispatchService:
             "status": "blocked",
             "mode": "controlled_dev",
             "provider": self._resolve_controlled_provider(),
+            "provider_status": "not_attempted",
             "campaign_id": campaign_id,
             "allowed": False,
             "decision": guard_result.decision,
@@ -2239,6 +2375,9 @@ class CampaignDispatchService:
             "provider_events_ready": True,
             "email_logs_created": 0,
             "email_logs_updated": 0,
+            "queued_count": 0,
+            "sent_or_accepted_count": 0,
+            "failed_count": 0,
         }
         if guard_result.client_id is not None:
             response["client_id"] = guard_result.client_id
@@ -2309,6 +2448,7 @@ class CampaignDispatchService:
             "status": "dispatch_blocked",
             "mode": "controlled_dev",
             "provider": self._resolve_controlled_provider(),
+            "provider_status": "not_attempted",
             "campaign_id": campaign_id,
             "client_id": client_id or default_client_id,
             "allowed": False,
@@ -2336,6 +2476,9 @@ class CampaignDispatchService:
             "content_ready": content_ready,
             "email_logs_created": 0,
             "email_logs_updated": 0,
+            "queued_count": 0,
+            "sent_or_accepted_count": 0,
+            "failed_count": 0,
         }
         if preparation is not None:
             response["preparation"] = preparation
@@ -2353,11 +2496,19 @@ class CampaignDispatchService:
         dispatch_attempted: bool,
         preparation: dict[str, Any] | None = None,
         content_ready: bool = False,
+        provider_status: str = "dispatch_failed",
+        queued_count: int = 0,
+        sent_or_accepted_count: int = 0,
+        failed_count: int = 0,
+        email_logs_created: int = 0,
+        email_logs_updated: int = 0,
+        limit_usage: CampaignLimitUsage | None = None,
     ) -> dict[str, Any]:
         response: dict[str, Any] = {
             "status": "dispatch_failed",
             "mode": "controlled_dev",
             "provider": provider,
+            "provider_status": provider_status,
             "campaign_id": campaign_id,
             "client_id": client_id,
             "allowed": False,
@@ -2371,22 +2522,49 @@ class CampaignDispatchService:
             "diagnostic": guard_result.diagnostic,
             "limit_source": guard_result.limit_source,
             "limit_value": guard_result.limit_value,
-            "daily_limit": guard_result.daily_limit,
-            "daily_used": guard_result.daily_used,
-            "daily_remaining": guard_result.daily_remaining,
-            "period_limit": guard_result.period_limit,
-            "period_used": guard_result.period_used,
-            "period_remaining": guard_result.period_remaining,
-            "period_started_at": guard_result.period_started_at,
-            "period_ends_at": guard_result.period_ends_at,
+            "daily_limit": (
+                limit_usage.daily_limit if limit_usage is not None else guard_result.daily_limit
+            ),
+            "daily_used": (
+                limit_usage.daily_used if limit_usage is not None else guard_result.daily_used
+            ),
+            "daily_remaining": (
+                limit_usage.daily_remaining
+                if limit_usage is not None
+                else guard_result.daily_remaining
+            ),
+            "period_limit": (
+                limit_usage.period_limit if limit_usage is not None else guard_result.period_limit
+            ),
+            "period_used": (
+                limit_usage.period_used if limit_usage is not None else guard_result.period_used
+            ),
+            "period_remaining": (
+                limit_usage.period_remaining
+                if limit_usage is not None
+                else guard_result.period_remaining
+            ),
+            "period_started_at": (
+                limit_usage.period_started_at
+                if limit_usage is not None
+                else guard_result.period_started_at
+            ),
+            "period_ends_at": (
+                limit_usage.period_ends_at
+                if limit_usage is not None
+                else guard_result.period_ends_at
+            ),
             "guard": guard_result.to_dict(),
             "dispatch_attempted": dispatch_attempted,
             "real_send_attempted": dispatch_attempted,
             "listmonk_prepared": stage != "preparation",
             "listmonk_dispatched": False,
             "content_ready": content_ready,
-            "email_logs_created": 0,
-            "email_logs_updated": 0,
+            "email_logs_created": email_logs_created,
+            "email_logs_updated": email_logs_updated,
+            "queued_count": queued_count,
+            "sent_or_accepted_count": sent_or_accepted_count,
+            "failed_count": failed_count,
         }
         if preparation is not None:
             response["preparation"] = preparation

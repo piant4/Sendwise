@@ -236,12 +236,16 @@ function buildReviewChecklist(state: {
 }
 
 function getDispatchOutcomeLabel(result: AdminCampaignDispatchResult): string {
-  if (result.status === "queued" && result.allowed) {
-    return "Invio accodato";
+  if (result.status === "accepted" && result.allowed) {
+    return "Invio accettato";
   }
 
   if (result.status === "blocked" || result.status === "dispatch_blocked") {
     return "Invio bloccato";
+  }
+
+  if (result.status === "dispatch_failed") {
+    return "Invio fallito";
   }
 
   return "Invio non eseguito";
@@ -566,7 +570,11 @@ export function AdminCampaignReviewPanel({
                 {dispatchResult.providerDispatched
                   ? "provider coinvolto"
                   : "nessuna dispatch provider eseguita"}
-                , {dispatchResult.emailLogsCreated.toLocaleString("it-IT")} log creati.
+                , {dispatchResult.sentOrAcceptedCount.toLocaleString("it-IT")} accettati,
+                {" "}
+                {dispatchResult.failedCount.toLocaleString("it-IT")} falliti,
+                {" "}
+                {dispatchResult.queuedCount.toLocaleString("it-IT")} ancora in coda.
               </p>
             </div>
           ) : null}

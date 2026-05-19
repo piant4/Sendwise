@@ -99,7 +99,7 @@ These are backend-owned technical routes currently present in the runtime as leg
 | `POST /campaigns/{campaign_id}/authorize` | Run send authorization through the current generic runtime surface. | Backend-owned runtime caller. | Active user. | `campaign_id`. | Placeholder result. | `400`, `401`, `403`, `404`, `409`, `423`. | `stub` |
 | `POST /campaigns/{campaign_id}/sync-listmonk` | Prepare listmonk technical entities for a campaign. | Backend-owned runtime caller. | Active user with backend-owned scope. | `campaign_id`. | Preparation result, list mappings, content readiness. | `400`, `401`, `403`, `404`, integration failures. | `implemented` |
 | `POST /campaigns/{campaign_id}/simulate-send` | Run backend preflight plus simulation log creation without real dispatch. | Backend-owned runtime caller. | Active user with backend-owned scope. | `campaign_id`. | Simulation result, Guard payload, content snapshot, email-log summary. | `400`, `401`, `403`, `404`, `409`, `423`. | `implemented` |
-| `POST /campaigns/{campaign_id}/send` | Trigger controlled dev dispatch after backend checks. | Backend-owned runtime caller. | Active user with backend-owned scope. | `campaign_id`. | Blocked, failed, or queued controlled-dispatch result. | `400`, `401`, `403`, `404`, `409`, `423`. | `implemented` |
+| `POST /campaigns/{campaign_id}/send` | Trigger controlled dev dispatch after backend checks. | Backend-owned runtime caller. | Active user with backend-owned scope. | `campaign_id`. | Blocked, failed, or accepted controlled-dispatch result. | `400`, `401`, `403`, `404`, `409`, `423`. | `implemented` |
 
 Current runtime notes:
 
@@ -127,7 +127,7 @@ These are the V1 product endpoints for the only operational campaign flow. Entri
 | `DELETE /admin/campaigns/{campaign_id}/contacts/{contact_id}` | Remove a contact association from the campaign without deleting the saved contact. | Admin dashboard. | Platform admin. | `campaign_id`, backend-owned `contact_id`. | Controlled detach result with backend-owned readiness. | `401`, `403`, `404`, `409`. | `implemented` |
 | `POST /admin/campaigns/{campaign_id}/review` | Build final review payload without dispatching. When preflight passes for a configured draft, the backend marks the campaign `ready` and `review_ready=true` without sending. | Admin dashboard. | Platform admin. | `campaign_id`. | Stable readiness/sendability payload including current status, kill-switch state, warnings, blocking errors, counts, current step, and slot limit. | `400`, `401`, `403`, `404`, `409`, `422`. | `implemented` |
 | `POST /admin/campaigns/{campaign_id}/simulate-send` | Request backend simulation from the admin flow. | Admin dashboard. | Platform admin. | `campaign_id`. | Simulation result. | `400`, `401`, `403`, `404`, `409`, `423`. | `implemented` |
-| `POST /admin/campaigns/{campaign_id}/send` | Request controlled send from the admin flow. | Admin dashboard. | Platform admin. | `campaign_id`. | Blocked, failed, or queued send result. | `400`, `401`, `403`, `404`, `409`, `423`. | `implemented` |
+| `POST /admin/campaigns/{campaign_id}/send` | Request controlled send from the admin flow. | Admin dashboard. | Platform admin. | `campaign_id`. | Blocked, failed, or accepted send result. | `400`, `401`, `403`, `404`, `409`, `423`. | `implemented` |
 
 Admin-managed contract notes:
 
@@ -143,7 +143,7 @@ Admin-managed contract notes:
 - Guard remains mandatory for simulation and real dispatch
 - `EMAIL_SENDING_ENABLED` remains the real-dispatch kill switch
 - `EMAIL_PROVIDER=ses` adds a backend safety gate requiring explicit dev/staging runtime, complete SES SMTP env, public unsubscribe URL, review readiness, optional allowlist enforcement, and an optional positive recipient max before listmonk dispatch
-- controlled send responses include provider and safety diagnostics such as `safety_checked`, `safety_passed`, `allowed_recipients_checked`, `eligible_contact_count`, `max_real_send_recipients`, `listmonk_dispatched`, `real_send_attempted`, `email_logs_created`, `unsubscribe_ready`, and `provider_events_ready`
+- controlled send responses include provider and safety diagnostics such as `provider_status`, `queued_count`, `sent_or_accepted_count`, `failed_count`, `safety_checked`, `safety_passed`, `allowed_recipients_checked`, `eligible_contact_count`, `max_real_send_recipients`, `listmonk_dispatched`, `real_send_attempted`, `email_logs_created`, `unsubscribe_ready`, and `provider_events_ready`
 - Deliverability Guard blocks campaign dispatch with `campaign_daily_limit_reached` and `campaign_period_limit_reached` when campaign usage would exceed the configured table-backed limits
 - First SES validation may keep `REAL_SEND_MAX_RECIPIENTS=1` and `REAL_SEND_REQUIRE_ALLOWED_RECIPIENTS=true`; official product trials should use `REAL_SEND_MAX_RECIPIENTS=0` and `REAL_SEND_REQUIRE_ALLOWED_RECIPIENTS=false`
 - Campaign limits configured by admins are the real product limits; `EMAIL_SENDING_ENABLED=false` remains the emergency global off switch

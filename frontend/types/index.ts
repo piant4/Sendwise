@@ -528,6 +528,7 @@ export interface AdminCampaignDispatchResult {
   status: string;
   mode: string;
   provider?: string | null;
+  providerStatus?: string | null;
   campaignId: string;
   clientId?: string | null;
   allowed: boolean;
@@ -562,6 +563,9 @@ export interface AdminCampaignDispatchResult {
   providerEventsReady?: boolean;
   emailLogsCreated: number;
   emailLogsUpdated: number;
+  queuedCount: number;
+  sentOrAcceptedCount: number;
+  failedCount: number;
 }
 
 export interface ClientCampaignStatsReadModel {

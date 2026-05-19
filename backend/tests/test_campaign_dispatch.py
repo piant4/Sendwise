@@ -29,6 +29,7 @@ class FakeListmonkClient:
     def __init__(self) -> None:
         self.created_campaign_payloads: list[dict[str, Any]] = []
         self.sent_campaign_ids: list[str] = []
+        self.trigger_campaign_payload: dict[str, str] = {"status": "running"}
 
     def create_campaign(self, payload: dict[str, Any]) -> dict[str, Any]:
         self.created_campaign_payloads.append(payload)
@@ -36,7 +37,7 @@ class FakeListmonkClient:
 
     def trigger_campaign_send(self, campaign_id: str) -> dict[str, str]:
         self.sent_campaign_ids.append(campaign_id)
-        return {"status": "mocked"}
+        return dict(self.trigger_campaign_payload)
 
 
 class FakePreparationService:
@@ -594,7 +595,7 @@ def test_ses_send_allows_multi_recipient_campaign_when_real_send_max_is_zero() -
 
     result = service.send_campaign("campaign_123")
 
-    assert result["status"] == "queued"
+    assert result["status"] == "accepted"
     assert result["provider"] == "ses"
     assert result["eligible_contact_count"] == 2
     assert result["max_real_send_recipients"] is None
@@ -619,7 +620,7 @@ def test_ses_send_allows_multi_recipient_campaign_when_real_send_max_is_unset() 
 
     result = service.send_campaign("campaign_123")
 
-    assert result["status"] == "queued"
+    assert result["status"] == "accepted"
     assert result["eligible_contact_count"] == 2
     assert result["max_real_send_recipients"] is None
     assert fake_listmonk.sent_campaign_ids == ["lm_1"]
@@ -640,7 +641,7 @@ def test_ses_send_allows_multi_recipient_campaign_when_real_send_max_is_empty() 
 
     result = service.send_campaign("campaign_123")
 
-    assert result["status"] == "queued"
+    assert result["status"] == "accepted"
     assert result["eligible_contact_count"] == 2
     assert result["max_real_send_recipients"] is None
     assert fake_listmonk.sent_campaign_ids == ["lm_1"]
@@ -661,7 +662,7 @@ def test_ses_send_allows_normal_recipients_when_allowlist_is_disabled() -> None:
 
     result = service.send_campaign("campaign_123")
 
-    assert result["status"] == "queued"
+    assert result["status"] == "accepted"
     assert result["allowed_recipients_checked"] is False
     assert fake_listmonk.sent_campaign_ids == ["lm_1"]
 
@@ -775,7 +776,7 @@ def test_ses_send_allowed_only_after_safety_gate_passes() -> None:
 
     result = service.send_campaign("campaign_123")
 
-    assert result["status"] == "queued"
+    assert result["status"] == "accepted"
     assert result["provider"] == "ses"
     assert result["safety_checked"] is True
     assert result["safety_passed"] is True
@@ -789,7 +790,7 @@ def test_ses_send_allowed_only_after_safety_gate_passes() -> None:
     assert result["provider_events_ready"] is True
     assert fake_listmonk.sent_campaign_ids == ["lm_1"]
     logs = email_log_repository.list_by_campaign("campaign_123")
-    assert [log.status for log in logs] == ["queued"]
+    assert [log.status for log in logs] == ["sent"]
     assert logs[0].provider_message_id is None
     assert "unsubscribe" in (logs[0].body or "")
 
@@ -874,12 +875,12 @@ def test_ready_campaign_with_no_usage_is_not_blocked_by_campaign_limits() -> Non
 
     result = service.send_campaign("campaign_123")
 
-    assert result["status"] == "queued"
+    assert result["status"] == "accepted"
     assert result["code"] == "dispatch_authorized"
     assert result["eligible_contact_count"] == 2
     assert result["daily_used"] == 2
     assert result["period_used"] == 2
-    assert fake_listmonk.sent_campaign_ids == ["lm_existing"]
+    assert fake_listmonk.sent_campaign_ids == ["lm_1"]
 
 
 def test_campaign_slot_limit_blocks_oversized_batch() -> None:
@@ -914,7 +915,7 @@ def test_campaign_slot_limit_blocks_oversized_batch() -> None:
 
     result = service.send_campaign("campaign_123")
 
-    assert result["status"] == "queued"
+    assert result["status"] == "accepted"
     assert result["limit_source"] == "campaign_slot"
     assert result["limit_value"] == 5
     assert result["guard"]["limit_source"] == "campaign_slot"
@@ -1287,7 +1288,7 @@ def test_enabled_campaign_send_creates_mapping_after_guard_authorizes() -> None:
 
     result = service.send_campaign("campaign_123")
 
-    assert result["status"] == "queued"
+    assert result["status"] == "accepted"
     assert result["mode"] == "controlled_dev"
     assert result["provider"] == "mailpit"
     assert result["allowed"] is True
@@ -1307,9 +1308,13 @@ def test_enabled_campaign_send_creates_mapping_after_guard_authorizes() -> None:
     assert fake_listmonk.sent_campaign_ids == ["lm_1"]
     logs = email_log_repository.list_by_campaign("campaign_123")
     assert len(logs) == 1
-    assert logs[0].status == "queued"
+    assert logs[0].status == "sent"
     assert logs[0].provider_message_id is None
     assert logs[0].body == "<html><body><p>Body</p></body></html>"
+    assert result["provider_status"] == "running"
+    assert result["queued_count"] == 0
+    assert result["sent_or_accepted_count"] == 1
+    assert result["failed_count"] == 0
 
 
 def test_successful_dispatch_marks_campaign_running_and_starts_period() -> None:
@@ -1326,7 +1331,7 @@ def test_successful_dispatch_marks_campaign_running_and_starts_period() -> None:
     result = service.send_campaign("campaign_123")
     client_repository = service.client_repository
 
-    assert result["status"] == "queued"
+    assert result["status"] == "accepted"
     assert result["period_started_at"] is not None
     assert result["period_ends_at"] is not None
     assert limit_repository.get_by_campaign_id(campaign_id="campaign_123") is not None
@@ -1356,14 +1361,66 @@ def test_enabled_campaign_send_reuses_existing_mapping() -> None:
 
     result = service.send_campaign("campaign_123")
 
-    assert result["status"] == "queued"
+    assert result["status"] == "accepted"
     assert result["email_logs_created"] == 1
     assert result["listmonk_mapping"]["created"] is False
     assert preparation_service.prepared_campaign_ids == ["campaign_123"]
     assert fake_listmonk.created_campaign_payloads == []
     assert fake_listmonk.sent_campaign_ids == ["lm_existing"]
     logs = email_log_repository.list_by_campaign("campaign_123")
-    assert [log.status for log in logs] == ["queued"]
+    assert [log.status for log in logs] == ["sent"]
+
+
+def test_dispatch_failure_creates_failed_logs_for_attempted_contacts() -> None:
+    class FailingListmonkClient(FakeListmonkClient):
+        def trigger_campaign_send(self, campaign_id: str) -> dict[str, str]:
+            self.sent_campaign_ids.append(campaign_id)
+            raise ListmonkError("listmonk returned HTTP 500")
+
+    fake_listmonk = FailingListmonkClient()
+    email_log_repository = InMemoryEmailLogRepository()
+    service = build_dispatch_service(
+        fake_listmonk=fake_listmonk,
+        email_log_repository=email_log_repository,
+        preparation_service=FakePreparationService(content_ready=True),
+    )
+
+    result = service.send_campaign("campaign_123")
+
+    assert result["status"] == "dispatch_failed"
+    assert result["provider_status"] == "dispatch_failed"
+    assert result["dispatch_attempted"] is True
+    assert result["email_logs_created"] == 1
+    assert result["queued_count"] == 0
+    assert result["sent_or_accepted_count"] == 0
+    assert result["failed_count"] == 1
+    logs = email_log_repository.list_by_campaign("campaign_123")
+    assert [log.status for log in logs] == ["failed"]
+
+
+def test_failed_listmonk_payload_marks_logs_failed_without_fake_sent_state() -> None:
+    fake_listmonk = FakeListmonkClient()
+    fake_listmonk.trigger_campaign_payload = {
+        "status": "failed",
+        "message": "smtp dial tcp: lookup smtp.yoursite.com failed",
+    }
+    email_log_repository = InMemoryEmailLogRepository()
+    service = build_dispatch_service(
+        fake_listmonk=fake_listmonk,
+        email_log_repository=email_log_repository,
+        preparation_service=FakePreparationService(content_ready=True),
+    )
+
+    result = service.send_campaign("campaign_123")
+
+    assert result["status"] == "dispatch_failed"
+    assert result["provider_status"] == "failed"
+    assert result["reason"] == "smtp dial tcp: lookup smtp.yoursite.com failed"
+    assert result["queued_count"] == 0
+    assert result["sent_or_accepted_count"] == 0
+    assert result["failed_count"] == 1
+    logs = email_log_repository.list_by_campaign("campaign_123")
+    assert [log.status for log in logs] == ["failed"]
 
 
 def test_send_endpoint_uses_guarded_dispatch_service() -> None:

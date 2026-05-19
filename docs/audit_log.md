@@ -1,5 +1,14 @@
 # Audit Log
 
+## Milestone 18.6D - Reconcile Email Logs After Listmonk SMTP Dispatch
+
+Email-log reconciliation audit summary:
+- Audited controlled dispatch, email log persistence, provider event correlation, and admin send UI copy without reading secrets or calling external provider APIs.
+- Root cause: `CampaignDispatchService.send_campaign()` treated a successful Listmonk trigger as a permanently `queued` backend state and created `email_logs` only after that trigger, while SMTP/Listmonk failures after dispatch had no truthful reconciliation path inside the backend response model.
+- Controlled dispatch success now records `email_logs.status="sent"` as provider/Listmonk acceptance, not inbox delivery, and returns `provider_status`, `queued_count`, `sent_or_accepted_count`, and `failed_count`.
+- Dispatch failures that occur after the backend actually attempts Listmonk send now persist `email_logs.status="failed"` for the attempted contacts; preparation failures still create no real send logs.
+- No delivered/open/click metrics are synthesized, no direct Listmonk or SES shortcut path was added, and campaign/suppression/unsubscribe gates remain unchanged.
+
 ## Milestone 18.6C - Wire Listmonk SMTP Config From .env
 
 Date: 2026-05-19

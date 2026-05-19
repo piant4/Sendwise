@@ -98,17 +98,26 @@ services:
 
   listmonk:
     image: listmonk/listmonk:latest
-    command: ["sh", "-c", "./listmonk --install --yes --idempotent && ./listmonk"]
+    command: ["sh", "-c", "./listmonk --install --yes --idempotent --config '' && ./listmonk --upgrade --yes --config '' && ./listmonk --config ''"]
     env_file:
       - ${SENDWISE_ENV_FILE:-.env}
     environment:
+      LISTMONK_ADMIN_USER: ${LISTMONK_USERNAME}
+      LISTMONK_ADMIN_PASSWORD: ${LISTMONK_PASSWORD}
       LISTMONK_app__address: 0.0.0.0:9000
+      LISTMONK_app__from_email: ${SMTP_FROM_EMAIL}
       LISTMONK_db__host: postgres
       LISTMONK_db__port: 5432
       LISTMONK_db__user: ${POSTGRES_USER}
       LISTMONK_db__password: ${POSTGRES_PASSWORD}
       LISTMONK_db__database: listmonk
       LISTMONK_db__ssl_mode: disable
+      LISTMONK_smtp__enabled: "true"
+      LISTMONK_smtp__host: ${SMTP_HOST}
+      LISTMONK_smtp__port: ${SMTP_PORT}
+      LISTMONK_smtp__username: ${SMTP_USERNAME}
+      LISTMONK_smtp__password: ${SMTP_PASSWORD}
+      LISTMONK_smtp__tls_enabled: ${SMTP_TLS}
     ports:
       - "127.0.0.1:9000:9000"
     depends_on:

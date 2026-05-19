@@ -48,7 +48,7 @@ Required public URLs:
 ## Staging Environment Requirements
 
 Configure real values only on the VPS environment. Do not place secrets in versioned files.
-The VPS `.env` is the source of truth for Docker Compose runtime builds and container runtime environment. Always pass `--env-file .env` to staging runtime commands. `--env-file` controls Docker Compose interpolation, while service-level `env_file` controls container environment injection. For safe validation against `.env.example`, set `SENDWISE_ENV_FILE=.env.example` so service-level `env_file` does not read the real `.env`. After editing `.env`, recreate the affected containers; old containers keep their old environment. Never commit `.env`.
+The VPS `.env` is the source of truth for Docker Compose runtime builds and container runtime environment. Always pass `--env-file .env` to staging runtime commands. `--env-file` controls Docker Compose interpolation, while service-level `env_file` controls container environment injection. Listmonk SMTP runtime config is also sourced from `.env` through the `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_TLS`, and `SMTP_FROM_EMAIL` values. For safe validation against `.env.example`, set `SENDWISE_ENV_FILE=.env.example` so service-level `env_file` does not read the real `.env`. After editing `.env`, recreate the affected containers; old containers keep their old environment. After SMTP env changes, recreate at least `listmonk` and `backend`. Never commit `.env`.
 
 Required non-secret staging values:
 
@@ -70,7 +70,7 @@ Required secret-backed values must be configured only on the VPS:
 - Real Listmonk username and password.
 - Real PostgreSQL database, user, and password.
 - Real backend API key and unsubscribe/signing secrets required by the deployed backend.
-- Real SMTP or AWS SES credentials only in the later SES readiness milestone.
+- Real SMTP or AWS SES credentials only in the later SES readiness milestone. When approved, set them only in the VPS `.env`; do not hardcode them in Compose or docs.
 
 For first deploy, use `EMAIL_PROVIDER=mailpit` or another safe non-send provider while `EMAIL_SENDING_ENABLED=false`. Keep `REAL_SEND_ALLOWED_RECIPIENTS=` empty until the controlled SES validation milestone.
 
@@ -127,6 +127,7 @@ SENDWISE_ENV_FILE=.env.example docker compose --env-file .env.example -f docker-
 ```
 
 Never run public or shared config dumps against a real `.env`.
+Never paste `docker compose config` output rendered from a real `.env` into shared logs because it expands SMTP passwords, Listmonk credentials, and other secrets.
 Stop if the rendered config shows `0.0.0.0:3000`, `0.0.0.0:8000`, public `9000`, public `5432`, public `8025`, or public `1025`.
 
 ## First Deploy QA Checklist

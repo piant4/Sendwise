@@ -1,5 +1,24 @@
 # Audit Log
 
+## Milestone 18.6C - Wire Listmonk SMTP Config From .env
+
+Date: 2026-05-19
+
+Compose/Listmonk SMTP audit summary:
+- Audited base, dev, and staging Compose Listmonk service config without reading the real `.env`.
+- Root cause: base/staging Listmonk only passed app address and database config, while SMTP mapping existed only in the dev overlay and included an unsupported sender mapping; staging therefore allowed Listmonk to retain the installed placeholder SMTP settings.
+- Base Listmonk now receives admin credentials, app sender, and SMTP values from the selected env file, while staging marks required SMTP/Listmonk/Postgres values with Compose `:?required` guards.
+- Dev overlay now relies on the base SMTP mapping and keeps only the Mailpit dependency/ports.
+- `.env.example` now contains non-secret SMTP placeholder values so safe Compose rendering works without touching a real `.env`.
+
+Docs/runbook changes:
+- README and VPS staging runbook now document that Listmonk SMTP comes from `.env`.
+- Docs now state that SMTP env changes require recreating `listmonk` and `backend`.
+- Docs warn not to share Compose config output rendered from a real `.env`.
+
+Safety confirmation:
+- No backend send flow, direct Listmonk send, SES live send, database reset, volume deletion, schema change, migration, or real `.env` inspection was performed.
+
 ## Milestone 18.5E-FIX2 - Align Audit And Smoke Scripts With Selectable Env File
 
 Date: 2026-05-19

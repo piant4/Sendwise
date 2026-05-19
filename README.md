@@ -157,7 +157,7 @@ SENDWISE_ENV_FILE=.env.example docker compose --env-file .env.example -f docker-
 docker compose --env-file .env -f docker-compose.yml -f docker-compose.staging.yml up -d --build
 ```
 
-The VPS `.env` is the source of truth for runtime builds and container runtime environment. `--env-file` controls Docker Compose interpolation, while service-level `env_file` controls container environment injection. For safe validation against `.env.example`, set `SENDWISE_ENV_FILE=.env.example` so service-level `env_file` does not read the real `.env`. Never run public or shared config dumps against a real `.env`, and never commit `.env`.
+The VPS `.env` is the source of truth for runtime builds and container runtime environment. `--env-file` controls Docker Compose interpolation, while service-level `env_file` controls container environment injection. Listmonk SMTP config is sourced from `.env` with the `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_TLS`, and `SMTP_FROM_EMAIL` values; after SMTP env changes, recreate `listmonk` and `backend`. For safe validation against `.env.example`, set `SENDWISE_ENV_FILE=.env.example` so service-level `env_file` does not read the real `.env`. Never run public or shared config dumps against a real `.env`, and never commit `.env`.
 
 Recommended staging domains:
 

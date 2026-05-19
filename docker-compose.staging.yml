@@ -8,4 +8,20 @@ services:
       - "127.0.0.1:3000:3000"
 
   listmonk:
+    environment:
+      LISTMONK_ADMIN_USER: ${LISTMONK_USERNAME:?required}
+      LISTMONK_ADMIN_PASSWORD: ${LISTMONK_PASSWORD:?required}
+      LISTMONK_app__from_email: ${SMTP_FROM_EMAIL:?required}
+      LISTMONK_db__host: postgres
+      LISTMONK_db__port: 5432
+      LISTMONK_db__user: ${POSTGRES_USER:?required}
+      LISTMONK_db__password: ${POSTGRES_PASSWORD:?required}
+      LISTMONK_db__database: listmonk
+      LISTMONK_db__ssl_mode: disable
+      LISTMONK_smtp__enabled: "true"
+      LISTMONK_smtp__host: ${SMTP_HOST:?required}
+      LISTMONK_smtp__port: ${SMTP_PORT:?required}
+      LISTMONK_smtp__username: ${SMTP_USERNAME:?required}
+      LISTMONK_smtp__password: ${SMTP_PASSWORD:?required}
+      LISTMONK_smtp__tls_enabled: ${SMTP_TLS:?required}
     ports: !override []

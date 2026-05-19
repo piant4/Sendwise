@@ -10,6 +10,7 @@ build/
 .DS_Store
 !templates/dist/
 !templates/dist/*.html
+.venv-test/
 
 # Runtime backups
 backups/

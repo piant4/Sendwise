@@ -69,6 +69,30 @@ export function AdminCampaignDetailView({
   const warningReasons = summary
     ? dedupeReviewReasons(summary.warnings.map(getReadableBackendReason))
     : [];
+  const operationalCounts = summary
+    ? [
+        {
+          label: "Accettate",
+          value: formatCampaignCount(summary.logs.sent),
+          note: "Accettate dal sistema di invio",
+        },
+        {
+          label: "Preparate / in coda",
+          value: formatCampaignCount(summary.logs.queued),
+          note: "Preparate ma non ancora accettate",
+        },
+        {
+          label: "Destinatari idonei",
+          value: formatCampaignCount(summary.recipients.eligible),
+          note: "Base pronta per l'invio",
+        },
+        {
+          label: "Destinatari bloccati",
+          value: formatCampaignCount(summary.recipients.blocked),
+          note: "Esclusi dall'invio reale",
+        },
+      ]
+    : [];
 
   return (
     <div style={{ display: "grid", gap: 20 }}>
@@ -121,9 +145,9 @@ export function AdminCampaignDetailView({
             {
               label: "Destinatari",
               value: summary
-                ? `${formatCampaignCount(summary.recipients.total)} / ${formatCampaignCount(summary.recipients.eligible)} / ${formatCampaignCount(summary.recipients.blocked)}`
+                ? `${formatCampaignCount(summary.recipients.total)} totali · ${formatCampaignCount(summary.recipients.eligible)} idonei · ${formatCampaignCount(summary.recipients.blocked)} bloccati`
                 : contacts
-                  ? `${formatCampaignCount(contacts.total)} / ${formatCampaignCount(contacts.eligible)} / ${formatCampaignCount(contacts.blocked)}`
+                  ? `${formatCampaignCount(contacts.total)} totali · ${formatCampaignCount(contacts.eligible)} idonei · ${formatCampaignCount(contacts.blocked)} bloccati`
                   : "Non disponibili",
             },
             {
@@ -234,6 +258,16 @@ export function AdminCampaignDetailView({
             />
           </div>
 
+          <div className="campaign-detail-metrics" style={{ marginTop: 16 }}>
+            {operationalCounts.map((item) => (
+              <article key={item.label} className="campaign-detail-metrics__item">
+                <span className="campaign-review-overview__label">{item.label}</span>
+                <strong>{item.value}</strong>
+                <p>{item.note}</p>
+              </article>
+            ))}
+          </div>
+
           <dl className="admin-record-grid" style={{ marginTop: 16 }}>
             <div>
               <dt>Invio reale disponibile</dt>
@@ -258,6 +292,10 @@ export function AdminCampaignDetailView({
             <div>
               <dt>Idonei</dt>
               <dd>{formatCampaignCount(summary.recipients.eligible)}</dd>
+            </div>
+            <div>
+              <dt>Preparate / in coda</dt>
+              <dd>{formatCampaignCount(summary.logs.queued)}</dd>
             </div>
             <div>
               <dt>Bloccati</dt>
@@ -296,17 +334,10 @@ export function AdminCampaignDetailView({
           </dl>
 
           <p className="admin-record-row__note" style={{ marginTop: 16 }}>
-            {getProviderEventsLabel(summary.logs)}. {getProviderEventsDetail(summary.logs)}
+            Accettate dal sistema di invio: {formatCampaignCount(summary.logs.sent)}. Questo valore non indica la consegna in inbox.
           </p>
 
-          <div
-            style={{
-              display: "grid",
-              gap: 12,
-              gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))",
-              marginTop: 16,
-            }}
-          >
+          <div className="campaign-provider-metrics" style={{ marginTop: 16 }}>
             {[
               { label: "Consegnate", value: summary.logs.delivered },
               { label: "Aperte", value: summary.logs.opened },
@@ -315,24 +346,23 @@ export function AdminCampaignDetailView({
               { label: "Reclami", value: summary.logs.complained },
               { label: "Disiscrizioni", value: summary.logs.unsubscribed },
             ].map((item) => (
-              <article
-                key={item.label}
-                style={{
-                  background: "rgba(248, 250, 252, 0.94)",
-                  border: "1px solid rgba(226, 232, 240, 0.94)",
-                  borderRadius: 14,
-                  display: "grid",
-                  gap: 6,
-                  padding: 14,
-                }}
-              >
+              <article key={item.label} className="campaign-provider-metrics__item">
                 <span className="admin-record-row__note">{item.label}</span>
                 <strong style={{ color: "#0f172a" }}>
                   {formatProviderMetric(item.value, summary.logs.providerEventsAvailable)}
                 </strong>
+                <span className="admin-record-row__note">
+                  {summary.logs.providerEventsAvailable
+                    ? "Eventi provider processati"
+                    : "Non disponibili finché non arrivano eventi provider"}
+                </span>
               </article>
             ))}
           </div>
+
+          <p className="admin-record-row__note" style={{ marginTop: 12 }}>
+            {getProviderEventsLabel(summary.logs)}. {getProviderEventsDetail(summary.logs)}
+          </p>
 
           {blockingReasons.length > 0 ? (
             <>

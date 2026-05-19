@@ -18,11 +18,14 @@ import type {
 } from "../../types";
 import {
   dedupeReviewReasons,
+  getCampaignDispatchUiMeta,
   getCampaignStatusLabel,
   getCampaignStatusVariant,
   getCampaignReviewStateMeta,
   getCampaignStepLabel,
   getReadableBackendReason,
+  hasDuplicateDispatchBlock,
+  isDuplicateDispatchCode,
 } from "../shared/campaignUi";
 import { Button } from "../ui/button";
 import { StatusBadge } from "../ui/StatusBadge";
@@ -235,30 +238,6 @@ function buildReviewChecklist(state: {
   ];
 }
 
-function getDispatchOutcomeLabel(result: AdminCampaignDispatchResult): string {
-  if (result.status === "accepted" && result.allowed) {
-    return "Invio accettato";
-  }
-
-  if (result.status === "blocked" || result.status === "dispatch_blocked") {
-    return "Invio bloccato";
-  }
-
-  if (result.status === "dispatch_failed") {
-    return "Invio fallito";
-  }
-
-  return "Invio non eseguito";
-}
-
-function isDuplicateDispatchBlock(result: AdminCampaignDispatchResult): boolean {
-  return (
-    result.code === "campaign_already_dispatched" ||
-    result.code === "campaign_send_already_in_progress" ||
-    result.code === "campaign_send_already_accepted"
-  );
-}
-
 export function AdminCampaignReviewPanel({
   campaign,
   summary,
@@ -289,12 +268,28 @@ export function AdminCampaignReviewPanel({
   const warningReasons = dedupeReviewReasons(
     state.warnings.map(getReadableBackendReason),
   );
+  const duplicateDispatchBlocked =
+    hasDuplicateDispatchBlock([...state.blockingErrors, ...state.warnings]) ||
+    (dispatchResult ? isDuplicateDispatchCode(dispatchResult.code) : false);
   const dispatchVisible =
     state.reviewReady || state.status === "ready" || state.status === "running";
-  const dispatchEnabled = state.reviewReady && state.allowedToSend && !isDispatching;
+  const dispatchEnabled =
+    state.reviewReady &&
+    state.allowedToSend &&
+    !duplicateDispatchBlocked &&
+    !isDispatching;
+  const dispatchUiMeta = dispatchResult
+    ? getCampaignDispatchUiMeta({
+        status: dispatchResult.status,
+        allowed: dispatchResult.allowed,
+        code: dispatchResult.code,
+      })
+    : null;
   const dispatchBlockedReason =
     !state.reviewReady
       ? "Completa la review finale prima di aprire il flusso di invio."
+      : duplicateDispatchBlocked
+        ? "Campagna già inviata o in elaborazione."
       : state.allowedToSend
         ? null
         : dedupeReviewReasons(
@@ -447,11 +442,15 @@ export function AdminCampaignReviewPanel({
           <strong>{getCampaignStatusLabel(state.status)}</strong>
         </article>
         <article className="campaign-review-overview__item">
-          <span className="campaign-review-overview__label">Idonei</span>
+          <span className="campaign-review-overview__label">Destinatari idonei</span>
           <strong>{state.eligibleContactCount.toLocaleString("it-IT")}</strong>
         </article>
         <article className="campaign-review-overview__item">
-          <span className="campaign-review-overview__label">Bloccati</span>
+          <span className="campaign-review-overview__label">Preparati / in coda</span>
+          <strong>{summary?.logs.queued.toLocaleString("it-IT") ?? "0"}</strong>
+        </article>
+        <article className="campaign-review-overview__item">
+          <span className="campaign-review-overview__label">Destinatari bloccati</span>
           <strong>{state.blockedContactCount.toLocaleString("it-IT")}</strong>
         </article>
         <article className="campaign-review-overview__item">
@@ -523,14 +522,14 @@ export function AdminCampaignReviewPanel({
       {warningContent}
 
       {dispatchVisible ? (
-        <div className="campaign-callout" style={{ marginTop: 18 }}>
-          <strong style={{ color: "#0f172a" }}>Invio controllato</strong>
+        <div className="campaign-callout campaign-callout--dispatch" style={{ marginTop: 18 }}>
+          <strong style={{ color: "#0f172a" }}>Invio campagna</strong>
           <p className="campaign-field__helper" style={{ margin: 0 }}>
-            L&apos;invio resta separato dalla review e usa sempre i gate backend esistenti.
+            L&apos;invio resta separato dalla review. Lo stato accettato indica solo che il sistema di invio ha preso in carico la campagna.
           </p>
           <p className="admin-record-row__note" style={{ marginTop: 12 }}>
             {dispatchBlockedReason ??
-              "La campagna risulta pronta anche per il gate di invio reale di questo ambiente."}
+              "La campagna risulta pronta per l'avvio dell'invio in questo ambiente."}
           </p>
           <div className="campaign-action-row" style={{ marginTop: 16 }}>
             <Button
@@ -551,6 +550,11 @@ export function AdminCampaignReviewPanel({
               {isDispatching ? "Invio..." : "Invia campagna"}
             </Button>
           </div>
+          {duplicateDispatchBlocked ? (
+            <p className="admin-record-row__note" style={{ marginTop: 12 }}>
+              Non è stato creato un nuovo invio.
+            </p>
+          ) : null}
           {dispatchError ? (
             <p
               className="admin-clients-feedback admin-clients-feedback--error"
@@ -560,34 +564,46 @@ export function AdminCampaignReviewPanel({
               {dispatchError}
             </p>
           ) : null}
-          {dispatchResult ? (
-            <div className="campaign-review-checklist__item" style={{ marginTop: 16 }}>
-              <div className="campaign-review-checklist__header">
-                <strong className="campaign-review-checklist__title">
-                  {getDispatchOutcomeLabel(dispatchResult)}
-                </strong>
-                <span className="campaign-review-checklist__badge">
-                  {dispatchResult.code}
-                </span>
+          {dispatchResult && dispatchUiMeta ? (
+            <div className="campaign-dispatch-result" style={{ marginTop: 16 }}>
+              <div className="campaign-dispatch-result__header">
+                <div style={{ display: "grid", gap: 4 }}>
+                  <strong className="campaign-review-checklist__title">
+                    {dispatchUiMeta.title}
+                  </strong>
+                  <p className="campaign-review-checklist__reason">
+                    {dispatchUiMeta.summary}
+                  </p>
+                </div>
+                <StatusBadge
+                  label={dispatchUiMeta.badgeLabel}
+                  variant={dispatchUiMeta.badgeVariant}
+                />
               </div>
-              <p className="campaign-review-checklist__reason">
-                {getReadableBackendReason(dispatchResult.reason).label}
-              </p>
-              {isDuplicateDispatchBlock(dispatchResult) ? (
-                <p className="campaign-review-checklist__reason">
-                  Non è stato creato un nuovo invio.
-                </p>
-              ) : null}
+              <div className="campaign-dispatch-result__stats">
+                <article className="campaign-dispatch-result__stat">
+                  <span className="campaign-review-overview__label">Accettate</span>
+                  <strong>{dispatchResult.sentOrAcceptedCount.toLocaleString("it-IT")}</strong>
+                  <p>Accettate dal sistema di invio</p>
+                </article>
+                <article className="campaign-dispatch-result__stat">
+                  <span className="campaign-review-overview__label">Fallite</span>
+                  <strong>{dispatchResult.failedCount.toLocaleString("it-IT")}</strong>
+                  <p>Tentativi terminati con errore</p>
+                </article>
+                <article className="campaign-dispatch-result__stat">
+                  <span className="campaign-review-overview__label">Preparate / in coda</span>
+                  <strong>{dispatchResult.queuedCount.toLocaleString("it-IT")}</strong>
+                  <p>Non ancora accettate dal sistema di invio</p>
+                </article>
+                <article className="campaign-dispatch-result__stat">
+                  <span className="campaign-review-overview__label">Destinatari idonei</span>
+                  <strong>{dispatchResult.eligibleContactCount.toLocaleString("it-IT")}</strong>
+                  <p>Base valutata per questo invio</p>
+                </article>
+              </div>
               <p className="campaign-review-checklist__action">
-                <span>Esito backend:</span>{" "}
-                {dispatchResult.providerDispatched
-                  ? "provider coinvolto"
-                  : "nessuna dispatch provider eseguita"}
-                , {dispatchResult.sentOrAcceptedCount.toLocaleString("it-IT")} accettati,
-                {" "}
-                {dispatchResult.failedCount.toLocaleString("it-IT")} falliti,
-                {" "}
-                {dispatchResult.queuedCount.toLocaleString("it-IT")} ancora in coda.
+                <span>Esito operativo:</span> {getReadableBackendReason(dispatchResult.reason).label}
               </p>
             </div>
           ) : null}

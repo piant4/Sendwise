@@ -1,5 +1,36 @@
 # Audit Log
 
+## Milestone 18.6G - Polish Admin Send And Post-Send UI
+
+Date: 2026-05-19
+
+Admin send UI audit summary:
+- Audited the admin campaign review/detail UI surfaces and shared campaign copy helpers without touching backend logic, schema, Docker, env, or live send flows.
+- Replaced raw dispatch and provider-facing admin copy with product copy for started, accepted, failed, duplicate-blocked, and no-new-send outcomes.
+- Refined the review panel with lower-density summary cards, a cleaner post-send result box, and duplicate-send CTA de-emphasis when backend blockers already indicate a previously accepted or in-progress send.
+- Clarified that `sent` means accepted by the sending system, not inbox delivery, and kept delivered/opened/clicked/bounced/complained/unsubscribed cards explicitly unavailable until provider events exist.
+- Kept counts limited to backend-backed values only: accepted, failed, queued/prepared, blocked, and eligible recipients where each value is actually exposed by the current frontend payload.
+
+Checks executed:
+- `git diff --check`
+- `cd frontend && npm run lint`
+- `cd frontend && npm run build`
+- `bash scripts/audit.sh`
+- `bash scripts/smoke_test.sh`
+- touched frontend scan for direct Listmonk/SES calls
+- touched frontend scan for fake delivered/open/click claims
+- changed file scan for env/secrets/config edits
+
+Checks result:
+- `git diff --check`, frontend lint, frontend build, audit script, and smoke test passed.
+- Touched frontend scans found no direct Listmonk/SES action code and no fake delivered/open/click claims.
+- No env, secret, or config edits were introduced.
+
+Scope confirmation:
+- No backend logic, DB/schema/migration, Docker/env/config, or send/dispatch execution changes were made.
+- No direct Listmonk/SES action was performed.
+- No fake delivered/open/click metrics were introduced.
+
 ## Milestone 18.6F - Provider Events Ingestion And Metrics Truth
 
 Date: 2026-05-19

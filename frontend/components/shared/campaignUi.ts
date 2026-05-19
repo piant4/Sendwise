@@ -46,23 +46,23 @@ const BACKEND_REASON_LABELS: Array<[RegExp, string]> = [
   ],
   [
     /^Controlled dispatch requires development or staging runtime with Mailpit-compatible provider configuration\.$/i,
-    "L'invio controllato è consentito solo in runtime development, staging o test supportati.",
+    "L'invio reale non è disponibile in questo ambiente.",
   ],
   [
     /^SES controlled send is not allowed in this runtime environment\.$/i,
-    "Questo ambiente non è autorizzato all'invio SES controllato.",
+    "L'invio reale non è disponibile in questo ambiente.",
   ],
   [
     /^SES SMTP config is incomplete:/i,
-    "La configurazione SMTP SES è incompleta per l'invio controllato.",
+    "La configurazione dell'invio reale non è completa.",
   ],
   [
     /^BACKEND_PUBLIC_URL must be a reachable public URL for SES unsubscribe links\.$/i,
-    "Serve un BACKEND_PUBLIC_URL pubblico e raggiungibile per i link di disiscrizione.",
+    "La configurazione dei link email non è completa.",
   ],
   [
     /^SES controlled send requires content_ready, contacts_ready, and review_ready\.$/i,
-    "Il backend richiede contenuto, destinatari e review pronti prima dell'invio SES.",
+    "Completa contenuto, destinatari e review prima di avviare l'invio.",
   ],
   [
     /^Eligible contact count exceeds REAL_SEND_MAX_RECIPIENTS\.$/i,
@@ -70,11 +70,11 @@ const BACKEND_REASON_LABELS: Array<[RegExp, string]> = [
   ],
   [
     /^REAL_SEND_ALLOWED_RECIPIENTS is required for SES controlled send\.$/i,
-    "Invio limitato agli indirizzi autorizzati in questo ambiente.",
+    "L'invio reale è limitato ai destinatari autorizzati in questo ambiente.",
   ],
   [
     /^SES controlled send includes recipients outside REAL_SEND_ALLOWED_RECIPIENTS\.$/i,
-    "Invio limitato agli indirizzi autorizzati in questo ambiente.",
+    "L'invio reale è limitato ai destinatari autorizzati in questo ambiente.",
   ],
   [
     /^Campaign daily email limit reached for the current pacing window\.$/i,
@@ -86,7 +86,7 @@ const BACKEND_REASON_LABELS: Array<[RegExp, string]> = [
   ],
   [
     /^Prepared SES campaign content does not include a real unsubscribe URL\.$/i,
-    "Il contenuto preparato non include un link di disiscrizione reale.",
+    "Il contenuto email non include ancora un link di disiscrizione valido.",
   ],
   [
     /^Campaign HTML template is not ready for dispatch\.$/i,
@@ -118,6 +118,13 @@ export interface CampaignReviewStateMeta {
   summaryLabel: string;
   helperText: string;
   buttonLabel: string;
+}
+
+export interface CampaignDispatchUiMeta {
+  title: string;
+  summary: string;
+  badgeLabel: string;
+  badgeVariant: StatusBadgeVariant;
 }
 
 export function formatCampaignCount(value: number): string {
@@ -410,11 +417,81 @@ export function getCampaignLogStatItems(
 ): LabelValueItem[] {
   return [
     { label: "In coda", value: formatCampaignCount(logs.queued) },
-    { label: "Invio tentato", value: formatCampaignCount(logs.sent) },
+    {
+      label: "Accettate dal sistema di invio",
+      value: formatCampaignCount(logs.sent),
+    },
     { label: "Bounce", value: formatCampaignCount(logs.bounced) },
     { label: "Disiscritti", value: formatCampaignCount(logs.unsubscribed) },
     { label: "Reclami", value: formatCampaignCount(logs.complained) },
   ];
+}
+
+export function isDuplicateDispatchCode(code: string): boolean {
+  return [
+    "campaign_already_dispatched",
+    "campaign_send_already_in_progress",
+    "campaign_send_already_accepted",
+  ].includes(code);
+}
+
+export function hasDuplicateDispatchBlock(reasons: string[]): boolean {
+  return reasons.some((reason) => {
+    const normalizedReason = reason.trim();
+
+    return (
+      /^Campaign send is already in progress\.$/i.test(normalizedReason) ||
+      /^Campaign already has queued email logs\.$/i.test(normalizedReason) ||
+      /^Campaign was already accepted by the provider\.$/i.test(normalizedReason) ||
+      /^Campaign already has accepted or processed email logs\.$/i.test(normalizedReason) ||
+      /^Campaign already has existing email logs and cannot be retried safely\.$/i.test(
+        normalizedReason,
+      ) ||
+      /^Campaign failed previously, but the recipient set changed and cannot be retried safely\.$/i.test(
+        normalizedReason,
+      )
+    );
+  });
+}
+
+export function getCampaignDispatchUiMeta(args: {
+  status: string;
+  allowed: boolean;
+  code: string;
+}): CampaignDispatchUiMeta {
+  if (isDuplicateDispatchCode(args.code)) {
+    return {
+      title: "Campagna già inviata o in elaborazione",
+      summary: "Non è stato creato un nuovo invio.",
+      badgeLabel: "Nessun nuovo invio",
+      badgeVariant: "warning",
+    };
+  }
+
+  if (args.status === "accepted" && args.allowed) {
+    return {
+      title: "Invio accettato",
+      summary: "Accettate dal sistema di invio. Questo stato non conferma la consegna in inbox.",
+      badgeLabel: "Invio avviato",
+      badgeVariant: "success",
+    };
+  }
+
+  if (args.status === "dispatch_failed") {
+    return {
+      title: "Invio fallito",
+      summary: "L'invio è stato tentato ma non è stato accettato dal sistema di invio.",
+      badgeLabel: "Invio fallito",
+      badgeVariant: "danger",
+    };
+  }
+
+  return {
+    title: "Non è stato creato un nuovo invio",
+    summary: "Il backend ha mantenuto bloccato il flusso di invio per questa campagna.",
+    badgeLabel: "Invio non avviato",
+    badgeVariant: "warning",
+  };
 }
 
 export function getRuntimeSafetyItems(

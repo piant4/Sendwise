@@ -6,6 +6,13 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "Sendwise",
   description: "Campagne email, AI e controllo operativonello stesso workspace.",
+  icons: {
+    icon: [
+      { url: "/favicon.svg", type: "image/svg+xml" },
+      { url: "/icon.svg", type: "image/svg+xml" },
+    ],
+    shortcut: "/favicon.svg",
+  },
 };
 
 export default function RootLayout({

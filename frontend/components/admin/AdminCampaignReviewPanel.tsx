@@ -251,6 +251,14 @@ function getDispatchOutcomeLabel(result: AdminCampaignDispatchResult): string {
   return "Invio non eseguito";
 }
 
+function isDuplicateDispatchBlock(result: AdminCampaignDispatchResult): boolean {
+  return (
+    result.code === "campaign_already_dispatched" ||
+    result.code === "campaign_send_already_in_progress" ||
+    result.code === "campaign_send_already_accepted"
+  );
+}
+
 export function AdminCampaignReviewPanel({
   campaign,
   summary,
@@ -565,6 +573,11 @@ export function AdminCampaignReviewPanel({
               <p className="campaign-review-checklist__reason">
                 {getReadableBackendReason(dispatchResult.reason).label}
               </p>
+              {isDuplicateDispatchBlock(dispatchResult) ? (
+                <p className="campaign-review-checklist__reason">
+                  Non è stato creato un nuovo invio.
+                </p>
+              ) : null}
               <p className="campaign-review-checklist__action">
                 <span>Esito backend:</span>{" "}
                 {dispatchResult.providerDispatched

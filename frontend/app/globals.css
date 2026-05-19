@@ -4525,12 +4525,12 @@ p {
   position: fixed;
   top: 18px;
   transform: translateX(-50%);
-  z-index: 80;
+  z-index: 9999;
 }
 
 .top-notice--success {
-  background: rgba(230, 239, 233, 0.96);
-  border-color: rgba(81, 118, 100, 0.18);
+  background: rgb(255, 255, 255);
+  border-color: rgba(16, 25, 203, 0.18);
   color: var(--sw-primary);
 }
 
@@ -4698,10 +4698,16 @@ p {
   font: inherit;
   min-width: 0;
   outline: none;
-  padding: 0;
 }
 
-.invite-modal__actions,
+.onboarding-form__input {
+  padding: 0px;
+}
+
+.invite-modal__actions {
+  gap: 10px;
+}
+
 .access-state-card__actions {
   gap: 10px;
   grid-template-columns: repeat(2, minmax(0, 1fr));

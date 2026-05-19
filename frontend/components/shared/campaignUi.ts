@@ -92,6 +92,24 @@ const BACKEND_REASON_LABELS: Array<[RegExp, string]> = [
     /^Campaign HTML template is not ready for dispatch\.$/i,
     "Il contenuto HTML preparato dal backend non è ancora pronto all'invio.",
   ],
+  [/^Campaign send is already in progress\.$/i, "Campagna già inviata o in elaborazione."],
+  [/^Campaign already has queued email logs\.$/i, "Campagna già inviata o in elaborazione."],
+  [
+    /^Campaign was already accepted by the provider\.$/i,
+    "Campagna già inviata o in elaborazione.",
+  ],
+  [
+    /^Campaign already has accepted or processed email logs\.$/i,
+    "Campagna già inviata o in elaborazione.",
+  ],
+  [
+    /^Campaign already has existing email logs and cannot be retried safely\.$/i,
+    "Campagna già inviata o in elaborazione.",
+  ],
+  [
+    /^Campaign failed previously, but the recipient set changed and cannot be retried safely\.$/i,
+    "Campagna già inviata o in elaborazione.",
+  ],
 ];
 
 export interface CampaignReviewStateMeta {

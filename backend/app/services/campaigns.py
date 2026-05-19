@@ -105,6 +105,19 @@ TEMPLATE_PLACEHOLDER_PATTERN = re.compile(r"{{\s*([A-Za-z0-9_]+)\s*}}")
 DEFAULT_CAMPAIGN_PERIOD_EMAIL_LIMIT = 1000
 DEFAULT_CAMPAIGN_DAILY_EMAIL_LIMIT = 50
 CAMPAIGN_PERIOD_WINDOW = timedelta(days=30)
+IN_PROGRESS_LOG_STATUSES = {"queued"}
+ACCEPTED_OR_COMPLETED_LOG_STATUSES = {
+    "sent",
+    "dispatched",
+    "delivered",
+    "opened",
+    "clicked",
+    "bounced",
+    "complained",
+    "spam",
+    "unsubscribed",
+}
+RETRYABLE_FAILED_LOG_STATUSES = {"failed"}
 
 
 def _prefer_provider_metric(
@@ -202,6 +215,14 @@ class CampaignEvaluation:
 class CampaignLimitContext:
     record: CampaignSendingLimitRecord
     usage: CampaignLimitUsage
+
+
+@dataclass(frozen=True)
+class CampaignDispatchDuplicateGuard:
+    blocked: bool
+    code: str | None = None
+    reason: str | None = None
+    retryable_log_ids_by_contact: dict[str, str] | None = None
 
 
 @dataclass(frozen=True)
@@ -1099,10 +1120,23 @@ class AdminCampaignService:
         )
         contacts_ready = contact_summary.contacts_ready
         active_campaign_count = self._count_active_campaigns(client.id)
+        duplicate_guard = self._evaluate_duplicate_dispatch_guard(
+            campaign=self._to_client_campaign_record(campaign),
+            contacts=contacts,
+            email_log_repository=self.email_log_repository,
+        )
         guard_campaign = self._build_guard_campaign(
             campaign=campaign,
             allow_draft_transition=allow_draft_transition,
         )
+        if (
+            campaign.status.lower() == CampaignStatus.failed.value
+            and not duplicate_guard.blocked
+            and duplicate_guard.retryable_log_ids_by_contact is not None
+        ):
+            guard_campaign = guard_campaign.model_copy(
+                update={"status": CampaignStatus.ready.value}
+            )
         guard_result = self.guard.authorize_campaign_dispatch(
             email_sending_enabled=True,
             client=client,
@@ -1113,7 +1147,6 @@ class AdminCampaignService:
             active_campaign_count=active_campaign_count,
             campaign_limit_usage=limit_context.usage,
         )
-
         blocking_errors: list[str] = []
         if not content_ready:
             blocking_errors.append("Campaign content is not ready.")
@@ -1121,6 +1154,12 @@ class AdminCampaignService:
             blocking_errors.append("Campaign has no associated contacts.")
         if not guard_result.allowed and guard_result.reason not in blocking_errors:
             blocking_errors.append(guard_result.reason)
+        if (
+            duplicate_guard.blocked
+            and duplicate_guard.reason is not None
+            and duplicate_guard.reason not in blocking_errors
+        ):
+            blocking_errors.append(duplicate_guard.reason)
 
         warnings: list[str] = []
         if not self.settings.email_sending_enabled:
@@ -1128,7 +1167,12 @@ class AdminCampaignService:
                 'EMAIL_SENDING_ENABLED is not exactly "true"; real dispatch is disabled.'
             )
 
-        can_send_when_enabled = content_ready and contacts_ready and guard_result.allowed
+        can_send_when_enabled = (
+            content_ready
+            and contacts_ready
+            and guard_result.allowed
+            and not duplicate_guard.blocked
+        )
         return CampaignEvaluation(
             content_ready=content_ready,
             contacts_ready=contacts_ready,
@@ -1435,6 +1479,129 @@ class CampaignDispatchService:
     email_log_repository: EmailLogRepository | None = None
     campaign_preparation_service: Any | None = None
 
+    def _evaluate_duplicate_dispatch_guard(
+        self,
+        *,
+        campaign: ClientCampaignRecord,
+        contacts: list[ContactRecord],
+        email_log_repository: EmailLogRepository,
+    ) -> CampaignDispatchDuplicateGuard:
+        campaign_status = campaign.status.strip().lower()
+        if campaign_status == CampaignStatus.running.value:
+            return CampaignDispatchDuplicateGuard(
+                blocked=True,
+                code="campaign_send_already_in_progress",
+                reason="Campaign send is already in progress.",
+            )
+        if campaign_status == CampaignStatus.completed.value:
+            return CampaignDispatchDuplicateGuard(
+                blocked=True,
+                code="campaign_send_already_accepted",
+                reason="Campaign was already accepted by the provider.",
+            )
+
+        status_counts = email_log_repository.get_campaign_status_counts(
+            client_id=campaign.client_id,
+            campaign_id=campaign.id,
+        )
+        real_status_counts = {
+            status: count
+            for status, count in status_counts.items()
+            if status != "simulated" and count > 0
+        }
+        if not real_status_counts:
+            return CampaignDispatchDuplicateGuard(blocked=False)
+
+        if any(
+            status in IN_PROGRESS_LOG_STATUSES for status in real_status_counts
+        ):
+            return CampaignDispatchDuplicateGuard(
+                blocked=True,
+                code="campaign_send_already_in_progress",
+                reason="Campaign already has queued email logs.",
+            )
+
+        if any(
+            status in ACCEPTED_OR_COMPLETED_LOG_STATUSES
+            for status in real_status_counts
+        ):
+            return CampaignDispatchDuplicateGuard(
+                blocked=True,
+                code="campaign_send_already_accepted",
+                reason="Campaign already has accepted or processed email logs.",
+            )
+
+        latest_logs = email_log_repository.list_latest_for_campaign(
+            client_id=campaign.client_id,
+            campaign_id=campaign.id,
+        )
+        real_log_total = sum(real_status_counts.values())
+        if (
+            not latest_logs
+            or len(latest_logs) != real_log_total
+            or any(log.status not in RETRYABLE_FAILED_LOG_STATUSES for log in latest_logs)
+        ):
+            return CampaignDispatchDuplicateGuard(
+                blocked=True,
+                code="campaign_already_dispatched",
+                reason="Campaign already has existing email logs and cannot be retried safely.",
+            )
+
+        current_contact_ids = {contact.id for contact in contacts}
+        logged_contact_ids = {str(log.contact_id) for log in latest_logs if log.contact_id}
+        if logged_contact_ids != current_contact_ids:
+            return CampaignDispatchDuplicateGuard(
+                blocked=True,
+                code="campaign_already_dispatched",
+                reason="Campaign failed previously, but the recipient set changed and cannot be retried safely.",
+            )
+
+        return CampaignDispatchDuplicateGuard(
+            blocked=False,
+            retryable_log_ids_by_contact={
+                str(log.contact_id): log.id
+                for log in latest_logs
+                if log.contact_id is not None
+            },
+        )
+
+    def _persist_dispatch_logs(
+        self,
+        *,
+        email_log_repository: EmailLogRepository,
+        client_id: str,
+        campaign_id: str,
+        contacts: list[ContactRecord],
+        status: str,
+        body: str,
+        retryable_log_ids_by_contact: dict[str, str] | None,
+    ) -> tuple[list[Any], int, int]:
+        logs: list[Any] = []
+        created_count = 0
+        updated_count = 0
+        retryable_map = retryable_log_ids_by_contact or {}
+        for contact in contacts:
+            existing_log_id = retryable_map.get(contact.id)
+            if existing_log_id is not None:
+                updated = email_log_repository.update_status(
+                    email_log_id=existing_log_id,
+                    status=status,
+                )
+                if updated is not None:
+                    logs.append(updated)
+                    updated_count += 1
+                    continue
+            created = email_log_repository.create_email_log(
+                client_id=client_id,
+                campaign_id=campaign_id,
+                contact_id=contact.id,
+                status=status,
+                body=body,
+            )
+            logs.append(created)
+            created_count += 1
+        return logs, created_count, updated_count
+
     def send_campaign(
         self,
         campaign_id: str,
@@ -1466,192 +1633,142 @@ class CampaignDispatchService:
                 code="dispatch_persistence_unavailable",
             )
 
-        campaign = self._get_campaign_for_dispatch(
-            campaign_id=campaign_id,
-            current_user=current_user,
-            client_repository=client_repository,
-        )
-        client = self._get_client_for_dispatch(
-            campaign=campaign,
-            client_repository=client_repository,
-        )
-        contacts = []
-        suppressed_emails: set[str] = set()
-        active_campaign_count: int | None = None
-        slot = None
-        limit_usage: CampaignLimitUsage | None = None
-        if client is not None and campaign is not None:
-            contacts = contact_repository.list_campaign_contacts(
-                client_id=client.id,
-                campaign_id=campaign.id,
-            )
-            suppressed_emails = suppression_repository.list_suppressed_emails_for_campaign(
-                client_id=client.id,
-                emails=[contact.email for contact in contacts],
-            )
-            active_campaign_count = self._count_active_campaigns_for_client(
-                client_id=client.id,
+        with email_log_repository.campaign_dispatch_lock(campaign_id=campaign_id):
+            campaign = self._get_campaign_for_dispatch(
+                campaign_id=campaign_id,
+                current_user=current_user,
                 client_repository=client_repository,
             )
-            if (
-                campaign.campaign_slot_id
-                and self.campaign_slot_repository is not None
-            ):
-                slot = self.campaign_slot_repository.get_by_id(
-                    client_id=client.id,
-                    slot_id=campaign.campaign_slot_id,
-                )
-            limit_usage = self._build_dispatch_limit_usage(
+            client = self._get_client_for_dispatch(
                 campaign=campaign,
-                client_id=client.id,
-                campaign_limit_repository=campaign_limit_repository,
-                email_log_repository=email_log_repository,
+                client_repository=client_repository,
             )
-
-        guard_result = self.guard.authorize_campaign_dispatch(
-            email_sending_enabled=self.settings.email_sending_enabled,
-            client=client,
-            campaign=campaign,
-            slot=slot,
-            contacts=contacts,
-            suppressed_emails=suppressed_emails,
-            active_campaign_count=active_campaign_count,
-            campaign_limit_usage=limit_usage,
-        )
-        if guard_result.decision != SendDecision.AUTHORIZED:
-            return self._blocked_response(
-                campaign_id=campaign_id,
-                guard_result=guard_result,
-                blocked_send_repository=blocked_send_repository,
-            )
-
-        runtime_provider = self._resolve_controlled_provider()
-        if runtime_provider is None:
-            return self._diagnostic_response(
-                campaign_id=campaign_id,
-                decision=guard_result,
-                reason=(
-                    "Controlled dispatch requires development or staging runtime "
-                    "with Mailpit-compatible provider configuration."
-                ),
-                client_id=campaign.client_id,
-                code="controlled_runtime_required",
-            )
-
-        safety_result = self._evaluate_real_send_safety(
-            provider=runtime_provider,
-            campaign=campaign,
-            contacts=contacts,
-            guard_result=guard_result,
-            preparation=None,
-        )
-        if not safety_result["safety_passed"]:
-            return self._safety_failed_response(
-                campaign_id=campaign_id,
-                client_id=campaign.client_id,
-                guard_result=guard_result,
-                safety_result=safety_result,
-            )
-
-        if self.campaign_preparation_service is None:
-            return self._diagnostic_response(
-                campaign_id=campaign_id,
-                decision=guard_result,
-                reason="Campaign preparation service is not configured.",
-                client_id=campaign.client_id,
-                code="campaign_preparation_unavailable",
-            )
-
-        try:
-            preparation = self.campaign_preparation_service.prepare_campaign(
-                campaign_id,
-                current_user,
-            )
-        except ListmonkError as error:
-            return self._failed_response(
-                campaign_id=campaign_id,
-                client_id=campaign.client_id,
-                guard_result=guard_result,
-                reason=str(error),
-                provider=runtime_provider,
-                stage="preparation",
-                dispatch_attempted=False,
-            )
-
-        if preparation.get("status") != "synced":
-            return self._diagnostic_response(
-                campaign_id=campaign_id,
-                decision=guard_result,
-                reason=str(
-                    preparation.get(
-                        "reason",
-                        "Campaign listmonk preparation failed.",
+            contacts = []
+            suppressed_emails: set[str] = set()
+            active_campaign_count: int | None = None
+            slot = None
+            limit_usage: CampaignLimitUsage | None = None
+            if client is not None and campaign is not None:
+                contacts = contact_repository.list_campaign_contacts(
+                    client_id=client.id,
+                    campaign_id=campaign.id,
+                )
+                suppressed_emails = suppression_repository.list_suppressed_emails_for_campaign(
+                    client_id=client.id,
+                    emails=[contact.email for contact in contacts],
+                )
+                active_campaign_count = self._count_active_campaigns_for_client(
+                    client_id=client.id,
+                    client_repository=client_repository,
+                )
+                if (
+                    campaign.campaign_slot_id
+                    and self.campaign_slot_repository is not None
+                ):
+                    slot = self.campaign_slot_repository.get_by_id(
+                        client_id=client.id,
+                        slot_id=campaign.campaign_slot_id,
                     )
-                ),
-                client_id=campaign.client_id,
-                code="campaign_preparation_failed",
-                preparation=preparation,
+                limit_usage = self._build_dispatch_limit_usage(
+                    campaign=campaign,
+                    client_id=client.id,
+                    campaign_limit_repository=campaign_limit_repository,
+                    email_log_repository=email_log_repository,
+                )
+
+            duplicate_guard = self._evaluate_duplicate_dispatch_guard(
+                campaign=campaign,
+                contacts=contacts,
+                email_log_repository=email_log_repository,
+            ) if campaign is not None else CampaignDispatchDuplicateGuard(blocked=False)
+
+            guard_campaign = campaign
+            if (
+                campaign is not None
+                and campaign.status.lower() == CampaignStatus.failed.value
+                and not duplicate_guard.blocked
+                and duplicate_guard.retryable_log_ids_by_contact is not None
+            ):
+                guard_campaign = campaign.model_copy(
+                    update={"status": CampaignStatus.ready.value}
+                )
+
+            guard_result = self.guard.authorize_campaign_dispatch(
+                email_sending_enabled=self.settings.email_sending_enabled,
+                client=client,
+                campaign=guard_campaign,
+                slot=slot,
+                contacts=contacts,
+                suppressed_emails=suppressed_emails,
+                active_campaign_count=active_campaign_count,
+                campaign_limit_usage=limit_usage,
             )
+            if guard_result.decision != SendDecision.AUTHORIZED:
+                return self._blocked_response(
+                    campaign_id=campaign_id,
+                    guard_result=guard_result,
+                    blocked_send_repository=blocked_send_repository,
+                )
 
-        content = preparation.get("content")
-        if not isinstance(content, dict) or not content.get("content_ready"):
-            reason = "Campaign HTML template is not ready for dispatch."
-            if isinstance(content, dict):
-                reason = str(content.get("reason", reason))
-            return self._diagnostic_response(
-                campaign_id=campaign_id,
-                decision=guard_result,
-                reason=reason,
-                client_id=campaign.client_id,
-                code="content_not_ready",
-                content_ready=False,
-                preparation=preparation,
-            )
-
-        safety_result = self._evaluate_real_send_safety(
-            provider=runtime_provider,
-            campaign=campaign,
-            contacts=contacts,
-            guard_result=guard_result,
-            preparation=preparation,
-        )
-        if not safety_result["safety_passed"]:
-            return self._safety_failed_response(
-                campaign_id=campaign_id,
-                client_id=campaign.client_id,
-                guard_result=guard_result,
-                safety_result=safety_result,
-                preparation=preparation,
-                content_ready=True,
-            )
-
-        mapping = mapping_service.get_mapping(
-            client_id=campaign.client_id,
-            entity_type=ENTITY_TYPE_CAMPAIGN,
-            entity_id=campaign.id,
-            listmonk_type=LISTMONK_TYPE_CAMPAIGN,
-        )
-        mapping_created = bool(
-            preparation
-            and isinstance(preparation.get("listmonk_mapping"), dict)
-            and preparation["listmonk_mapping"].get("created")
-        )
-
-        if mapping is None:
-            create_payload = self._build_listmonk_campaign_payload(campaign)
-            if create_payload is None:
+            if campaign is None or client is None:
                 return self._diagnostic_response(
                     campaign_id=campaign_id,
                     decision=guard_result,
-                    reason="Campaign is missing required Business DB data for listmonk mapping.",
+                    reason="Campaign not found.",
+                    code="campaign_not_found",
+                )
+            if duplicate_guard.blocked:
+                return self._diagnostic_response(
+                    campaign_id=campaign_id,
+                    decision=guard_result,
+                    reason=str(duplicate_guard.reason),
                     client_id=campaign.client_id,
-                    code="listmonk_campaign_payload_invalid",
-                    preparation=preparation,
-                    content_ready=True,
+                    code=str(duplicate_guard.code),
+                    content_ready=campaign.content_ready,
+                )
+
+            runtime_provider = self._resolve_controlled_provider()
+            if runtime_provider is None:
+                return self._diagnostic_response(
+                    campaign_id=campaign_id,
+                    decision=guard_result,
+                    reason=(
+                        "Controlled dispatch requires development or staging runtime "
+                        "with Mailpit-compatible provider configuration."
+                    ),
+                    client_id=campaign.client_id,
+                    code="controlled_runtime_required",
+                )
+
+            safety_result = self._evaluate_real_send_safety(
+                provider=runtime_provider,
+                campaign=campaign,
+                contacts=contacts,
+                guard_result=guard_result,
+                preparation=None,
+            )
+            if not safety_result["safety_passed"]:
+                return self._safety_failed_response(
+                    campaign_id=campaign_id,
+                    client_id=campaign.client_id,
+                    guard_result=guard_result,
+                    safety_result=safety_result,
+                )
+
+            if self.campaign_preparation_service is None:
+                return self._diagnostic_response(
+                    campaign_id=campaign_id,
+                    decision=guard_result,
+                    reason="Campaign preparation service is not configured.",
+                    client_id=campaign.client_id,
+                    code="campaign_preparation_unavailable",
                 )
 
             try:
-                listmonk_campaign = self.listmonk_client.create_campaign(create_payload)
+                preparation = self.campaign_preparation_service.prepare_campaign(
+                    campaign_id,
+                    current_user,
+                )
             except ListmonkError as error:
                 return self._failed_response(
                     campaign_id=campaign_id,
@@ -1659,38 +1776,194 @@ class CampaignDispatchService:
                     guard_result=guard_result,
                     reason=str(error),
                     provider=runtime_provider,
-                    stage="campaign_create",
+                    stage="preparation",
                     dispatch_attempted=False,
-                    preparation=preparation,
-                    content_ready=True,
                 )
-            listmonk_campaign_id = extract_listmonk_id(listmonk_campaign)
-            try:
-                mapping = mapping_service.ensure_campaign_mapping(
-                    client_id=campaign.client_id,
-                    campaign_id=campaign.id,
-                    listmonk_campaign_id=listmonk_campaign_id,
-                )
-            except ListmonkMappingConflictError as error:
+
+            if preparation.get("status") != "synced":
                 return self._diagnostic_response(
                     campaign_id=campaign_id,
                     decision=guard_result,
-                    reason=str(error),
+                    reason=str(
+                        preparation.get(
+                            "reason",
+                            "Campaign listmonk preparation failed.",
+                        )
+                    ),
                     client_id=campaign.client_id,
-                    code="listmonk_mapping_conflict",
+                    code="campaign_preparation_failed",
                     preparation=preparation,
                 )
-            mapping_created = True
 
-        try:
-            listmonk_result = self.listmonk_client.trigger_campaign_send(mapping.listmonk_id)
-        except ListmonkError as error:
-            failed_logs = email_log_repository.create_campaign_logs(
+            content = preparation.get("content")
+            if not isinstance(content, dict) or not content.get("content_ready"):
+                reason = "Campaign HTML template is not ready for dispatch."
+                if isinstance(content, dict):
+                    reason = str(content.get("reason", reason))
+                return self._diagnostic_response(
+                    campaign_id=campaign_id,
+                    decision=guard_result,
+                    reason=reason,
+                    client_id=campaign.client_id,
+                    code="content_not_ready",
+                    content_ready=False,
+                    preparation=preparation,
+                )
+
+            safety_result = self._evaluate_real_send_safety(
+                provider=runtime_provider,
+                campaign=campaign,
+                contacts=contacts,
+                guard_result=guard_result,
+                preparation=preparation,
+            )
+            if not safety_result["safety_passed"]:
+                return self._safety_failed_response(
+                    campaign_id=campaign_id,
+                    client_id=campaign.client_id,
+                    guard_result=guard_result,
+                    safety_result=safety_result,
+                    preparation=preparation,
+                    content_ready=True,
+                )
+
+            mapping = mapping_service.get_mapping(
+                client_id=campaign.client_id,
+                entity_type=ENTITY_TYPE_CAMPAIGN,
+                entity_id=campaign.id,
+                listmonk_type=LISTMONK_TYPE_CAMPAIGN,
+            )
+            mapping_created = bool(
+                preparation
+                and isinstance(preparation.get("listmonk_mapping"), dict)
+                and preparation["listmonk_mapping"].get("created")
+            )
+
+            if mapping is None:
+                create_payload = self._build_listmonk_campaign_payload(campaign)
+                if create_payload is None:
+                    return self._diagnostic_response(
+                        campaign_id=campaign_id,
+                        decision=guard_result,
+                        reason="Campaign is missing required Business DB data for listmonk mapping.",
+                        client_id=campaign.client_id,
+                        code="listmonk_campaign_payload_invalid",
+                        preparation=preparation,
+                        content_ready=True,
+                    )
+
+                try:
+                    listmonk_campaign = self.listmonk_client.create_campaign(create_payload)
+                except ListmonkError as error:
+                    return self._failed_response(
+                        campaign_id=campaign_id,
+                        client_id=campaign.client_id,
+                        guard_result=guard_result,
+                        reason=str(error),
+                        provider=runtime_provider,
+                        stage="campaign_create",
+                        dispatch_attempted=False,
+                        preparation=preparation,
+                        content_ready=True,
+                    )
+                listmonk_campaign_id = extract_listmonk_id(listmonk_campaign)
+                try:
+                    mapping = mapping_service.ensure_campaign_mapping(
+                        client_id=campaign.client_id,
+                        campaign_id=campaign.id,
+                        listmonk_campaign_id=listmonk_campaign_id,
+                    )
+                except ListmonkMappingConflictError as error:
+                    return self._diagnostic_response(
+                        campaign_id=campaign_id,
+                        decision=guard_result,
+                        reason=str(error),
+                        client_id=campaign.client_id,
+                        code="listmonk_mapping_conflict",
+                        preparation=preparation,
+                    )
+                mapping_created = True
+
+            try:
+                listmonk_result = self.listmonk_client.trigger_campaign_send(mapping.listmonk_id)
+            except ListmonkError as error:
+                failed_logs, created_count, updated_count = self._persist_dispatch_logs(
+                    email_log_repository=email_log_repository,
+                    client_id=campaign.client_id,
+                    campaign_id=campaign.id,
+                    contacts=contacts,
+                    status="failed",
+                    body=str(content.get("body") or ""),
+                    retryable_log_ids_by_contact=duplicate_guard.retryable_log_ids_by_contact,
+                )
+                limit_usage = self._build_dispatch_limit_usage(
+                    campaign=campaign,
+                    client_id=campaign.client_id,
+                    campaign_limit_repository=campaign_limit_repository,
+                    email_log_repository=email_log_repository,
+                )
+                return self._failed_response(
+                    campaign_id=campaign_id,
+                    client_id=campaign.client_id,
+                    guard_result=guard_result,
+                    reason=str(error),
+                    provider=runtime_provider,
+                    stage="dispatch",
+                    dispatch_attempted=True,
+                    preparation=preparation,
+                    content_ready=True,
+                    provider_status="dispatch_failed",
+                    queued_count=0,
+                    sent_or_accepted_count=0,
+                    failed_count=len(failed_logs),
+                    email_logs_created=created_count,
+                    email_logs_updated=updated_count,
+                    limit_usage=limit_usage,
+                )
+
+            log_status, provider_status = self._classify_listmonk_dispatch_result(
+                listmonk_result
+            )
+            logs, created_count, updated_count = self._persist_dispatch_logs(
+                email_log_repository=email_log_repository,
                 client_id=campaign.client_id,
                 campaign_id=campaign.id,
-                contact_ids=[contact.id for contact in contacts],
-                status="failed",
+                contacts=contacts,
+                status=log_status,
                 body=str(content.get("body") or ""),
+                retryable_log_ids_by_contact=duplicate_guard.retryable_log_ids_by_contact,
+            )
+            if log_status == "failed":
+                limit_usage = self._build_dispatch_limit_usage(
+                    campaign=campaign,
+                    client_id=campaign.client_id,
+                    campaign_limit_repository=campaign_limit_repository,
+                    email_log_repository=email_log_repository,
+                )
+                return self._failed_response(
+                    campaign_id=campaign_id,
+                    client_id=campaign.client_id,
+                    guard_result=guard_result,
+                    reason=self._extract_listmonk_failure_reason(listmonk_result),
+                    provider=runtime_provider,
+                    stage="dispatch",
+                    dispatch_attempted=True,
+                    preparation=preparation,
+                    content_ready=True,
+                    provider_status=provider_status,
+                    queued_count=0,
+                    sent_or_accepted_count=0,
+                    failed_count=len(logs),
+                    email_logs_created=created_count,
+                    email_logs_updated=updated_count,
+                    limit_usage=limit_usage,
+                )
+
+            campaign = self._mark_campaign_running(
+                campaign=campaign,
+                client_repository=client_repository,
+                campaign_limit_repository=campaign_limit_repository,
+                email_log_repository=email_log_repository,
             )
             limit_usage = self._build_dispatch_limit_usage(
                 campaign=campaign,
@@ -1698,127 +1971,60 @@ class CampaignDispatchService:
                 campaign_limit_repository=campaign_limit_repository,
                 email_log_repository=email_log_repository,
             )
-            return self._failed_response(
-                campaign_id=campaign_id,
-                client_id=campaign.client_id,
-                guard_result=guard_result,
-                reason=str(error),
-                provider=runtime_provider,
-                stage="dispatch",
-                dispatch_attempted=True,
-                preparation=preparation,
-                content_ready=True,
-                provider_status="dispatch_failed",
-                queued_count=0,
-                sent_or_accepted_count=0,
-                failed_count=len(failed_logs),
-                email_logs_created=len(failed_logs),
-                email_logs_updated=0,
-                limit_usage=limit_usage,
-            )
-
-        log_status, provider_status = self._classify_listmonk_dispatch_result(
-            listmonk_result
-        )
-        logs = email_log_repository.create_campaign_logs(
-            client_id=campaign.client_id,
-            campaign_id=campaign.id,
-            contact_ids=[contact.id for contact in contacts],
-            status=log_status,
-            body=str(content.get("body") or ""),
-        )
-        if log_status == "failed":
-            limit_usage = self._build_dispatch_limit_usage(
-                campaign=campaign,
-                client_id=campaign.client_id,
-                campaign_limit_repository=campaign_limit_repository,
-                email_log_repository=email_log_repository,
-            )
-            return self._failed_response(
-                campaign_id=campaign_id,
-                client_id=campaign.client_id,
-                guard_result=guard_result,
-                reason=self._extract_listmonk_failure_reason(listmonk_result),
-                provider=runtime_provider,
-                stage="dispatch",
-                dispatch_attempted=True,
-                preparation=preparation,
-                content_ready=True,
-                provider_status=provider_status,
-                queued_count=0,
-                sent_or_accepted_count=0,
-                failed_count=len(logs),
-                email_logs_created=len(logs),
-                email_logs_updated=0,
-                limit_usage=limit_usage,
-            )
-
-        campaign = self._mark_campaign_running(
-            campaign=campaign,
-            client_repository=client_repository,
-            campaign_limit_repository=campaign_limit_repository,
-            email_log_repository=email_log_repository,
-        )
-        limit_usage = self._build_dispatch_limit_usage(
-            campaign=campaign,
-            client_id=campaign.client_id,
-            campaign_limit_repository=campaign_limit_repository,
-            email_log_repository=email_log_repository,
-        )
-        response = {
-            "status": "accepted",
-            "mode": "controlled_dev",
-            "provider": runtime_provider,
-            "provider_status": provider_status,
-            "campaign_id": campaign_id,
-            "client_id": campaign.client_id,
-            "allowed": True,
-            "decision": guard_result.decision,
-            "reason": guard_result.reason,
-            "code": guard_result.code,
-            "severity": guard_result.severity,
-            "safety_checked": True,
-            "safety_passed": True,
-            "allowed_recipients_checked": safety_result["allowed_recipients_checked"],
-            "eligible_contact_count": guard_result.eligible_contact_count,
-            "max_real_send_recipients": safety_result["max_real_send_recipients"],
-            "blocked_contact_count": guard_result.blocked_contact_count,
-            "blocked_reasons": dict(guard_result.blocked_reasons or {}),
-            "diagnostic": guard_result.diagnostic,
-            "limit_source": guard_result.limit_source,
-            "limit_value": guard_result.limit_value,
-            "daily_limit": limit_usage.daily_limit if limit_usage else None,
-            "daily_used": limit_usage.daily_used if limit_usage else 0,
-            "daily_remaining": limit_usage.daily_remaining if limit_usage else None,
-            "period_limit": limit_usage.period_limit if limit_usage else None,
-            "period_used": limit_usage.period_used if limit_usage else 0,
-            "period_remaining": limit_usage.period_remaining if limit_usage else None,
-            "period_started_at": limit_usage.period_started_at if limit_usage else None,
-            "period_ends_at": limit_usage.period_ends_at if limit_usage else None,
-            "guard": guard_result.to_dict(),
-            "dispatch_attempted": True,
-            "real_send_attempted": True,
-            "listmonk_prepared": True,
-            "listmonk_dispatched": True,
-            "content_ready": True,
-            "unsubscribe_ready": safety_result["unsubscribe_ready"],
-            "provider_events_ready": True,
-            "email_logs_created": len(logs),
-            "email_logs_updated": 0,
-            "queued_count": 0,
-            "sent_or_accepted_count": len(logs),
-            "failed_count": 0,
-            "listmonk_mapping": {
-                "entity_type": mapping.entity_type,
-                "entity_id": mapping.entity_id,
-                "listmonk_type": mapping.listmonk_type,
-                "listmonk_id": mapping.listmonk_id,
-                "created": mapping_created,
-            },
-            "listmonk": listmonk_result,
-        }
-        response["preparation"] = preparation
-        return response
+            response = {
+                "status": "accepted",
+                "mode": "controlled_dev",
+                "provider": runtime_provider,
+                "provider_status": provider_status,
+                "campaign_id": campaign_id,
+                "client_id": campaign.client_id,
+                "allowed": True,
+                "decision": guard_result.decision,
+                "reason": guard_result.reason,
+                "code": guard_result.code,
+                "severity": guard_result.severity,
+                "safety_checked": True,
+                "safety_passed": True,
+                "allowed_recipients_checked": safety_result["allowed_recipients_checked"],
+                "eligible_contact_count": guard_result.eligible_contact_count,
+                "max_real_send_recipients": safety_result["max_real_send_recipients"],
+                "blocked_contact_count": guard_result.blocked_contact_count,
+                "blocked_reasons": dict(guard_result.blocked_reasons or {}),
+                "diagnostic": guard_result.diagnostic,
+                "limit_source": guard_result.limit_source,
+                "limit_value": guard_result.limit_value,
+                "daily_limit": limit_usage.daily_limit if limit_usage else None,
+                "daily_used": limit_usage.daily_used if limit_usage else 0,
+                "daily_remaining": limit_usage.daily_remaining if limit_usage else None,
+                "period_limit": limit_usage.period_limit if limit_usage else None,
+                "period_used": limit_usage.period_used if limit_usage else 0,
+                "period_remaining": limit_usage.period_remaining if limit_usage else None,
+                "period_started_at": limit_usage.period_started_at if limit_usage else None,
+                "period_ends_at": limit_usage.period_ends_at if limit_usage else None,
+                "guard": guard_result.to_dict(),
+                "dispatch_attempted": True,
+                "real_send_attempted": True,
+                "listmonk_prepared": True,
+                "listmonk_dispatched": True,
+                "content_ready": True,
+                "unsubscribe_ready": safety_result["unsubscribe_ready"],
+                "provider_events_ready": True,
+                "email_logs_created": created_count,
+                "email_logs_updated": updated_count,
+                "queued_count": 0,
+                "sent_or_accepted_count": len(logs),
+                "failed_count": 0,
+                "listmonk_mapping": {
+                    "entity_type": mapping.entity_type,
+                    "entity_id": mapping.entity_id,
+                    "listmonk_type": mapping.listmonk_type,
+                    "listmonk_id": mapping.listmonk_id,
+                    "created": mapping_created,
+                },
+                "listmonk": listmonk_result,
+            }
+            response["preparation"] = preparation
+            return response
 
     def _classify_listmonk_dispatch_result(
         self,

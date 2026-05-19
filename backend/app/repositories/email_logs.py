@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+from contextlib import contextmanager
 from datetime import datetime, timezone
+import hashlib
+import threading
 from typing import Optional
 from uuid import uuid4
 
@@ -22,6 +25,14 @@ class EmailLogRecord(BaseModel):
 
 
 class EmailLogRepository:
+    @contextmanager
+    def campaign_dispatch_lock(
+        self,
+        *,
+        campaign_id: str,
+    ):
+        raise NotImplementedError
+
     def get_by_id(self, email_log_id: str) -> Optional[EmailLogRecord]:
         raise NotImplementedError
 
@@ -145,6 +156,14 @@ class EmailLogRepository:
     ) -> Optional[EmailLogRecord]:
         raise NotImplementedError
 
+    def list_latest_for_campaign(
+        self,
+        *,
+        client_id: str,
+        campaign_id: str,
+    ) -> list[EmailLogRecord]:
+        raise NotImplementedError
+
     def update_status(
         self,
         *,
@@ -157,6 +176,26 @@ class EmailLogRepository:
 class PostgresEmailLogRepository(EmailLogRepository):
     def __init__(self, settings: Settings) -> None:
         self._settings = settings
+
+    @contextmanager
+    def campaign_dispatch_lock(
+        self,
+        *,
+        campaign_id: str,
+    ):
+        lock_key = int.from_bytes(
+            hashlib.sha256(campaign_id.encode("utf-8")).digest()[:8],
+            byteorder="big",
+            signed=True,
+        )
+        with postgres_connection(self._settings) as connection:
+            with connection.cursor() as cursor:
+                cursor.execute("SELECT pg_advisory_lock(%s)", (lock_key,))
+            try:
+                yield
+            finally:
+                with connection.cursor() as cursor:
+                    cursor.execute("SELECT pg_advisory_unlock(%s)", (lock_key,))
 
     def get_by_id(self, email_log_id: str) -> Optional[EmailLogRecord]:
         query = """
@@ -402,6 +441,37 @@ class PostgresEmailLogRepository(EmailLogRepository):
 
         return EmailLogRecord.model_validate(row) if row is not None else None
 
+    def list_latest_for_campaign(
+        self,
+        *,
+        client_id: str,
+        campaign_id: str,
+    ) -> list[EmailLogRecord]:
+        query = """
+            SELECT DISTINCT ON (contact_id)
+                id::text AS id,
+                client_id::text AS client_id,
+                campaign_id::text AS campaign_id,
+                contact_id::text AS contact_id,
+                status,
+                provider_message_id,
+                body,
+                created_at
+            FROM email_logs
+            WHERE client_id::text = %s
+                AND campaign_id::text = %s
+                AND status <> 'simulated'
+                AND contact_id IS NOT NULL
+            ORDER BY contact_id, created_at DESC, id DESC
+        """
+
+        with postgres_connection(self._settings) as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(query, (client_id, campaign_id))
+                rows = cursor.fetchall()
+
+        return [EmailLogRecord.model_validate(row) for row in rows]
+
     def update_status(
         self,
         *,
@@ -435,6 +505,20 @@ class PostgresEmailLogRepository(EmailLogRepository):
 class InMemoryEmailLogRepository(EmailLogRepository):
     def __init__(self) -> None:
         self._records: list[EmailLogRecord] = []
+        self._campaign_locks: dict[str, threading.Lock] = {}
+
+    @contextmanager
+    def campaign_dispatch_lock(
+        self,
+        *,
+        campaign_id: str,
+    ):
+        lock = self._campaign_locks.setdefault(campaign_id, threading.Lock())
+        lock.acquire()
+        try:
+            yield
+        finally:
+            lock.release()
 
     def get_by_id(self, email_log_id: str) -> Optional[EmailLogRecord]:
         for record in self._records:
@@ -569,6 +653,25 @@ class InMemoryEmailLogRepository(EmailLogRepository):
             ):
                 return record
         return None
+
+    def list_latest_for_campaign(
+        self,
+        *,
+        client_id: str,
+        campaign_id: str,
+    ) -> list[EmailLogRecord]:
+        latest_by_contact: dict[str, EmailLogRecord] = {}
+        for record in reversed(self._records):
+            if (
+                record.client_id != client_id
+                or record.campaign_id != campaign_id
+                or record.status == "simulated"
+                or record.contact_id is None
+                or record.contact_id in latest_by_contact
+            ):
+                continue
+            latest_by_contact[record.contact_id] = record
+        return list(latest_by_contact.values())
 
     def update_status(
         self,

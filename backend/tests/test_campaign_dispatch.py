@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+import threading
 from typing import Any
 
 import httpx
@@ -793,6 +794,196 @@ def test_ses_send_allowed_only_after_safety_gate_passes() -> None:
     assert [log.status for log in logs] == ["sent"]
     assert logs[0].provider_message_id is None
     assert "unsubscribe" in (logs[0].body or "")
+
+
+def test_double_click_blocks_duplicate_dispatch_and_duplicate_logs() -> None:
+    fake_listmonk = FakeListmonkClient()
+    email_log_repository = InMemoryEmailLogRepository()
+    service = build_dispatch_service(
+        fake_listmonk=fake_listmonk,
+        email_log_repository=email_log_repository,
+        preparation_service=FakePreparationService(content_ready=True),
+    )
+
+    first = service.send_campaign("campaign_123")
+    second = service.send_campaign("campaign_123")
+
+    assert first["status"] == "accepted"
+    assert second["status"] == "dispatch_blocked"
+    assert second["code"] in {
+        "campaign_send_already_in_progress",
+        "campaign_send_already_accepted",
+    }
+    assert second["listmonk_dispatched"] is False
+    assert second["email_logs_created"] == 0
+    assert second["email_logs_updated"] == 0
+    assert fake_listmonk.sent_campaign_ids == ["lm_1"]
+    logs = email_log_repository.list_by_campaign("campaign_123")
+    assert len(logs) == 1
+    assert [log.status for log in logs] == ["sent"]
+
+
+def test_concurrent_double_click_waits_on_dispatch_lock_and_does_not_duplicate_logs() -> None:
+    class BlockingListmonkClient(FakeListmonkClient):
+        def __init__(self) -> None:
+            super().__init__()
+            self.started = threading.Event()
+            self.release = threading.Event()
+
+        def trigger_campaign_send(self, campaign_id: str) -> dict[str, str]:
+            self.started.set()
+            self.release.wait(timeout=2)
+            return super().trigger_campaign_send(campaign_id)
+
+    fake_listmonk = BlockingListmonkClient()
+    email_log_repository = InMemoryEmailLogRepository()
+    service = build_dispatch_service(
+        fake_listmonk=fake_listmonk,
+        email_log_repository=email_log_repository,
+        preparation_service=FakePreparationService(content_ready=True),
+    )
+    results: dict[str, dict[str, Any]] = {}
+
+    first_thread = threading.Thread(
+        target=lambda: results.setdefault("first", service.send_campaign("campaign_123"))
+    )
+    second_thread = threading.Thread(
+        target=lambda: results.setdefault("second", service.send_campaign("campaign_123"))
+    )
+
+    first_thread.start()
+    assert fake_listmonk.started.wait(timeout=2)
+    second_thread.start()
+    fake_listmonk.release.set()
+    first_thread.join(timeout=2)
+    second_thread.join(timeout=2)
+
+    assert results["first"]["status"] == "accepted"
+    assert results["second"]["status"] == "dispatch_blocked"
+    assert results["second"]["code"] in {
+        "campaign_send_already_in_progress",
+        "campaign_send_already_accepted",
+    }
+    assert fake_listmonk.sent_campaign_ids == ["lm_1"]
+    logs = email_log_repository.list_by_campaign("campaign_123")
+    assert len(logs) == 1
+    assert [log.status for log in logs] == ["sent"]
+
+
+def test_second_send_is_blocked_when_sent_logs_already_exist() -> None:
+    fake_listmonk = FakeListmonkClient()
+    email_log_repository = InMemoryEmailLogRepository()
+    email_log_repository.create_email_log(
+        client_id="client_123",
+        campaign_id="campaign_123",
+        contact_id="contact_123",
+        status="sent",
+    )
+    service = build_dispatch_service(
+        fake_listmonk=fake_listmonk,
+        email_log_repository=email_log_repository,
+        preparation_service=FakePreparationService(content_ready=True),
+    )
+
+    result = service.send_campaign("campaign_123")
+
+    assert result["status"] == "dispatch_blocked"
+    assert result["code"] == "campaign_send_already_accepted"
+    assert result["listmonk_dispatched"] is False
+    assert result["email_logs_created"] == 0
+    assert result["email_logs_updated"] == 0
+    assert fake_listmonk.sent_campaign_ids == []
+    logs = email_log_repository.list_by_campaign("campaign_123")
+    assert len(logs) == 1
+
+
+def test_second_send_is_blocked_when_queued_logs_already_exist() -> None:
+    fake_listmonk = FakeListmonkClient()
+    email_log_repository = InMemoryEmailLogRepository()
+    email_log_repository.create_email_log(
+        client_id="client_123",
+        campaign_id="campaign_123",
+        contact_id="contact_123",
+        status="queued",
+    )
+    service = build_dispatch_service(
+        fake_listmonk=fake_listmonk,
+        email_log_repository=email_log_repository,
+        preparation_service=FakePreparationService(content_ready=True),
+    )
+
+    result = service.send_campaign("campaign_123")
+
+    assert result["status"] == "dispatch_blocked"
+    assert result["code"] == "campaign_send_already_in_progress"
+    assert result["listmonk_dispatched"] is False
+    assert result["email_logs_created"] == 0
+    assert result["email_logs_updated"] == 0
+    assert fake_listmonk.sent_campaign_ids == []
+    logs = email_log_repository.list_by_campaign("campaign_123")
+    assert len(logs) == 1
+    assert logs[0].status == "queued"
+
+
+def test_second_send_is_blocked_for_mixed_real_log_states() -> None:
+    fake_listmonk = FakeListmonkClient()
+    email_log_repository = InMemoryEmailLogRepository()
+    email_log_repository.create_email_log(
+        client_id="client_123",
+        campaign_id="campaign_123",
+        contact_id="contact_1",
+        status="failed",
+    )
+    email_log_repository.create_email_log(
+        client_id="client_123",
+        campaign_id="campaign_123",
+        contact_id="contact_2",
+        status="sent",
+    )
+    service = build_dispatch_service(
+        fake_listmonk=fake_listmonk,
+        email_log_repository=email_log_repository,
+        contact_repository=build_multi_contact_repository(),
+        preparation_service=FakePreparationService(content_ready=True),
+    )
+
+    result = service.send_campaign("campaign_123")
+
+    assert result["status"] == "dispatch_blocked"
+    assert result["code"] == "campaign_send_already_accepted"
+    assert result["listmonk_dispatched"] is False
+    assert result["email_logs_created"] == 0
+    assert result["email_logs_updated"] == 0
+    assert fake_listmonk.sent_campaign_ids == []
+    assert len(email_log_repository.list_by_campaign("campaign_123")) == 2
+
+
+def test_fully_failed_previous_attempt_can_retry_without_creating_duplicate_logs() -> None:
+    fake_listmonk = FakeListmonkClient()
+    email_log_repository = InMemoryEmailLogRepository()
+    email_log_repository.create_email_log(
+        client_id="client_123",
+        campaign_id="campaign_123",
+        contact_id="contact_123",
+        status="failed",
+    )
+    service = build_dispatch_service(
+        fake_listmonk=fake_listmonk,
+        email_log_repository=email_log_repository,
+        campaigns=[build_campaign(status="failed")],
+        preparation_service=FakePreparationService(content_ready=True),
+    )
+
+    result = service.send_campaign("campaign_123")
+
+    assert result["status"] == "accepted"
+    assert result["listmonk_dispatched"] is True
+    assert result["email_logs_created"] == 0
+    assert result["email_logs_updated"] == 1
+    assert fake_listmonk.sent_campaign_ids == ["lm_1"]
+    logs = email_log_repository.list_by_campaign("campaign_123")
+    assert len(logs) == 1
+    assert logs[0].status == "sent"
 
 
 def test_production_runtime_blocks_controlled_dispatch_before_listmonk() -> None:

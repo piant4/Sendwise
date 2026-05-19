@@ -22,7 +22,7 @@ function getSafeInviteErrorMessage(error: unknown): string {
     }
 
     if (error.status === 409) {
-      return "Questa email e gia associata a un accesso cliente attivo o in invito.";
+      return "Questa email è già associata a un accesso cliente attivo o in invito.";
     }
 
     if (error.status === 422) {
@@ -30,7 +30,7 @@ function getSafeInviteErrorMessage(error: unknown): string {
     }
 
     if (error.status === 401 || error.status === 403) {
-      return "La sessione admin non e valida per creare un nuovo invito cliente.";
+      return "La sessione admin non è valida per creare un nuovo invito cliente.";
     }
 
     if (error.status != null && error.status >= 500) {
@@ -42,7 +42,7 @@ function getSafeInviteErrorMessage(error: unknown): string {
     }
   }
 
-  return "Non e stato possibile inviare l'invito cliente. Riprova.";
+  return "Non è stato possibile inviare l'invito cliente. Riprova.";
 }
 
 export function AdminTopBarActions() {
@@ -137,17 +137,18 @@ export function AdminTopBarActions() {
                 </label>
 
                 <div className="invite-modal__actions">
-                  <button
+                  {/* <button
                     type="button"
                     className="invite-modal__button invite-modal__button--secondary"
                     disabled={isSubmitting}
                     onClick={() => setOpen(false)}
                   >
                     Annulla
-                  </button>
+                  </button> */}
                   <button
                     type="submit"
-                    className="invite-modal__button invite-modal__button--primary"
+                    className="invite-modal__button invite-modal__button--primary
+                    "
                     disabled={isSubmitting}
                   >
                     {isSubmitting ? "Invio in corso..." : "Invia invito"}

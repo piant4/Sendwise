@@ -227,7 +227,7 @@ These are not part of core V1:
 - Rspamd
 - Mautic
 - Keila
-- n8n as core V1
+- n8n as core V1. n8n is optional and is not part of the Sendwise core V1 runtime.
 - Direct provider sending from the backend as the default V1 path
 - Direct UI access to listmonk or PostgreSQL
 

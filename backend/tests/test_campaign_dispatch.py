@@ -64,7 +64,7 @@ class FakePreparationService:
                 "subject": "Launch",
                 "preview_text": "Preview",
                 "body": "<html><body><p>Body</p></body></html>" if self.content_ready else "",
-                "unsubscribe_url": "http://localhost:3000/unsubscribe",
+                "unsubscribe_url": "https://app.sendwise.example.test/unsubscribe/token",
                 "client_name": "Test Client",
             },
             "listmonk_mapping": {
@@ -84,10 +84,7 @@ class SesReadyPreparationService(FakePreparationService):
         _current_user: AuthenticatedUser | None = None,
     ) -> dict[str, Any]:
         prepared = super().prepare_campaign(campaign_id, _current_user)
-        unsubscribe_url = (
-            "https://sendwise.example.test/unsubscribe/token"
-            f"?campaign_id={campaign_id}"
-        )
+        unsubscribe_url = "https://app.sendwise.example.test/unsubscribe/token"
         prepared["content"]["unsubscribe_url"] = unsubscribe_url
         prepared["content"]["body"] = (
             "<html><body><p>Body</p>"
@@ -272,6 +269,7 @@ def build_ready_ses_settings(**overrides: Any) -> Settings:
         "smtp_password": "dummy",
         "smtp_tls_raw": "true",
         "smtp_from_email": "sender@example.test",
+        "frontend_url": "https://app.sendwise.example.test",
         "backend_public_url": "https://sendwise.example.test",
         "real_send_allowed_recipients_raw": "one@example.test,two@example.test",
         "real_send_require_allowed_recipients_raw": "true",
@@ -447,6 +445,7 @@ def test_ses_send_blocked_when_email_sending_disabled() -> None:
             smtp_password="dummy",
             smtp_tls_raw="true",
             smtp_from_email="sender@example.test",
+            frontend_url="https://app.sendwise.example.test",
             backend_public_url="https://sendwise.example.test",
             real_send_allowed_recipients_raw="person@example.test",
             real_send_max_recipients=1,
@@ -480,6 +479,7 @@ def test_ses_send_blocked_when_smtp_config_is_incomplete() -> None:
             smtp_password="",
             smtp_tls_raw="true",
             smtp_from_email="sender@example.test",
+            frontend_url="https://app.sendwise.example.test",
             backend_public_url="https://sendwise.example.test",
             real_send_allowed_recipients_raw="person@example.test",
             real_send_max_recipients=1,
@@ -515,6 +515,7 @@ def test_ses_send_blocked_when_recipient_is_not_allowed() -> None:
             smtp_password="dummy",
             smtp_tls_raw="true",
             smtp_from_email="sender@example.test",
+            frontend_url="https://app.sendwise.example.test",
             backend_public_url="https://sendwise.example.test",
             real_send_allowed_recipients_raw="allowed@example.test",
             real_send_max_recipients=1,
@@ -558,6 +559,7 @@ def test_ses_send_blocked_when_eligible_count_exceeds_real_send_max() -> None:
             smtp_password="dummy",
             smtp_tls_raw="true",
             smtp_from_email="sender@example.test",
+            frontend_url="https://app.sendwise.example.test",
             backend_public_url="https://sendwise.example.test",
             real_send_allowed_recipients_raw="one@example.test,two@example.test",
             real_send_max_recipients=1,
@@ -682,6 +684,7 @@ def test_ses_send_blocked_when_unsubscribe_public_url_is_not_ready() -> None:
             smtp_password="dummy",
             smtp_tls_raw="true",
             smtp_from_email="sender@example.test",
+            frontend_url="http://localhost:3000",
             backend_public_url="http://localhost:8000",
             real_send_allowed_recipients_raw="person@example.test",
             real_send_max_recipients=1,
@@ -716,6 +719,7 @@ def test_ses_send_blocked_when_prepared_unsubscribe_link_is_missing() -> None:
             smtp_password="dummy",
             smtp_tls_raw="true",
             smtp_from_email="sender@example.test",
+            frontend_url="https://app.sendwise.example.test",
             backend_public_url="https://sendwise.example.test",
             real_send_allowed_recipients_raw="person@example.test",
             real_send_max_recipients=1,
@@ -746,7 +750,7 @@ def test_ses_send_allowed_only_after_safety_gate_passes() -> None:
             _current_user: AuthenticatedUser | None = None,
         ) -> dict[str, Any]:
             prepared = super().prepare_campaign(campaign_id, _current_user)
-            unsubscribe_url = "https://sendwise.example.test/unsubscribe/token?campaign_id=campaign_123"
+            unsubscribe_url = "https://app.sendwise.example.test/unsubscribe/token"
             prepared["content"]["unsubscribe_url"] = unsubscribe_url
             prepared["content"]["body"] = (
                 "<html><body><p>Body</p>"
@@ -766,6 +770,7 @@ def test_ses_send_allowed_only_after_safety_gate_passes() -> None:
             smtp_password="dummy",
             smtp_tls_raw="true",
             smtp_from_email="sender@example.test",
+            frontend_url="https://app.sendwise.example.test",
             backend_public_url="https://sendwise.example.test",
             real_send_allowed_recipients_raw="person@example.test",
             real_send_max_recipients=1,

@@ -187,7 +187,11 @@ def build_preparation_service(
         unsubscribe_token_service=UnsubscribeTokenService(Settings(environment="test")),
     )
     service = CampaignPreparationService(
-        settings=Settings(environment="test", smtp_from_email="sender@example.test"),
+        settings=Settings(
+            environment="test",
+            smtp_from_email="sender@example.test",
+            frontend_url="https://app.sendwise.example.test",
+        ),
         listmonk_client=fake_listmonk,  # type: ignore[arg-type]
         mapping_service=mapping_service,
         client_repository=FakeCampaignRepository([campaign_record]),  # type: ignore[arg-type]
@@ -221,14 +225,14 @@ def test_prepare_campaign_creates_list_subscribers_campaign_and_mappings() -> No
     assert created_payload["from_email"] == "sender@example.test"
     assert (
         created_payload["body"]
-        == "<html><body><p>Persisted body.</p><p style=\"font-size:12px;line-height:20px;color:#52606d;\">Manage preferences or <a href=\"http://localhost:8000/unsubscribe/{{ .Subscriber.Attribs.sendwise_unsubscribe_token }}?campaign_id=campaign_123\">unsubscribe</a>.</p></body></html>"
+        == "<html><body><p>Persisted body.</p><p style=\"font-size:12px;line-height:20px;color:#52606d;\">Manage preferences or <a href=\"https://app.sendwise.example.test/unsubscribe/{{ .Subscriber.Attribs.sendwise_unsubscribe_token }}\">unsubscribe</a>.</p></body></html>"
     )
     assert result["content"]["body"] == created_payload["body"]
     assert result["content"]["template_name"] == "campaign_business_db"
     assert result["content"]["preview_text"] == "Preview"
     assert (
         result["content"]["unsubscribe_url"]
-        == "http://localhost:8000/unsubscribe/{{ .Subscriber.Attribs.sendwise_unsubscribe_token }}?campaign_id=campaign_123"
+        == "https://app.sendwise.example.test/unsubscribe/{{ .Subscriber.Attribs.sendwise_unsubscribe_token }}"
     )
     mapping_types = {
         (mapping.entity_type, mapping.entity_id, mapping.listmonk_type)

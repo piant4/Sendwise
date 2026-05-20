@@ -33,6 +33,7 @@ import type {
   ClientCampaignStatsReadModel,
   ClientOverviewSummary,
   CompleteClientOnboardingInput,
+  PublicUnsubscribeResponse,
 } from "../types";
 import * as mockApi from "./mock-api";
 
@@ -81,6 +82,11 @@ interface ApiRequestOptions<TPayload> {
   method?: "GET" | "POST" | "PATCH" | "DELETE";
   payload?: TPayload;
   accessToken?: string | null;
+}
+
+interface PublicApiRequestOptions<TPayload> {
+  method?: "GET" | "POST";
+  payload?: TPayload;
 }
 
 interface AdminCampaignApiItem {
@@ -738,6 +744,54 @@ async function apiRequest<TResponse, TPayload = undefined>(
       method: options?.method ?? "GET",
       cache: "no-store",
       headers: await getApiHeaders(options?.accessToken),
+      body:
+        options?.payload === undefined
+          ? undefined
+          : JSON.stringify(options.payload),
+    });
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Unknown network error";
+    throw new ApiError({
+      path,
+      detail: message,
+      isNetworkError: true,
+    });
+  }
+
+  if (!response.ok) {
+    const details = await readErrorDetails(response);
+    throw new ApiError({
+      path,
+      status: response.status,
+      detail: details,
+    });
+  }
+
+  try {
+    return (await response.json()) as TResponse;
+  } catch {
+    throw new ApiError({
+      path,
+      detail: "invalid JSON response",
+    });
+  }
+}
+
+async function publicApiRequest<TResponse, TPayload = undefined>(
+  path: string,
+  options?: PublicApiRequestOptions<TPayload>,
+): Promise<TResponse> {
+  const requestUrl = `${getRequiredApiBaseUrl()}${path}`;
+  let response: Response;
+
+  try {
+    response = await fetch(requestUrl, {
+      method: options?.method ?? "GET",
+      cache: "no-store",
+      headers: {
+        "Content-Type": "application/json",
+      },
       body:
         options?.payload === undefined
           ? undefined
@@ -2191,4 +2245,21 @@ export function deleteCurrentAccount(
   accessToken?: string | null,
 ): Promise<DeleteAccountResponse> {
   return postDeleteCurrentAccount(confirmationText, accessToken);
+}
+
+export function submitPublicUnsubscribe(
+  token: string,
+): Promise<PublicUnsubscribeResponse> {
+  if (USE_MOCK_API) {
+    return Promise.resolve({
+      status: "unsubscribed",
+      message: "Disiscrizione completata con successo.",
+      already_unsubscribed: false,
+    });
+  }
+
+  return publicApiRequest<PublicUnsubscribeResponse>(
+    `/unsubscribe/${encodeURIComponent(token)}`,
+    { method: "POST" },
+  );
 }

@@ -21,7 +21,7 @@ The repository is the public reference for the current product/runtime shape. De
 - Campaign-level sending limits through `campaign_sending_limits`.
 - Backend Deliverability Guard enforcement before simulation or controlled send.
 - Client dashboard analytics backed by backend-owned `client_dashboard` read models.
-- Public unsubscribe route with backend-owned suppression side effects.
+- Public frontend unsubscribe page with backend-owned validation, suppression, and event side effects.
 - VPS staging deployment assets with Caddy HTTPS reverse proxy guidance.
 
 ## Architecture
@@ -220,7 +220,7 @@ Implemented or repository-backed:
 - Mailpit dev/staging capture.
 - Campaign-level sending limits and Guard enforcement.
 - Backend-backed client dashboard analytics.
-- Public unsubscribe route.
+- Public unsubscribe page routed through the frontend and backed by the backend API.
 - VPS staging and backup/restore assets.
 
 Still constrained or future:

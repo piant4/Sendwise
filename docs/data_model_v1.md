@@ -240,6 +240,7 @@ Current audited behavior:
 - simulation writes `status="simulated"`
 - controlled dev dispatch writes `status="queued"`
 - provider and unsubscribe events may update `status` for correlated logs without adding a separate delivery-state table yet
+- the frontend public unsubscribe page is presentation-only; token validation, suppression writes, contact state changes, and provider-event persistence remain backend-owned
 - limit usage counts rely on real `email_logs.created_at` rows and exclude `simulated`
 
 ### api_usage

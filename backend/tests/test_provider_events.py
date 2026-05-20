@@ -227,10 +227,68 @@ def test_unsubscribe_route_returns_public_success_page() -> None:
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("text/html")
     assert "Disiscrizione completata" in response.text
-    assert "Non riceverai piu email da questa campagna." in response.text
+    assert "Non riceverai piu email da questo mittente." in response.text
     assert token not in response.text
     assert "campaign_123" not in response.text
     assert "contact_123" not in response.text
+
+
+def test_unsubscribe_post_returns_safe_invalid_json_response() -> None:
+    runtime = build_runtime()
+    unsubscribe_service: UnsubscribeService = runtime["unsubscribe_service"]  # type: ignore[assignment]
+    app.dependency_overrides[get_unsubscribe_service] = lambda: unsubscribe_service
+    try:
+        response = TestClient(app).post("/unsubscribe/not-a-valid-token")
+    finally:
+        app.dependency_overrides.pop(get_unsubscribe_service, None)
+
+    assert response.status_code == 400
+    assert response.json() == {
+        "status": "invalid",
+        "message": "Questo link di disiscrizione non e valido o non e piu disponibile.",
+        "already_unsubscribed": False,
+    }
+
+
+def test_unsubscribe_post_returns_success_json_response() -> None:
+    runtime = build_runtime()
+    token_service: UnsubscribeTokenService = runtime["token_service"]  # type: ignore[assignment]
+    unsubscribe_service: UnsubscribeService = runtime["unsubscribe_service"]  # type: ignore[assignment]
+    token = token_service.generate_token(client_id="client_123", contact_id="contact_123")
+    app.dependency_overrides[get_unsubscribe_service] = lambda: unsubscribe_service
+    try:
+        response = TestClient(app).post(f"/unsubscribe/{token}")
+    finally:
+        app.dependency_overrides.pop(get_unsubscribe_service, None)
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "status": "unsubscribed",
+        "message": "Disiscrizione completata con successo.",
+        "already_unsubscribed": False,
+    }
+
+
+def test_unsubscribe_post_returns_idempotent_already_unsubscribed_json_response() -> None:
+    runtime = build_runtime()
+    token_service: UnsubscribeTokenService = runtime["token_service"]  # type: ignore[assignment]
+    unsubscribe_service: UnsubscribeService = runtime["unsubscribe_service"]  # type: ignore[assignment]
+    token = token_service.generate_token(client_id="client_123", contact_id="contact_123")
+    app.dependency_overrides[get_unsubscribe_service] = lambda: unsubscribe_service
+    try:
+        client = TestClient(app)
+        first = client.post(f"/unsubscribe/{token}")
+        second = client.post(f"/unsubscribe/{token}")
+    finally:
+        app.dependency_overrides.pop(get_unsubscribe_service, None)
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert second.json() == {
+        "status": "already_unsubscribed",
+        "message": "La tua scelta era gia stata registrata.",
+        "already_unsubscribed": True,
+    }
 
 
 def test_provider_event_endpoint_requires_api_key() -> None:

@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from urllib.parse import urlencode
 
 from app.core.config import Settings
 from app.services.unsubscribe import LISTMONK_UNSUBSCRIBE_TOKEN_PLACEHOLDER
@@ -138,7 +137,7 @@ def build_unsubscribe_url(
     campaign_id: str,
     token: str = LISTMONK_UNSUBSCRIBE_TOKEN_PLACEHOLDER,
 ) -> str:
-    base_url = settings.backend_public_origin or settings.backend_public_url.strip()
+    _ = campaign_id
+    base_url = settings.frontend_origin or settings.frontend_url.strip()
     base_url = base_url.rstrip("/") or "https://example.invalid"
-    query = urlencode({"campaign_id": campaign_id})
-    return f"{base_url}/unsubscribe/{token}?{query}"
+    return f"{base_url}/unsubscribe/{token}"

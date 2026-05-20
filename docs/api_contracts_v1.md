@@ -222,6 +222,7 @@ Contacts notes:
 
 | Endpoint | Purpose | Allowed caller | Required access | High-level input | High-level output | Main errors | Status |
 |---|---|---|---|---|---|---|---|
-| `GET /unsubscribe/{token}` | Public Sendwise-managed unsubscribe endpoint. | Email recipient. | None. | Signed opaque token and optional `campaign_id`. | Minimal HTML confirmation and backend-owned suppression side effects. | `400`. | `implemented` |
+| `GET /unsubscribe/{token}` | Public Sendwise-managed unsubscribe endpoint for direct/backward-compatible access. | Email recipient. | None. | Signed opaque token and optional `campaign_id`. | Minimal safe HTML confirmation and backend-owned suppression side effects. | `400`, `503`. | `implemented` |
+| `POST /unsubscribe/{token}` | Backend JSON endpoint used by the frontend public unsubscribe page. | Frontend public page. | None. | Signed opaque token. | Controlled JSON state for success, already-unsubscribed, invalid-token, or temporary-unavailable flows. | `400`, `503`. | `implemented` |
 | `POST /events/listmonk` | Receive supported listmonk event payloads. | listmonk. | Webhook secret or API key. | Event payload. | Accepted unsubscribe ingestion for supported normalized payloads; unsupported payloads are ignored. | `400`, `401`, `403`, `409`. | `implemented` |
 | `POST /events/provider` | Receive normalized provider events and minimal SES/SNS-like payloads. | SMTP/provider webhook. | Webhook secret or API key. | Event payload. | Accepted idempotent event persistence plus correlated email-log, suppression, and campaign-metric side effects when resolvable. | `400`, `401`, `403`, `409`. | `implemented` |

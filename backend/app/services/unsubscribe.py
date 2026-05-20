@@ -125,11 +125,13 @@ class UnsubscribeService:
             )
         )
 
+        already_unsubscribed = not response.created
+
         return {
-            "status": "unsubscribed",
-            "contact_id": contact.id,
-            "campaign_id": campaign_id,
-            "already_suppressed": not response.created,
+            "status": "already_unsubscribed"
+            if already_unsubscribed
+            else "unsubscribed",
+            "already_unsubscribed": already_unsubscribed,
         }
 
 

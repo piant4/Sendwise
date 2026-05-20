@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, Header, status
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 
 from app.core.config import Settings, get_settings
 from app.schemas.provider_events import ProviderEventIngestResponse
@@ -61,6 +61,23 @@ def _render_unsubscribe_page(
     )
 
 
+def _build_unsubscribe_json_response(
+    *,
+    status_value: str,
+    message: str,
+    status_code: int,
+    already_unsubscribed: bool = False,
+) -> JSONResponse:
+    return JSONResponse(
+        content={
+            "status": status_value,
+            "message": message,
+            "already_unsubscribed": already_unsubscribed,
+        },
+        status_code=status_code,
+    )
+
+
 def require_events_api_key(
     x_api_key: str | None = Header(default=None, alias="X-API-Key"),
     settings: Settings = Depends(get_settings),
@@ -82,17 +99,66 @@ def unsubscribe(
     unsubscribe_service: UnsubscribeService = Depends(get_unsubscribe_service),
 ) -> HTMLResponse:
     try:
-        unsubscribe_service.unsubscribe(token=token, campaign_id=campaign_id)
-    except InvalidUnsubscribeTokenError as error:
+        result = unsubscribe_service.unsubscribe(token=token, campaign_id=campaign_id)
+    except InvalidUnsubscribeTokenError:
         return _render_unsubscribe_page(
             title="Link non valido",
             message="Questo link di disiscrizione non e valido o non e piu disponibile.",
             status_code=status.HTTP_400_BAD_REQUEST,
         )
+    except Exception:
+        return _render_unsubscribe_page(
+            title="Servizio non disponibile",
+            message="La richiesta non puo essere completata ora. Riprova tra poco o contatta il supporto.",
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        )
+
+    if bool(result.get("already_unsubscribed")):
+        return _render_unsubscribe_page(
+            title="Sei gia disiscritto",
+            message="La tua scelta era gia stata registrata e non riceverai altre email da questo mittente.",
+            status_code=status.HTTP_200_OK,
+        )
 
     return _render_unsubscribe_page(
         title="Disiscrizione completata",
-        message="Non riceverai piu email da questa campagna.",
+        message="Non riceverai piu email da questo mittente.",
+        status_code=status.HTTP_200_OK,
+    )
+
+
+@router.post("/unsubscribe/{token}")
+def unsubscribe_json(
+    token: str,
+    campaign_id: str | None = Query(default=None),
+    unsubscribe_service: UnsubscribeService = Depends(get_unsubscribe_service),
+) -> JSONResponse:
+    try:
+        result = unsubscribe_service.unsubscribe(token=token, campaign_id=campaign_id)
+    except InvalidUnsubscribeTokenError:
+        return _build_unsubscribe_json_response(
+            status_value="invalid",
+            message="Questo link di disiscrizione non e valido o non e piu disponibile.",
+            status_code=status.HTTP_400_BAD_REQUEST,
+        )
+    except Exception:
+        return _build_unsubscribe_json_response(
+            status_value="unavailable",
+            message="La richiesta non puo essere completata ora. Riprova tra poco o contatta il supporto.",
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        )
+
+    if bool(result.get("already_unsubscribed")):
+        return _build_unsubscribe_json_response(
+            status_value="already_unsubscribed",
+            message="La tua scelta era gia stata registrata.",
+            status_code=status.HTTP_200_OK,
+            already_unsubscribed=True,
+        )
+
+    return _build_unsubscribe_json_response(
+        status_value="unsubscribed",
+        message="Disiscrizione completata con successo.",
         status_code=status.HTTP_200_OK,
     )
 

@@ -3389,6 +3389,38 @@ Scope confirmation:
 - No backend, schema, API contract, auth model, send/dispatch flow, SES enablement, listmonk integration, Docker/env/config, or frontend API boundary behavior was changed.
 - No fake delivered, open, click, click-rate, queued, sent-attempted, or time-series trend claims were added.
 
+## Milestone 18.6J - Public Unsubscribe Screen And Issue #2 Fix
+
+Date: 2026-05-20
+Branch: develop
+
+Verified state:
+- Addresses issue #2.
+- Audited campaign unsubscribe link generation and confirmed the previous path was backend-owned: campaign preparation built unsubscribe URLs from `BACKEND_PUBLIC_URL`, so recipients were sent to the raw backend endpoint instead of a public frontend screen.
+- Added a frontend public unsubscribe page at `/unsubscribe/[token]` with confirmation, loading, success, already-unsubscribed, invalid-link, and temporary-unavailable states using controlled copy only.
+- Added `POST /unsubscribe/{token}` as a backend JSON endpoint for the frontend page while keeping `GET /unsubscribe/{token}` as the safe HTML fallback/backward-compatible endpoint.
+- Kept unsubscribe write-side ownership in the backend: valid tokens still record `sendwise_unsubscribe`, update contact state to `unsubscribed`, and persist suppression state idempotently.
+- Campaign-generated unsubscribe links now use `FRONTEND_URL` and no longer generate raw backend unsubscribe links for new emails.
+- No schema change or migration was required.
+- No hardcoded `api.mailerpro.it` path was introduced in changed code.
+
+Checks executed:
+- `git diff --check`
+- targeted backend unsubscribe/provider-event/campaign preparation/dispatch tests
+- `cd frontend && npm run lint`
+- `cd frontend && npm run build`
+- `bash scripts/audit.sh`
+- `bash scripts/smoke_test.sh`
+- `SENDWISE_ENV_FILE=.env.example docker compose --env-file .env.example config`
+- `SENDWISE_ENV_FILE=.env.example docker compose --env-file .env.example -f docker-compose.yml -f docker-compose.dev.yml config`
+- changed-file scan for `api.mailerpro.it`
+- changed-file scan for fake delivered/open/click claims
+- changed-file scan for direct Listmonk/SES shortcut paths
+- changed-file scan for env/secrets edits
+
+Scope confirmation:
+- No DB reset, schema migration, Docker volume deletion, destructive DB command, direct Listmonk send, direct SES send, fake metric path, suppression bypass, or unsubscribe bypass was introduced.
+
 ## Milestone 16.9C - Contact Attach, Email Preview UX And Review Diagnostics
 
 Date: 2026-05-15

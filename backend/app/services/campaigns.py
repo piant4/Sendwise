@@ -2330,7 +2330,7 @@ class CampaignDispatchService:
         checks = [
             self._check_real_send_environment(),
             self._check_ses_smtp_config(),
-            self._check_backend_public_url(),
+            self._check_frontend_public_url(),
             self._check_campaign_review_ready(campaign),
             self._check_real_send_recipient_limit(guard_result.eligible_contact_count),
             self._check_allowed_recipients(contacts),
@@ -2397,8 +2397,8 @@ class CampaignDispatchService:
             }
         return {"passed": True}
 
-    def _check_backend_public_url(self) -> dict[str, Any]:
-        parsed = urlsplit(self.settings.backend_public_url.strip())
+    def _check_frontend_public_url(self) -> dict[str, Any]:
+        parsed = urlsplit(self.settings.frontend_url.strip())
         blocked_hosts = {"localhost", "127.0.0.1", "0.0.0.0", "backend"}
         if (
             parsed.scheme not in {"http", "https"}
@@ -2408,7 +2408,7 @@ class CampaignDispatchService:
             return {
                 "passed": False,
                 "code": "unsubscribe_public_url_not_ready",
-                "reason": "BACKEND_PUBLIC_URL must be a reachable public URL for SES unsubscribe links.",
+                "reason": "FRONTEND_URL must be a reachable public URL for public unsubscribe pages.",
                 "unsubscribe_ready": False,
             }
         return {"passed": True, "unsubscribe_ready": True}

@@ -46,7 +46,7 @@ class FakePreparationService:
                 "subject": "Launch",
                 "preview_text": "Technical preview for campaign Launch campaign.",
                 "body": "<html><body><p>Simulated HTML body.</p></body></html>",
-                "unsubscribe_url": "http://localhost:3000/unsubscribe",
+                "unsubscribe_url": "https://app.sendwise.example.test/unsubscribe/token",
                 "client_name": "Test Client",
             },
         }

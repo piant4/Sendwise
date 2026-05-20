@@ -43,7 +43,8 @@ Required public URLs:
 
 - Frontend: `https://staging-app.mailerpro.it`
 - API: `https://staging-api.mailerpro.it`
-- Public unsubscribe links must use `BACKEND_PUBLIC_URL=https://staging-api.mailerpro.it`.
+- Public unsubscribe links must use `FRONTEND_URL=https://staging-app.mailerpro.it`.
+- `NEXT_PUBLIC_API_BASE_URL` must point to the public HTTPS backend because the frontend unsubscribe page posts to the backend JSON endpoint.
 
 ## Staging Environment Requirements
 
@@ -157,13 +158,15 @@ Public:
 
 - 404 page loads with illustration.
 - Invalid-token unsubscribe returns safe HTML.
+- Frontend public unsubscribe page loads and hides backend/internal error wording.
 
 ## SES Readiness Later Step
 
 SES readiness is intentionally separated from first VPS deploy. A later controlled validation may enable real sending only after:
 
 - Caddy HTTPS is live for both staging domains.
-- `BACKEND_PUBLIC_URL=https://staging-api.mailerpro.it` is verified in unsubscribe links.
+- `FRONTEND_URL=https://staging-app.mailerpro.it` is verified in unsubscribe links for new emails.
+- `NEXT_PUBLIC_API_BASE_URL=https://staging-api.mailerpro.it` is reachable from the public unsubscribe page.
 - `EMAIL_SENDING_ENABLED` is explicitly reviewed.
 - `REAL_SEND_REQUIRE_ALLOWED_RECIPIENTS=true`.
 - `REAL_SEND_MAX_RECIPIENTS=1`.

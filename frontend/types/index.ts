@@ -19,6 +19,11 @@ export type ContactStatus =
   | "error";
 
 export type SendDecision = "authorized" | "blocked" | "dry_run";
+export type PublicUnsubscribeStatus =
+  | "unsubscribed"
+  | "already_unsubscribed"
+  | "invalid"
+  | "unavailable";
 
 export interface Client {
   id: string;
@@ -84,6 +89,12 @@ export interface AdminClientUpdateInput {
 
 export interface CompleteClientOnboardingInput {
   personal_name: string;
+}
+
+export interface PublicUnsubscribeResponse {
+  status: PublicUnsubscribeStatus;
+  message: string;
+  already_unsubscribed: boolean;
 }
 
 export interface CampaignStats {

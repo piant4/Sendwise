@@ -27,6 +27,7 @@ import {
   hasDuplicateDispatchBlock,
   isDuplicateDispatchCode,
 } from "../shared/campaignUi";
+import { formatDateTimeInRome } from "../shared/dateTime";
 import { Button } from "../ui/button";
 import { StatusBadge } from "../ui/StatusBadge";
 import type { CampaignStatus } from "../../types";
@@ -483,10 +484,9 @@ export function AdminCampaignReviewPanel({
 
       <p className="admin-record-row__note" style={{ marginTop: 12 }}>
         {reviewResult?.periodStartedAt ?? summary?.periodStartedAt
-          ? `Periodo avviato ${new Intl.DateTimeFormat("it-IT", {
-              dateStyle: "medium",
-              timeStyle: "short",
-            }).format(new Date((reviewResult?.periodStartedAt ?? summary?.periodStartedAt)!))}`
+          ? `Periodo avviato ${formatDateTimeInRome(
+              reviewResult?.periodStartedAt ?? summary?.periodStartedAt,
+            )}`
           : "Periodo non ancora avviato"}
       </p>
 

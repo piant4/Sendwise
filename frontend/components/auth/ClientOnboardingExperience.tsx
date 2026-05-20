@@ -1,7 +1,7 @@
 "use client";
 
 import { useAuth } from "@clerk/nextjs";
-import { Building2, ShieldCheck, UserRound } from "lucide-react";
+import { ShieldCheck, UserRound } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { type FormEvent, useState } from "react";
 import { BrandMark } from "@/components/shared/BrandMark";
@@ -38,7 +38,8 @@ export function ClientOnboardingExperience({
 }: ClientOnboardingExperienceProps) {
   const router = useRouter();
   const { getToken } = useAuth();
-  const [personalName, setPersonalName] = useState("");
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -49,10 +50,12 @@ export function ClientOnboardingExperience({
 
     try {
       const token = await getToken();
+      const normalizedFirstName = firstName.trim();
+      const normalizedLastName = lastName.trim();
 
       await completeClientOnboarding(
         {
-          personal_name: personalName,
+          personal_name: `${normalizedFirstName} ${normalizedLastName}`.trim(),
         },
         token,
       );
@@ -88,13 +91,13 @@ export function ClientOnboardingExperience({
             </p>
           </div>
 
-          <div className="login-note-grid">
-            <article className="login-note-card">
-              <span className="login-note-card__label">01</span>
-              <p className="login-note-card__text">
-                Conferma il tuo nome personale per attivare l&apos;accesso.
-              </p>
-            </article>
+            <div className="login-note-grid">
+              <article className="login-note-card">
+                <span className="login-note-card__label">01</span>
+                <p className="login-note-card__text">
+                  Completa nome e cognome usati nel portale cliente.
+                </p>
+              </article>
             <article className="login-note-card">
               <span className="login-note-card__label">02</span>
               <p className="login-note-card__text">
@@ -116,8 +119,8 @@ export function ClientOnboardingExperience({
             <p className="login-card__eyebrow">Onboarding</p>
             <h2 className="login-card__title">Completa il tuo invito</h2>
             <p className="login-card__description">
-              Crea la password o accedi per continuare. Poi completerai il profilo
-              aziendale.
+              L&apos;invito e gia autenticato. Conferma ora i dati profilo richiesti
+              da Sendwise per aprire il portale cliente.
             </p>
           </div>
 
@@ -132,45 +135,46 @@ export function ClientOnboardingExperience({
             </div>
 
             <div className="login-field">
-              <label className="login-field__label" htmlFor="onboarding-personal-name">
-                Nome personale
+              <label className="login-field__label" htmlFor="onboarding-first-name">
+                Nome
               </label>
               <div className="relative">
                 <UserRound className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                 <input
-                  id="onboarding-personal-name"
+                  id="onboarding-first-name"
                   type="text"
-                  autoComplete="name"
+                  autoComplete="given-name"
                   className="login-input pl-11"
                   disabled={isSubmitting}
-                  onChange={(event) => setPersonalName(event.target.value)}
-                  placeholder="Mario Rossi"
+                  onChange={(event) => setFirstName(event.target.value)}
+                  placeholder="Mario"
                   required
-                  value={personalName}
+                  value={firstName}
                 />
               </div>
             </div>
 
             <div className="login-field">
-              <label className="login-field__label" htmlFor="onboarding-company-name">
-                Nome azienda
+              <label className="login-field__label" htmlFor="onboarding-last-name">
+                Cognome
               </label>
               <div className="relative">
-                <Building2 className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                <UserRound className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                 <input
-                  id="onboarding-company-name"
+                  id="onboarding-last-name"
                   type="text"
-                  autoComplete="organization"
+                  autoComplete="family-name"
                   className="login-input pl-11"
-                  disabled
-                  placeholder="Sarà disponibile quando il backend cliente supporterà questo campo"
-                  value=""
-                  readOnly
+                  disabled={isSubmitting}
+                  onChange={(event) => setLastName(event.target.value)}
+                  placeholder="Rossi"
+                  required
+                  value={lastName}
                 />
               </div>
               <span className="login-field__hint">
-                Il backend V1 verificato non espone ancora un campo cliente aggiornabile
-                per il nome azienda, quindi questa pagina non simula un salvataggio non supportato.
+                Sendwise salva il nome completo visibile nel portale, mentre
+                password e sicurezza restano in Clerk.
               </span>
             </div>
 

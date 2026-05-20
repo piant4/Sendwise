@@ -3,6 +3,7 @@ import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { AdminCampaignDetailView } from "../../../../components/admin/AdminCampaignDetailView";
+import { buildPageMetadata } from "../../../../components/shared/metadata";
 import { AdminCampaignWizardShell } from "../../../../components/admin/AdminCampaignWizardShell";
 import {
   getAdminCampaignDetail,
@@ -17,6 +18,7 @@ import type {
 } from "../../../../types";
 
 export const dynamic = "force-dynamic";
+export const metadata = buildPageMetadata("Dettaglio campagna");
 
 interface AdminCampaignDetailPageProps {
   params: Promise<{

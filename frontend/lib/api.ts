@@ -421,15 +421,10 @@ interface AdminOverviewApiResponse {
       client_name: string;
       client_email: string;
       usage_ratio: number;
-      limiting_factor: "campaign_slots" | "email_limit_per_campaign" | "both";
+      limiting_factor: "campaign_slots";
       campaigns_in_use: number;
       max_campaigns?: number | null;
-      highest_usage_campaign_id?: string | null;
-      highest_usage_campaign_name?: string | null;
-      highest_usage_campaign_volume: number;
-      email_limit_per_campaign?: number | null;
       max_campaigns_ratio?: number | null;
-      email_limit_ratio?: number | null;
     }[];
     configured_limits_count: number;
     unconfigured_limits_count: number;
@@ -1328,12 +1323,7 @@ function mapAdminOverviewSummary(
         limitingFactor: client.limiting_factor,
         campaignsInUse: client.campaigns_in_use,
         maxCampaigns: client.max_campaigns ?? null,
-        highestUsageCampaignId: client.highest_usage_campaign_id ?? null,
-        highestUsageCampaignName: client.highest_usage_campaign_name ?? null,
-        highestUsageCampaignVolume: client.highest_usage_campaign_volume,
-        emailLimitPerCampaign: client.email_limit_per_campaign ?? null,
         maxCampaignsRatio: client.max_campaigns_ratio ?? null,
-        emailLimitRatio: client.email_limit_ratio ?? null,
       })),
       configuredLimitsCount: payload.limits.configured_limits_count,
       unconfiguredLimitsCount: payload.limits.unconfigured_limits_count,

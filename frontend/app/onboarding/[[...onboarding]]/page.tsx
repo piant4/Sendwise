@@ -2,9 +2,11 @@ import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 import { AccessStateCard } from "../../../components/shared/AccessStateCard";
 import { ClientOnboardingExperience } from "../../../components/auth/ClientOnboardingExperience";
+import { buildPageMetadata } from "../../../components/shared/metadata";
 import { getAuthMe, isApiError } from "../../../lib/api";
 
 export const dynamic = "force-dynamic";
+export const metadata = buildPageMetadata("Account");
 
 function buildOnboardingErrorContent(error: unknown) {
   if (isApiError(error)) {

@@ -1,8 +1,11 @@
 import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 import { AccessStateCard } from "../../../components/shared/AccessStateCard";
+import { buildPageMetadata } from "../../../components/shared/metadata";
 import { AccountWorkspace } from "../../../components/account/AccountWorkspace";
 import { getAuthMe, isApiError } from "../../../lib/api";
+
+export const metadata = buildPageMetadata("Account");
 
 interface AccountPageProps {
   params: Promise<{

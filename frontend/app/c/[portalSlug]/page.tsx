@@ -1,4 +1,5 @@
 import { DashboardErrorState } from "../../../components/dashboard/DashboardErrorState";
+import { buildPageMetadata } from "../../../components/shared/metadata";
 import { ClientDashboardHeader } from "../../../components/client/ClientDashboardHeader";
 import { ClientDeliveryCard } from "../../../components/client/ClientDeliveryCard";
 import { ClientKpiGrid } from "../../../components/client/ClientKpiGrid";
@@ -8,6 +9,7 @@ import { getClientOverviewSummary } from "../../../lib/api";
 import { requireClientPortalRequest } from "./portalPageData";
 
 export const dynamic = "force-dynamic";
+export const metadata = buildPageMetadata("Dashboard");
 
 interface ClientPortalPageProps {
   params: Promise<{

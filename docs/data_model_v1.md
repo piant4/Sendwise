@@ -90,6 +90,8 @@ Current verified fields:
 Legacy compatibility:
 - `email_limit_per_campaign` is deprecated as a Guard source for send volume.
 - `max_campaigns` remains the Guard-enforced active-campaign-count limit.
+- frontend account/admin client pages should not present `email_limit_per_campaign` as an account-level control
+- user-facing period/day windows derived from these compatibility fields should be rendered with `Europe/Rome`
 
 Recommended direction:
 - keep these fields during migration

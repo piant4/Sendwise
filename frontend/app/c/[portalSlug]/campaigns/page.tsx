@@ -1,4 +1,5 @@
 import { DashboardErrorState } from "../../../../components/dashboard/DashboardErrorState";
+import { buildPageMetadata } from "../../../../components/shared/metadata";
 import { ClientPageHeader } from "../../../../components/client/ClientPageHeader";
 import { ClientSurface } from "../../../../components/client/ClientSurface";
 import { formatDateTimeLabel } from "../../../../components/client/clientStatus";
@@ -20,6 +21,7 @@ import type { Campaign, CampaignReadModel } from "../../../../types";
 import { requireClientPortalRequest } from "../portalPageData";
 
 export const dynamic = "force-dynamic";
+export const metadata = buildPageMetadata("Campagne");
 
 interface ClientCampaignsPageProps {
   params: Promise<{

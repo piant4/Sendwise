@@ -3,6 +3,8 @@ import { auth } from "@clerk/nextjs/server";
 import { AlertTriangle, MailWarning, RadioTower, ShieldAlert } from "lucide-react";
 import { redirect } from "next/navigation";
 import { DashboardErrorState } from "../../components/dashboard/DashboardErrorState";
+import { formatDateTimeInRome } from "../../components/shared/dateTime";
+import { buildPageMetadata } from "../../components/shared/metadata";
 import { getReadableBackendReason } from "../../components/shared/campaignUi";
 import { StatusBadge } from "../../components/ui/StatusBadge";
 import { Button } from "../../components/ui/button";
@@ -14,18 +16,10 @@ import type {
 } from "../../types";
 
 export const dynamic = "force-dynamic";
+export const metadata = buildPageMetadata("Dashboard Admin");
 
 function formatDateTimeLabel(value: string): string {
-  const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) {
-    return value;
-  }
-
-  return new Intl.DateTimeFormat("it-IT", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(date);
+  return formatDateTimeInRome(value);
 }
 
 function getCampaignAttentionCount(summary: AdminOverviewSummary): number {
@@ -57,15 +51,9 @@ function getCampaignAttentionLabel(campaign: AdminRecentCampaign): string {
 }
 
 function getLimitLabel(client: AdminClientNearLimit): string {
-  if (client.limitingFactor === "both") {
-    return "Slot e volume";
-  }
-
-  if (client.limitingFactor === "campaign_slots") {
-    return "Slot campagna";
-  }
-
-  return "Volume campagna";
+  return client.limitingFactor === "campaign_slots"
+    ? "Capacita campagne"
+    : "Limite campagne";
 }
 
 function EmptyState({ message }: { message: string }) {
@@ -308,7 +296,7 @@ function AdminDashboardContent({ summary }: { summary: AdminOverviewSummary }) {
             <article className="admin-overview__panel">
               <div className="admin-clients-card__intro">
                 <div>
-                  <p className="admin-surface__eyebrow">Limiti</p>
+                  <p className="admin-surface__eyebrow">Capacita</p>
                   <h2 className="admin-clients-card__title" style={{ color: "#0f172a", marginTop: 0 }}>
                     Clienti vicini al limite
                   </h2>
@@ -324,7 +312,7 @@ function AdminDashboardContent({ summary }: { summary: AdminOverviewSummary }) {
                       <strong style={{ color: "#0f172a" }}>{client.clientName}</strong>
                       <span className="admin-record-row__note">{client.clientEmail}</span>
                       <span className="admin-record-row__note">
-                        {getLimitLabel(client)} / utilizzo {(client.usageRatio * 100).toFixed(0)}%
+                        {getLimitLabel(client)} / occupazione {(client.usageRatio * 100).toFixed(0)}%
                       </span>
                     </div>
                   ))}

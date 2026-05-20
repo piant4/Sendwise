@@ -1,21 +1,13 @@
 import { StatusBadge } from "../ui/StatusBadge";
 import type { AdminBlockedSendItem } from "../../types";
+import { formatDateTimeInRome } from "../shared/dateTime";
 
 interface AdminBlockedSendsListProps {
   items: AdminBlockedSendItem[];
 }
 
 function formatDateTimeLabel(value: string): string {
-  const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) {
-    return value;
-  }
-
-  return new Intl.DateTimeFormat("it-IT", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(date);
+  return formatDateTimeInRome(value);
 }
 
 function getDecisionLabel(decision: AdminBlockedSendItem["decision"]): string {

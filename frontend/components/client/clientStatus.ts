@@ -3,6 +3,7 @@ import type {
   ClientOverviewSummary,
   SendDecision,
 } from "../../types";
+import { formatDateTimeInRome } from "../shared/dateTime";
 
 export function getClientAccountVariant(
   status: ClientOverviewSummary["client"]["clientStatus"],
@@ -131,14 +132,8 @@ export function formatOptionalLimit(value?: number | null): string {
 }
 
 export function formatDateTimeLabel(value: string): string {
-  const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) {
-    return value;
-  }
-
-  return new Intl.DateTimeFormat("it-IT", {
+  return formatDateTimeInRome(value, {
     dateStyle: "short",
     timeStyle: "short",
-  }).format(date);
+  });
 }

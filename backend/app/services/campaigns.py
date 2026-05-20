@@ -105,6 +105,15 @@ TEMPLATE_PLACEHOLDER_PATTERN = re.compile(r"{{\s*([A-Za-z0-9_]+)\s*}}")
 DEFAULT_CAMPAIGN_PERIOD_EMAIL_LIMIT = 1000
 DEFAULT_CAMPAIGN_DAILY_EMAIL_LIMIT = 50
 CAMPAIGN_PERIOD_WINDOW = timedelta(days=30)
+
+
+def _get_business_day_start(current_time: datetime, settings: Settings) -> datetime:
+    business_now = current_time.astimezone(settings.business_timezone)
+    return datetime.combine(
+        business_now.date(),
+        time.min,
+        tzinfo=settings.business_timezone,
+    ).astimezone(timezone.utc)
 IN_PROGRESS_LOG_STATUSES = {"queued"}
 ACCEPTED_OR_COMPLETED_LOG_STATUSES = {
     "sent",
@@ -885,10 +894,9 @@ class AdminCampaignService:
             if period_started_at is not None
             else None
         )
-        today_started_at = datetime.combine(
-            datetime.now(timezone.utc).date(),
-            time.min,
-            tzinfo=timezone.utc,
+        today_started_at = _get_business_day_start(
+            datetime.now(timezone.utc),
+            self.settings,
         )
         daily_used = self.email_log_repository.count_real_campaign_logs_since(
             client_id=campaign.client_id,
@@ -2223,10 +2231,9 @@ class CampaignDispatchService:
             if period_started_at is not None
             else None
         )
-        today_started_at = datetime.combine(
-            datetime.now(timezone.utc).date(),
-            time.min,
-            tzinfo=timezone.utc,
+        today_started_at = _get_business_day_start(
+            datetime.now(timezone.utc),
+            self.settings,
         )
         daily_used = email_log_repository.count_real_campaign_logs_since(
             client_id=client_id,

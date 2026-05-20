@@ -2,6 +2,8 @@ import { auth } from "@clerk/nextjs/server";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { AdminClientAccessActions } from "../../../../components/admin/AdminClientAccessActions";
+import { formatDateTimeInRome } from "../../../../components/shared/dateTime";
+import { buildPageMetadata } from "../../../../components/shared/metadata";
 import {
   getAdminClient,
   isApiError,
@@ -10,6 +12,7 @@ import {
 import type { Client } from "../../../../types";
 
 export const dynamic = "force-dynamic";
+export const metadata = buildPageMetadata("Dettaglio cliente");
 
 interface AdminClientDetailPageProps {
   params: Promise<{
@@ -22,20 +25,7 @@ interface AdminClientDetailPageProps {
 }
 
 function formatDateLabel(value?: string | null): string {
-  if (!value) {
-    return "-";
-  }
-
-  const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) {
-    return value;
-  }
-
-  return new Intl.DateTimeFormat("it-IT", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(date);
+  return formatDateTimeInRome(value);
 }
 
 function getFieldNumber(value: FormDataEntryValue | null): number | null {
@@ -85,14 +75,11 @@ async function updateClientLimitsAction(clientId: string, formData: FormData) {
   try {
     const { getToken } = await auth();
     await updateAdminClientLimits(clientId, {
-      email_limit_per_campaign: getFieldNumber(
-        formData.get("email_limit_per_campaign"),
-      ),
       max_campaigns: getFieldNumber(formData.get("max_campaigns")),
     }, await getToken());
   } catch (error) {
     const message =
-      error instanceof Error ? error.message : "Aggiornamento limiti non riuscito.";
+      error instanceof Error ? error.message : "Aggiornamento capacita non riuscito.";
     redirect(
       `/admin/clients/${clientId}?error=${encodeURIComponent(message)}`,
     );
@@ -155,7 +142,7 @@ export default async function AdminClientDetailPage({
               {client.personal_name || client.name || client.email}
             </h1>
             <p className="admin-clients-hero__description">
-              Profilo cliente, stato accesso e limiti di invio configurati nel
+              Profilo cliente, stato accesso e capacita campagne configurata nel
               backend business.
             </p>
           </div>
@@ -163,7 +150,7 @@ export default async function AdminClientDetailPage({
 
         {saved ? (
           <p className="admin-clients-feedback admin-clients-feedback--success">
-            Limiti cliente aggiornati correttamente.
+            Capacita cliente aggiornata correttamente.
           </p>
         ) : null}
 
@@ -249,11 +236,11 @@ export default async function AdminClientDetailPage({
           <article className="admin-clients-card">
             <div className="admin-clients-card__intro">
               <div>
-                <p className="admin-surface__eyebrow">Limiti</p>
-                <h2 className="admin-clients-card__title">Controllo email</h2>
+                <p className="admin-surface__eyebrow">Capacita</p>
+                <h2 className="admin-clients-card__title">Capacita account</h2>
                 <p className="admin-clients-card__description">
-                  Aggiorna i limiti amministrativi senza introdurre enforcement
-                  campagne non ancora previsto in questa milestone.
+                  Aggiorna solo il numero massimo di campagne attive previsto per
+                  questo account cliente.
                 </p>
               </div>
             </div>
@@ -263,19 +250,7 @@ export default async function AdminClientDetailPage({
               className="admin-client-detail__limits-form"
             >
               <label className="admin-clients-form__field">
-                <span>Limite email per campagna</span>
-                <input
-                  className="admin-clients-form__input"
-                  type="number"
-                  name="email_limit_per_campaign"
-                  min="0"
-                  defaultValue={client.email_limit_per_campaign ?? ""}
-                  placeholder="Es. 5000"
-                />
-              </label>
-
-              <label className="admin-clients-form__field">
-                <span>Numero massimo campagne</span>
+                <span>Numero massimo campagne attive</span>
                 <input
                   className="admin-clients-form__input"
                   type="number"
@@ -287,7 +262,7 @@ export default async function AdminClientDetailPage({
               </label>
 
               <button type="submit" className="admin-clients-form__submit">
-                Salva limiti
+                Salva capacita
               </button>
             </form>
           </article>

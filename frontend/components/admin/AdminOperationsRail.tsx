@@ -15,11 +15,7 @@ function formatPercent(value: number): string {
 function getLimitFactorLabel(limit: AdminClientNearLimit["limitingFactor"]): string {
   switch (limit) {
     case "campaign_slots":
-      return "Saturazione campagne";
-    case "email_limit_per_campaign":
-      return "Volume per campagna";
-    case "both":
-      return "Campagne e volume";
+      return "Capacita campagne";
     default:
       return "Limite";
   }
@@ -34,7 +30,7 @@ export function AdminOperationsRail({
     <div className="admin-rail">
       <AdminSurface
         title="Clienti vicini al limite"
-        description="Clienti sopra l'80% della capacita configurata, calcolata dai limiti reali e dall'utilizzo registrato."
+        description="Clienti sopra l'80% della capacita campagne configurata per l'account."
       >
         {summary.limits.clientsNearLimit.length > 0 ? (
           <div className="admin-list">
@@ -63,21 +59,6 @@ export function AdminOperationsRail({
                     }
                     ratio={client.maxCampaignsRatio ?? 0}
                     tone="warning"
-                  />
-                  <AdminProgressBar
-                    label="Volume campagna leader"
-                    valueLabel={
-                      client.emailLimitPerCampaign
-                        ? `${client.highestUsageCampaignVolume.toLocaleString()} / ${client.emailLimitPerCampaign.toLocaleString()}`
-                        : client.highestUsageCampaignVolume.toLocaleString()
-                    }
-                    ratio={client.emailLimitRatio ?? 0}
-                    helper={
-                      client.highestUsageCampaignName
-                        ? client.highestUsageCampaignName
-                        : "Nessun invio registrato"
-                    }
-                    tone="danger"
                   />
                 </div>
               </article>

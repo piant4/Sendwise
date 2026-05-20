@@ -3,6 +3,7 @@ import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
+from zoneinfo import ZoneInfo
 
 import jwt
 import pytest
@@ -3363,4 +3364,103 @@ def test_client_campaign_stats_return_only_db_backed_metrics(
     assert payload["logs"]["complained"] == 0
     assert payload["logs"]["provider_events_available"] is False
     assert payload["blocked_sends"]["total"] == 1
+
+
+def test_admin_overview_uses_rome_day_boundaries() -> None:
+    settings = get_settings()
+    service = ClientsService(
+        FakeClientRepository(
+            [build_client_record()],
+            admin_email_log_records=[
+                build_admin_email_log_record(
+                    log_id="log_previous_local_day",
+                    created_at=datetime(2026, 5, 9, 21, 30, tzinfo=timezone.utc),
+                ),
+                build_admin_email_log_record(
+                    log_id="log_current_local_day",
+                    created_at=datetime(2026, 5, 9, 22, 15, tzinfo=timezone.utc),
+                ),
+            ],
+        ),
+        settings=settings,
+    )
+
+    overview = service.get_admin_overview(
+        client_access_service=FakeClientAccessService([]),
+        now=datetime(2026, 5, 9, 22, 30, tzinfo=timezone.utc),
+    )
+
+    expected_start = datetime(
+        2026,
+        5,
+        10,
+        0,
+        0,
+        tzinfo=ZoneInfo("Europe/Rome"),
+    ).astimezone(timezone.utc)
+
+    assert expected_start == datetime(2026, 5, 9, 22, 0, tzinfo=timezone.utc)
+    assert overview.sending.emails_sent_today == 1
+    assert overview.blocks.blocked_sends_today == 0
+
+
+def test_client_overview_uses_rome_month_boundaries() -> None:
+    settings = get_settings()
+    client_record = build_client_record()
+    access_record = build_access_record(
+        client_id=client_record.id,
+        email=client_record.email,
+    )
+    service = ClientsService(
+        FakeClientRepository(
+            [client_record],
+            client_usage_records=[
+                build_client_usage_record(
+                    usage_id="usage_previous_local_month",
+                    client_id=client_record.id,
+                    usage_type="api_requests",
+                    quantity=7,
+                    created_at=datetime(2026, 4, 30, 21, 30, tzinfo=timezone.utc),
+                ),
+                build_client_usage_record(
+                    usage_id="usage_current_local_month",
+                    client_id=client_record.id,
+                    usage_type="api_requests",
+                    quantity=9,
+                    created_at=datetime(2026, 4, 30, 22, 15, tzinfo=timezone.utc),
+                ),
+            ],
+            client_blocked_send_records=[
+                build_client_blocked_send_record(
+                    blocked_send_id="blocked_previous_local_month",
+                    client_id=client_record.id,
+                    created_at=datetime(2026, 4, 30, 21, 30, tzinfo=timezone.utc),
+                ),
+                build_client_blocked_send_record(
+                    blocked_send_id="blocked_current_local_month",
+                    client_id=client_record.id,
+                    created_at=datetime(2026, 4, 30, 22, 20, tzinfo=timezone.utc),
+                ),
+            ],
+        ),
+        settings=settings,
+    )
+
+    overview = service.get_client_overview(
+        client_id=client_record.id,
+        portal_slug=access_record.portal_slug,
+        client_access_service=FakeClientAccessService([access_record]),
+        now=datetime(2026, 4, 30, 22, 30, tzinfo=timezone.utc),
+    )
+
+    assert overview.usage.current_period_started_at == datetime(
+        2026,
+        4,
+        30,
+        22,
+        0,
+        tzinfo=timezone.utc,
+    )
+    assert overview.usage.current_period_totals[0].total_quantity == 9
+    assert overview.blocked_sends.current_period_count == 1
 USE_DEFAULT_PROVIDER_EVENT_REPOSITORY = object()

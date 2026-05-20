@@ -1,4 +1,5 @@
 import { AdminProgressBar } from "./AdminProgressBar";
+import { formatDateTimeInRome } from "../shared/dateTime";
 import { StatusBadge } from "../ui/StatusBadge";
 import type { AdminOverviewSummary } from "../../types";
 
@@ -7,16 +8,10 @@ interface AdminDashboardHeaderProps {
 }
 
 function formatDateTimeLabel(value: string): string {
-  const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) {
-    return value;
-  }
-
-  return new Intl.DateTimeFormat("it-IT", {
+  return formatDateTimeInRome(value, {
     dateStyle: "short",
     timeStyle: "short",
-  }).format(date);
+  });
 }
 
 export function AdminDashboardHeader({

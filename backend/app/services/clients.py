@@ -156,6 +156,27 @@ RECENT_BLOCKED_SENDS_LIMIT = 5
 CAMPAIGN_BLOCKED_SENDS_LATEST_LIMIT = 5
 
 
+def _get_business_period_start(current_time: datetime, settings: Settings) -> datetime:
+    business_now = current_time.astimezone(settings.business_timezone)
+    return business_now.replace(
+        day=1,
+        hour=0,
+        minute=0,
+        second=0,
+        microsecond=0,
+    ).astimezone(timezone.utc)
+
+
+def _get_business_day_start(current_time: datetime, settings: Settings) -> datetime:
+    business_now = current_time.astimezone(settings.business_timezone)
+    return business_now.replace(
+        hour=0,
+        minute=0,
+        second=0,
+        microsecond=0,
+    ).astimezone(timezone.utc)
+
+
 def _build_client_name(client: ClientRecord) -> str:
     if client.personal_name:
         return client.personal_name
@@ -455,12 +476,9 @@ class ClientsService:
             client_access_service=client_access_service,
         )
         current_time = now or datetime.now(timezone.utc)
-        current_period_started_at = current_time.astimezone(timezone.utc).replace(
-            day=1,
-            hour=0,
-            minute=0,
-            second=0,
-            microsecond=0,
+        current_period_started_at = _get_business_period_start(
+            current_time,
+            self._settings,
         )
         campaigns = self._repository.list_client_campaigns(client_id)
         usage = self._repository.list_client_usage(client_id)
@@ -921,13 +939,8 @@ class ClientsService:
                 limit=RECENT_ADMIN_BLOCKED_SENDS_LIMIT,
             )
         ]
-        start_of_day = current_time.astimezone(timezone.utc).replace(
-            hour=0,
-            minute=0,
-            second=0,
-            microsecond=0,
-        )
-        start_of_month = start_of_day.replace(day=1)
+        start_of_day = _get_business_day_start(current_time, self._settings)
+        start_of_month = _get_business_period_start(current_time, self._settings)
         configured_limits_count = sum(
             1 for client in clients if has_any_email_limit_configured(client)
         )
@@ -1478,40 +1491,17 @@ class ClientsService:
                 campaigns_in_use_by_client_id.get(campaign.client_id, 0) + 1
             )
 
-        highest_campaign_volume_by_client_id: dict[str, AdminCampaignEmailVolumeRecord] = {}
-        for volume in campaign_email_volumes:
-            existing = highest_campaign_volume_by_client_id.get(volume.client_id)
-            if existing is None or volume.emails_sent > existing.emails_sent:
-                highest_campaign_volume_by_client_id[volume.client_id] = volume
-
         near_limit_clients: list[AdminClientNearLimit] = []
         for client in clients:
             campaigns_in_use = campaigns_in_use_by_client_id.get(client.id, 0)
-            highest_campaign_volume = highest_campaign_volume_by_client_id.get(client.id)
             max_campaigns_ratio = self._compute_ratio(
                 campaigns_in_use,
                 client.max_campaigns,
             )
-            email_limit_ratio = self._compute_ratio(
-                highest_campaign_volume.emails_sent if highest_campaign_volume else 0,
-                client.email_limit_per_campaign,
-            )
-            usage_ratio = max(max_campaigns_ratio or 0.0, email_limit_ratio or 0.0)
+            usage_ratio = max_campaigns_ratio or 0.0
 
             if usage_ratio < NEAR_LIMIT_THRESHOLD:
                 continue
-
-            if (
-                max_campaigns_ratio is not None
-                and max_campaigns_ratio >= NEAR_LIMIT_THRESHOLD
-                and email_limit_ratio is not None
-                and email_limit_ratio >= NEAR_LIMIT_THRESHOLD
-            ):
-                limiting_factor = "both"
-            elif max_campaigns_ratio is not None and max_campaigns_ratio >= NEAR_LIMIT_THRESHOLD:
-                limiting_factor = "campaign_slots"
-            else:
-                limiting_factor = "email_limit_per_campaign"
 
             near_limit_clients.append(
                 AdminClientNearLimit(
@@ -1519,21 +1509,10 @@ class ClientsService:
                     client_name=_build_client_name(client),
                     client_email=client.email,
                     usage_ratio=usage_ratio,
-                    limiting_factor=limiting_factor,
+                    limiting_factor="campaign_slots",
                     campaigns_in_use=campaigns_in_use,
                     max_campaigns=client.max_campaigns,
-                    highest_usage_campaign_id=(
-                        highest_campaign_volume.campaign_id if highest_campaign_volume else None
-                    ),
-                    highest_usage_campaign_name=(
-                        highest_campaign_volume.campaign_name if highest_campaign_volume else None
-                    ),
-                    highest_usage_campaign_volume=(
-                        highest_campaign_volume.emails_sent if highest_campaign_volume else 0
-                    ),
-                    email_limit_per_campaign=client.email_limit_per_campaign,
                     max_campaigns_ratio=max_campaigns_ratio,
-                    email_limit_ratio=email_limit_ratio,
                 )
             )
 

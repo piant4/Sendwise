@@ -2,6 +2,7 @@ from functools import lru_cache
 from os import getenv
 from typing import List, Optional, Union
 from urllib.parse import quote, urlsplit
+from zoneinfo import ZoneInfo
 
 from pydantic import BaseModel, Field
 
@@ -97,6 +98,9 @@ class Settings(BaseModel):
             getenv("BACKEND_API_KEY", "change_me"),
         )
     )
+    business_timezone_name: str = Field(
+        default_factory=lambda: getenv("BUSINESS_TIMEZONE", "Europe/Rome")
+    )
 
     @property
     def email_sending_enabled(self) -> bool:
@@ -170,6 +174,10 @@ class Settings(BaseModel):
     @property
     def backend_public_origin(self) -> str:
         return self._origin_from_url(self.backend_public_url)
+
+    @property
+    def business_timezone(self) -> ZoneInfo:
+        return ZoneInfo(self.business_timezone_name.strip() or "Europe/Rome")
 
     def _origin_from_url(self, value: str) -> str:
         frontend_url = value.strip()

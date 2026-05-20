@@ -26,6 +26,11 @@ All product APIs must be called through FastAPI. Frontend and external callers m
 |---|---|---|---|---|---|---|---|
 | `GET /auth/me` | Resolve authenticated Sendwise access context for post-login routing and portal gating. | Authenticated frontend. | Active platform admin or active client account. | Clerk bearer token. | `access_type`, backend-owned `client_id`, `email`, `status`, `portal_slug`, onboarding flags. | `401`, `403`. | `implemented` |
 
+Auth flow notes:
+
+- invited client activation uses a custom Sendwise UI that collects `Nome`, `Cognome`, `Nuova password`, and `Conferma nuova password` while Clerk remains the password and session authority
+- frontend completes profile onboarding by posting the combined personal name to `POST /auth/onboarding` after Clerk activation succeeds
+
 ## Health
 
 | Endpoint | Purpose | Allowed caller | Required access | High-level input | High-level output | Main errors | Status |
@@ -39,7 +44,7 @@ All product APIs must be called through FastAPI. Frontend and external callers m
 | `GET /admin/clients` | List clients. | Admin dashboard. | Platform admin. | Filters, pagination. | Client summaries. | `401`, `403`. | `implemented` |
 | `POST /admin/clients` | Create/invite a client profile. | Admin dashboard. | Platform admin. | `email`, optional profile fields. | Client profile plus access summary. | `400`, `401`, `403`, `409`, `422`. | `implemented` |
 | `GET /admin/clients/{client_id}` | Read client detail. | Admin dashboard. | Platform admin. | `client_id`. | Client detail and access summary. | `401`, `403`, `404`. | `implemented` |
-| `PATCH /admin/clients/{client_id}` | Update client profile and current legacy limits. | Admin dashboard. | Platform admin. | `client_id`, partial profile and limit fields. | Updated client profile. | `400`, `401`, `403`, `404`, `409`. | `implemented` |
+| `PATCH /admin/clients/{client_id}` | Update client profile and legacy account-capacity fields. | Admin dashboard. | Platform admin. | `client_id`, partial profile and compatibility fields. | Updated client profile. | `400`, `401`, `403`, `404`, `409`. | `implemented` |
 | `POST /admin/clients/{client_id}/invite-access` | Re-issue access invite. | Admin dashboard. | Platform admin. | `client_id`. | Refreshed access state. | `400`, `401`, `403`, `404`, `409`, `422`. | `implemented` |
 | `POST /admin/clients/{client_id}/revoke-access` | Revoke pending access. | Admin dashboard. | Platform admin. | `client_id`. | Updated access state. | `401`, `403`, `404`, `409`. | `implemented` |
 | `POST /admin/clients/{client_id}/archive` | Archive client and access. | Admin dashboard. | Platform admin. | `client_id`. | Archived client state. | `401`, `403`, `404`, `409`. | `implemented` |
@@ -50,7 +55,7 @@ All product APIs must be called through FastAPI. Frontend and external callers m
 Admin request notes:
 
 - admin endpoints remain platform-admin only
-- client-scoped limits edited here are still legacy fields today
+- client account pages expose only legacy `max_campaigns` capacity; campaign send limits stay campaign-scoped
 - slot-management endpoints below are proposed and not yet implemented
 
 ## Admin Campaigns
@@ -59,7 +64,7 @@ Admin request notes:
 |---|---|---|---|---|---|---|---|
 | `GET /admin/overview` | Read admin operational summary. | Admin dashboard. | Platform admin. | None. | Client, campaign, send, system summaries. | `401`, `403`. | `implemented` |
 | `GET /admin/campaigns` | List all campaigns. | Admin dashboard. | Platform admin. | Filters, pagination. | Campaign summaries. | `401`, `403`. | `implemented` |
-| `GET /admin/email-limits` | Read current limit overview based on legacy fields and usage summaries. | Admin dashboard. | Platform admin. | None. | Limit dashboard summary. | `401`, `403`. | `implemented` |
+| `GET /admin/email-limits` | Read the legacy account-capacity overview used only for compatibility redirects. | Admin dashboard. | Platform admin. | None. | Legacy compatibility summary. | `401`, `403`. | `implemented` |
 | `GET /admin/blocked-sends` | View blocked sends across clients. | Admin dashboard. | Platform admin. | Filters. | Blocked send records. | `401`, `403`. | `implemented` |
 | `GET /admin/campaigns/{campaign_id}` | Read campaign detail. | Admin dashboard. | Platform admin. | `campaign_id`. | Campaign detail. | `401`, `403`, `404`. | `implemented` |
 | `POST /admin/campaigns/{campaign_id}/pause` | Pause campaign. | Admin dashboard. | Platform admin. | `campaign_id`, reason. | Updated campaign state. | `401`, `403`, `404`, `409`. | `stub` |
@@ -146,6 +151,7 @@ Admin-managed contract notes:
 - SES trial readiness outside the API also requires verified identity/domain, DKIM, SPF, DMARC, SES production access for non-verified recipients, and correct SES SMTP credentials in Listmonk
 - controlled send responses include provider and safety diagnostics such as `provider_status`, `queued_count`, `sent_or_accepted_count`, `failed_count`, `safety_checked`, `safety_passed`, `allowed_recipients_checked`, `eligible_contact_count`, `max_real_send_recipients`, `listmonk_dispatched`, `real_send_attempted`, `email_logs_created`, `unsubscribe_ready`, and `provider_events_ready`
 - Deliverability Guard blocks campaign dispatch with `campaign_daily_limit_reached` and `campaign_period_limit_reached` when campaign usage would exceed the configured table-backed limits
+- All user-facing admin/client day and month windows are evaluated against `Europe/Rome`; timestamps remain persisted in UTC
 - First SES validation may keep `REAL_SEND_MAX_RECIPIENTS=1` and `REAL_SEND_REQUIRE_ALLOWED_RECIPIENTS=true`; official product trials should use `REAL_SEND_MAX_RECIPIENTS=0` and `REAL_SEND_REQUIRE_ALLOWED_RECIPIENTS=false`
 - Campaign limits configured by admins are the real product limits; `EMAIL_SENDING_ENABLED=false` remains the emergency global off switch
 - listmonk remains a technical engine only

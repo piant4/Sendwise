@@ -337,15 +337,10 @@ class AdminClientNearLimit(BaseModel):
     client_name: str
     client_email: str
     usage_ratio: float
-    limiting_factor: Literal["campaign_slots", "email_limit_per_campaign", "both"]
+    limiting_factor: Literal["campaign_slots"]
     campaigns_in_use: int
     max_campaigns: Optional[int] = None
-    highest_usage_campaign_id: Optional[str] = None
-    highest_usage_campaign_name: Optional[str] = None
-    highest_usage_campaign_volume: int = 0
-    email_limit_per_campaign: Optional[int] = None
     max_campaigns_ratio: Optional[float] = None
-    email_limit_ratio: Optional[float] = None
 
 
 class AdminOverviewLimitsSummary(BaseModel):

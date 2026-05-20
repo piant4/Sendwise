@@ -10,6 +10,7 @@ import {
   getCampaignStatusLabel,
   getCampaignStatusVariant,
 } from "../shared/campaignUi";
+import { formatDateTimeInRome } from "../shared/dateTime";
 import { StatusBadge } from "../ui/StatusBadge";
 
 interface AdminCampaignCompactCardProps {
@@ -18,16 +19,7 @@ interface AdminCampaignCompactCardProps {
 }
 
 function formatDateLabel(value: string): string {
-  const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) {
-    return value;
-  }
-
-  return new Intl.DateTimeFormat("it-IT", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(date);
+  return formatDateTimeInRome(value);
 }
 
 export function AdminCampaignCompactCard({

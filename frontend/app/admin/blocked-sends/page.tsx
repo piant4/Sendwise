@@ -2,12 +2,15 @@ import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 import { AdminBlockedSendsList } from "../../../components/admin/AdminBlockedSendsList";
 import { AdminSurface } from "../../../components/admin/AdminSurface";
+import { formatDateInRome } from "../../../components/shared/dateTime";
+import { buildPageMetadata } from "../../../components/shared/metadata";
 import {
   getAdminBlockedSends,
   isApiError,
 } from "../../../lib/api";
 
 export const dynamic = "force-dynamic";
+export const metadata = buildPageMetadata("Dashboard Admin");
 
 export default async function AdminBlockedSendsPage() {
   const { getToken } = await auth();
@@ -65,7 +68,7 @@ export default async function AdminBlockedSendsPage() {
                 { label: "Campagne coinvolte", value: affectedCampaigns },
                 {
                   label: "Ultimo evento",
-                  value: items[0] ? new Date(items[0].createdAt).toLocaleDateString("it-IT") : "—",
+                  value: items[0] ? formatDateInRome(items[0].createdAt) : "—",
                 },
               ].map((stat) => (
                 <article key={stat.label} className="admin-page-stat-card">

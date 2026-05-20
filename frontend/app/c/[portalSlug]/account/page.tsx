@@ -1,9 +1,11 @@
 import { AccessStateCard } from "@/components/shared/AccessStateCard";
+import { buildPageMetadata } from "@/components/shared/metadata";
 import { AccountWorkspace } from "@/components/account/AccountWorkspace";
 import { getClientMe, isApiError } from "@/lib/api";
 import { requireClientPortalRequest } from "../portalPageData";
 
 export const dynamic = "force-dynamic";
+export const metadata = buildPageMetadata("Account");
 
 function buildAccountErrorContent(error: unknown) {
   if (isApiError(error)) {

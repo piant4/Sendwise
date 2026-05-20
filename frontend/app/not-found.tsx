@@ -1,5 +1,8 @@
 import Image from "next/image";
 import Link from "next/link";
+import { buildPageMetadata } from "../components/shared/metadata";
+
+export const metadata = buildPageMetadata("Pagina non trovata");
 
 export default function NotFound() {
   return (

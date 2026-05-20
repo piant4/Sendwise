@@ -260,15 +260,10 @@ export interface AdminClientNearLimit {
   clientName: string;
   clientEmail: string;
   usageRatio: number;
-  limitingFactor: "campaign_slots" | "email_limit_per_campaign" | "both";
+  limitingFactor: "campaign_slots";
   campaignsInUse: number;
   maxCampaigns?: number | null;
-  highestUsageCampaignId?: string | null;
-  highestUsageCampaignName?: string | null;
-  highestUsageCampaignVolume: number;
-  emailLimitPerCampaign?: number | null;
   maxCampaignsRatio?: number | null;
-  emailLimitRatio?: number | null;
 }
 
 export interface AdminOverviewLimitsSummary {

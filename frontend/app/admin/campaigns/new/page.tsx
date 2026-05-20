@@ -1,10 +1,12 @@
 import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 import { AdminCampaignCreateWizard } from "../../../../components/admin/AdminCampaignCreateWizard";
+import { buildPageMetadata } from "../../../../components/shared/metadata";
 import { getAdminClients, isApiError } from "../../../../lib/api";
 import type { Client } from "../../../../types";
 
 export const dynamic = "force-dynamic";
+export const metadata = buildPageMetadata("Campagne Admin");
 
 export default async function NewAdminCampaignPage() {
   const { getToken } = await auth();

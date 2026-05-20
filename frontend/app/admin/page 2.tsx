@@ -56,15 +56,9 @@ function getCampaignAttentionLabel(campaign: AdminRecentCampaign): string {
 }
 
 function getLimitLabel(client: AdminClientNearLimit): string {
-  if (client.limitingFactor === "both") {
-    return "Slot e limite email";
-  }
-
-  if (client.limitingFactor === "campaign_slots") {
-    return "Slot campagna";
-  }
-
-  return "Limite email";
+  return client.limitingFactor === "campaign_slots"
+    ? "Capacita campagne"
+    : "Limite campagne";
 }
 
 function EmptyState({ message }: { message: string }) {

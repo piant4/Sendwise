@@ -19,6 +19,7 @@ from app.repositories.contacts import ContactRecord, InMemoryContactRepository
 from app.repositories.email_logs import InMemoryEmailLogRepository
 from app.repositories.listmonk_mappings import InMemoryListmonkMappingRepository
 from app.repositories.suppression_list import InMemorySuppressionListRepository
+from app.services import campaigns as campaigns_module
 from app.services.campaigns import CampaignDispatchService
 from app.services.listmonk_mappings import (
     ListmonkMappingConflictError,
@@ -1194,6 +1195,57 @@ def test_campaign_period_limit_blocks_dispatch_when_reached() -> None:
     assert result["period_limit"] == 1
     assert result["period_used"] == 1
     assert result["period_remaining"] == 0
+    assert fake_listmonk.sent_campaign_ids == []
+
+
+def test_campaign_daily_limit_uses_rome_day_boundary(monkeypatch: Any) -> None:
+    class FixedDateTime(datetime):
+        @classmethod
+        def now(cls, tz: timezone | None = None) -> datetime:
+            current_time = cls(2026, 5, 9, 22, 30, tzinfo=timezone.utc)
+            return current_time.astimezone(tz) if tz is not None else current_time
+
+    monkeypatch.setattr(campaigns_module, "datetime", FixedDateTime)
+
+    fake_listmonk = FakeListmonkClient()
+    email_log_repository = InMemoryEmailLogRepository()
+    email_log_repository.create_email_log(
+        client_id="client_123",
+        campaign_id="campaign_123",
+        contact_id="contact_previous_local_day",
+        status="queued",
+        created_at=datetime(2026, 5, 9, 21, 30, tzinfo=timezone.utc),
+    )
+    email_log_repository.create_email_log(
+        client_id="client_123",
+        campaign_id="campaign_123",
+        contact_id="contact_current_local_day",
+        status="queued",
+        created_at=datetime(2026, 5, 9, 22, 15, tzinfo=timezone.utc),
+    )
+    contact_repository = InMemoryContactRepository(
+        contacts=[build_contact(contact_id="contact_1", email="one@example.test")],
+        campaign_contacts={("client_123", "campaign_123", "contact_1")},
+    )
+    limit_repository = InMemoryCampaignSendingLimitRepository()
+    limit_repository.ensure_for_campaign(
+        campaign_id="campaign_123",
+        period_email_limit=1000,
+        daily_email_limit=1,
+    )
+    service = build_dispatch_service(
+        fake_listmonk=fake_listmonk,
+        email_log_repository=email_log_repository,
+        campaign_limit_repository=limit_repository,
+        contact_repository=contact_repository,
+        preparation_service=FakePreparationService(content_ready=True),
+    )
+
+    result = service.send_campaign("campaign_123")
+
+    assert result["status"] == "blocked"
+    assert result["code"] == "campaign_daily_limit_reached"
+    assert result["daily_used"] == 1
     assert fake_listmonk.sent_campaign_ids == []
 
 

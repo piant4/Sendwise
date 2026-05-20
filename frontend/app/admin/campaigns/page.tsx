@@ -3,6 +3,7 @@ import { PlusCircle } from "lucide-react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { AdminCampaignCompactCard } from "../../../components/admin/AdminCampaignCompactCard";
+import { buildPageMetadata } from "../../../components/shared/metadata";
 import { AdminSurface } from "../../../components/admin/AdminSurface";
 import { Button } from "../../../components/ui/button";
 import {
@@ -16,6 +17,7 @@ import type {
 } from "../../../types";
 
 export const dynamic = "force-dynamic";
+export const metadata = buildPageMetadata("Campagne Admin");
 
 async function loadCampaignReadiness(
   campaigns: AdminCampaignSummary[],

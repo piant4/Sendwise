@@ -146,7 +146,7 @@ function buildRecommendation(
 ): ClientDashboardRecommendation {
   const campaignsHref = `/c/${summary.client.portalSlug}/campaigns`;
   const blockedHref = `/c/${summary.client.portalSlug}/blocked-sends`;
-  const limitsHref = `/c/${summary.client.portalSlug}/email-limits`;
+  const limitsHref = `/c/${summary.client.portalSlug}/account`;
 
   if (summary.blockedSends.currentPeriodCount > 0) {
     return {
@@ -183,7 +183,7 @@ function buildRecommendation(
       title: "Capacità campagne esaurita",
       description: "Le campagne in corso hanno già occupato tutti gli slot attivi.",
       href: limitsHref,
-      actionLabel: "Controlla i limiti",
+      actionLabel: "Apri account",
     };
   }
 

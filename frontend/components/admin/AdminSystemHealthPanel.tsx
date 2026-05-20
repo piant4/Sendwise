@@ -1,21 +1,13 @@
 import { StatusBadge } from "../ui/StatusBadge";
 import type { AdminSystemStatus } from "../../types";
+import { formatDateTimeInRome } from "../shared/dateTime";
 
 interface AdminSystemHealthPanelProps {
   status: AdminSystemStatus;
 }
 
 function formatDateTimeLabel(value: string): string {
-  const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) {
-    return value;
-  }
-
-  return new Intl.DateTimeFormat("it-IT", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(date);
+  return formatDateTimeInRome(value);
 }
 
 function getBooleanBadge(value: boolean) {

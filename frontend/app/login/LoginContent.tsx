@@ -10,6 +10,7 @@ import { BrandMark } from "../../components/shared/BrandMark";
 const LOGIN_REDIRECT_PATH = "/auth/redirect";
 
 type FlowStep = "credentials" | "first_factor" | "second_factor";
+type AuthMode = "login" | "reset_verify";
 
 type SupportedFactor = {
   strategy: string;
@@ -298,9 +299,12 @@ export function LoginContent() {
   const { fetchStatus, signIn } = useSignIn();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [verificationCode, setVerificationCode] = useState("");
   const [flowStep, setFlowStep] = useState<FlowStep>("credentials");
+  const [authMode, setAuthMode] = useState<AuthMode>("login");
   const [selectedFactorKey, setSelectedFactorKey] = useState("");
   const [preparedFactorKey, setPreparedFactorKey] = useState<string | null>(null);
   const [helperMessage, setHelperMessage] = useState<string | null>(null);
@@ -594,21 +598,60 @@ export function LoginContent() {
   async function handleResetFlow() {
     setErrorMessage(null);
     setHelperMessage(null);
+    setAuthMode("login");
+    setFlowStep("credentials");
+    setSelectedFactorKey("");
+    setPreparedFactorKey(null);
+    setVerificationCode("");
+    setConfirmPassword("");
+  }
+
+  async function handleStartPasswordReset() {
+    setErrorMessage(null);
+    setHelperMessage(null);
+
+    if (fetchStatus === "fetching") {
+      setErrorMessage(
+        "Il servizio di accesso non e ancora pronto. Riprova tra qualche secondo.",
+      );
+      return;
+    }
+
+    if (!email.trim()) {
+      setErrorMessage("Inserisci l'email del tuo account per reimpostare la password.");
+      return;
+    }
+
     setIsSubmitting(true);
 
     try {
-      const result = await signIn.reset();
+      const createResetPasswordAttempt = signIn.create as unknown as (params: {
+        identifier: string;
+        strategy: "reset_password_email_code";
+      }) => Promise<{ error: unknown | null }>;
+      const createResult = await createResetPasswordAttempt({
+        strategy: "reset_password_email_code",
+        identifier: email.trim(),
+      });
 
-      if (result.error) {
-        setErrorMessage(getItalianAuthErrorMessage(result.error));
+      if (createResult.error) {
+        setErrorMessage(getItalianAuthErrorMessage(createResult.error));
         return;
       }
 
+      const sendResult = await signIn.resetPasswordEmailCode.sendCode();
+
+      if (sendResult.error) {
+        setErrorMessage(getItalianAuthErrorMessage(sendResult.error));
+        return;
+      }
+
+      setAuthMode("reset_verify");
       setFlowStep("credentials");
-      setSelectedFactorKey("");
-      setPreparedFactorKey(null);
       setVerificationCode("");
-      setHelperMessage(null);
+      setPassword("");
+      setConfirmPassword("");
+      setHelperMessage(`Abbiamo inviato un codice di reset a ${email.trim()}.`);
     } catch (error) {
       setErrorMessage(getItalianAuthErrorMessage(error));
     } finally {
@@ -616,7 +659,47 @@ export function LoginContent() {
     }
   }
 
-  const showCredentialFields = flowStep === "credentials";
+  async function handleResetPasswordSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (password !== confirmPassword) {
+      setErrorMessage("Le password non coincidono.");
+      return;
+    }
+
+    setErrorMessage(null);
+    setIsSubmitting(true);
+
+    try {
+      const verifyResult = await signIn.resetPasswordEmailCode.verifyCode({
+        code: verificationCode.trim(),
+      });
+
+      if (verifyResult.error) {
+        setErrorMessage(getItalianAuthErrorMessage(verifyResult.error));
+        return;
+      }
+
+      const passwordResult = await signIn.resetPasswordEmailCode.submitPassword({
+        password,
+      });
+
+      if (passwordResult.error) {
+        setErrorMessage(getItalianAuthErrorMessage(passwordResult.error));
+        return;
+      }
+
+      setAuthMode("login");
+      await continueSignInFlow();
+    } catch (error) {
+      setErrorMessage(getItalianAuthErrorMessage(error));
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  const isResetMode = authMode === "reset_verify";
+  const showCredentialFields = flowStep === "credentials" && !isResetMode;
   const showVerificationFields = flowStep !== "credentials" && selectedChoice;
   const showFactorSelector = flowStep !== "credentials" && availableChoices.length > 1;
   const showResendButton =
@@ -653,21 +736,25 @@ export function LoginContent() {
         >
           <div className="login-card__header">
             <h2 className="login-card__title">
-              {getCardTitle(flowStep, selectedChoice)}
+              {isResetMode ? "Reimposta password" : getCardTitle(flowStep, selectedChoice)}
             </h2>
             <p className="login-card__description">
-              {getCardDescription(flowStep, selectedChoice)}
+              {isResetMode
+                ? "Inserisci il codice ricevuto via email e scegli una nuova password."
+                : getCardDescription(flowStep, selectedChoice)}
             </p>
           </div>
 
           <form
             aria-label="Modulo di accesso Sendwise"
             className="login-form"
-            onSubmit={
-              showCredentialFields ? handleCredentialSubmit : handleVerificationSubmit
-            }
+            onSubmit={isResetMode
+              ? handleResetPasswordSubmit
+              : showCredentialFields
+                ? handleCredentialSubmit
+                : handleVerificationSubmit}
           >
-            {showCredentialFields ? (
+            {showCredentialFields || isResetMode ? (
               <>
                 <div className="login-field">
                   <label className="login-field__label" htmlFor="login-email">
@@ -690,18 +777,20 @@ export function LoginContent() {
 
                 <div className="login-field">
                   <label className="login-field__label" htmlFor="login-password">
-                    Password
+                    {isResetMode ? "Nuova password" : "Password"}
                   </label>
                   <div className="login-password-shell">
                     <input
                       id="login-password"
                       name="password"
                       type={showPassword ? "text" : "password"}
-                      autoComplete="current-password"
+                      autoComplete={isResetMode ? "new-password" : "current-password"}
                       className="login-input login-input--password"
                       disabled={isSubmitting}
                       onChange={(event) => setPassword(event.target.value)}
-                      placeholder="Inserisci la password"
+                      placeholder={
+                        isResetMode ? "Inserisci la nuova password" : "Inserisci la password"
+                      }
                       required
                       value={password}
                     />
@@ -723,6 +812,66 @@ export function LoginContent() {
                     </button>
                   </div>
                 </div>
+
+                {isResetMode ? (
+                  <>
+                    <div className="login-field">
+                      <label className="login-field__label" htmlFor="login-code">
+                        Codice di reset
+                      </label>
+                      <input
+                        id="login-code"
+                        name="code"
+                        type="text"
+                        autoComplete="one-time-code"
+                        className="login-input"
+                        disabled={isSubmitting}
+                        onChange={(event) => setVerificationCode(event.target.value)}
+                        placeholder="Inserisci il codice ricevuto"
+                        required
+                        value={verificationCode}
+                      />
+                    </div>
+
+                    <div className="login-field">
+                      <label className="login-field__label" htmlFor="login-confirm-password">
+                        Conferma nuova password
+                      </label>
+                      <div className="login-password-shell">
+                        <input
+                          id="login-confirm-password"
+                          name="confirm-password"
+                          type={showConfirmPassword ? "text" : "password"}
+                          autoComplete="new-password"
+                          className="login-input login-input--password"
+                          disabled={isSubmitting}
+                          onChange={(event) => setConfirmPassword(event.target.value)}
+                          placeholder="Ripeti la nuova password"
+                          required
+                          value={confirmPassword}
+                        />
+                        <button
+                          type="button"
+                          className="login-password-toggle"
+                          aria-label={
+                            showConfirmPassword
+                              ? "Nascondi conferma password"
+                              : "Mostra conferma password"
+                          }
+                          aria-pressed={showConfirmPassword}
+                          disabled={isSubmitting}
+                          onClick={() => setShowConfirmPassword((currentValue) => !currentValue)}
+                        >
+                          {showConfirmPassword ? (
+                            <EyeOff aria-hidden="true" />
+                          ) : (
+                            <Eye aria-hidden="true" />
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                  </>
+                ) : null}
               </>
             ) : null}
 
@@ -789,6 +938,20 @@ export function LoginContent() {
               >
                 {isSubmitting ? "Accesso in corso..." : "Accedi"}
               </button>
+            ) : isResetMode ? (
+              <div className="login-actions">
+                <button className="login-submit" disabled={isSubmitting} type="submit">
+                  {isSubmitting ? "Aggiornamento in corso..." : "Aggiorna password"}
+                </button>
+                <button
+                  className="login-submit login-submit--secondary"
+                  disabled={isSubmitting}
+                  onClick={handleStartPasswordReset}
+                  type="button"
+                >
+                  Invia di nuovo il codice
+                </button>
+              </div>
             ) : showVerificationFields ? (
               <div className="login-actions">
                 <button className="login-submit" disabled={isSubmitting} type="submit">
@@ -810,14 +973,25 @@ export function LoginContent() {
               </div>
             ) : null}
 
-            {flowStep !== "credentials" ? (
+            {showCredentialFields ? (
+              <button
+                className="login-reset-action"
+                disabled={isSubmitting}
+                onClick={handleStartPasswordReset}
+                type="button"
+              >
+                Password dimenticata?
+              </button>
+            ) : null}
+
+            {flowStep !== "credentials" || isResetMode ? (
               <button
                 className="login-reset-action"
                 disabled={isSubmitting}
                 onClick={handleResetFlow}
                 type="button"
               >
-                Usa un&apos;altra email
+                {isResetMode ? "Torna al login" : "Usa un&apos;altra email"}
               </button>
             ) : null}
           </form>

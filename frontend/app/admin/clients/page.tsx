@@ -2,26 +2,16 @@ import { auth } from "@clerk/nextjs/server";
 import { ChevronRight } from "lucide-react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { formatDateTimeInRome } from "../../../components/shared/dateTime";
+import { buildPageMetadata } from "../../../components/shared/metadata";
 import { getAdminClients, isApiError } from "../../../lib/api";
 import type { Client } from "../../../types";
 
 export const dynamic = "force-dynamic";
+export const metadata = buildPageMetadata("Clienti Admin");
 
 function formatDateLabel(value?: string | null): string {
-  if (!value) {
-    return "-";
-  }
-
-  const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) {
-    return value;
-  }
-
-  return new Intl.DateTimeFormat("it-IT", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(date);
+  return formatDateTimeInRome(value);
 }
 
 function truncatePortalSlug(portalSlug?: string | null): string {
@@ -88,14 +78,11 @@ function getProfileStatusLabel(status: Client["status"]): string {
 }
 
 function getClientLimitsLabel(client: Client): string {
-  if (
-    client.email_limit_per_campaign == null &&
-    client.max_campaigns == null
-  ) {
-    return "Limiti non impostati";
+  if (client.max_campaigns == null) {
+    return "Capacita campagne non impostata";
   }
 
-  return `${client.email_limit_per_campaign ?? "-"} email · ${client.max_campaigns ?? "-"} campagne`;
+  return `${client.max_campaigns} campagne attive`;
 }
 
 function buildClientStats(clients: Client[]) {
@@ -145,7 +132,7 @@ export default async function AdminClientsPage() {
             <p className="admin-surface__eyebrow">Admin</p>
             <h1 className="admin-clients-hero__title">Clienti</h1>
             <p className="admin-clients-hero__description">
-              Gestisci inviti, onboarding, limiti email e stato di accesso dei
+              Gestisci inviti, onboarding, capacita campagne e stato di accesso dei
               clienti da un unico pannello operativo.
             </p>
           </div>
@@ -191,7 +178,7 @@ export default async function AdminClientsPage() {
                   <h2 className="admin-clients-card__title">Elenco accessi</h2>
                   <p className="admin-clients-card__description">
                     Ogni riga mostra lo stato reale dell&apos;invito, il portale
-                    associato e i limiti configurati.
+                    associato e la capacita campagne configurata.
                   </p>
                 </div>
               </div>
@@ -206,7 +193,7 @@ export default async function AdminClientsPage() {
                     <span>Cliente</span>
                     <span>Accesso</span>
                     <span>Invito</span>
-                    <span>Limiti</span>
+                    <span>Capacita</span>
                     <span>Stato profilo</span>
                     <span aria-hidden="true"></span>
                   </div>
@@ -245,7 +232,7 @@ export default async function AdminClientsPage() {
 
                           <div className="admin-clients-cell">
                             <strong>{getClientLimitsLabel(client)}</strong>
-                            <span>Per campagna / numero campagne</span>
+                            <span>Solo campagne attive a livello account</span>
                           </div>
 
                           <div className="admin-clients-cell">

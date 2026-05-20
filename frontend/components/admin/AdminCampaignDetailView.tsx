@@ -18,6 +18,7 @@ import {
   getReadableBackendReason,
   getRuntimeSafetyItems,
 } from "../shared/campaignUi";
+import { formatDateTimeInRome } from "../shared/dateTime";
 import { Button } from "../ui/button";
 import { StatusBadge } from "../ui/StatusBadge";
 
@@ -28,16 +29,7 @@ interface AdminCampaignDetailViewProps {
 }
 
 function formatDateLabel(value: string): string {
-  const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) {
-    return value;
-  }
-
-  return new Intl.DateTimeFormat("it-IT", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(date);
+  return formatDateTimeInRome(value);
 }
 
 function getExcerpt(value?: string | null): string {

@@ -1,5 +1,37 @@
 # Audit Log
 
+## Milestone 18.6O-FIX5 - Enforce Fully Custom Invite Activation
+
+Date: 2026-05-20
+
+Invite activation audit summary:
+- Audited `frontend/components/auth/ClientInviteActivationForm.tsx`, `frontend/components/auth/ClientOnboardingExperience.tsx`, and `frontend/app/onboarding/[[...onboarding]]/page.tsx` without reading secrets, sending invites, or touching provider actions.
+- Exact root cause after `Attiva account`: the onboarding form still contained two continuation paths that could leave the Sendwise-owned flow and expose Clerk UI, `redirectToSignUp(...)` for unresolved ticket requirements and `window.location.assign(...)` for hosted continuation URLs returned from pending session tasks.
+- The accepted success path is now strictly limited to ticket activation completed by the Sendwise form, a complete Clerk session with no pending task, backend onboarding completion, and redirect to `/auth/redirect`.
+- Any unresolved protected requirement now fails closed inside the Sendwise card with `Invito non completabile`, product-safe copy, and `Torna al login`; no embedded Clerk component, hosted continuation, provider task component, or visible auth branding remains in the invite onboarding flow.
+- Internal-only debug mapping remains in code through development-console warnings that classify blocked states such as unsupported pending fields, external/social verification requirements, missing session creation, hosted continuation targets, and pending session tasks.
+- The required Clerk configuration for this flow is now documented explicitly: invite activation must be satisfiable by `ticket + first_name + last_name + password` only, with no additional social, email/phone verification, organization, MFA, reset-password, or hosted continuation requirement.
+
+Safety confirmation:
+- No password is stored in Sendwise persistence; password creation remains Clerk-owned.
+- No send/dispatch execution, direct SES/Listmonk action, DB reset, destructive DB command, or schema migration was performed.
+
+## Milestone 18.6O-FIX4 - Stop Embedded Clerk Invite Screen
+
+Date: 2026-05-20
+
+Invite activation audit summary:
+- Audited `frontend/components/auth/ClientInviteActivationForm.tsx`, the signed-in onboarding gate, and the auth redirect handoff without reading secrets, sending invites, or touching provider actions.
+- Exact root cause after `Attiva account`: the custom invite form escalated non-complete ticket states into embedded auth UI by rendering `<SignUp />` when the ticket flow reported follow-up requirements and by rendering provider task components after the finalized session exposed a pending task.
+- The invite form now keeps the custom Sendwise fields visible, submits supported profile and password fields directly through the auth SDK, and retries supported missing-field completion through SDK updates before deciding whether the flow can finish.
+- If protected follow-up still remains, the page now renders only the Sendwise fallback card `Completa la verifica` with product copy and a secure continuation action; no embedded auth card, social buttons, provider badges, or raw technical follow-up labels are rendered inside onboarding.
+- Known limitation: the secure continuation button can redirect to a hosted follow-up only when the auth runtime exposes a safe redirect target; otherwise it falls back to the existing login entry so the user never loops back into an embedded auth card.
+- Signed-in onboarding, pending portal gating, backend onboarding completion, and password ownership remain unchanged: Sendwise still stores only profile completion data after the auth system finishes account activation.
+
+Safety confirmation:
+- No password is stored in Sendwise persistence; password creation remains auth-system owned.
+- No send/dispatch execution, direct SES/Listmonk action, DB reset, destructive DB command, or schema migration was performed.
+
 ## Milestone 18.6O-FIX3 - Resolve Clerk Invite Follow-Up States
 
 Date: 2026-05-20

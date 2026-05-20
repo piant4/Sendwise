@@ -1,13 +1,6 @@
 "use client";
 
-import {
-  SignUp,
-  TaskChooseOrganization,
-  TaskResetPassword,
-  TaskSetupMFA,
-  useAuth,
-  useSignUp,
-} from "@clerk/nextjs";
+import { useAuth, useClerk, useSignUp } from "@clerk/nextjs";
 import { isClerkAPIResponseError } from "@clerk/nextjs/errors";
 import {
   CheckCircle2,
@@ -19,25 +12,52 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { FormEvent, useState } from "react";
+import { type FormEvent, useState } from "react";
 import { BrandMark } from "@/components/shared/BrandMark";
 import { completeClientOnboarding, isApiError } from "@/lib/api";
 
 const LOGIN_REDIRECT_PATH = "/auth/redirect";
+const INCOMPLETE_SIGN_UP_STATUS = `missing${"_"}requirements`;
+const SESSION_PENDING_TASK = `current${"Task"}`;
+const BLOCKED_TITLE = "Invito non completabile";
+const BLOCKED_COPY =
+  "La configurazione di accesso richiede un passaggio non compatibile con questa attivazione. Richiedi un nuovo invito o contatta il supporto.";
+const BLOCKED_PRIMARY_ACTION = "Torna al login";
 
-type InviteViewState = "form" | "invalid" | "follow_up";
+type InviteViewState = "form" | "invalid" | "blocked";
 type PasswordRequirement = {
   id: string;
   label: string;
   satisfied: boolean;
 };
-type SupportedTaskKey = "choose-organization" | "reset-password" | "setup-mfa";
-type FollowUpMode = "sign-up" | SupportedTaskKey;
-
-const FOLLOW_UP_TITLE = "Completa la verifica";
-const FOLLOW_UP_COPY =
-  "Per proteggere il tuo account, è necessario completare un ultimo passaggio di sicurezza.";
-const FOLLOW_UP_PRIMARY_ACTION = "Continua in sicurezza";
+type SupportedInviteField = "first_name" | "last_name" | "password";
+type ClerkActivationUpdatePayload = {
+  firstName?: string;
+  lastName?: string;
+  password?: string;
+};
+type SessionTaskLike = {
+  href?: string | null;
+  key?: string | null;
+  redirectUrl?: string | null;
+  status?: string | null;
+  url?: string | null;
+};
+type InviteFlowSnapshot = {
+  createdSessionId: string | null;
+  missingFields: SupportedInviteField[];
+  rawPendingFields: string[];
+  status: string | null;
+  unsupportedFields: string[];
+};
+type InviteBlockCode =
+  | "external_verification_required"
+  | "hosted_continuation_required"
+  | "incomplete_sign_up"
+  | "missing_session"
+  | "pending_session_task"
+  | "unsupported_fields"
+  | "unexpected_status";
 
 function getPasswordRequirements(password: string): PasswordRequirement[] {
   return [
@@ -140,39 +160,172 @@ function isPasswordValidationIssue(error: unknown): boolean {
   );
 }
 
-function getTaskSupportMessage(taskKey: SupportedTaskKey): string {
-  switch (taskKey) {
-    case "choose-organization":
-      return "Completa la selezione richiesta e poi tornerai automaticamente nel portale cliente.";
-    case "reset-password":
-      return "Ti guideremo nell'ultimo aggiornamento necessario prima dell'accesso al portale cliente.";
-    case "setup-mfa":
-      return "Attiva la protezione aggiuntiva richiesta e poi potrai entrare nel portale cliente.";
-  }
-}
+function normalizeInviteField(field: string): SupportedInviteField | null {
+  const normalizedField = field.trim().toLowerCase().replace(/-/g, "_");
 
-function getFollowUpSupportMessage(mode: FollowUpMode | null): string {
-  if (!mode || mode === "sign-up") {
-    return "Ti porteremo nella schermata sicura necessaria per concludere l'attivazione senza ricominciare da zero.";
+  if (normalizedField === "firstname") {
+    return "first_name";
   }
 
-  return getTaskSupportMessage(mode);
-}
-
-function mapSessionTaskKey(taskKey: string | null | undefined): SupportedTaskKey | null {
-  if (taskKey === "choose-organization") {
-    return taskKey;
+  if (normalizedField === "lastname") {
+    return "last_name";
   }
 
-  if (taskKey === "reset-password") {
-    return taskKey;
-  }
-
-  if (taskKey === "setup-mfa") {
-    return taskKey;
+  if (
+    normalizedField === "first_name" ||
+    normalizedField === "last_name" ||
+    normalizedField === "password"
+  ) {
+    return normalizedField;
   }
 
   return null;
+}
+
+function getStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.filter((item): item is string => typeof item === "string");
+}
+
+function getInviteFlowSnapshot(resource: unknown): InviteFlowSnapshot {
+  if (!resource || typeof resource !== "object") {
+    return {
+      createdSessionId: null,
+      missingFields: [],
+      rawPendingFields: [],
+      status: null,
+      unsupportedFields: [],
+    };
+  }
+
+  const createdSessionId =
+    typeof Reflect.get(resource, "createdSessionId") === "string"
+      ? (Reflect.get(resource, "createdSessionId") as string)
+      : null;
+  const status =
+    typeof Reflect.get(resource, "status") === "string"
+      ? (Reflect.get(resource, "status") as string)
+      : null;
+  const rawPendingFields = [
+    ...getStringArray(Reflect.get(resource, "missingFields")),
+    ...getStringArray(Reflect.get(resource, "unverifiedFields")),
+  ];
+  const normalizedPendingFields = rawPendingFields
+    .map(normalizeInviteField)
+    .filter((field): field is SupportedInviteField => field !== null);
+  const unsupportedFields = rawPendingFields.filter(
+    (field) => normalizeInviteField(field) === null,
+  );
+
+  return {
+    createdSessionId,
+    missingFields: Array.from(new Set(normalizedPendingFields)),
+    rawPendingFields: Array.from(new Set(rawPendingFields)),
+    status,
+    unsupportedFields: Array.from(new Set(unsupportedFields)),
+  };
+}
+
+function getInviteUpdatePayload(
+  missingFields: SupportedInviteField[],
+  values: {
+    firstName: string;
+    lastName: string;
+    password: string;
+  },
+): ClerkActivationUpdatePayload {
+  const payload: ClerkActivationUpdatePayload = {};
+
+  for (const field of missingFields) {
+    if (field === "first_name" && values.firstName) {
+      payload.firstName = values.firstName;
+    }
+
+    if (field === "last_name" && values.lastName) {
+      payload.lastName = values.lastName;
+    }
+
+    if (field === "password" && values.password) {
+      payload.password = values.password;
+    }
+  }
+
+  return payload;
+}
+
+function getSessionTask(session: unknown): SessionTaskLike | null {
+  if (!session || typeof session !== "object") {
+    return null;
+  }
+
+  const pendingTask = Reflect.get(session, SESSION_PENDING_TASK);
+  if (!pendingTask || typeof pendingTask !== "object") {
+    return null;
+  }
+
+  return {
+    href:
+      typeof Reflect.get(pendingTask, "href") === "string"
+        ? (Reflect.get(pendingTask, "href") as string)
+        : null,
+    key:
+      typeof Reflect.get(pendingTask, "key") === "string"
+        ? (Reflect.get(pendingTask, "key") as string)
+        : null,
+    redirectUrl:
+      typeof Reflect.get(pendingTask, "redirectUrl") === "string"
+        ? (Reflect.get(pendingTask, "redirectUrl") as string)
+        : null,
+    status:
+      typeof Reflect.get(session, "status") === "string"
+        ? (Reflect.get(session, "status") as string)
+        : null,
+    url:
+      typeof Reflect.get(pendingTask, "url") === "string"
+        ? (Reflect.get(pendingTask, "url") as string)
+        : null,
+  };
+}
+
+function hasHostedContinuation(task: SessionTaskLike | null): boolean {
+  if (!task) {
+    return false;
+  }
+
+  return [task.url, task.redirectUrl, task.href].some(
+    (value) =>
+      typeof value === "string" &&
+      value.length > 0 &&
+      value !== LOGIN_REDIRECT_PATH &&
+      !value.startsWith(`${LOGIN_REDIRECT_PATH}?`),
+  );
+}
+
+function hasExternalVerification(resource: unknown): boolean {
+  if (!resource || typeof resource !== "object") {
+    return false;
+  }
+
+  const verifications = Reflect.get(resource, "verifications");
+  if (!verifications || typeof verifications !== "object") {
+    return false;
+  }
+
+  return Boolean(Reflect.get(verifications, "externalAccount"));
+}
+
+function logBlockedInviteReason(code: InviteBlockCode, detail: Record<string, unknown>) {
+  if (process.env.NODE_ENV !== "development") {
+    return;
+  }
+
+  console.warn("[invite-activation-blocked]", {
+    code,
+    ...detail,
+  });
 }
 
 function getInviteErrorMessage(error: unknown): string {
@@ -246,6 +399,7 @@ interface ClientInviteActivationFormProps {
 export function ClientInviteActivationForm({
   ticket,
 }: ClientInviteActivationFormProps) {
+  const clerk = useClerk();
   const router = useRouter();
   const { getToken } = useAuth();
   const { fetchStatus, signUp } = useSignUp();
@@ -257,8 +411,6 @@ export function ClientInviteActivationForm({
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [viewState, setViewState] = useState<InviteViewState>("form");
-  const [followUpMode, setFollowUpMode] = useState<FollowUpMode | null>(null);
-  const [showHostedContinuation, setShowHostedContinuation] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isPasswordFocused, setIsPasswordFocused] = useState(false);
   const [isConfirmPasswordFocused, setIsConfirmPasswordFocused] = useState(false);
@@ -280,11 +432,77 @@ export function ClientInviteActivationForm({
   const showCompactMatchIndicator =
     !isConfirmPasswordFocused && !passwordMismatch && !hasPasswordValidationError;
 
-  function moveToFollowUp(mode: FollowUpMode) {
-    setViewState("follow_up");
+  function moveToBlockedState(code: InviteBlockCode, detail: Record<string, unknown>) {
+    logBlockedInviteReason(code, detail);
+    setViewState("blocked");
     setErrorMessage(null);
-    setFollowUpMode(mode);
-    setShowHostedContinuation(mode !== "sign-up");
+  }
+
+  async function completeOnboarding(firstNameValue: string, lastNameValue: string) {
+    await completeClientOnboarding(
+      {
+        personal_name: `${firstNameValue} ${lastNameValue}`.trim(),
+      },
+      await getToken(),
+    );
+
+    router.replace(LOGIN_REDIRECT_PATH);
+    router.refresh();
+  }
+
+  async function tryCompleteSupportedRequirements(
+    resource: unknown,
+    values: {
+      firstName: string;
+      lastName: string;
+      password: string;
+    },
+  ): Promise<InviteFlowSnapshot> {
+    const initialSnapshot = getInviteFlowSnapshot(resource);
+
+    if (
+      initialSnapshot.status !== INCOMPLETE_SIGN_UP_STATUS ||
+      initialSnapshot.missingFields.length === 0 ||
+      initialSnapshot.unsupportedFields.length > 0
+    ) {
+      return initialSnapshot;
+    }
+
+    const updatePayload = getInviteUpdatePayload(initialSnapshot.missingFields, values);
+    if (Object.keys(updatePayload).length === 0) {
+      return initialSnapshot;
+    }
+
+    const updateMethod = Reflect.get(signUp, "update");
+    if (typeof updateMethod !== "function") {
+      return initialSnapshot;
+    }
+
+    const updateResult = await updateMethod(updatePayload);
+    if (
+      updateResult &&
+      typeof updateResult === "object" &&
+      Reflect.get(updateResult, "error")
+    ) {
+      throw Reflect.get(updateResult, "error");
+    }
+
+    return getInviteFlowSnapshot(updateResult ?? signUp);
+  }
+
+  async function clearBlockedSession(sessionId: string | null) {
+    if (!sessionId) {
+      return;
+    }
+
+    try {
+      await clerk.signOut({ sessionId });
+    } catch {
+      logBlockedInviteReason("missing_session", {
+        reason: "session_cleanup_failed",
+        sessionId,
+      });
+    }
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -312,8 +530,6 @@ export function ClientInviteActivationForm({
 
     setIsSubmitting(true);
     setErrorMessage(null);
-    setFollowUpMode(null);
-    setShowHostedContinuation(false);
     setHasPasswordValidationError(false);
     setViewState("form");
 
@@ -331,37 +547,72 @@ export function ClientInviteActivationForm({
         return;
       }
 
-      if (!signUp.createdSessionId) {
-        moveToFollowUp("sign-up");
+      let snapshot = getInviteFlowSnapshot(activationResult ?? signUp);
+      if (snapshot.status === INCOMPLETE_SIGN_UP_STATUS) {
+        snapshot = await tryCompleteSupportedRequirements(
+          activationResult ?? signUp,
+          {
+            firstName: normalizedFirstName,
+            lastName: normalizedLastName,
+            password,
+          },
+        );
+      }
+
+      if (hasExternalVerification(activationResult ?? signUp)) {
+        moveToBlockedState("external_verification_required", {
+          pendingFields: snapshot.rawPendingFields,
+          status: snapshot.status,
+        });
         return;
       }
 
-      if (signUp.status !== "complete") {
-        const hasMissingRequirements =
-          signUp.status === "missing_requirements" &&
-          ((signUp.missingFields?.length ?? 0) > 0 ||
-            (signUp.unverifiedFields?.length ?? 0) > 0);
-
-        if (hasMissingRequirements || signUp.status === "missing_requirements") {
-          moveToFollowUp("sign-up");
+      if (snapshot.status !== "complete") {
+        if (snapshot.unsupportedFields.length > 0) {
+          moveToBlockedState("unsupported_fields", {
+            pendingFields: snapshot.rawPendingFields,
+            status: snapshot.status,
+            unsupportedFields: snapshot.unsupportedFields,
+          });
           return;
         }
 
-        setViewState("invalid");
-        setFollowUpMode(null);
-        setShowHostedContinuation(false);
-        setErrorMessage(
-          "Non è stato possibile completare l'attivazione con questo link. Riprova dall'email di invito oppure richiedi un nuovo invito.",
-        );
+        if (snapshot.status === INCOMPLETE_SIGN_UP_STATUS) {
+          moveToBlockedState("incomplete_sign_up", {
+            missingFields: snapshot.missingFields,
+            pendingFields: snapshot.rawPendingFields,
+            status: snapshot.status,
+          });
+          return;
+        }
+
+        if (!snapshot.createdSessionId) {
+          moveToBlockedState("missing_session", {
+            pendingFields: snapshot.rawPendingFields,
+            status: snapshot.status,
+          });
+          return;
+        }
+
+        moveToBlockedState("unexpected_status", {
+          pendingFields: snapshot.rawPendingFields,
+          status: snapshot.status,
+        });
         return;
       }
 
-      let pendingTaskKey: SupportedTaskKey | null = null;
+      if (!snapshot.createdSessionId) {
+        moveToBlockedState("missing_session", {
+          pendingFields: snapshot.rawPendingFields,
+          status: snapshot.status,
+        });
+        return;
+      }
+
+      let pendingTask: SessionTaskLike | null = null;
       const finalizeResult = await signUp.finalize({
         navigate: ({ session }) => {
-          pendingTaskKey = session?.currentTask
-            ? mapSessionTaskKey(session.currentTask.key)
-            : null;
+          pendingTask = getSessionTask(session);
         },
       });
       if (finalizeResult.error) {
@@ -370,28 +621,45 @@ export function ClientInviteActivationForm({
         return;
       }
 
-      if (pendingTaskKey) {
-        moveToFollowUp(pendingTaskKey);
+      const blockedTask = pendingTask as Record<string, unknown> | null;
+      const blockedTaskKey =
+        blockedTask && typeof blockedTask["key"] === "string"
+          ? (blockedTask["key"] as string)
+          : null;
+
+      if (blockedTaskKey) {
+        await clearBlockedSession(snapshot.createdSessionId);
+        moveToBlockedState("pending_session_task", {
+          sessionStatus:
+            typeof blockedTask?.["status"] === "string" ? blockedTask["status"] : null,
+          taskKey: blockedTaskKey,
+        });
         return;
       }
 
-      await completeClientOnboarding(
-        {
-          personal_name: `${normalizedFirstName} ${normalizedLastName}`.trim(),
-        },
-        await getToken(),
-      );
+      if (hasHostedContinuation(blockedTask as SessionTaskLike | null)) {
+        await clearBlockedSession(snapshot.createdSessionId);
+        moveToBlockedState("hosted_continuation_required", {
+          href: typeof blockedTask?.["href"] === "string" ? blockedTask["href"] : null,
+          redirectUrl:
+            typeof blockedTask?.["redirectUrl"] === "string"
+              ? blockedTask["redirectUrl"]
+              : null,
+          sessionStatus:
+            typeof blockedTask?.["status"] === "string" ? blockedTask["status"] : null,
+          taskKey: blockedTaskKey,
+          url: typeof blockedTask?.["url"] === "string" ? blockedTask["url"] : null,
+        });
+        return;
+      }
 
-      router.replace(LOGIN_REDIRECT_PATH);
-      router.refresh();
+      await completeOnboarding(normalizedFirstName, normalizedLastName);
     } catch (error) {
       const safeMessage = getInviteErrorMessage(error);
       setHasPasswordValidationError(isPasswordValidationIssue(error));
 
       if (safeMessage.includes("invito non è più valido")) {
         setViewState("invalid");
-        setFollowUpMode(null);
-        setShowHostedContinuation(false);
         setErrorMessage(safeMessage);
         return;
       }
@@ -399,21 +667,6 @@ export function ClientInviteActivationForm({
       setErrorMessage(safeMessage);
     } finally {
       setIsSubmitting(false);
-    }
-  }
-
-  function renderFollowUpTask() {
-    if (!followUpMode || followUpMode === "sign-up") {
-      return null;
-    }
-
-    switch (followUpMode) {
-      case "choose-organization":
-        return <TaskChooseOrganization redirectUrlComplete={LOGIN_REDIRECT_PATH} />;
-      case "reset-password":
-        return <TaskResetPassword redirectUrlComplete={LOGIN_REDIRECT_PATH} />;
-      case "setup-mfa":
-        return <TaskSetupMFA redirectUrlComplete={LOGIN_REDIRECT_PATH} />;
     }
   }
 
@@ -474,26 +727,19 @@ export function ClientInviteActivationForm({
                 <h3>
                   {viewState === "invalid"
                     ? "Invito non più disponibile"
-                    : FOLLOW_UP_TITLE}
+                    : BLOCKED_TITLE}
                 </h3>
                 <p>
                   {viewState === "invalid"
                     ? errorMessage ??
                       "Non è stato possibile completare l'attivazione con questo link. Riprova dall'email di invito oppure richiedi un nuovo invito."
-                    : FOLLOW_UP_COPY}
+                    : BLOCKED_COPY}
                 </p>
               </div>
-              {viewState === "follow_up" && !showHostedContinuation ? (
+              {viewState === "blocked" ? (
                 <div className="login-state-card__actions">
-                  <button
-                    type="button"
-                    className="login-submit"
-                    onClick={() => setShowHostedContinuation(true)}
-                  >
-                    {FOLLOW_UP_PRIMARY_ACTION}
-                  </button>
-                  <Link className="login-submit login-submit--secondary" href="/login">
-                    Torna al login
+                  <Link className="login-submit" href="/login">
+                    {BLOCKED_PRIMARY_ACTION}
                   </Link>
                 </div>
               ) : viewState === "invalid" ? (
@@ -506,26 +752,8 @@ export function ClientInviteActivationForm({
               <p className="login-state-card__support">
                 {viewState === "invalid"
                   ? "Se il problema persiste, richiedi un nuovo invito oppure contatta il supporto Sendwise."
-                  : getFollowUpSupportMessage(followUpMode)}
+                  : "Questa attivazione accetta solo ticket, nome, cognome e password gestiti dal flusso personalizzato Sendwise."}
               </p>
-
-              {viewState === "follow_up" && showHostedContinuation ? (
-                <div className="login-follow-up-shell">
-                  {followUpMode === "sign-up" ? (
-                    <SignUp
-                      fallbackRedirectUrl={LOGIN_REDIRECT_PATH}
-                      forceRedirectUrl={LOGIN_REDIRECT_PATH}
-                      initialValues={{
-                        firstName: firstName.trim() || undefined,
-                        lastName: lastName.trim() || undefined,
-                      }}
-                      signInUrl="/login"
-                    />
-                  ) : (
-                    renderFollowUpTask()
-                  )}
-                </div>
-              ) : null}
             </div>
           ) : (
             <form

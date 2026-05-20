@@ -535,12 +535,17 @@ interface ClientOverviewApiResponse {
         limit?: number | null;
         available: boolean;
       };
+      delivered_last_7d: {
+        value: number | null;
+        limit?: number | null;
+        available: boolean;
+      };
       opened_last_7d: {
         value: number | null;
         limit?: number | null;
         available: boolean;
       };
-      ready_campaigns: {
+      clicked_last_7d: {
         value: number | null;
         limit?: number | null;
         available: boolean;
@@ -552,13 +557,15 @@ interface ClientOverviewApiResponse {
         "24h" | "7d" | "14d" | "30d" | "allTime",
         {
           sent: number | null;
-          queued: number | null;
-          blocked: number | null;
+          failed: number | null;
+          delivered: number | null;
           opened: number | null;
+          clicked: number | null;
           sent_available: boolean;
-          queued_available: boolean;
-          blocked_available: boolean;
+          failed_available: boolean;
+          delivered_available: boolean;
           opened_available: boolean;
+          clicked_available: boolean;
           window_started_at?: string | null;
           window_ended_at: string;
         }
@@ -585,9 +592,10 @@ interface ClientOverviewApiResponse {
     period_usage: {
       has_real_usage: boolean;
       sent: number | null;
-      queued: number | null;
-      blocked: number | null;
+      failed: number | null;
+      delivered: number | null;
       opened: number | null;
+      clicked: number | null;
     };
   };
 }
@@ -1752,15 +1760,20 @@ function mapClientOverviewSummary(
               limit: payload.client_dashboard.kpis.sent_last_7d.limit ?? null,
               available: payload.client_dashboard.kpis.sent_last_7d.available,
             },
+            deliveredLast7d: {
+              value: payload.client_dashboard.kpis.delivered_last_7d.value,
+              limit: payload.client_dashboard.kpis.delivered_last_7d.limit ?? null,
+              available: payload.client_dashboard.kpis.delivered_last_7d.available,
+            },
             openedLast7d: {
               value: payload.client_dashboard.kpis.opened_last_7d.value,
               limit: payload.client_dashboard.kpis.opened_last_7d.limit ?? null,
               available: payload.client_dashboard.kpis.opened_last_7d.available,
             },
-            readyCampaigns: {
-              value: payload.client_dashboard.kpis.ready_campaigns.value,
-              limit: payload.client_dashboard.kpis.ready_campaigns.limit ?? null,
-              available: payload.client_dashboard.kpis.ready_campaigns.available,
+            clickedLast7d: {
+              value: payload.client_dashboard.kpis.clicked_last_7d.value,
+              limit: payload.client_dashboard.kpis.clicked_last_7d.limit ?? null,
+              available: payload.client_dashboard.kpis.clicked_last_7d.available,
             },
           },
           performanceAnalytics: {
@@ -1771,13 +1784,15 @@ function mapClientOverviewSummary(
                   windowKey,
                   {
                     sent: metrics.sent,
-                    queued: metrics.queued,
-                    blocked: metrics.blocked,
+                    failed: metrics.failed,
+                    delivered: metrics.delivered,
                     opened: metrics.opened,
+                    clicked: metrics.clicked,
                     sentAvailable: metrics.sent_available,
-                    queuedAvailable: metrics.queued_available,
-                    blockedAvailable: metrics.blocked_available,
+                    failedAvailable: metrics.failed_available,
+                    deliveredAvailable: metrics.delivered_available,
                     openedAvailable: metrics.opened_available,
+                    clickedAvailable: metrics.clicked_available,
                     windowStartedAt: metrics.window_started_at ?? null,
                     windowEndedAt: metrics.window_ended_at,
                   },
@@ -1809,9 +1824,10 @@ function mapClientOverviewSummary(
           periodUsage: {
             hasRealUsage: payload.client_dashboard.period_usage.has_real_usage,
             sent: payload.client_dashboard.period_usage.sent,
-            queued: payload.client_dashboard.period_usage.queued,
-            blocked: payload.client_dashboard.period_usage.blocked,
+            failed: payload.client_dashboard.period_usage.failed,
+            delivered: payload.client_dashboard.period_usage.delivered,
             opened: payload.client_dashboard.period_usage.opened,
+            clicked: payload.client_dashboard.period_usage.clicked,
           },
         }
       : null,

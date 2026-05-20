@@ -2,7 +2,9 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
+import { formatProviderEventMetric } from "../shared/campaignUi";
 import type {
+  CampaignLogsSummary,
   ClientDashboardWindowKey,
   ClientDashboardWindowMetrics,
   ClientOverviewSummary,
@@ -22,23 +24,26 @@ const WINDOW_LABELS: Record<ClientDashboardWindowKey, string> = {
 };
 
 const METRIC_CONFIG = [
-  { key: "sent", label: "Inviate", tone: "sent" },
-  { key: "blocked", label: "Bloccate", tone: "blocked" },
-  { key: "opened", label: "Aperte", tone: "opened" },
-  { key: "queued", label: "In coda", tone: "queued" },
+  { key: "sent", label: "Accettate", tone: "sent", providerBacked: false },
+  { key: "failed", label: "Fallite", tone: "blocked", providerBacked: false },
+  { key: "delivered", label: "Consegnate", tone: "opened", providerBacked: true },
+  { key: "opened", label: "Aperte", tone: "limits", providerBacked: true },
+  { key: "clicked", label: "Click", tone: "queued", providerBacked: true },
 ] as const;
 
 function getFallbackWindows(): Record<ClientDashboardWindowKey, ClientDashboardWindowMetrics> {
   const endedAt = new Date().toISOString();
   const emptyWindow: ClientDashboardWindowMetrics = {
     sent: null,
-    queued: null,
-    blocked: null,
+    failed: null,
+    delivered: null,
     opened: null,
+    clicked: null,
     sentAvailable: false,
-    queuedAvailable: false,
-    blockedAvailable: false,
+    failedAvailable: false,
+    deliveredAvailable: false,
     openedAvailable: false,
+    clickedAvailable: false,
     windowStartedAt: null,
     windowEndedAt: endedAt,
   };
@@ -56,15 +61,57 @@ function getValue(window: ClientDashboardWindowMetrics, key: (typeof METRIC_CONF
   switch (key) {
     case "sent":
       return { value: window.sent, available: window.sentAvailable };
-    case "blocked":
-      return { value: window.blocked, available: window.blockedAvailable };
+    case "failed":
+      return { value: window.failed, available: window.failedAvailable };
+    case "delivered":
+      return { value: window.delivered, available: window.deliveredAvailable };
     case "opened":
       return { value: window.opened, available: window.openedAvailable };
-    case "queued":
-      return { value: window.queued, available: window.queuedAvailable };
+    case "clicked":
+      return { value: window.clicked, available: window.clickedAvailable };
     default:
       return { value: null, available: false };
   }
+}
+
+function toProviderMetricLogs(window: ClientDashboardWindowMetrics): CampaignLogsSummary {
+  return {
+    simulated: 0,
+    queued: 0,
+    sent: window.sent ?? 0,
+    failed: window.failed ?? 0,
+    delivered: window.delivered ?? 0,
+    opened: window.opened ?? 0,
+    clicked: window.clicked ?? 0,
+    bounced: 0,
+    complained: 0,
+    unsubscribed: 0,
+    providerEventsAvailable:
+      window.deliveredAvailable || window.openedAvailable || window.clickedAvailable,
+  };
+}
+
+function getMetricDisplayValue(
+  window: ClientDashboardWindowMetrics,
+  metric: (typeof METRIC_CONFIG)[number],
+  value: number | null,
+  available: boolean,
+): string {
+  if (metric.providerBacked) {
+    if (typeof value === "number") {
+      return formatProviderEventMetric(value, toProviderMetricLogs(window));
+    }
+
+    return (window.sent ?? 0) > 0
+      ? "In attesa di eventi provider"
+      : "Non disponibili";
+  }
+
+  if (available && typeof value === "number") {
+    return value.toLocaleString("it-IT");
+  }
+
+  return "Non disponibili";
 }
 
 export function ClientRecentCampaignsCard({
@@ -84,6 +131,12 @@ export function ClientRecentCampaignsCard({
           ...metric,
           available: data.available,
           value: data.value,
+          displayValue: getMetricDisplayValue(
+            selectedMetrics,
+            metric,
+            data.value,
+            data.available,
+          ),
         };
       }),
     [selectedMetrics],
@@ -95,9 +148,8 @@ export function ClientRecentCampaignsCard({
     0,
   );
   const hasAnyVisibleData = metricEntries.some(
-    (metric) => metric.available && typeof metric.value === "number" && metric.value > 0,
+    (metric) => metric.available && typeof metric.value === "number",
   );
-  const statusSummary = summary.clientDashboard?.statusSummary;
   const campaignsHref =
     summary.clientDashboard?.cta.campaignsHref || `/c/${summary.client.portalSlug}/campaigns`;
 
@@ -105,8 +157,8 @@ export function ClientRecentCampaignsCard({
     <ClientSurface
       className="client-surface--performance"
       bodyClassName="client-surface__body--performance"
-      title="Performance campagne"
-      description="Risultati reali delle campagne nel periodo selezionato."
+      title="Trend invii e segnali provider"
+      description="Mail inviate = accettate dal sistema. Consegne, aperture e click arrivano solo da eventi provider."
       aside={
         <div className="client-period-selector" aria-label="Selettore periodo">
           {(Object.keys(WINDOW_LABELS) as ClientDashboardWindowKey[]).map((windowKey) => (
@@ -127,11 +179,7 @@ export function ClientRecentCampaignsCard({
         {metricEntries.map((metric) => (
           <article key={metric.label} className="client-performance-summary__item">
             <span>{metric.label}</span>
-            <strong>
-              {metric.available && typeof metric.value === "number"
-                ? metric.value.toLocaleString("it-IT")
-                : "Non disponibili"}
-            </strong>
+            <strong>{metric.displayValue}</strong>
           </article>
         ))}
       </div>
@@ -148,11 +196,7 @@ export function ClientRecentCampaignsCard({
               <article key={metric.label} className="client-performance-chart__row">
                 <div className="client-performance-chart__summary">
                   <span>{metric.label}</span>
-                  <strong>
-                    {metric.available && typeof metric.value === "number"
-                      ? metric.value.toLocaleString("it-IT")
-                      : "Non disponibili"}
-                  </strong>
+                  <strong>{metric.displayValue}</strong>
                 </div>
                 <div className="client-performance-chart__track" aria-hidden="true">
                   <span
@@ -167,19 +211,9 @@ export function ClientRecentCampaignsCard({
         </div>
       ) : (
         <div className="client-empty-state client-empty-state--compact">
-          Avvia la prima campagna per ricevere dati.
+          Nessun volume reale disponibile nel periodo selezionato.
         </div>
       )}
-
-      {statusSummary ? (
-        <div className="client-status-summary">
-          <span>In corso {statusSummary.running.toLocaleString("it-IT")}</span>
-          <span>Pronte {statusSummary.ready.toLocaleString("it-IT")}</span>
-          <span>Da completare {statusSummary.toComplete.toLocaleString("it-IT")}</span>
-          <span>Bloccate {statusSummary.blocked.toLocaleString("it-IT")}</span>
-          <span>Completate {statusSummary.completed.toLocaleString("it-IT")}</span>
-        </div>
-      ) : null}
 
       <div className="client-dashboard-card__footer">
         <Link

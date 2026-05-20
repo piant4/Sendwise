@@ -16,19 +16,27 @@ function formatMetric(value: ClientDashboardKpiValue, withLimit = false): string
   return value.value.toLocaleString("it-IT");
 }
 
+function formatProviderMetric(
+  value: ClientDashboardKpiValue,
+  sentValue: ClientDashboardKpiValue | undefined,
+): string {
+  if (value.available && value.value !== null) {
+    return value.value.toLocaleString("it-IT");
+  }
+
+  if (sentValue?.available && (sentValue.value ?? 0) > 0) {
+    return "In attesa di eventi provider";
+  }
+
+  return "Non disponibili";
+}
+
 export function ClientKpiGrid({ summary }: ClientKpiGridProps) {
   const dashboard = summary.clientDashboard;
   const cards = [
     {
       title: "Campagne attive",
-      value: formatMetric(
-        dashboard?.kpis.activeCampaigns ?? {
-          value: summary.campaigns.statusCounts.running,
-          limit: summary.limits.maxCampaigns ?? null,
-          available: true,
-        },
-        true,
-      ),
+      value: formatMetric(dashboard?.kpis.activeCampaigns ?? { value: null, available: false }, true),
       tone: "campaigns",
     },
     {
@@ -39,22 +47,28 @@ export function ClientKpiGrid({ summary }: ClientKpiGridProps) {
       tone: "sent",
     },
     {
-      title: "Mail aperte ultimi 7 gg",
-      value: formatMetric(
+      title: "Consegnate ultimi 7 gg",
+      value: formatProviderMetric(
+        dashboard?.kpis.deliveredLast7d ?? { value: null, limit: null, available: false },
+        dashboard?.kpis.sentLast7d,
+      ),
+      tone: "limits",
+    },
+    {
+      title: "Aperture ultimi 7 gg",
+      value: formatProviderMetric(
         dashboard?.kpis.openedLast7d ?? { value: null, limit: null, available: false },
+        dashboard?.kpis.sentLast7d,
       ),
       tone: "blocked",
     },
     {
-      title: "Campagne pronte",
-      value: formatMetric(
-        dashboard?.kpis.readyCampaigns ?? {
-          value: summary.campaigns.statusCounts.ready,
-          limit: null,
-          available: true,
-        },
+      title: "Click ultimi 7 gg",
+      value: formatProviderMetric(
+        dashboard?.kpis.clickedLast7d ?? { value: null, limit: null, available: false },
+        dashboard?.kpis.sentLast7d,
       ),
-      tone: "limits",
+      tone: "queued",
     },
   ];
 

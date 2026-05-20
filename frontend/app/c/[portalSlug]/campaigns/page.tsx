@@ -4,7 +4,10 @@ import { ClientSurface } from "../../../../components/client/ClientSurface";
 import { formatDateTimeLabel } from "../../../../components/client/clientStatus";
 import {
   formatCampaignCount,
+  formatProviderEventMetric,
+  getCampaignOperationalSendState,
   getCampaignReadinessShortLabel,
+  getProviderEventsAvailabilityLabel,
   getCampaignStatusLabel,
   getCampaignStatusVariant,
 } from "../../../../components/shared/campaignUi";
@@ -96,19 +99,13 @@ export default async function ClientCampaignsPage({
   }
 
   const stats = buildCampaignStats(result.campaigns);
-  const statusVisualItems = [
-    { label: "Pronte", value: stats.ready, tone: "ready" },
-    { label: "In corso", value: stats.running, tone: "running" },
-    { label: "Bozze / pausa", value: stats.draftOrPaused, tone: "paused" },
-    { label: "Bloccate / errore", value: stats.blockedOrFailed, tone: "attention" },
-  ].filter((item) => item.value > 0);
 
   return (
     <main className="shell">
       <section className="client-page-shell">
         <ClientPageHeader
           title="Campagne"
-          description="Stato, readiness e uso periodo quando il backend espone dati reali."
+          description="Stato campagna, invii accettati dal sistema e metriche provider solo quando esistono eventi reali."
         />
 
         <section className="client-page-stat-grid" aria-label="Riepilogo campagne">
@@ -128,41 +125,6 @@ export default async function ClientCampaignsPage({
           ))}
         </section>
 
-        {statusVisualItems.length > 0 ? (
-          <ClientSurface
-            title="Distribuzione stati"
-            aside={
-              <span className="client-surface__eyebrow">
-                {formatCampaignCount(stats.total)} campagne
-              </span>
-            }
-          >
-            <div className="client-status-visual">
-              <div className="client-status-visual__bar" aria-hidden="true">
-                {statusVisualItems.map((item) => (
-                  <div
-                    key={item.label}
-                    className="client-status-visual__segment"
-                    data-tone={item.tone}
-                    style={{ width: `${(item.value / stats.total) * 100}%` }}
-                  />
-                ))}
-              </div>
-              <div className="client-status-visual__legend">
-                {statusVisualItems.map((item) => (
-                  <article
-                    key={item.label}
-                    className="client-status-visual__legend-item"
-                  >
-                    <span>{item.label}</span>
-                    <strong>{formatCampaignCount(item.value)}</strong>
-                  </article>
-                ))}
-              </div>
-            </div>
-          </ClientSurface>
-        ) : null}
-
         <ClientSurface
           title="Elenco campagne"
           aside={
@@ -178,64 +140,128 @@ export default async function ClientCampaignsPage({
 
                 return (
                   <article key={campaign.id} className="client-row client-row--compact">
-                    <div className="client-row__header">
-                      <div className="client-row__copy">
-                        <strong className="client-row__title">{campaign.name}</strong>
-                        <span className="client-row__meta">
-                          Aggiornata {formatDateTimeLabel(campaign.updated_at)}
-                        </span>
-                      </div>
-                      <StatusBadge
-                        label={getCampaignStatusLabel(campaign.status)}
-                        variant={getCampaignStatusVariant(campaign.status)}
-                      />
-                    </div>
-
                     {!readModel || readModel instanceof Error ? (
-                      <p className="client-row__support client-note--compact">
-                        Dettagli campagna non disponibili.
-                      </p>
-                    ) : (
                       <>
-                        <div className="client-row__stats">
-                          <div className="client-row__stat">
-                            <span>Readiness</span>
-                            <strong>
-                              {getCampaignReadinessShortLabel(readModel.detail.campaign)}
-                            </strong>
+                        <div className="client-row__header">
+                          <div className="client-row__copy">
+                            <strong className="client-row__title">{campaign.name}</strong>
+                            <span className="client-row__meta">
+                              Aggiornata {formatDateTimeLabel(campaign.updated_at)}
+                            </span>
                           </div>
-                          <div className="client-row__stat">
-                            <span>Destinatari</span>
-                            <strong>
-                              {formatCampaignCount(readModel.detail.recipients.total)} totali
-                            </strong>
-                          </div>
-                          <div className="client-row__stat">
-                            <span>Idonei / bloccati</span>
-                            <strong>
-                              {formatCampaignCount(readModel.detail.recipients.eligible)} /{" "}
-                              {formatCampaignCount(readModel.detail.recipients.blocked)}
-                            </strong>
-                          </div>
-                          <div className="client-row__stat">
-                            <span>Invii periodo</span>
-                            <strong>
-                              {readModel.detail.periodUsage.hasRealUsage
-                                ? formatCampaignCount(readModel.detail.periodUsage.periodUsed)
-                                : "Invii non disponibili"}
-                            </strong>
-                          </div>
+                          <StatusBadge
+                            label={getCampaignStatusLabel(campaign.status)}
+                            variant={getCampaignStatusVariant(campaign.status)}
+                          />
                         </div>
-                        {!readModel.detail.periodUsage.hasRealUsage ? (
-                          <p className="client-row__support client-note--compact">
-                            Invii non disponibili.
-                          </p>
-                        ) : readModel.detail.periodUsage.periodEmailLimit ? (
-                          <p className="client-row__support client-note--compact">
-                            Limite periodo {formatCampaignCount(readModel.detail.periodUsage.periodEmailLimit)}.
-                          </p>
-                        ) : null}
+                        <p className="client-row__support client-note--compact">
+                          Dettagli campagna non disponibili.
+                        </p>
                       </>
+                    ) : (
+                      (() => {
+                        const detail = readModel.detail;
+                        const sendState = getCampaignOperationalSendState(detail.logs);
+                        const providerEventsLabel = getProviderEventsAvailabilityLabel(
+                          detail.logs,
+                        );
+
+                        return (
+                          <>
+                            <div className="client-row__header">
+                              <div className="client-row__copy">
+                                <strong className="client-row__title">{campaign.name}</strong>
+                                <span className="client-row__meta">
+                                  Aggiornata {formatDateTimeLabel(campaign.updated_at)}
+                                </span>
+                              </div>
+                              <StatusBadge
+                                label={getCampaignStatusLabel(campaign.status)}
+                                variant={getCampaignStatusVariant(campaign.status)}
+                              />
+                            </div>
+
+                            <div className="client-row__summary">
+                              <span className="client-row__chip">
+                                Operativo: {sendState.label}
+                              </span>
+                              <span className="client-row__chip">
+                                Readiness:{" "}
+                                {getCampaignReadinessShortLabel(detail.campaign)}
+                              </span>
+                              <span className="client-row__chip">
+                                Eventi provider: {providerEventsLabel}
+                              </span>
+                            </div>
+
+                            <div className="client-row__stats">
+                              <div className="client-row__stat">
+                                <span>Accettate dal sistema</span>
+                                <strong>{formatCampaignCount(detail.logs.sent)}</strong>
+                              </div>
+                              <div className="client-row__stat">
+                                <span>Errori invio</span>
+                                <strong>{formatCampaignCount(detail.logs.failed)}</strong>
+                              </div>
+                              <div className="client-row__stat">
+                                <span>Consegnate</span>
+                                <strong>
+                                  {formatProviderEventMetric(
+                                    detail.logs.delivered,
+                                    detail.logs,
+                                  )}
+                                </strong>
+                              </div>
+                              <div className="client-row__stat">
+                                <span>Aperte</span>
+                                <strong>
+                                  {formatProviderEventMetric(
+                                    detail.logs.opened,
+                                    detail.logs,
+                                  )}
+                                </strong>
+                              </div>
+                              <div className="client-row__stat">
+                                <span>Click</span>
+                                <strong>
+                                  {formatProviderEventMetric(
+                                    detail.logs.clicked,
+                                    detail.logs,
+                                  )}
+                                </strong>
+                              </div>
+                              <div className="client-row__stat">
+                                <span>Uso periodo</span>
+                                <strong>
+                                  {detail.periodUsage.hasRealUsage
+                                    ? formatCampaignCount(detail.periodUsage.periodUsed)
+                                    : "Non disponibile"}
+                                </strong>
+                              </div>
+                              <div className="client-row__stat">
+                                <span>Destinatari idonei</span>
+                                <strong>
+                                  {formatCampaignCount(detail.recipients.eligible)} /{" "}
+                                  {formatCampaignCount(detail.recipients.total)}
+                                </strong>
+                              </div>
+                              <div className="client-row__stat">
+                                <span>Destinatari bloccati</span>
+                                <strong>
+                                  {formatCampaignCount(detail.recipients.blocked)}
+                                </strong>
+                              </div>
+                            </div>
+
+                            <p className="client-row__support client-note--compact">
+                              {sendState.detail}
+                              {detail.periodUsage.periodEmailLimit
+                                ? ` Limite periodo ${formatCampaignCount(detail.periodUsage.periodEmailLimit)}.`
+                                : ""}
+                            </p>
+                          </>
+                        );
+                      })()
                     )}
                   </article>
                 );

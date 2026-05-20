@@ -127,19 +127,22 @@ class ClientDashboardKpiValue(BaseModel):
 class ClientDashboardKpis(BaseModel):
     active_campaigns: ClientDashboardKpiValue
     sent_last_7d: ClientDashboardKpiValue
+    delivered_last_7d: ClientDashboardKpiValue
     opened_last_7d: ClientDashboardKpiValue
-    ready_campaigns: ClientDashboardKpiValue
+    clicked_last_7d: ClientDashboardKpiValue
 
 
 class ClientDashboardWindowMetrics(BaseModel):
     sent: Optional[int] = None
-    queued: Optional[int] = None
-    blocked: Optional[int] = None
+    failed: Optional[int] = None
+    delivered: Optional[int] = None
     opened: Optional[int] = None
+    clicked: Optional[int] = None
     sent_available: bool = False
-    queued_available: bool = False
-    blocked_available: bool = False
+    failed_available: bool = False
+    delivered_available: bool = False
     opened_available: bool = False
+    clicked_available: bool = False
     window_started_at: Optional[datetime] = None
     window_ended_at: datetime
 
@@ -174,9 +177,10 @@ class ClientDashboardStatusSummary(BaseModel):
 class ClientDashboardPeriodUsage(BaseModel):
     has_real_usage: bool
     sent: Optional[int] = None
-    queued: Optional[int] = None
-    blocked: Optional[int] = None
+    failed: Optional[int] = None
+    delivered: Optional[int] = None
     opened: Optional[int] = None
+    clicked: Optional[int] = None
 
 
 class ClientDashboardSummary(BaseModel):

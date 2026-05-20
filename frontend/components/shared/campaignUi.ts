@@ -127,8 +127,81 @@ export interface CampaignDispatchUiMeta {
   badgeVariant: StatusBadgeVariant;
 }
 
+export interface CampaignOperationalSendState {
+  label: string;
+  detail: string;
+  variant: StatusBadgeVariant;
+}
+
 export function formatCampaignCount(value: number): string {
   return value.toLocaleString("it-IT");
+}
+
+export function getProviderEventsAvailabilityLabel(
+  logs: CampaignLogsSummary,
+): string {
+  if (logs.providerEventsAvailable) {
+    return "Disponibili";
+  }
+
+  if (logs.sent > 0) {
+    return "In attesa di eventi provider";
+  }
+
+  return "Non disponibili";
+}
+
+export function formatProviderEventMetric(
+  value: number,
+  logs: CampaignLogsSummary,
+): string {
+  if (logs.providerEventsAvailable) {
+    return formatCampaignCount(value);
+  }
+
+  return logs.sent > 0 ? "In attesa di eventi provider" : "Non disponibili";
+}
+
+export function getCampaignOperationalSendState(
+  logs: CampaignLogsSummary,
+): CampaignOperationalSendState {
+  if (logs.sent > 0 && logs.failed > 0) {
+    return {
+      label: "Invio parziale",
+      detail: "Parte dei destinatari e' stata accettata, altri invii sono falliti.",
+      variant: "warning",
+    };
+  }
+
+  if (logs.sent > 0) {
+    return {
+      label: "Accettata dal sistema",
+      detail: "Gli invii risultano accettati dal sistema di invio.",
+      variant: "success",
+    };
+  }
+
+  if (logs.queued > 0) {
+    return {
+      label: "In preparazione",
+      detail: "Gli invii sono stati preparati ma non ancora accettati.",
+      variant: "warning",
+    };
+  }
+
+  if (logs.failed > 0) {
+    return {
+      label: "Invio fallito",
+      detail: "Il backend ha registrato errori di dispatch o provider.",
+      variant: "danger",
+    };
+  }
+
+  return {
+    label: "Non avviata",
+    detail: "Nessun invio reale risulta ancora avviato.",
+    variant: "neutral",
+  };
 }
 
 export function getReadableBackendReason(reason: string): ReadableBackendReason {

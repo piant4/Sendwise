@@ -6195,7 +6195,7 @@ p {
 }
 
 .client-performance-summary {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
 }
 
 .client-surface--performance {
@@ -6304,6 +6304,10 @@ p {
   background: linear-gradient(90deg, #0f766e, #2dd4bf);
 }
 
+.client-performance-chart__fill[data-tone="limits"] {
+  background: linear-gradient(90deg, #0369a1, #38bdf8);
+}
+
 .client-performance-chart__fill[data-tone="queued"] {
   background: linear-gradient(90deg, #b45309, #f59e0b);
 }
@@ -6323,6 +6327,29 @@ p {
 
 .client-metric-stack {
   grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.client-metric-stack--single-column {
+  grid-template-columns: 1fr;
+}
+
+.client-delivery-state {
+  background: rgba(248, 250, 252, 0.82);
+  border: 1px solid rgba(202, 213, 225, 0.72);
+  border-radius: 16px;
+  display: grid;
+  gap: 4px;
+  padding: 14px 15px;
+}
+
+.client-delivery-state strong {
+  color: #0f172a;
+  font-size: 0.98rem;
+}
+
+.client-delivery-state span {
+  color: #64748b;
+  font-size: 0.78rem;
 }
 
 .client-row {

@@ -673,19 +673,22 @@ export interface ClientDashboardKpiValue {
 export interface ClientDashboardKpis {
   activeCampaigns: ClientDashboardKpiValue;
   sentLast7d: ClientDashboardKpiValue;
+  deliveredLast7d: ClientDashboardKpiValue;
   openedLast7d: ClientDashboardKpiValue;
-  readyCampaigns: ClientDashboardKpiValue;
+  clickedLast7d: ClientDashboardKpiValue;
 }
 
 export interface ClientDashboardWindowMetrics {
   sent: number | null;
-  queued: number | null;
-  blocked: number | null;
+  failed: number | null;
+  delivered: number | null;
   opened: number | null;
+  clicked: number | null;
   sentAvailable: boolean;
-  queuedAvailable: boolean;
-  blockedAvailable: boolean;
+  failedAvailable: boolean;
+  deliveredAvailable: boolean;
   openedAvailable: boolean;
+  clickedAvailable: boolean;
   windowStartedAt: string | null;
   windowEndedAt: string;
 }
@@ -720,9 +723,10 @@ export interface ClientDashboardStatusSummary {
 export interface ClientDashboardPeriodUsage {
   hasRealUsage: boolean;
   sent: number | null;
-  queued: number | null;
-  blocked: number | null;
+  failed: number | null;
+  delivered: number | null;
   opened: number | null;
+  clicked: number | null;
 }
 
 export interface ClientDashboardSummary {

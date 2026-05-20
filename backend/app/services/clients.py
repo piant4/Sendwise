@@ -120,6 +120,17 @@ PROVIDER_EVENT_METRIC_TYPES = (
     "ses_click",
     "sendwise_unsubscribe",
 )
+ACCEPTED_EMAIL_LOG_STATUSES = (
+    "sent",
+    "dispatched",
+    "delivered",
+    "opened",
+    "clicked",
+    "bounced",
+    "complained",
+    "spam",
+    "unsubscribed",
+)
 
 
 def _prefer_provider_metric(
@@ -556,8 +567,14 @@ class ClientsService:
         campaigns_to_complete = status_counts.draft + status_counts.paused
         blocked_campaigns = status_counts.blocked + status_counts.failed
         blocked_sends_to_review = (
-            default_window.blocked if default_window.blocked_available else 0
-        ) or 0
+            self._blocked_send_repository.count_by_client(
+                client_id=client.id,
+                started_at=now - timedelta(days=7),
+                ended_at=now,
+            )
+            if self._blocked_send_repository is not None
+            else 0
+        )
         action_items: list[ClientDashboardActionItem] = []
 
         if campaigns_to_complete > 0:
@@ -580,9 +597,13 @@ class ClientsService:
 
         has_period_usage = (
             (default_window.sent_available and (default_window.sent or 0) > 0)
-            or (default_window.queued_available and (default_window.queued or 0) > 0)
-            or (default_window.blocked_available and (default_window.blocked or 0) > 0)
+            or (default_window.failed_available and (default_window.failed or 0) > 0)
+            or (
+                default_window.delivered_available
+                and (default_window.delivered or 0) > 0
+            )
             or (default_window.opened_available and (default_window.opened or 0) > 0)
+            or (default_window.clicked_available and (default_window.clicked or 0) > 0)
         )
 
         return ClientDashboardSummary(
@@ -598,13 +619,17 @@ class ClientsService:
                     value=performance_windows["7d"].sent,
                     available=performance_windows["7d"].sent_available,
                 ),
+                delivered_last_7d=ClientDashboardKpiValue(
+                    value=performance_windows["7d"].delivered,
+                    available=performance_windows["7d"].delivered_available,
+                ),
                 opened_last_7d=ClientDashboardKpiValue(
                     value=performance_windows["7d"].opened,
                     available=performance_windows["7d"].opened_available,
                 ),
-                ready_campaigns=ClientDashboardKpiValue(
-                    value=status_counts.ready,
-                    available=True,
+                clicked_last_7d=ClientDashboardKpiValue(
+                    value=performance_windows["7d"].clicked,
+                    available=performance_windows["7d"].clicked_available,
                 ),
             ),
             performance_analytics=ClientDashboardPerformanceAnalytics(
@@ -628,9 +653,14 @@ class ClientsService:
             period_usage=ClientDashboardPeriodUsage(
                 has_real_usage=has_period_usage,
                 sent=default_window.sent if default_window.sent_available else None,
-                queued=default_window.queued if default_window.queued_available else None,
-                blocked=default_window.blocked if default_window.blocked_available else None,
+                failed=default_window.failed if default_window.failed_available else None,
+                delivered=(
+                    default_window.delivered
+                    if default_window.delivered_available
+                    else None
+                ),
                 opened=default_window.opened if default_window.opened_available else None,
+                clicked=default_window.clicked if default_window.clicked_available else None,
             ),
         )
 
@@ -643,16 +673,18 @@ class ClientsService:
         windows: dict[ClientDashboardWindowKey, ClientDashboardWindowMetrics] = {}
 
         email_log_repository = self._email_log_repository
-        blocked_send_repository = self._blocked_send_repository
         provider_event_repository = self._provider_event_repository
 
         for window_key, delta in CLIENT_DASHBOARD_WINDOW_DELTAS:
             started_at = now - delta if delta is not None else None
             sent_available = email_log_repository is not None
-            queued_available = email_log_repository is not None
-            blocked_available = blocked_send_repository is not None
+            failed_available = email_log_repository is not None
+            delivered_available = False
             opened_available = False
+            clicked_available = False
+            delivered_value: int | None = None
             opened_value: int | None = None
+            clicked_value: int | None = None
 
             if provider_event_repository is not None:
                 provider_events_available = provider_event_repository.count_client_events(
@@ -661,7 +693,22 @@ class ClientsService:
                     started_at=started_at,
                     ended_at=now,
                 ) > 0
+                delivered_available = provider_events_available
                 opened_available = provider_events_available
+                clicked_available = provider_events_available
+                if provider_events_available:
+                    delivered_value = provider_event_repository.count_client_events(
+                        client_id=client_id,
+                        event_types=("ses_delivery",),
+                        started_at=started_at,
+                        ended_at=now,
+                    )
+                    clicked_value = provider_event_repository.count_client_events(
+                        client_id=client_id,
+                        event_types=("ses_click",),
+                        started_at=started_at,
+                        ended_at=now,
+                    )
                 if provider_events_available:
                     opened_value = provider_event_repository.count_client_events(
                         client_id=client_id,
@@ -676,34 +723,29 @@ class ClientsService:
                         client_id=client_id,
                         started_at=started_at,
                         ended_at=now,
+                        statuses=ACCEPTED_EMAIL_LOG_STATUSES,
                     )
                     if email_log_repository is not None
                     else None
                 ),
-                queued=(
+                failed=(
                     email_log_repository.count_client_real_logs(
                         client_id=client_id,
                         started_at=started_at,
                         ended_at=now,
-                        statuses=("queued",),
+                        statuses=("failed",),
                     )
                     if email_log_repository is not None
                     else None
                 ),
-                blocked=(
-                    blocked_send_repository.count_by_client(
-                        client_id=client_id,
-                        started_at=started_at,
-                        ended_at=now,
-                    )
-                    if blocked_send_repository is not None
-                    else None
-                ),
+                delivered=delivered_value,
                 opened=opened_value,
+                clicked=clicked_value,
                 sent_available=sent_available,
-                queued_available=queued_available,
-                blocked_available=blocked_available,
+                failed_available=failed_available,
+                delivered_available=delivered_available,
                 opened_available=opened_available,
+                clicked_available=clicked_available,
                 window_started_at=started_at,
                 window_ended_at=now,
             )

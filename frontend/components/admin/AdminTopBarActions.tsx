@@ -5,7 +5,11 @@ import { Download, Mail, UserPlus, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { type FormEvent, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import { isApiError, sendAdminClientAccessEmail } from "../../lib/api";
+import {
+  getAdminClientAccessErrorMessage,
+  isApiError,
+  sendAdminClientAccessEmail,
+} from "../../lib/api";
 import { Button } from "../ui/button";
 
 type ToastState =
@@ -33,8 +37,13 @@ function getSafeInviteErrorMessage(error: unknown): string {
       return "La sessione admin non e valida per creare un nuovo accesso cliente.";
     }
 
+    const knownMessage = getAdminClientAccessErrorMessage(error);
+    if (knownMessage) {
+      return knownMessage;
+    }
+
     if (error.status != null && error.status >= 500) {
-      return "Il backend Sendwise non e riuscito a preparare l'accesso cliente o a inviare l'email sicura.";
+      return "Il backend Sendwise non e riuscito a completare il provisioning dell'accesso cliente.";
     }
 
     if (error.detail.trim()) {

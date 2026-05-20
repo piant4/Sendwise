@@ -1,5 +1,31 @@
 # Audit Log
 
+## Milestone 18.6O-FIX9B - Normalize Client Access Error Shape End-To-End
+
+Date: 2026-05-20
+
+Client access error-shape audit summary:
+- Audited only the allowed client-access provisioning files, admin frontend access actions, and related docs/tests without reading `.env`, sending live email, dispatching campaigns, or touching SES/Listmonk runtime actions.
+- Exact reason the create-client UI showed the generic fallback: backend provisioning still returned string `detail` codes, `frontend/lib/api.ts` only extracted `detail` when it was a plain string, and `frontend/components/admin/AdminTopBarActions.tsx` mapped 5xx responses to a generic message instead of resolving known provisioning codes.
+- Provisioning failures now return the safe normalized backend shape `detail: { code, message }` for Clerk config failure, Clerk link failure, SMTP config failure, SMTP send failure, invalid email, and existing-user conflict.
+- Frontend error parsing now extracts known provisioning codes from `response.code`, `response.detail.code`, legacy string `response.detail`, and `response.reason`, while preserving compatibility with older string-shaped backend errors.
+- The create-client modal and resend-access actions now share the same Italian client-access error mapping, including `client_access_email_send_failed -> Il link e stato preparato, ma l'email di accesso non e stata inviata. Controlla SMTP e riprova.`
+- Access activation behavior is unchanged: if Clerk access is prepared and email delivery fails, the `client_access` record remains active with pending invitation state and the admin can retry resend later.
+
+Checks executed:
+- `git diff --check`
+- `pytest backend/tests/test_clerk_auth.py -k "provisioning_returns_controlled or rejects_invalid_email or existing_active_access_conflict"`
+- `cd frontend && npm run lint`
+- `cd frontend && npm run build`
+- `bash scripts/audit.sh`
+- `bash scripts/smoke_test.sh`
+
+Checks result:
+- Record the actual command results from the validation section of the milestone run before treating this entry as fully verified.
+- No secret, token, secure link, reset link, invitation URL, recipient email, SMTP username, or SMTP password was added to responses or docs by this fix.
+- No plaintext password handling was introduced.
+- No campaign send, Listmonk action, SES action, or live transactional email send was executed during this milestone work.
+
 ## Milestone 18.6P - Client Brand Email Settings And WebP Logo Upload
 
 Date: 2026-05-20

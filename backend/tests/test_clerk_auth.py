@@ -48,6 +48,7 @@ from app.services.clients import (
     get_clients_service,
 )
 from app.services.emails import ClientAccessEmailPayload, ClientAccessEmailService
+from app.schemas.clients import build_client_access_error_detail
 
 TEST_ISSUER = "https://clerk.sendwise.test"
 TEST_JWKS_URL = f"{TEST_ISSUER}/.well-known/jwks.json"
@@ -614,13 +615,19 @@ class FailingClerkAccessGateway(FakeClerkAccessGateway):
         *,
         email: str,
     ) -> ClerkAccessLinkResult:
-        raise HTTPException(status_code=502, detail="client_access_clerk_link_failed")
+        raise HTTPException(
+            status_code=502,
+            detail=build_client_access_error_detail("client_access_clerk_link_failed"),
+        )
 
 
 class FailingClientAccessEmailService(FakeClientAccessEmailService):
     def send_client_access_email(self, payload: ClientAccessEmailPayload) -> None:
         self.messages.append(payload)
-        raise HTTPException(status_code=502, detail="client_access_email_send_failed")
+        raise HTTPException(
+            status_code=502,
+            detail=build_client_access_error_detail("client_access_email_send_failed"),
+        )
 
 
 class FakeClerkUserDeletionGateway(ClerkUserDeletionGateway):
@@ -2195,7 +2202,9 @@ def test_platform_admin_provisioning_returns_controlled_clerk_failure_code(
     )
 
     assert response.status_code == 502
-    assert response.json()["detail"] == "client_access_clerk_link_failed"
+    assert response.json()["detail"] == build_client_access_error_detail(
+        "client_access_clerk_link_failed"
+    )
     assert "https://clerk.example.test" not in response.text
 
 
@@ -2230,7 +2239,9 @@ def test_platform_admin_provisioning_returns_controlled_smtp_config_missing_code
     )
 
     assert response.status_code == 503
-    assert response.json()["detail"] == "client_access_email_config_missing"
+    assert response.json()["detail"] == build_client_access_error_detail(
+        "client_access_email_config_missing"
+    )
     assert "invitations" not in response.text
 
 
@@ -2263,7 +2274,9 @@ def test_platform_admin_provisioning_returns_controlled_smtp_send_failure_code_a
     )
 
     assert response.status_code == 502
-    assert response.json()["detail"] == "client_access_email_send_failed"
+    assert response.json()["detail"] == build_client_access_error_detail(
+        "client_access_email_send_failed"
+    )
     assert "https://clerk.example.test" not in response.text
     stored_access = access_repository.get_by_email("nuovo.cliente@example.test")
     assert stored_access is not None
@@ -2297,7 +2310,9 @@ def test_platform_admin_provisioning_rejects_invalid_email_with_controlled_code(
     )
 
     assert response.status_code == 422
-    assert response.json()["detail"] == "client_access_email_invalid"
+    assert response.json()["detail"] == build_client_access_error_detail(
+        "client_access_email_invalid"
+    )
 
 
 def test_platform_admin_provisioning_rejects_existing_active_access_conflict_with_controlled_code(
@@ -2345,7 +2360,7 @@ def test_platform_admin_provisioning_rejects_existing_active_access_conflict_wit
     assert conflict_response.status_code == 409
     assert (
         conflict_response.json()["detail"]
-        == "client_access_existing_user_conflict"
+        == build_client_access_error_detail("client_access_existing_user_conflict")
     )
 
 

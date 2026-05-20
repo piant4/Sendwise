@@ -7,6 +7,7 @@ from email.message import EmailMessage
 from fastapi import HTTPException, status
 
 from app.core.config import Settings
+from app.schemas.clients import build_client_access_error_detail
 from app.services.template_renderer import (
     render_client_access_email_html,
     render_client_access_email_text,
@@ -69,12 +70,16 @@ class ClientAccessEmailService:
         except OSError as error:
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,
-                detail="client_access_email_send_failed",
+                detail=build_client_access_error_detail(
+                    "client_access_email_send_failed"
+                ),
             ) from error
         except smtplib.SMTPException as error:
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,
-                detail="client_access_email_send_failed",
+                detail=build_client_access_error_detail(
+                    "client_access_email_send_failed"
+                ),
             ) from error
 
     def _ensure_delivery_is_allowed(self) -> None:
@@ -87,7 +92,9 @@ class ClientAccessEmailService:
         if not self._settings.email_sending_enabled:
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail="client_access_email_config_missing",
+                detail=build_client_access_error_detail(
+                    "client_access_email_config_missing"
+                ),
             )
 
         self._ensure_smtp_config()
@@ -113,7 +120,9 @@ class ClientAccessEmailService:
         if missing:
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail="client_access_email_config_missing",
+                detail=build_client_access_error_detail(
+                    "client_access_email_config_missing"
+                ),
             )
 
     def _ensure_recipient_email_is_valid(self, email: str) -> None:
@@ -122,5 +131,5 @@ class ClientAccessEmailService:
             return
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="client_access_email_invalid",
+            detail=build_client_access_error_detail("client_access_email_invalid"),
         )

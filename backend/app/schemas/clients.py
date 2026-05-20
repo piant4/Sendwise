@@ -12,8 +12,34 @@ from app.schemas.blocked_sends import BlockedSend
 
 ClientAccessStatus = Literal["invited", "active", "suspended", "archived"]
 InvitationStatus = Literal["pending", "accepted", "revoked", "expired"]
+AdminClientAccessErrorCode = Literal[
+    "client_access_clerk_config_missing",
+    "client_access_clerk_link_failed",
+    "client_access_email_config_missing",
+    "client_access_email_send_failed",
+    "client_access_email_invalid",
+    "client_access_existing_user_conflict",
+]
 
 _OPTIONAL_HTTP_URL = TypeAdapter(AnyHttpUrl)
+CLIENT_ACCESS_ERROR_MESSAGES: dict[AdminClientAccessErrorCode, str] = {
+    "client_access_clerk_config_missing": (
+        "La configurazione Clerk necessaria per preparare l'accesso cliente non e disponibile."
+    ),
+    "client_access_clerk_link_failed": (
+        "Sendwise non e riuscito a preparare il link sicuro di accesso cliente."
+    ),
+    "client_access_email_config_missing": (
+        "La configurazione email transazionale necessaria per inviare l'accesso cliente e incompleta."
+    ),
+    "client_access_email_send_failed": (
+        "Il link di accesso cliente e stato preparato, ma l'email di accesso non e stata inviata."
+    ),
+    "client_access_email_invalid": "L'indirizzo email cliente non e valido.",
+    "client_access_existing_user_conflict": (
+        "Questa email e gia associata a un altro accesso cliente attivo o in attivazione."
+    ),
+}
 
 
 def _normalize_optional_text(value: Optional[str]) -> Optional[str]:
@@ -110,6 +136,20 @@ class ClientAccessSummary(BaseModel):
     accepted_at: Optional[datetime] = None
     created_at: datetime
     updated_at: datetime
+
+
+class ClientAccessErrorDetail(BaseModel):
+    code: AdminClientAccessErrorCode
+    message: str
+
+
+def build_client_access_error_detail(
+    code: AdminClientAccessErrorCode,
+) -> dict[str, str]:
+    return ClientAccessErrorDetail(
+        code=code,
+        message=CLIENT_ACCESS_ERROR_MESSAGES[code],
+    ).model_dump()
 
 
 class Client(BaseModel):

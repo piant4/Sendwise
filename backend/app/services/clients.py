@@ -86,6 +86,7 @@ from app.schemas.clients import (
     ClientOverviewUsage,
     ClientUsageSummaryItem,
     ClientUser,
+    build_client_access_error_detail,
 )
 from app.schemas.blocked_sends import BlockedSend
 from app.schemas.campaigns import (
@@ -452,7 +453,7 @@ class HttpClerkAccessGateway(ClerkAccessGateway):
         if not invitation_url or not invitation_id:
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,
-                detail=CLIENT_ACCESS_CLERK_LINK_FAILED,
+                detail=build_client_access_error_detail(CLIENT_ACCESS_CLERK_LINK_FAILED),
             )
 
         return ClerkAccessLinkResult(
@@ -479,7 +480,7 @@ class HttpClerkAccessGateway(ClerkAccessGateway):
         if not token_url or not token_id:
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,
-                detail=CLIENT_ACCESS_CLERK_LINK_FAILED,
+                detail=build_client_access_error_detail(CLIENT_ACCESS_CLERK_LINK_FAILED),
             )
 
         return ClerkAccessLinkResult(
@@ -496,7 +497,7 @@ class HttpClerkAccessGateway(ClerkAccessGateway):
         if not self._settings.clerk_secret_key.strip():
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail=CLIENT_ACCESS_CLERK_CONFIG_MISSING,
+                detail=build_client_access_error_detail(CLIENT_ACCESS_CLERK_CONFIG_MISSING),
             )
 
         try:
@@ -512,13 +513,13 @@ class HttpClerkAccessGateway(ClerkAccessGateway):
         except httpx.RequestError as error:
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,
-                detail=CLIENT_ACCESS_CLERK_LINK_FAILED,
+                detail=build_client_access_error_detail(CLIENT_ACCESS_CLERK_LINK_FAILED),
             ) from error
 
         if response.status_code in {401, 403}:
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,
-                detail=CLIENT_ACCESS_CLERK_LINK_FAILED,
+                detail=build_client_access_error_detail(CLIENT_ACCESS_CLERK_LINK_FAILED),
             )
 
         if response.status_code >= 400:
@@ -539,16 +540,16 @@ class HttpClerkAccessGateway(ClerkAccessGateway):
 
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,
-                detail=CLIENT_ACCESS_EMAIL_INVALID
+                detail=build_client_access_error_detail(CLIENT_ACCESS_EMAIL_INVALID)
                 if _is_invalid_email_error(detail)
-                else CLIENT_ACCESS_CLERK_LINK_FAILED,
+                else build_client_access_error_detail(CLIENT_ACCESS_CLERK_LINK_FAILED),
             )
 
         payload = response.json()
         if not isinstance(payload, dict):
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,
-                detail=CLIENT_ACCESS_CLERK_LINK_FAILED,
+                detail=build_client_access_error_detail(CLIENT_ACCESS_CLERK_LINK_FAILED),
             )
 
         return payload
@@ -658,7 +659,9 @@ class ClientsService:
         ):
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail=CLIENT_ACCESS_EXISTING_USER_CONFLICT,
+                detail=build_client_access_error_detail(
+                    CLIENT_ACCESS_EXISTING_USER_CONFLICT
+                ),
             )
 
         portal_slug = self._resolve_portal_slug(existing_access=existing_access)
@@ -707,12 +710,12 @@ class ClientsService:
         if not normalized_email:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail=CLIENT_ACCESS_EMAIL_INVALID,
+                detail=build_client_access_error_detail(CLIENT_ACCESS_EMAIL_INVALID),
             )
         if "@" not in normalized_email or "." not in normalized_email.rsplit("@", 1)[-1]:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail=CLIENT_ACCESS_EMAIL_INVALID,
+                detail=build_client_access_error_detail(CLIENT_ACCESS_EMAIL_INVALID),
             )
         return normalized_email
 
@@ -739,7 +742,7 @@ class ClientsService:
         if not frontend_origin:
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail=CLIENT_ACCESS_EMAIL_CONFIG_MISSING,
+                detail=build_client_access_error_detail(CLIENT_ACCESS_EMAIL_CONFIG_MISSING),
             )
         return frontend_origin.rstrip("/") + "/login"
 

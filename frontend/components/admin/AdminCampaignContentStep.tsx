@@ -33,7 +33,8 @@ interface AdminCampaignContentStepProps {
 }
 
 type ContentEditorMode = "split" | "html" | "preview";
-type ActiveField = "subject" | "preview" | "html" | "text";
+type ActiveField = "subject" | "preview" | "html";
+type PreviewDevice = "desktop" | "mobile";
 
 function getValue(value?: string | null): string {
   return value ?? "";
@@ -224,21 +225,48 @@ export function AdminCampaignContentStep({
   const subjectRef = useRef<HTMLInputElement | null>(null);
   const previewRef = useRef<HTMLInputElement | null>(null);
   const htmlRef = useRef<HTMLTextAreaElement | null>(null);
-  const textRef = useRef<HTMLTextAreaElement | null>(null);
+  const initialBoilerplateTemplate =
+    CAMPAIGN_TEMPLATES.find((template) => template.id === DEFAULT_CAMPAIGN_TEMPLATE_ID) ??
+    CAMPAIGN_TEMPLATES[0];
+  const isInitialContentEmpty = [campaign.previewText, campaign.bodyHtml, campaign.bodyText].every(
+    (value) => normalizeText(value).length === 0,
+  );
 
-  const [subject, setSubject] = useState(getValue(campaign.subject));
-  const [previewText, setPreviewText] = useState(getValue(campaign.previewText));
-  const [bodyHtml, setBodyHtml] = useState(getValue(campaign.bodyHtml));
-  const [bodyText, setBodyText] = useState(getValue(campaign.bodyText));
+  const [subject, setSubject] = useState(
+    normalizeText(campaign.subject).length > 0
+      ? getValue(campaign.subject)
+      : isInitialContentEmpty
+        ? initialBoilerplateTemplate.subject
+        : "",
+  );
+  const [previewText, setPreviewText] = useState(
+    isInitialContentEmpty
+      ? initialBoilerplateTemplate.previewText
+      : getValue(campaign.previewText),
+  );
+  const [bodyHtml, setBodyHtml] = useState(
+    isInitialContentEmpty
+      ? initialBoilerplateTemplate.htmlBody
+      : getValue(campaign.bodyHtml),
+  );
+  const [bodyText, setBodyText] = useState(
+    isInitialContentEmpty
+      ? initialBoilerplateTemplate.plainTextBody
+      : getValue(campaign.bodyText),
+  );
   const [editorMode, setEditorMode] = useState<ContentEditorMode>("split");
   const [activeField, setActiveField] = useState<ActiveField>("html");
-  const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
+  const [previewDevice, setPreviewDevice] = useState<PreviewDevice>("desktop");
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(
+    isInitialContentEmpty ? initialBoilerplateTemplate.id : null,
+  );
   const [pendingTemplate, setPendingTemplate] = useState<CampaignTemplate | null>(null);
   const [savedTemplates, setSavedTemplates] = useState<CampaignTemplate[]>([]);
   const [isLoadingTemplates, setIsLoadingTemplates] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSavingTemplate, setIsSavingTemplate] = useState(false);
   const [isTemplateDialogOpen, setIsTemplateDialogOpen] = useState(false);
+  const [isVariableHelperOpen, setIsVariableHelperOpen] = useState(false);
   const [templateName, setTemplateName] = useState("");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
@@ -290,6 +318,10 @@ export function AdminCampaignContentStep({
       CAMPAIGN_TEMPLATES[0],
     [templateCatalog],
   );
+  const previewHtml = useMemo(
+    () => normalizeText(bodyHtml) || defaultTemplate.htmlBody,
+    [bodyHtml, defaultTemplate.htmlBody],
+  );
 
   useEffect(() => {
     let isCancelled = false;
@@ -322,7 +354,7 @@ export function AdminCampaignContentStep({
   }, [campaign.clientId, getToken]);
 
   function hasCurrentContent(): boolean {
-    return [subject, previewText, bodyHtml, bodyText].some(
+    return [previewText, bodyHtml, bodyText].some(
       (value) => normalizeText(value).length > 0,
     );
   }
@@ -335,6 +367,7 @@ export function AdminCampaignContentStep({
     setBodyText(template.plainTextBody);
     setEditorMode("split");
     setActiveField("html");
+    setPreviewDevice("desktop");
     setErrorMessage(null);
     setSuccessMessage(
       `Modello "${template.name}" applicato localmente. Salva per inviare il contenuto al backend.`,
@@ -361,9 +394,6 @@ export function AdminCampaignContentStep({
       case "html":
         setBodyHtml(nextValue);
         break;
-      case "text":
-        setBodyText(nextValue);
-        break;
     }
   }
 
@@ -375,8 +405,6 @@ export function AdminCampaignContentStep({
         return previewRef.current;
       case "html":
         return htmlRef.current;
-      case "text":
-        return textRef.current;
     }
   }
 
@@ -413,7 +441,7 @@ export function AdminCampaignContentStep({
     const subjectValue = normalizeText(subject);
     const previewValue = normalizeText(previewText);
     const bodyHtmlValue = normalizeText(bodyHtml);
-    const bodyTextValue = normalizeText(bodyText) || derivePlainTextFromHtml(bodyHtmlValue);
+    const bodyTextValue = derivePlainTextFromHtml(bodyHtmlValue);
     const unsupportedPlaceholders = [
       ...collectUnsupportedPlaceholders(subjectValue, ALLOWED_RECIPIENT_PLACEHOLDERS),
       ...collectUnsupportedPlaceholders(previewValue, ALLOWED_RECIPIENT_PLACEHOLDERS),
@@ -482,7 +510,7 @@ export function AdminCampaignContentStep({
     const subjectValue = normalizeText(subject);
     const previewValue = normalizeText(previewText);
     const bodyHtmlValue = normalizeText(bodyHtml);
-    const bodyTextValue = normalizeText(bodyText) || derivePlainTextFromHtml(bodyHtmlValue);
+    const bodyTextValue = derivePlainTextFromHtml(bodyHtmlValue);
     const unsupportedPlaceholders = [
       ...collectUnsupportedPlaceholders(subjectValue, ALLOWED_RECIPIENT_PLACEHOLDERS),
       ...collectUnsupportedPlaceholders(previewValue, ALLOWED_RECIPIENT_PLACEHOLDERS),
@@ -628,24 +656,38 @@ export function AdminCampaignContentStep({
               <p className="admin-surface__eyebrow">Variabili</p>
               <h3 className="campaign-variable-helper__title">Placeholder supportati</h3>
             </div>
-            <p className="campaign-variable-helper__note">
-              Inserimento rapido nel campo attivo: <strong>{activeField}</strong>.
-            </p>
-          </div>
-          <div className="campaign-variable-helper__grid">
-            {SUPPORTED_TEMPLATE_VARIABLES.map((variable) => (
-              <button
-                key={variable.token}
+            <div className="campaign-variable-helper__actions">
+              <p className="campaign-variable-helper__note">
+                Inserimento rapido nel campo attivo: <strong>{activeField}</strong>.
+              </p>
+              <Button
                 type="button"
-                className="campaign-variable-chip campaign-variable-chip--button"
+                variant="outline"
+                className="admin-topbar-action campaign-action campaign-action--secondary campaign-variable-helper__toggle"
+                aria-expanded={isVariableHelperOpen}
                 disabled={isSubmitting}
-                onClick={() => insertVariable(variable.token)}
+                onClick={() => setIsVariableHelperOpen((current) => !current)}
               >
-                <code>{variable.token}</code>
-                <span>{variable.description}</span>
-              </button>
-            ))}
+                {isVariableHelperOpen ? "Nascondi variabili" : "Mostra variabili"}
+              </Button>
+            </div>
           </div>
+          {isVariableHelperOpen ? (
+            <div className="campaign-variable-helper__list">
+              {SUPPORTED_TEMPLATE_VARIABLES.map((variable) => (
+                <button
+                  key={variable.token}
+                  type="button"
+                  className="campaign-variable-chip campaign-variable-chip--button"
+                  disabled={isSubmitting}
+                  onClick={() => insertVariable(variable.token)}
+                >
+                  <code>{variable.token}</code>
+                  <span>{variable.description}</span>
+                </button>
+              ))}
+            </div>
+          ) : null}
           <p className="campaign-variable-helper__availability">
             Brand cliente disponibile ora:{" "}
             {availableBrandVariables.length > 0
@@ -657,25 +699,51 @@ export function AdminCampaignContentStep({
         <section className="campaign-field">
           <div className="campaign-field__header">
             <span className="campaign-field__label">HTML email</span>
-            <div className="campaign-editor-toggle" role="tablist" aria-label="Modalita editor email">
-              {(["split", "html", "preview"] as const).map((mode) => {
-                const isActive = editorMode === mode;
+            <div className="campaign-editor-toolbar">
+              <div className="campaign-editor-toolbar__meta">
+                <span className="campaign-editor-toolbar__chip">Tab per indentare</span>
+                <span className="campaign-editor-toolbar__chip">Spellcheck disattivato</span>
+                <span className="campaign-editor-toolbar__chip">Preview isolata</span>
+              </div>
+              <div className="campaign-editor-toolbar__controls">
+                <div className="campaign-editor-toggle" role="tablist" aria-label="Modalita editor email">
+                  {(["split", "html", "preview"] as const).map((mode) => {
+                    const isActive = editorMode === mode;
 
-                return (
-                  <button
-                    key={mode}
-                    type="button"
-                    role="tab"
-                    aria-selected={isActive}
-                    className="campaign-editor-toggle__button"
-                    data-active={isActive}
-                    disabled={isSubmitting}
-                    onClick={() => setEditorMode(mode)}
-                  >
-                    {mode === "split" ? "Split" : mode === "html" ? "HTML" : "Preview"}
-                  </button>
-                );
-              })}
+                    return (
+                      <button
+                        key={mode}
+                        type="button"
+                        role="tab"
+                        aria-selected={isActive}
+                        className="campaign-editor-toggle__button"
+                        data-active={isActive}
+                        disabled={isSubmitting}
+                        onClick={() => setEditorMode(mode)}
+                      >
+                        {mode === "split" ? "Split" : mode === "html" ? "HTML" : "Preview"}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {editorMode !== "html" ? (
+                  <div className="campaign-editor-toggle" role="group" aria-label="Formato preview">
+                    {(["desktop", "mobile"] as const).map((device) => (
+                      <button
+                        key={device}
+                        type="button"
+                        className="campaign-editor-toggle__button"
+                        data-active={previewDevice === device}
+                        disabled={isSubmitting}
+                        onClick={() => setPreviewDevice(device)}
+                      >
+                        {device === "desktop" ? "Desktop" : "Mobile"}
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
             </div>
           </div>
 
@@ -684,7 +752,7 @@ export function AdminCampaignContentStep({
               <div className="campaign-editor-pane">
                 <div className="campaign-editor-pane__header">
                   <strong>Markup</strong>
-                  <span>Editor monospace con numeri di riga.</span>
+                  <span>Textarea migliorata con righe attive, evidenze visuali e indentazione.</span>
                 </div>
                 <CampaignCodeEditor
                   ref={htmlRef}
@@ -699,38 +767,27 @@ export function AdminCampaignContentStep({
             ) : null}
 
             {editorMode !== "html" ? (
-              <div className="campaign-editor-pane">
+              <div className="campaign-editor-pane campaign-editor-pane--preview">
                 <div className="campaign-editor-pane__header">
                   <strong>Preview</strong>
-                  <span>Render locale sicuro del contenuto HTML corrente.</span>
+                  <span>Viewport indipendente con scroll interno e fallback boilerplate.</span>
                 </div>
-                <iframe
-                  className="campaign-email-preview-frame campaign-email-preview-frame--editor"
-                  sandbox=""
-                  srcDoc={buildPreviewDocument(bodyHtml)}
-                  title="Anteprima email"
-                />
+                <div
+                  className="campaign-preview-viewport"
+                  data-device={previewDevice}
+                >
+                  <div className="campaign-preview-viewport__canvas">
+                    <iframe
+                      className="campaign-email-preview-frame campaign-email-preview-frame--editor"
+                      sandbox=""
+                      srcDoc={buildPreviewDocument(previewHtml)}
+                      title="Anteprima email"
+                    />
+                  </div>
+                </div>
               </div>
             ) : null}
           </div>
-        </section>
-
-        <section className="campaign-field">
-          <div className="campaign-field__header">
-            <span className="campaign-field__label">Versione testo</span>
-            <p className="campaign-field__helper">
-              Se lasci vuoto, viene derivato automaticamente dall&apos;HTML al salvataggio.
-            </p>
-          </div>
-          <CampaignCodeEditor
-            ref={textRef}
-            disabled={isSubmitting}
-            onChange={setBodyText}
-            onFocus={() => setActiveField("text")}
-            placeholder="Versione testo semplice dell'email"
-            rows={8}
-            value={bodyText}
-          />
         </section>
       </div>
 
@@ -782,7 +839,7 @@ export function AdminCampaignContentStep({
                   Sostituire il contenuto?
                 </h3>
                 <p id="campaign-template-confirm-body" className="invite-modal__message">
-                  Il modello selezionato sostituira oggetto, preview, HTML e testo semplice.
+                  Il modello selezionato sostituira oggetto, preview, HTML e fallback testo derivato.
                 </p>
               </div>
               <button

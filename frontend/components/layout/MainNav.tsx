@@ -4,7 +4,6 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { LucideIcon } from "lucide-react";
 import {
-  Gauge,
   LayoutGrid,
   Megaphone,
   ServerCog,
@@ -21,7 +20,7 @@ export interface NavItem {
 }
 
 interface ClientNavDefinition {
-  suffix: "" | "/campaigns" | "/email-limits" | "/blocked-sends";
+  suffix: "" | "/campaigns" | "/blocked-sends";
   label: string;
   icon: LucideIcon;
 }
@@ -30,7 +29,6 @@ export const ADMIN_NAV_ITEMS: NavItem[] = [
   { href: "/admin", label: "Panoramica", icon: LayoutGrid },
   { href: "/admin/clients", label: "Clienti", icon: Users },
   { href: "/admin/campaigns", label: "Campagne", icon: Megaphone },
-  { href: "/admin/email-limits", label: "Limiti email", icon: Gauge },
   { href: "/admin/blocked-sends", label: "Invii bloccati", icon: ShieldAlert },
   { href: "/admin/system", label: "Sistema", icon: ServerCog },
 ];
@@ -38,7 +36,6 @@ export const ADMIN_NAV_ITEMS: NavItem[] = [
 export const CLIENT_NAV_ITEMS: ClientNavDefinition[] = [
   { suffix: "", label: "Panoramica", icon: LayoutGrid },
   { suffix: "/campaigns", label: "Campagne", icon: Megaphone },
-  { suffix: "/email-limits", label: "Limiti email", icon: Gauge },
   { suffix: "/blocked-sends", label: "Invii bloccati", icon: ShieldAlert },
 ];
 

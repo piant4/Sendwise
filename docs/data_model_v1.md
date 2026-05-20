@@ -84,6 +84,7 @@ Current verified fields:
 - `max_campaigns`
 - `monthly_email_limit`
 - `daily_email_limit`
+- `metadata`
 - `created_at`
 - `updated_at`
 
@@ -97,6 +98,16 @@ Recommended direction:
 - keep these fields during migration
 - treat `email_limit_per_campaign` as deprecated compatibility data only
 - treat `max_campaigns` as legacy compatibility until slot-count policy is formalized
+- use `metadata.email_brand` for the single admin-managed email brand profile:
+  - `company_name`
+  - `sender_name`
+  - `website_url`
+  - `linkedin_url`
+  - `instagram_url`
+  - `facebook_url`
+  - `x_url`
+  - `logo_url`
+- `logo_url` must store only the backend-managed relative public path for the validated WebP upload under `/static/client-brand-logos/`
 
 ### client_access
 

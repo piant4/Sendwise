@@ -1,7 +1,8 @@
 from datetime import datetime
 from typing import Literal, Optional
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, TypeAdapter, field_validator
+from pydantic.networks import AnyHttpUrl
 
 from app.schemas.common import CampaignStatus, ClientStatus, SendDecision
 from app.schemas.usage import ApiUsage
@@ -11,6 +12,89 @@ from app.schemas.blocked_sends import BlockedSend
 
 ClientAccessStatus = Literal["invited", "active", "suspended", "archived"]
 InvitationStatus = Literal["pending", "accepted", "revoked", "expired"]
+
+_OPTIONAL_HTTP_URL = TypeAdapter(AnyHttpUrl)
+
+
+def _normalize_optional_text(value: Optional[str]) -> Optional[str]:
+    if value is None:
+        return None
+
+    normalized_value = value.strip()
+    return normalized_value or None
+
+
+def _normalize_optional_http_url(value: Optional[str]) -> Optional[str]:
+    normalized_value = _normalize_optional_text(value)
+    if normalized_value is None:
+        return None
+
+    return str(_OPTIONAL_HTTP_URL.validate_python(normalized_value))
+
+
+class ClientEmailBrand(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    company_name: Optional[str] = None
+    sender_name: Optional[str] = None
+    website_url: Optional[str] = None
+    linkedin_url: Optional[str] = None
+    instagram_url: Optional[str] = None
+    facebook_url: Optional[str] = None
+    x_url: Optional[str] = None
+    logo_url: Optional[str] = None
+
+    @field_validator("company_name", "sender_name", mode="before")
+    @classmethod
+    def _validate_optional_text(cls, value: object) -> Optional[str]:
+        if value is None:
+            return None
+        if not isinstance(value, str):
+            raise ValueError("Expected a string value.")
+        return _normalize_optional_text(value)
+
+    @field_validator(
+        "website_url",
+        "linkedin_url",
+        "instagram_url",
+        "facebook_url",
+        "x_url",
+        mode="before",
+    )
+    @classmethod
+    def _validate_optional_http_url(cls, value: object) -> Optional[str]:
+        if value is None:
+            return None
+        if not isinstance(value, str):
+            raise ValueError("Expected a string value.")
+        return _normalize_optional_http_url(value)
+
+    @field_validator("logo_url", mode="before")
+    @classmethod
+    def _validate_logo_url(cls, value: object) -> Optional[str]:
+        if value is None:
+            return None
+        if not isinstance(value, str):
+            raise ValueError("Expected a string value.")
+
+        normalized_value = _normalize_optional_text(value)
+        if normalized_value is None:
+            return None
+        if ".." in normalized_value:
+            raise ValueError("logo_url must not contain path traversal.")
+        if not normalized_value.startswith("/static/client-brand-logos/"):
+            raise ValueError(
+                "logo_url must point to the managed client brand logo path."
+            )
+        if not normalized_value.lower().endswith(".webp"):
+            raise ValueError("logo_url must reference a .webp asset.")
+        return normalized_value
+
+    def has_any_value(self) -> bool:
+        return any(
+            getattr(self, field_name) is not None
+            for field_name in self.__class__.model_fields
+        )
 
 
 class ClientAccessSummary(BaseModel):
@@ -38,6 +122,7 @@ class Client(BaseModel):
     max_campaigns: Optional[int] = None
     monthly_email_limit: Optional[int] = None
     daily_email_limit: Optional[int] = None
+    email_brand: Optional[ClientEmailBrand] = None
     created_at: datetime
     updated_at: datetime
     access: Optional[ClientAccessSummary] = None
@@ -223,6 +308,7 @@ class AdminClientUpdateRequest(BaseModel):
     max_campaigns: Optional[int] = None
     monthly_email_limit: Optional[int] = None
     daily_email_limit: Optional[int] = None
+    email_brand: Optional[ClientEmailBrand] = None
 
 
 class AdminCampaignStatusCounts(BaseModel):

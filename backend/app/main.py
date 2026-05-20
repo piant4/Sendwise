@@ -1,5 +1,8 @@
+from pathlib import Path
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from app.api import admin, campaigns, client, contacts, events, health
 from app.core.config import get_settings
@@ -7,6 +10,8 @@ from app.core.config import get_settings
 
 def create_app() -> FastAPI:
     settings = get_settings()
+    uploads_dir = Path(__file__).resolve().parents[1] / "uploads"
+    uploads_dir.mkdir(parents=True, exist_ok=True)
     app = FastAPI(
         title="Email AI Platform",
         version="v1-skeleton",
@@ -26,6 +31,7 @@ def create_app() -> FastAPI:
     app.include_router(campaigns.router)
     app.include_router(contacts.router)
     app.include_router(events.router)
+    app.mount("/static", StaticFiles(directory=uploads_dir), name="static")
     return app
 
 

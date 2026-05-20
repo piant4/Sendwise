@@ -15,6 +15,7 @@ CREATE TABLE IF NOT EXISTS clients (
     max_campaigns INTEGER,
     monthly_email_limit INTEGER,
     daily_email_limit INTEGER,
+    metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );

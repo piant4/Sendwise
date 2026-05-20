@@ -5,6 +5,7 @@ import pytest
 from app.services.template_renderer import (
     CompiledTemplateNotFoundError,
     TemplateRenderer,
+    build_social_icons_html,
     ensure_unsubscribe_link,
 )
 
@@ -62,6 +63,55 @@ def test_render_replaces_minimal_variables(tmp_path: Path) -> None:
     assert "<p>Hello</p>" in rendered.body
     assert "https://example.test/unsubscribe" in rendered.body
     assert "Acme" in rendered.body
+
+
+def test_render_replaces_brand_variables_and_social_icons(tmp_path: Path) -> None:
+    renderer = write_template(
+        tmp_path,
+        "campaign",
+        (
+            "<html><body>{{company_name}}|{{sender_name}}|{{logo}}|{{website_url}}|"
+            "{{linkedin_url}}|{{instagram_url}}|{{facebook_url}}|{{x_url}}|{{social_icons}}|"
+            "<a href='{{unsubscribe_url}}'>unsubscribe</a>{{body}}</body></html>"
+        ),
+    )
+
+    rendered = renderer.render(
+        template_name="campaign",
+        subject="Launch",
+        preview_text="Preview line",
+        body="<p>Hello</p>",
+        unsubscribe_url="https://example.test/unsubscribe",
+        client_name="Acme",
+        email_brand={
+            "company_name": "Acme Labs",
+            "sender_name": "Team Acme",
+            "logo_url": "/static/client-brand-logos/acme.webp",
+            "website_url": "https://acme.example.test",
+            "linkedin_url": "https://linkedin.com/company/acme",
+            "x_url": "https://x.com/acme",
+        },
+    )
+
+    assert "Acme Labs" in rendered.body
+    assert "Team Acme" in rendered.body
+    assert "/static/client-brand-logos/acme.webp" in rendered.body
+    assert "https://acme.example.test" in rendered.body
+    assert "https://linkedin.com/company/acme" in rendered.body
+    assert "https://x.com/acme" in rendered.body
+    assert "{{social_icons}}" not in rendered.body
+
+
+def test_build_social_icons_html_omits_missing_urls() -> None:
+    html = build_social_icons_html(
+        {
+            "linkedin_url": "https://linkedin.com/company/acme",
+            "facebook_url": None,
+        }
+    )
+
+    assert "linkedin.com/company/acme" in html
+    assert "facebook.com" not in html
 
 
 def test_ensure_unsubscribe_link_appends_footer_when_missing() -> None:

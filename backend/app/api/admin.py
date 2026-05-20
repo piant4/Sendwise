@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Request, status
 
 from app.core.auth import AuthenticatedUser, require_platform_admin
 from app.integrations.listmonk.client import ListmonkError
@@ -31,6 +31,7 @@ from app.schemas.clients import (
 from app.services.client_access import ClientAccessService, get_client_access_service
 from app.services.clients import (
     ClientsService,
+    build_client_email_brand,
     build_client_access_summary,
     build_client_schema,
     get_clients_service,
@@ -135,6 +136,30 @@ def update_client(
             "daily_email_limit",
             existing_client.daily_email_limit,
         ),
+        email_brand=(
+            payload.email_brand
+            if "email_brand" in payload.model_fields_set
+            else build_client_email_brand(existing_client.metadata)
+        ),
+    )
+    return build_client_schema(
+        updated_client,
+        access=client_access_service.get_access_by_client_id(updated_client.id),
+    )
+
+
+@router.post("/clients/{client_id}/brand/logo", response_model=Client)
+async def upload_client_brand_logo(
+    client_id: str,
+    request: Request,
+    _current_user: AuthenticatedUser = Depends(require_platform_admin),
+    clients_service: ClientsService = Depends(get_clients_service),
+    client_access_service: ClientAccessService = Depends(get_client_access_service),
+) -> Client:
+    updated_client = clients_service.upload_client_email_brand_logo(
+        client_id=client_id,
+        upload_filename=request.headers.get("x-upload-filename"),
+        upload_bytes=await request.body(),
     )
     return build_client_schema(
         updated_client,

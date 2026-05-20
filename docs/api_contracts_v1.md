@@ -46,8 +46,9 @@ Auth flow notes:
 |---|---|---|---|---|---|---|---|
 | `GET /admin/clients` | List clients. | Admin dashboard. | Platform admin. | Filters, pagination. | Client summaries. | `401`, `403`. | `implemented` |
 | `POST /admin/clients` | Create or reactivate client access and send the secure access email. | Admin dashboard. | Platform admin. | `email`, optional `first_name`, optional `last_name`. | Client profile plus access summary. | `400`, `401`, `403`, `409`, `422`, `502`, `503`. | `implemented` |
-| `GET /admin/clients/{client_id}` | Read client detail. | Admin dashboard. | Platform admin. | `client_id`. | Client detail and access summary. | `401`, `403`, `404`. | `implemented` |
-| `PATCH /admin/clients/{client_id}` | Update client profile and legacy account-capacity fields. | Admin dashboard. | Platform admin. | `client_id`, partial profile and compatibility fields. | Updated client profile. | `400`, `401`, `403`, `404`, `409`. | `implemented` |
+| `GET /admin/clients/{client_id}` | Read client detail including the single email brand profile. | Admin dashboard. | Platform admin. | `client_id`. | Client detail, access summary, and `email_brand`. | `401`, `403`, `404`. | `implemented` |
+| `PATCH /admin/clients/{client_id}` | Update client profile, legacy account-capacity fields, and the single email brand profile. | Admin dashboard. | Platform admin. | `client_id`, partial profile, compatibility fields, optional `email_brand`. | Updated client profile. | `400`, `401`, `403`, `404`, `409`, `422`. | `implemented` |
+| `POST /admin/clients/{client_id}/brand/logo` | Upload the managed email-brand logo for a client. | Admin dashboard. | Platform admin. | `client_id`, raw file body, `X-Upload-Filename`. | Updated client profile with managed `email_brand.logo_url`. | `401`, `403`, `404`, `413`, `422`. | `implemented` |
 | `POST /admin/clients/{client_id}/send-access-email` | Send or resend the secure client access email. | Admin dashboard. | Platform admin. | `client_id`. | Refreshed access state. | `400`, `401`, `403`, `404`, `409`, `422`, `502`, `503`. | `implemented` |
 | `POST /admin/clients/{client_id}/revoke-access` | Disable client portal access without deleting the client record. | Admin dashboard. | Platform admin. | `client_id`. | Updated access state. | `401`, `403`, `404`, `409`. | `implemented` |
 | `POST /admin/clients/{client_id}/archive` | Archive client and access. | Admin dashboard. | Platform admin. | `client_id`. | Archived client state. | `401`, `403`, `404`, `409`. | `implemented` |
@@ -63,6 +64,8 @@ Admin request notes:
 - pending or newly reactivated access responses may keep an internal reserved `client_access.portal_slug` in persistence, but API summaries must expose `portal_slug=null` until the customer completes the first secure Clerk login
 - `POST /admin/clients` and `POST /admin/clients/{client_id}/send-access-email` return only controlled provisioning codes for safe admin handling: `client_access_clerk_config_missing`, `client_access_clerk_link_failed`, `client_access_email_config_missing`, `client_access_email_send_failed`, `client_access_email_invalid`, and `client_access_existing_user_conflict`
 - if Clerk access is prepared but transactional email delivery fails, Sendwise keeps the access record active/pending and expects the admin to use the resend action after email delivery is fixed
+- `email_brand` is a single client-scoped configuration under `clients.metadata.email_brand`
+- managed logo uploads accept only `.webp`, require valid WebP magic bytes, reject payloads over `500 KB`, ignore the original filename for storage, and expose only a backend-managed relative public path under `/static/client-brand-logos/`
 
 ## Admin Campaigns
 

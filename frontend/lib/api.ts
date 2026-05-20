@@ -29,6 +29,7 @@ import type {
   CampaignSlotSummary,
   CampaignSummaryItem,
   Client,
+  ClientEmailBrand,
   ClientDashboardSummary,
   ClientContext,
   ClientCampaignStatsReadModel,
@@ -1224,6 +1225,63 @@ async function postAdminClientArchive(
   );
 }
 
+async function postAdminClientBrandLogo(
+  clientId: string,
+  file: File,
+  accessToken?: string | null,
+): Promise<Client> {
+  const path = `/admin/clients/${clientId}/brand/logo`;
+  const requestUrl = `${getRequiredApiBaseUrl()}${path}`;
+  let response: Response;
+
+  if (!accessToken || !accessToken.trim()) {
+    throw new ApiError({
+      path,
+      status: 401,
+      detail: "Missing Clerk session token for protected backend request.",
+    });
+  }
+
+  try {
+    response = await fetch(requestUrl, {
+      method: "POST",
+      cache: "no-store",
+      headers: {
+        Authorization: `Bearer ${accessToken.trim()}`,
+        "Content-Type": "application/octet-stream",
+        "X-Upload-Filename": file.name,
+      },
+      body: new Uint8Array(await file.arrayBuffer()),
+    });
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Unknown network error";
+    throw new ApiError({
+      path,
+      detail: message,
+      isNetworkError: true,
+    });
+  }
+
+  if (!response.ok) {
+    const details = await readErrorDetails(response);
+    throw new ApiError({
+      path,
+      status: response.status,
+      detail: details,
+    });
+  }
+
+  try {
+    return (await response.json()) as Client;
+  } catch {
+    throw new ApiError({
+      path,
+      detail: "invalid JSON response",
+    });
+  }
+}
+
 async function postClientOnboarding(
   payload: CompleteClientOnboardingInput,
   accessToken?: string | null,
@@ -1970,6 +2028,55 @@ export function updateAdminClientLimits(
   }
 
   return patchAdminClient(clientId, payload, accessToken);
+}
+
+export function uploadAdminClientBrandLogo(
+  clientId: string,
+  file: File,
+  accessToken?: string | null,
+): Promise<Client> {
+  if (USE_MOCK_API) {
+    throw new ApiError({
+      path: `/admin/clients/${clientId}/brand/logo`,
+      status: 500,
+      detail:
+        "Client brand logo upload requires NEXT_PUBLIC_USE_MOCK_API=false so the backend can validate and persist the WebP asset.",
+    });
+  }
+
+  return postAdminClientBrandLogo(clientId, file, accessToken);
+}
+
+export function getBackendAssetUrl(relativePath?: string | null): string | null {
+  if (!relativePath) {
+    return null;
+  }
+
+  if (/^https?:\/\//i.test(relativePath)) {
+    return relativePath;
+  }
+
+  const baseUrl = API_BASE_URL.trim().replace(/\/$/, "");
+  if (!baseUrl) {
+    return relativePath;
+  }
+
+  return `${baseUrl}${relativePath.startsWith("/") ? relativePath : `/${relativePath}`}`;
+}
+
+export function buildClientEmailBrandPayload(
+  value: ClientEmailBrand,
+): ClientEmailBrand {
+  return {
+    company_name: value.company_name?.trim() || null,
+    sender_name: value.sender_name?.trim() || null,
+    website_url: value.website_url?.trim() || null,
+    linkedin_url: value.linkedin_url?.trim() || null,
+    instagram_url: value.instagram_url?.trim() || null,
+    facebook_url: value.facebook_url?.trim() || null,
+    x_url: value.x_url?.trim() || null,
+    logo_url: value.logo_url?.trim() || null,
+  };
 }
 
 export function revokeAdminClientAccess(

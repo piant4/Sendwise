@@ -5,11 +5,14 @@ import { AdminClientAccessActions } from "../../../../components/admin/AdminClie
 import { formatDateTimeInRome } from "../../../../components/shared/dateTime";
 import { buildPageMetadata } from "../../../../components/shared/metadata";
 import {
+  buildClientEmailBrandPayload,
+  getBackendAssetUrl,
   getAdminClient,
   isApiError,
+  uploadAdminClientBrandLogo,
   updateAdminClientLimits,
 } from "../../../../lib/api";
-import type { Client } from "../../../../types";
+import type { Client, ClientEmailBrand } from "../../../../types";
 
 export const dynamic = "force-dynamic";
 export const metadata = buildPageMetadata("Dettaglio cliente");
@@ -95,7 +98,65 @@ async function updateClientLimitsAction(clientId: string, formData: FormData) {
 
   revalidatePath("/admin/clients");
   revalidatePath(`/admin/clients/${clientId}`);
-  redirect(`/admin/clients/${clientId}?saved=1`);
+  redirect(`/admin/clients/${clientId}?saved=limits`);
+}
+
+function getFieldString(value: FormDataEntryValue | null): string | null {
+  const rawValue = String(value ?? "").trim();
+  return rawValue || null;
+}
+
+function buildBrandPayload(
+  formData: FormData,
+  logoUrl: string | null,
+): ClientEmailBrand {
+  return buildClientEmailBrandPayload({
+    company_name: getFieldString(formData.get("company_name")),
+    sender_name: getFieldString(formData.get("sender_name")),
+    website_url: getFieldString(formData.get("website_url")),
+    linkedin_url: getFieldString(formData.get("linkedin_url")),
+    instagram_url: getFieldString(formData.get("instagram_url")),
+    facebook_url: getFieldString(formData.get("facebook_url")),
+    x_url: getFieldString(formData.get("x_url")),
+    logo_url: logoUrl,
+  });
+}
+
+async function updateClientBrandAction(clientId: string, formData: FormData) {
+  "use server";
+
+  try {
+    const { getToken } = await auth();
+    const token = await getToken();
+    const logoFile = formData.get("logo_file");
+    const currentLogoUrl = getFieldString(formData.get("current_logo_url"));
+    let logoUrl = currentLogoUrl;
+
+    if (logoFile instanceof File && logoFile.size > 0) {
+      const uploadedClient = await uploadAdminClientBrandLogo(clientId, logoFile, token);
+      logoUrl = uploadedClient.email_brand?.logo_url ?? null;
+    }
+
+    await updateAdminClientLimits(
+      clientId,
+      {
+        email_brand: buildBrandPayload(formData, logoUrl),
+      },
+      token,
+    );
+  } catch (error) {
+    const message =
+      error instanceof Error
+        ? error.message
+        : "Aggiornamento brand email non riuscito.";
+    redirect(
+      `/admin/clients/${clientId}?error=${encodeURIComponent(message)}`,
+    );
+  }
+
+  revalidatePath("/admin/clients");
+  revalidatePath(`/admin/clients/${clientId}`);
+  redirect(`/admin/clients/${clientId}?saved=brand`);
 }
 
 export default async function AdminClientDetailPage({
@@ -143,6 +204,8 @@ export default async function AdminClientDetailPage({
   const isPendingInvite =
     client.access?.status === "invited" ||
     client.access?.invitation_status === "pending";
+  const brand = client.email_brand ?? null;
+  const logoPreviewUrl = getBackendAssetUrl(brand?.logo_url);
 
   return (
     <main className="shell">
@@ -162,7 +225,9 @@ export default async function AdminClientDetailPage({
 
         {saved ? (
           <p className="admin-clients-feedback admin-clients-feedback--success">
-            Capacita cliente aggiornata correttamente.
+            {saved === "brand"
+              ? "Brand email aggiornato correttamente."
+              : "Capacita cliente aggiornata correttamente."}
           </p>
         ) : null}
 
@@ -173,6 +238,153 @@ export default async function AdminClientDetailPage({
         ) : null}
 
         <section className="admin-client-detail__grid">
+          <article className="admin-clients-card admin-client-brand-card">
+            <div className="admin-clients-card__intro">
+              <div>
+                <p className="admin-surface__eyebrow">Brand email</p>
+                <h2 className="admin-clients-card__title">Brand email</h2>
+                <p className="admin-clients-card__description">
+                  Un solo profilo brand per cliente. Il logo accetta solo file
+                  WebP fino a 500 KB; consigliati meno di 200 KB e lato max 1200 px.
+                </p>
+              </div>
+            </div>
+
+            <form
+              action={updateClientBrandAction.bind(null, client.id)}
+              className="admin-client-brand-card__form"
+            >
+              <input
+                type="hidden"
+                name="current_logo_url"
+                value={brand?.logo_url ?? ""}
+              />
+
+              <div className="admin-client-brand-card__grid">
+                <label className="admin-clients-form__field">
+                  <span>Company name</span>
+                  <input
+                    className="admin-clients-form__input"
+                    type="text"
+                    name="company_name"
+                    defaultValue={brand?.company_name ?? ""}
+                    placeholder="Es. Sendwise Studio"
+                  />
+                </label>
+
+                <label className="admin-clients-form__field">
+                  <span>Sender name</span>
+                  <input
+                    className="admin-clients-form__input"
+                    type="text"
+                    name="sender_name"
+                    defaultValue={brand?.sender_name ?? ""}
+                    placeholder="Es. Team Sendwise"
+                  />
+                </label>
+
+                <label className="admin-clients-form__field admin-client-brand-card__field--full">
+                  <span>Website</span>
+                  <input
+                    className="admin-clients-form__input"
+                    type="url"
+                    name="website_url"
+                    defaultValue={brand?.website_url ?? ""}
+                    placeholder="https://example.com"
+                  />
+                </label>
+
+                <label className="admin-clients-form__field">
+                  <span>LinkedIn</span>
+                  <input
+                    className="admin-clients-form__input"
+                    type="url"
+                    name="linkedin_url"
+                    defaultValue={brand?.linkedin_url ?? ""}
+                    placeholder="https://linkedin.com/company/..."
+                  />
+                </label>
+
+                <label className="admin-clients-form__field">
+                  <span>Instagram</span>
+                  <input
+                    className="admin-clients-form__input"
+                    type="url"
+                    name="instagram_url"
+                    defaultValue={brand?.instagram_url ?? ""}
+                    placeholder="https://instagram.com/..."
+                  />
+                </label>
+
+                <label className="admin-clients-form__field">
+                  <span>Facebook</span>
+                  <input
+                    className="admin-clients-form__input"
+                    type="url"
+                    name="facebook_url"
+                    defaultValue={brand?.facebook_url ?? ""}
+                    placeholder="https://facebook.com/..."
+                  />
+                </label>
+
+                <label className="admin-clients-form__field">
+                  <span>X</span>
+                  <input
+                    className="admin-clients-form__input"
+                    type="url"
+                    name="x_url"
+                    defaultValue={brand?.x_url ?? ""}
+                    placeholder="https://x.com/..."
+                  />
+                </label>
+              </div>
+
+              <div className="admin-client-brand-card__logo-row">
+                <div className="admin-client-brand-card__logo-copy">
+                  <strong>Logo .webp</strong>
+                  <span>
+                    Carica un file WebP quadrato o con lato massimo 1200 px.
+                    Il backend genera un nome file stabile e ignora il nome originale.
+                  </span>
+                </div>
+
+                <label className="admin-client-brand-card__upload">
+                  <span>Seleziona logo</span>
+                  <input
+                    type="file"
+                    name="logo_file"
+                    accept=".webp,image/webp"
+                  />
+                </label>
+              </div>
+
+              {logoPreviewUrl ? (
+                <div className="admin-client-brand-card__preview">
+                  <img
+                    src={logoPreviewUrl}
+                    alt={`Logo brand email di ${client.name}`}
+                    className="admin-client-brand-card__preview-image"
+                  />
+                  <div className="admin-client-brand-card__preview-copy">
+                    <span>Logo attuale</span>
+                    <code>{brand?.logo_url}</code>
+                  </div>
+                </div>
+              ) : (
+                <div className="admin-client-detail__placeholder">
+                  <strong>Nessun logo caricato</strong>
+                  <span>
+                    Il renderer usera un logo solo dopo un upload WebP valido.
+                  </span>
+                </div>
+              )}
+
+              <button type="submit" className="admin-clients-form__submit">
+                Salva brand email
+              </button>
+            </form>
+          </article>
+
           <article className="admin-clients-card">
             <div className="admin-clients-card__intro">
               <div>

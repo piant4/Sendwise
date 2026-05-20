@@ -2,6 +2,7 @@ import json
 import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Any, Optional
 from zoneinfo import ZoneInfo
 
@@ -39,9 +40,11 @@ from app.services.client_access import (
     get_client_access_service,
 )
 from app.services.clients import (
+    CLIENT_BRAND_LOGO_PUBLIC_PREFIX,
     ClerkAccessGateway,
     ClerkAccessLinkResult,
     ClientsService,
+    build_client_brand_logo_filename,
     get_clients_service,
 )
 from app.services.emails import ClientAccessEmailPayload, ClientAccessEmailService
@@ -190,6 +193,7 @@ class FakeClientRepository(ClientRepository):
         email: str,
         personal_name: Optional[str],
         status: str,
+        metadata: Optional[dict[str, Any]] = None,
     ) -> ClientRecord:
         self._counter += 1
         timestamp = datetime.now(timezone.utc)
@@ -202,6 +206,7 @@ class FakeClientRepository(ClientRepository):
             max_campaigns=None,
             monthly_email_limit=None,
             daily_email_limit=None,
+            metadata=metadata or {},
             created_at=timestamp,
             updated_at=timestamp,
         )
@@ -219,6 +224,7 @@ class FakeClientRepository(ClientRepository):
         max_campaigns: Optional[int] = None,
         monthly_email_limit: Optional[int] = None,
         daily_email_limit: Optional[int] = None,
+        metadata: Optional[dict[str, Any]] = None,
     ) -> ClientRecord:
         existing = self._records[client_id]
         updated = existing.model_copy(
@@ -230,6 +236,7 @@ class FakeClientRepository(ClientRepository):
                 "max_campaigns": max_campaigns,
                 "monthly_email_limit": monthly_email_limit,
                 "daily_email_limit": daily_email_limit,
+                "metadata": existing.metadata if metadata is None else metadata,
                 "updated_at": datetime.now(timezone.utc),
             }
         )
@@ -708,6 +715,7 @@ def build_client_record(
     max_campaigns: Optional[int] = None,
     monthly_email_limit: Optional[int] = None,
     daily_email_limit: Optional[int] = None,
+    metadata: Optional[dict[str, Any]] = None,
 ) -> ClientRecord:
     timestamp = datetime(2026, 5, 8, 9, 0, tzinfo=timezone.utc)
     return ClientRecord(
@@ -719,6 +727,7 @@ def build_client_record(
         max_campaigns=max_campaigns,
         monthly_email_limit=monthly_email_limit,
         daily_email_limit=daily_email_limit,
+        metadata=metadata or {},
         created_at=timestamp,
         updated_at=timestamp,
     )
@@ -901,6 +910,10 @@ def build_client_blocked_send_record(
         decision=decision,
         created_at=created_at or datetime(2026, 5, 8, 9, 0, tzinfo=timezone.utc),
     )
+
+
+def build_webp_bytes(payload: bytes = b"sendwise") -> bytes:
+    return b"RIFF" + (len(payload) + 4).to_bytes(4, "little") + b"WEBP" + payload
 
 
 def install_test_dependencies(
@@ -2501,6 +2514,254 @@ def test_platform_admin_update_rejects_company_name_field(
     )
 
     assert response.status_code == 422
+
+
+def test_platform_admin_can_read_and_update_client_email_brand(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    signing_keypair: rsa.RSAPrivateKey,
+) -> None:
+    set_auth_mappings(
+        monkeypatch,
+        {
+            "user_admin": {
+                "email": "admin@sendwise.test",
+                "access_type": "platform_admin",
+                "status": "active",
+            }
+        },
+    )
+    client_record = build_client_record(
+        metadata={
+            "email_brand": {
+                "company_name": "Original Brand",
+                "sender_name": "Original Team",
+                "logo_url": "/static/client-brand-logos/original.webp",
+            }
+        }
+    )
+    install_test_dependencies(
+        client_records=[client_record],
+        access_records=[build_access_record(client_id=client_record.id)],
+    )
+    token = make_token(signing_keypair, clerk_user_id="user_admin")
+
+    detail_response = client.get(
+        f"/admin/clients/{client_record.id}",
+        headers=auth_header(token),
+    )
+    update_response = client.patch(
+        f"/admin/clients/{client_record.id}",
+        headers=auth_header(token),
+        json={
+            "email_brand": {
+                "company_name": "Updated Brand",
+                "sender_name": "Team Updated",
+                "website_url": "https://brand.example.test",
+                "linkedin_url": "https://linkedin.com/company/brand-updated",
+                "logo_url": "/static/client-brand-logos/original.webp",
+            }
+        },
+    )
+
+    assert detail_response.status_code == 200
+    assert detail_response.json()["email_brand"]["company_name"] == "Original Brand"
+    assert update_response.status_code == 200
+    assert update_response.json()["email_brand"] == {
+        "company_name": "Updated Brand",
+        "sender_name": "Team Updated",
+        "website_url": "https://brand.example.test/",
+        "linkedin_url": "https://linkedin.com/company/brand-updated",
+        "logo_url": "/static/client-brand-logos/original.webp",
+    }
+
+
+def test_platform_admin_brand_update_rejects_invalid_url(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    signing_keypair: rsa.RSAPrivateKey,
+) -> None:
+    set_auth_mappings(
+        monkeypatch,
+        {
+            "user_admin": {
+                "email": "admin@sendwise.test",
+                "access_type": "platform_admin",
+                "status": "active",
+            }
+        },
+    )
+    client_record = build_client_record()
+    install_test_dependencies(
+        client_records=[client_record],
+        access_records=[build_access_record(client_id=client_record.id)],
+    )
+    token = make_token(signing_keypair, clerk_user_id="user_admin")
+
+    response = client.patch(
+        f"/admin/clients/{client_record.id}",
+        headers=auth_header(token),
+        json={"email_brand": {"website_url": "notaurl"}},
+    )
+
+    assert response.status_code == 422
+
+
+def test_platform_admin_can_upload_valid_client_brand_logo(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    signing_keypair: rsa.RSAPrivateKey,
+    tmp_path: Path,
+) -> None:
+    set_auth_mappings(
+        monkeypatch,
+        {
+            "user_admin": {
+                "email": "admin@sendwise.test",
+                "access_type": "platform_admin",
+                "status": "active",
+            }
+        },
+    )
+    monkeypatch.setattr("app.services.clients.CLIENT_BRAND_LOGO_UPLOAD_DIR", tmp_path)
+    client_record = build_client_record()
+    install_test_dependencies(
+        client_records=[client_record],
+        access_records=[build_access_record(client_id=client_record.id)],
+    )
+    token = make_token(signing_keypair, clerk_user_id="user_admin")
+
+    response = client.post(
+        f"/admin/clients/{client_record.id}/brand/logo",
+        headers={
+            **auth_header(token),
+            "Content-Type": "application/octet-stream",
+            "X-Upload-Filename": "friendly-name.webp",
+        },
+        content=build_webp_bytes(),
+    )
+
+    assert response.status_code == 200
+    logo_url = response.json()["email_brand"]["logo_url"]
+    expected_filename = build_client_brand_logo_filename(client_record.id)
+    assert logo_url == f"{CLIENT_BRAND_LOGO_PUBLIC_PREFIX}/{expected_filename}"
+    assert "friendly-name" not in logo_url
+    assert (tmp_path / expected_filename).read_bytes().startswith(b"RIFF")
+
+
+def test_platform_admin_brand_logo_rejects_non_webp_magic(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    signing_keypair: rsa.RSAPrivateKey,
+    tmp_path: Path,
+) -> None:
+    set_auth_mappings(
+        monkeypatch,
+        {
+            "user_admin": {
+                "email": "admin@sendwise.test",
+                "access_type": "platform_admin",
+                "status": "active",
+            }
+        },
+    )
+    monkeypatch.setattr("app.services.clients.CLIENT_BRAND_LOGO_UPLOAD_DIR", tmp_path)
+    client_record = build_client_record()
+    install_test_dependencies(
+        client_records=[client_record],
+        access_records=[build_access_record(client_id=client_record.id)],
+    )
+    token = make_token(signing_keypair, clerk_user_id="user_admin")
+
+    response = client.post(
+        f"/admin/clients/{client_record.id}/brand/logo",
+        headers={
+            **auth_header(token),
+            "Content-Type": "application/octet-stream",
+            "X-Upload-Filename": "logo.webp",
+        },
+        content=b"not-a-webp",
+    )
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == "Brand logo upload is not a valid WebP file."
+
+
+def test_platform_admin_brand_logo_rejects_non_webp_extension(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    signing_keypair: rsa.RSAPrivateKey,
+    tmp_path: Path,
+) -> None:
+    set_auth_mappings(
+        monkeypatch,
+        {
+            "user_admin": {
+                "email": "admin@sendwise.test",
+                "access_type": "platform_admin",
+                "status": "active",
+            }
+        },
+    )
+    monkeypatch.setattr("app.services.clients.CLIENT_BRAND_LOGO_UPLOAD_DIR", tmp_path)
+    client_record = build_client_record()
+    install_test_dependencies(
+        client_records=[client_record],
+        access_records=[build_access_record(client_id=client_record.id)],
+    )
+    token = make_token(signing_keypair, clerk_user_id="user_admin")
+
+    response = client.post(
+        f"/admin/clients/{client_record.id}/brand/logo",
+        headers={
+            **auth_header(token),
+            "Content-Type": "application/octet-stream",
+            "X-Upload-Filename": "logo.png",
+        },
+        content=build_webp_bytes(),
+    )
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == "Brand logo upload accepts only .webp files."
+
+
+def test_platform_admin_brand_logo_rejects_oversized_payload(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    signing_keypair: rsa.RSAPrivateKey,
+    tmp_path: Path,
+) -> None:
+    set_auth_mappings(
+        monkeypatch,
+        {
+            "user_admin": {
+                "email": "admin@sendwise.test",
+                "access_type": "platform_admin",
+                "status": "active",
+            }
+        },
+    )
+    monkeypatch.setattr("app.services.clients.CLIENT_BRAND_LOGO_UPLOAD_DIR", tmp_path)
+    client_record = build_client_record()
+    install_test_dependencies(
+        client_records=[client_record],
+        access_records=[build_access_record(client_id=client_record.id)],
+    )
+    token = make_token(signing_keypair, clerk_user_id="user_admin")
+    oversized_payload = build_webp_bytes(b"x" * (500 * 1024))
+
+    response = client.post(
+        f"/admin/clients/{client_record.id}/brand/logo",
+        headers={
+            **auth_header(token),
+            "Content-Type": "application/octet-stream",
+            "X-Upload-Filename": "logo.webp",
+        },
+        content=oversized_payload,
+    )
+
+    assert response.status_code == 413
+    assert response.json()["detail"] == "Brand logo upload exceeds the 500 KB limit."
 
 
 def test_client_cannot_update_admin_client_limits(

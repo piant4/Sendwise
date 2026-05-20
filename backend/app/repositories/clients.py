@@ -2,10 +2,11 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 from datetime import datetime
+import json
 from typing import Any, Iterator, Optional
 
 from fastapi import Depends
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.core.config import Settings, get_settings
 
@@ -19,6 +20,7 @@ class ClientRecord(BaseModel):
     max_campaigns: Optional[int] = None
     monthly_email_limit: Optional[int] = None
     daily_email_limit: Optional[int] = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
     created_at: datetime
     updated_at: datetime
 
@@ -156,6 +158,7 @@ class ClientRepository:
         email: str,
         personal_name: Optional[str],
         status: str,
+        metadata: Optional[dict[str, Any]] = None,
     ) -> ClientRecord:
         raise NotImplementedError
 
@@ -170,6 +173,7 @@ class ClientRepository:
         max_campaigns: Optional[int] = None,
         monthly_email_limit: Optional[int] = None,
         daily_email_limit: Optional[int] = None,
+        metadata: Optional[dict[str, Any]] = None,
     ) -> ClientRecord:
         raise NotImplementedError
 
@@ -247,6 +251,7 @@ class PostgresClientRepository(ClientRepository):
                 max_campaigns,
                 monthly_email_limit,
                 daily_email_limit,
+                metadata,
                 created_at,
                 updated_at
             FROM clients
@@ -271,6 +276,7 @@ class PostgresClientRepository(ClientRepository):
                 max_campaigns,
                 monthly_email_limit,
                 daily_email_limit,
+                metadata,
                 created_at,
                 updated_at
             FROM clients
@@ -295,6 +301,7 @@ class PostgresClientRepository(ClientRepository):
                 max_campaigns,
                 monthly_email_limit,
                 daily_email_limit,
+                metadata,
                 created_at,
                 updated_at
             FROM clients
@@ -314,6 +321,7 @@ class PostgresClientRepository(ClientRepository):
         email: str,
         personal_name: Optional[str],
         status: str,
+        metadata: Optional[dict[str, Any]] = None,
     ) -> ClientRecord:
         has_legacy_name_query = """
             SELECT EXISTS (
@@ -334,6 +342,7 @@ class PostgresClientRepository(ClientRepository):
                 max_campaigns,
                 monthly_email_limit,
                 daily_email_limit,
+                metadata,
                 created_at,
                 updated_at
         """
@@ -350,9 +359,10 @@ class PostgresClientRepository(ClientRepository):
                             email,
                             personal_name,
                             name,
-                            status
+                            status,
+                            metadata
                         )
-                        VALUES (%s, %s, %s, %s)
+                        VALUES (%s, %s, %s, %s, %s::jsonb)
                         {base_returning_clause}
                     """
                     cursor.execute(
@@ -362,6 +372,7 @@ class PostgresClientRepository(ClientRepository):
                             personal_name,
                             personal_name or email,
                             status,
+                            _json_payload(metadata or {}),
                         ),
                     )
                 else:
@@ -369,12 +380,16 @@ class PostgresClientRepository(ClientRepository):
                         INSERT INTO clients (
                             email,
                             personal_name,
-                            status
+                            status,
+                            metadata
                         )
-                        VALUES (%s, %s, %s)
+                        VALUES (%s, %s, %s, %s::jsonb)
                         {base_returning_clause}
                     """
-                    cursor.execute(query, (email, personal_name, status))
+                    cursor.execute(
+                        query,
+                        (email, personal_name, status, _json_payload(metadata or {})),
+                    )
 
                 row = cursor.fetchone()
             connection.commit()
@@ -392,6 +407,7 @@ class PostgresClientRepository(ClientRepository):
         max_campaigns: Optional[int] = None,
         monthly_email_limit: Optional[int] = None,
         daily_email_limit: Optional[int] = None,
+        metadata: Optional[dict[str, Any]] = None,
     ) -> ClientRecord:
         query = """
             UPDATE clients
@@ -403,6 +419,7 @@ class PostgresClientRepository(ClientRepository):
                 max_campaigns = %s,
                 monthly_email_limit = %s,
                 daily_email_limit = %s,
+                metadata = COALESCE(%s::jsonb, metadata),
                 updated_at = NOW()
             WHERE id::text = %s
             RETURNING
@@ -414,6 +431,7 @@ class PostgresClientRepository(ClientRepository):
                 max_campaigns,
                 monthly_email_limit,
                 daily_email_limit,
+                metadata,
                 created_at,
                 updated_at
         """
@@ -430,6 +448,7 @@ class PostgresClientRepository(ClientRepository):
                         max_campaigns,
                         monthly_email_limit,
                         daily_email_limit,
+                        _json_payload(metadata) if metadata is not None else None,
                         client_id,
                     ),
                 )
@@ -777,3 +796,7 @@ def get_client_repository(
     settings: Settings = Depends(get_settings),
 ) -> ClientRepository:
     return PostgresClientRepository(settings)
+
+
+def _json_payload(payload: dict[str, Any]) -> str:
+    return json.dumps(payload, sort_keys=True, separators=(",", ":"))

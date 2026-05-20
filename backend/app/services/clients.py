@@ -4,6 +4,8 @@ import secrets
 import string
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+from hashlib import sha256
+from pathlib import Path
 from typing import Optional
 
 import httpx
@@ -48,6 +50,7 @@ from app.schemas.clients import (
     AdminClientNearLimit,
     AdminClientStatusCounts,
     AdminCriticalEvent,
+    ClientEmailBrand,
     AdminEmailLimitRow,
     AdminEmailLimitsResponse,
     AdminEmailLimitsSummary,
@@ -150,6 +153,11 @@ CLIENT_ACCESS_CLERK_LINK_FAILED = "client_access_clerk_link_failed"
 CLIENT_ACCESS_EMAIL_CONFIG_MISSING = "client_access_email_config_missing"
 CLIENT_ACCESS_EMAIL_SEND_FAILED = "client_access_email_send_failed"
 CLIENT_ACCESS_EXISTING_USER_CONFLICT = "client_access_existing_user_conflict"
+CLIENT_BRAND_LOGO_UPLOAD_DIR = (
+    Path(__file__).resolve().parents[2] / "uploads" / "client-brand-logos"
+)
+CLIENT_BRAND_LOGO_PUBLIC_PREFIX = "/static/client-brand-logos"
+CLIENT_BRAND_LOGO_MAX_BYTES = 500 * 1024
 
 
 def _prefer_provider_metric(
@@ -268,12 +276,80 @@ def validate_non_negative_int(
     return value
 
 
+def build_client_email_brand(metadata: Optional[dict[str, object]]) -> Optional[ClientEmailBrand]:
+    if not isinstance(metadata, dict):
+        return None
+
+    raw_brand = metadata.get("email_brand")
+    if not isinstance(raw_brand, dict):
+        return None
+
+    brand = ClientEmailBrand.model_validate(raw_brand)
+    return brand if brand.has_any_value() else None
+
+
+def merge_client_email_brand_metadata(
+    *,
+    metadata: Optional[dict[str, object]],
+    email_brand: Optional[ClientEmailBrand],
+) -> dict[str, object]:
+    next_metadata: dict[str, object] = dict(metadata or {})
+    if email_brand is None or not email_brand.has_any_value():
+        next_metadata.pop("email_brand", None)
+        return next_metadata
+
+    next_metadata["email_brand"] = email_brand.model_dump(exclude_none=True)
+    return next_metadata
+
+
+def build_client_brand_logo_filename(client_id: str) -> str:
+    client_hash = sha256(client_id.encode("utf-8")).hexdigest()[:24]
+    return f"client-brand-{client_hash}.webp"
+
+
+def validate_client_brand_logo_upload(
+    *,
+    upload_filename: Optional[str],
+    upload_bytes: bytes,
+) -> None:
+    if not upload_filename or not upload_filename.strip().lower().endswith(".webp"):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Brand logo upload accepts only .webp files.",
+        )
+
+    if not upload_bytes:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Brand logo upload is empty.",
+        )
+
+    if len(upload_bytes) > CLIENT_BRAND_LOGO_MAX_BYTES:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail="Brand logo upload exceeds the 500 KB limit.",
+        )
+
+    if len(upload_bytes) < 12:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Brand logo upload is not a valid WebP file.",
+        )
+
+    if upload_bytes[:4] != b"RIFF" or upload_bytes[8:12] != b"WEBP":
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Brand logo upload is not a valid WebP file.",
+        )
+
+
 def build_client_schema(
     client: ClientRecord,
     *,
     access: Optional[ClientAccessRecord] = None,
 ) -> Client:
     access_summary = build_client_access_summary(access)
+    email_brand = build_client_email_brand(client.metadata)
     return Client(
         id=client.id,
         email=client.email,
@@ -284,6 +360,7 @@ def build_client_schema(
         max_campaigns=client.max_campaigns,
         monthly_email_limit=client.monthly_email_limit,
         daily_email_limit=client.daily_email_limit,
+        email_brand=email_brand,
         created_at=client.created_at,
         updated_at=client.updated_at,
         access=access_summary,
@@ -542,6 +619,7 @@ class ClientsService:
                 email=email,
                 personal_name=personal_name,
                 status="active",
+                metadata={},
             )
 
         return self._repository.update_client(
@@ -553,6 +631,7 @@ class ClientsService:
             max_campaigns=existing.max_campaigns,
             monthly_email_limit=existing.monthly_email_limit,
             daily_email_limit=existing.daily_email_limit,
+            metadata=existing.metadata,
         )
 
     def provision_client_access(
@@ -734,7 +813,9 @@ class ClientsService:
         max_campaigns: Optional[int] = None,
         monthly_email_limit: Optional[int] = None,
         daily_email_limit: Optional[int] = None,
+        email_brand: Optional[ClientEmailBrand] = None,
     ) -> ClientRecord:
+        existing = self.get_client_by_id(client_id)
         return self._repository.update_client(
             client_id=client_id,
             email=email,
@@ -758,6 +839,53 @@ class ClientsService:
             daily_email_limit=validate_non_negative_int(
                 daily_email_limit,
                 field_label="daily_email_limit",
+            ),
+            metadata=merge_client_email_brand_metadata(
+                metadata=existing.metadata,
+                email_brand=email_brand,
+            ),
+        )
+
+    def upload_client_email_brand_logo(
+        self,
+        *,
+        client_id: str,
+        upload_filename: Optional[str],
+        upload_bytes: bytes,
+    ) -> ClientRecord:
+        existing = self.get_client_by_id(client_id)
+        validate_client_brand_logo_upload(
+            upload_filename=upload_filename,
+            upload_bytes=upload_bytes,
+        )
+
+        CLIENT_BRAND_LOGO_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+        generated_filename = build_client_brand_logo_filename(client_id)
+        upload_path = CLIENT_BRAND_LOGO_UPLOAD_DIR / generated_filename
+        temp_path = CLIENT_BRAND_LOGO_UPLOAD_DIR / f".{generated_filename}.tmp"
+        temp_path.write_bytes(upload_bytes)
+        temp_path.replace(upload_path)
+
+        email_brand = build_client_email_brand(existing.metadata) or ClientEmailBrand()
+        next_email_brand = email_brand.model_copy(
+            update={
+                "logo_url": (
+                    f"{CLIENT_BRAND_LOGO_PUBLIC_PREFIX}/{generated_filename}"
+                )
+            }
+        )
+        return self._repository.update_client(
+            client_id=existing.id,
+            email=existing.email,
+            personal_name=existing.personal_name,
+            status=existing.status,
+            email_limit_per_campaign=existing.email_limit_per_campaign,
+            max_campaigns=existing.max_campaigns,
+            monthly_email_limit=existing.monthly_email_limit,
+            daily_email_limit=existing.daily_email_limit,
+            metadata=merge_client_email_brand_metadata(
+                metadata=existing.metadata,
+                email_brand=next_email_brand,
             ),
         )
 
@@ -783,6 +911,7 @@ class ClientsService:
             max_campaigns=existing.max_campaigns,
             monthly_email_limit=existing.monthly_email_limit,
             daily_email_limit=existing.daily_email_limit,
+            email_brand=build_client_email_brand(existing.metadata),
         )
 
     def archive_client(self, client_id: str) -> ClientRecord:
@@ -796,6 +925,7 @@ class ClientsService:
             max_campaigns=existing.max_campaigns,
             monthly_email_limit=existing.monthly_email_limit,
             daily_email_limit=existing.daily_email_limit,
+            email_brand=build_client_email_brand(existing.metadata),
         )
 
     def get_client_context(

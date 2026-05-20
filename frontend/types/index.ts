@@ -25,6 +25,17 @@ export type PublicUnsubscribeStatus =
   | "invalid"
   | "unavailable";
 
+export interface ClientEmailBrand {
+  company_name?: string | null;
+  sender_name?: string | null;
+  website_url?: string | null;
+  linkedin_url?: string | null;
+  instagram_url?: string | null;
+  facebook_url?: string | null;
+  x_url?: string | null;
+  logo_url?: string | null;
+}
+
 export interface Client {
   id: string;
   email: string;
@@ -35,6 +46,7 @@ export interface Client {
   max_campaigns?: number | null;
   monthly_email_limit?: number | null;
   daily_email_limit?: number | null;
+  email_brand?: ClientEmailBrand | null;
   created_at: string;
   updated_at: string;
   access?: ClientAccessSummary | null;
@@ -95,6 +107,7 @@ export interface AdminClientUpdateInput {
   max_campaigns?: number | null;
   monthly_email_limit?: number | null;
   daily_email_limit?: number | null;
+  email_brand?: ClientEmailBrand | null;
 }
 
 export interface CompleteClientOnboardingInput {

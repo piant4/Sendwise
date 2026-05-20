@@ -1,5 +1,17 @@
 # Audit Log
 
+## Milestone 18.6P - Client Brand Email Settings And WebP Logo Upload
+
+Date: 2026-05-20
+
+Brand email audit summary:
+- Added `clients.metadata JSONB NOT NULL DEFAULT '{}'::jsonb` in `db/init.sql` plus an idempotent migration for existing environments.
+- The single client email brand profile now lives under `clients.metadata.email_brand` with validated URL fields and a backend-managed relative `logo_url`.
+- Added an admin-only logo upload endpoint that accepts only `.webp`, verifies WebP magic bytes, rejects payloads above `500 KB`, generates a deterministic filename from the client id, and serves uploads from the backend static path `/static/client-brand-logos/`.
+- Admin client detail now exposes a dedicated `Brand email` card for editing company name, sender name, website, social links, and logo upload with preview.
+- Template rendering now supports `{{company_name}}`, `{{sender_name}}`, `{{logo}}`, `{{website_url}}`, `{{linkedin_url}}`, `{{instagram_url}}`, `{{facebook_url}}`, and `{{x_url}}`, plus optional managed social icon HTML through `{{social_icons}}`.
+- No auth/onboarding/provisioning/Clerk flow was changed, no campaign send/dispatch execution was triggered, and no direct SES/Listmonk action was executed.
+
 ## Milestone 18.6O-FIX8 - Fix VPS Provisioning Errors And Campaign Summary Regression
 
 Date: 2026-05-20

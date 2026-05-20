@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from pathlib import Path
 from html import escape
+from pathlib import Path
+from typing import Mapping
 
 from app.core.config import Settings
 from app.services.unsubscribe import LISTMONK_UNSUBSCRIBE_TOKEN_PLACEHOLDER
@@ -39,15 +40,26 @@ class TemplateRenderer:
         body: str,
         unsubscribe_url: str,
         client_name: str,
+        email_brand: Mapping[str, str | None] | None = None,
     ) -> RenderedEmailTemplate:
         template_html = self.load_compiled_template(template_name)
         rendered_html = template_html
+        email_brand_payload = dict(email_brand or {})
         replacements = {
             "{{subject}}": subject,
             "{{preview_text}}": preview_text,
             "{{body}}": body,
             "{{unsubscribe_url}}": unsubscribe_url,
             "{{client_name}}": client_name,
+            "{{company_name}}": email_brand_payload.get("company_name") or "",
+            "{{sender_name}}": email_brand_payload.get("sender_name") or "",
+            "{{logo}}": build_logo_html(email_brand_payload.get("logo_url")),
+            "{{website_url}}": email_brand_payload.get("website_url") or "",
+            "{{linkedin_url}}": email_brand_payload.get("linkedin_url") or "",
+            "{{instagram_url}}": email_brand_payload.get("instagram_url") or "",
+            "{{facebook_url}}": email_brand_payload.get("facebook_url") or "",
+            "{{x_url}}": email_brand_payload.get("x_url") or "",
+            "{{social_icons}}": build_social_icons_html(email_brand_payload),
         }
         for placeholder, value in replacements.items():
             rendered_html = rendered_html.replace(placeholder, value)
@@ -100,11 +112,70 @@ class TemplateRenderer:
             "{{body}}",
             "{{unsubscribe_url}}",
             "{{client_name}}",
+            "{{company_name}}",
+            "{{sender_name}}",
+            "{{logo}}",
+            "{{website_url}}",
+            "{{linkedin_url}}",
+            "{{instagram_url}}",
+            "{{facebook_url}}",
+            "{{x_url}}",
+            "{{social_icons}}",
         ):
             if placeholder in rendered_html:
                 raise TemplateRenderError(
                     f"Compiled template '{template_name}' still contains unresolved placeholders."
                 )
+
+
+def build_logo_html(logo_url: str | None) -> str:
+    safe_logo_url = (logo_url or "").strip()
+    if not safe_logo_url:
+        return ""
+
+    escaped_logo_url = escape(safe_logo_url, quote=True)
+    return (
+        '<img src="'
+        f"{escaped_logo_url}"
+        '" alt="" width="120" '
+        'style="display:block;max-width:120px;height:auto;border:0;outline:none;text-decoration:none;" />'
+    )
+
+
+def build_social_icons_html(email_brand: Mapping[str, str | None]) -> str:
+    social_items = (
+        ("website_url", "WEB", "#2563eb"),
+        ("linkedin_url", "in", "#0a66c2"),
+        ("instagram_url", "ig", "#d946ef"),
+        ("facebook_url", "f", "#1877f2"),
+        ("x_url", "x", "#111827"),
+    )
+    icon_cells: list[str] = []
+
+    for key, label, background_color in social_items:
+        social_url = (email_brand.get(key) or "").strip()
+        if not social_url:
+            continue
+
+        escaped_url = escape(social_url, quote=True)
+        icon_cells.append(
+            "<td style=\"padding-right:8px;\">"
+            f"<a href=\"{escaped_url}\" "
+            "style=\"display:inline-block;text-decoration:none;\">"
+            f"<span style=\"display:inline-block;min-width:32px;padding:8px 10px;border-radius:999px;background:{background_color};color:#ffffff;font-size:12px;line-height:1;font-weight:700;text-align:center;text-transform:uppercase;\">{escape(label)}</span>"
+            "</a></td>"
+        )
+
+    if not icon_cells:
+        return ""
+
+    return (
+        "<table role=\"presentation\" cellspacing=\"0\" cellpadding=\"0\" border=\"0\">"
+        "<tr>"
+        f"{''.join(icon_cells)}"
+        "</tr>"
+        "</table>"
+    )
 
 
 def get_default_template_renderer() -> TemplateRenderer:

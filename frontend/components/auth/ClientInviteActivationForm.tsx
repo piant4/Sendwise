@@ -7,11 +7,9 @@ import {
   Circle,
   Eye,
   EyeOff,
-  KeyRound,
   RotateCcw,
   ShieldAlert,
   ShieldCheck,
-  UserRound,
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -66,6 +64,7 @@ function getPasswordStrength(password: string) {
   if (!password) {
     return {
       label: "Nessuna password inserita",
+      compactLabel: "",
       tone: "empty" as const,
       score: 0,
     };
@@ -74,24 +73,59 @@ function getPasswordStrength(password: string) {
   if (score <= 2) {
     return {
       label: "Password debole",
+      compactLabel: "Debole",
       tone: "weak" as const,
       score,
     };
   }
 
-  if (score <= 4) {
+  if (score === 3) {
+    return {
+      label: "Password media",
+      compactLabel: "Media",
+      tone: "medium" as const,
+      score,
+    };
+  }
+
+  if (score === 4) {
     return {
       label: "Password buona",
-      tone: "medium" as const,
+      compactLabel: "Buona",
+      tone: "good" as const,
       score,
     };
   }
 
   return {
     label: "Password robusta",
+    compactLabel: "Robusta",
     tone: "strong" as const,
     score,
   };
+}
+
+function isPasswordValidationIssue(error: unknown): boolean {
+  if (!isClerkAPIResponseError(error)) {
+    return false;
+  }
+
+  const firstError = error.errors[0];
+  const code = firstError?.code ?? "";
+  const message = `${firstError?.longMessage ?? ""} ${firstError?.message ?? ""}`
+    .toLowerCase()
+    .trim();
+
+  return (
+    code === "form_password_pwned" ||
+    code === "form_password_not_strong_enough" ||
+    code === "form_password_length_too_short" ||
+    code === "form_password_validation_failed" ||
+    code === "form_password_size_in_bytes_exceeded" ||
+    message.includes("breached") ||
+    message.includes("compromised") ||
+    message.includes("password")
+  );
 }
 
 function getFriendlySessionTaskMessage(taskKey: PendingTaskKey): string {
@@ -207,11 +241,25 @@ export function ClientInviteActivationForm({
   const [fallbackMessage, setFallbackMessage] = useState<string | null>(null);
   const [viewState, setViewState] = useState<InviteViewState>("form");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isPasswordFocused, setIsPasswordFocused] = useState(false);
+  const [isConfirmPasswordFocused, setIsConfirmPasswordFocused] = useState(false);
+  const [hasPasswordInteraction, setHasPasswordInteraction] = useState(false);
+  const [hasPasswordValidationError, setHasPasswordValidationError] = useState(false);
   const passwordRequirements = getPasswordRequirements(password);
   const passwordStrength = getPasswordStrength(password);
+  const isPasswordValid =
+    password.length > 0 && passwordRequirements.every((requirement) => requirement.satisfied);
   const passwordsMatch = password.length > 0 && password === confirmPassword;
   const passwordMismatch =
     confirmPassword.length > 0 && password !== confirmPassword;
+  const showPasswordDetails =
+    isPasswordFocused ||
+    isConfirmPasswordFocused ||
+    (hasPasswordInteraction && password.length > 0 && !isPasswordValid) ||
+    hasPasswordValidationError;
+  const showCompactPasswordLabel = passwordStrength.compactLabel.length > 0;
+  const showCompactMatchIndicator =
+    !isConfirmPasswordFocused && !passwordMismatch && !hasPasswordValidationError;
 
   function moveToFallback(state: InviteViewState, message: string) {
     setViewState(state);
@@ -223,11 +271,13 @@ export function ClientInviteActivationForm({
     event.preventDefault();
 
     if (fetchStatus === "fetching" || !signUp) {
+      setHasPasswordValidationError(false);
       setErrorMessage("Il servizio di attivazione non è ancora pronto. Riprova tra pochi secondi.");
       return;
     }
 
     if (password !== confirmPassword) {
+      setHasPasswordValidationError(false);
       setErrorMessage("Le password non coincidono.");
       return;
     }
@@ -235,6 +285,7 @@ export function ClientInviteActivationForm({
     const normalizedFirstName = firstName.trim();
     const normalizedLastName = lastName.trim();
     if (!normalizedFirstName || !normalizedLastName) {
+      setHasPasswordValidationError(false);
       setErrorMessage("Nome e cognome sono obbligatori.");
       return;
     }
@@ -242,6 +293,7 @@ export function ClientInviteActivationForm({
     setIsSubmitting(true);
     setErrorMessage(null);
     setFallbackMessage(null);
+    setHasPasswordValidationError(false);
     setViewState("form");
 
     try {
@@ -253,6 +305,7 @@ export function ClientInviteActivationForm({
       });
 
       if (activationResult.error) {
+        setHasPasswordValidationError(isPasswordValidationIssue(activationResult.error));
         setErrorMessage(getInviteErrorMessage(activationResult.error));
         return;
       }
@@ -281,6 +334,7 @@ export function ClientInviteActivationForm({
         },
       });
       if (finalizeResult.error) {
+        setHasPasswordValidationError(isPasswordValidationIssue(finalizeResult.error));
         setErrorMessage(getInviteErrorMessage(finalizeResult.error));
         return;
       }
@@ -301,6 +355,7 @@ export function ClientInviteActivationForm({
       router.refresh();
     } catch (error) {
       const safeMessage = getInviteErrorMessage(error);
+      setHasPasswordValidationError(isPasswordValidationIssue(error));
 
       if (safeMessage.includes("invito non è più valido")) {
         moveToFallback("invalid", safeMessage);
@@ -317,6 +372,7 @@ export function ClientInviteActivationForm({
     setViewState("form");
     setErrorMessage(null);
     setFallbackMessage(null);
+    setHasPasswordValidationError(false);
   }
 
   const isInviteUnavailable = viewState !== "form";
@@ -331,11 +387,12 @@ export function ClientInviteActivationForm({
           <BrandMark size="lg" />
 
           <div className="login-copy">
-            <h1 className="login-title">Attiva il tuo accesso Sendwise.</h1>
             <div className="login-pills">
               <span className="login-pill">Invito cliente</span>
               <span className="login-pill">Attivazione protetta</span>
             </div>
+            <h1 className="login-title">Attiva il tuo accesso Sendwise.</h1>
+
             {/* <p className="login-lead">
               Nome, cognome e nuova password vengono raccolti in una UI Sendwise,
               mentre la password resta gestita da Clerk.
@@ -366,13 +423,8 @@ export function ClientInviteActivationForm({
 
         <section className="login-card" data-step="credentials">
           <div className="login-card__header">
-            <p className="login-card__eyebrow">Invito</p>
+            <p className="login-card__eyebrow">ONBOARDING</p>
             <h2 className="login-card__title">Completa il tuo invito</h2>
-            <p className="login-card__description">
-              {isInviteUnavailable
-                ? "Il link è stato verificato ma richiede un percorso guidato sicuro prima di entrare nel portale."
-                : "Inserisci i dati richiesti per attivare l&apos;account senza uscire dall&apos;esperienza Sendwise."}
-            </p>
           </div>
 
           {isInviteUnavailable ? (
@@ -420,7 +472,6 @@ export function ClientInviteActivationForm({
                   Nome
                 </label>
                 <div className="relative">
-                  <UserRound className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                   <input
                     id="invite-first-name"
                     type="text"
@@ -439,7 +490,6 @@ export function ClientInviteActivationForm({
                   Cognome
                 </label>
                 <div className="relative">
-                  <UserRound className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                   <input
                     id="invite-last-name"
                     type="text"
@@ -464,7 +514,12 @@ export function ClientInviteActivationForm({
                     autoComplete="new-password"
                     className="login-input login-input--password"
                     disabled={isSubmitting}
-                    onChange={(event) => setPassword(event.target.value)}
+                    onBlur={() => setIsPasswordFocused(false)}
+                    onChange={(event) => {
+                      setPassword(event.target.value);
+                      setHasPasswordInteraction(true);
+                    }}
+                    onFocus={() => setIsPasswordFocused(true)}
                     required
                     value={password}
                   />
@@ -484,7 +539,11 @@ export function ClientInviteActivationForm({
                   </button>
                 </div>
 
-                <div className="login-password-meter" aria-live="polite">
+                <div
+                  className="login-password-meter"
+                  data-expanded={showPasswordDetails}
+                  aria-live="polite"
+                >
                   <div className="login-password-meter__track" aria-hidden="true">
                     <span
                       className="login-password-meter__fill"
@@ -495,27 +554,33 @@ export function ClientInviteActivationForm({
                     />
                   </div>
                   <div className="login-password-meter__meta">
-                    <strong>{passwordStrength.label}</strong>
-                    <span>Clerk applica la verifica finale della policy password.</span>
+                    {showCompactPasswordLabel ? (
+                      <strong>{showPasswordDetails ? passwordStrength.label : passwordStrength.compactLabel}</strong>
+                    ) : null}
+                    {showPasswordDetails ? (
+                      <span>Clerk applica la verifica finale della policy password.</span>
+                    ) : null}
                   </div>
                 </div>
 
-                <ul className="login-checklist" aria-label="Requisiti password">
-                  {passwordRequirements.map((requirement) => (
-                    <li
-                      key={requirement.id}
-                      className="login-checklist__item"
-                      data-satisfied={requirement.satisfied}
-                    >
-                      {requirement.satisfied ? (
-                        <CheckCircle2 aria-hidden="true" />
-                      ) : (
-                        <Circle aria-hidden="true" />
-                      )}
-                      <span>{requirement.label}</span>
-                    </li>
-                  ))}
-                </ul>
+                {showPasswordDetails ? (
+                  <ul className="login-checklist" aria-label="Requisiti password">
+                    {passwordRequirements.map((requirement) => (
+                      <li
+                        key={requirement.id}
+                        className="login-checklist__item"
+                        data-satisfied={requirement.satisfied}
+                      >
+                        {requirement.satisfied ? (
+                          <CheckCircle2 aria-hidden="true" />
+                        ) : (
+                          <Circle aria-hidden="true" />
+                        )}
+                        <span>{requirement.label}</span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
               </div>
 
               <div className="login-field">
@@ -529,7 +594,9 @@ export function ClientInviteActivationForm({
                     autoComplete="new-password"
                     className="login-input login-input--password"
                     disabled={isSubmitting}
+                    onBlur={() => setIsConfirmPasswordFocused(false)}
                     onChange={(event) => setConfirmPassword(event.target.value)}
+                    onFocus={() => setIsConfirmPasswordFocused(true)}
                     required
                     value={confirmPassword}
                   />
@@ -554,6 +621,7 @@ export function ClientInviteActivationForm({
                 </div>
                 <div
                   className="login-match-indicator"
+                  data-compact={showCompactMatchIndicator}
                   data-match={passwordsMatch}
                   data-invalid={passwordMismatch}
                 >
@@ -602,7 +670,6 @@ export function ClientInviteActivationForm({
               <strong>Credenziali protette da Clerk</strong>
               <span>Sendwise non salva password e non aggira i controlli di identita.</span>
             </div>
-            <KeyRound aria-hidden="true" className="login-card__footer-accent" />
           </div>
         </section>
       </div>

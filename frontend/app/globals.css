@@ -21,6 +21,7 @@
   --sw-text: #0f172a;
   --sw-text-muted: #526075;
   --sw-text-faint: #8a97aa;
+  --sw-success: #0f9f6e;
   --sw-success-bg: #eaf3ff;
   --sw-warning: #b6803a;
   --sw-warning-bg: #f6ebda;
@@ -4039,6 +4040,10 @@ p {
   margin-top: 12px;
 }
 
+.login-password-meter[data-expanded="false"] {
+  gap: 6px;
+}
+
 .login-password-meter__track {
   background: rgba(203, 213, 225, 0.72);
   border-radius: 999px;
@@ -4060,24 +4065,35 @@ p {
 }
 
 .login-password-meter__fill[data-tone="weak"] {
-  background: #e11d48;
+  background: var(--sw-danger);
 }
 
 .login-password-meter__fill[data-tone="medium"] {
-  background: #f59e0b;
+  background: var(--sw-warning);
+}
+
+.login-password-meter__fill[data-tone="good"] {
+  background: var(--sw-primary);
 }
 
 .login-password-meter__fill[data-tone="strong"] {
-  background: #0f9f6e;
+  background: var(--sw-success);
 }
 
 .login-password-meter__meta {
   gap: 4px;
 }
 
+.login-password-meter[data-expanded="false"] .login-password-meter__meta {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+}
+
 .login-password-meter__meta strong {
   color: var(--sw-olive);
   font-size: 0.9rem;
+  font-weight: 600;
 }
 
 .login-password-meter__meta span {
@@ -4113,7 +4129,7 @@ p {
 }
 
 .login-checklist__item[data-satisfied="true"] {
-  color: #0f9f6e;
+  color: var(--sw-success);
 }
 
 .login-match-indicator {
@@ -4124,19 +4140,29 @@ p {
   padding: 10px 12px;
 }
 
+.login-match-indicator[data-compact="true"] {
+  margin-top: 8px;
+  padding: 0;
+}
+
 .login-match-indicator[data-match="true"] {
-  background: rgba(16, 185, 129, 0.1);
-  color: #0f9f6e;
+  background: rgba(15, 159, 110, 0.1);
+  color: var(--sw-success);
 }
 
 .login-match-indicator[data-invalid="true"] {
-  background: rgba(225, 29, 72, 0.08);
-  color: #be123c;
+  background: var(--sw-danger-bg);
+  color: var(--sw-danger);
 }
 
 .login-match-indicator:not([data-match="true"]):not([data-invalid="true"]) {
   background: rgba(241, 245, 249, 0.82);
   color: var(--sw-text-muted);
+}
+
+.login-match-indicator[data-compact="true"]:not([data-match="true"]):not([data-invalid="true"]) {
+  background: transparent;
+  color: var(--sw-text-faint);
 }
 
 .login-feedback {

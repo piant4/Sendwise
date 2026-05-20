@@ -6,6 +6,7 @@ from app.services.template_renderer import (
     CompiledTemplateNotFoundError,
     TemplateRenderer,
     build_social_icons_html,
+    render_template_string,
     ensure_unsubscribe_link,
 )
 
@@ -102,6 +103,37 @@ def test_render_replaces_brand_variables_and_social_icons(tmp_path: Path) -> Non
     assert "{{social_icons}}" not in rendered.body
 
 
+def test_render_replaces_contact_and_campaign_variables(tmp_path: Path) -> None:
+    renderer = write_template(
+        tmp_path,
+        "campaign",
+        (
+            "<html><body>{{nome}}|{{cognome}}|{{email}}|{{campaign_name}}|{{current_year}}|"
+            "<a href='{{unsubscribe_url}}'>unsubscribe</a>{{body}}</body></html>"
+        ),
+    )
+
+    rendered = renderer.render(
+        template_name="campaign",
+        subject="Launch",
+        preview_text="Preview line",
+        body="<p>Hello</p>",
+        unsubscribe_url="https://example.test/unsubscribe",
+        client_name="Acme",
+        contact_first_name="Mario",
+        contact_last_name="Rossi",
+        contact_email="mario@example.test",
+        campaign_name="Spring Launch",
+        current_year=2026,
+    )
+
+    assert "Mario" in rendered.body
+    assert "Rossi" in rendered.body
+    assert "mario@example.test" in rendered.body
+    assert "Spring Launch" in rendered.body
+    assert "2026" in rendered.body
+
+
 def test_build_social_icons_html_omits_missing_urls() -> None:
     html = build_social_icons_html(
         {
@@ -112,6 +144,46 @@ def test_build_social_icons_html_omits_missing_urls() -> None:
 
     assert "linkedin.com/company/acme" in html
     assert "facebook.com" not in html
+
+
+def test_render_template_string_cleans_unknown_placeholders() -> None:
+    rendered = render_template_string(
+        "<p>{{nome}} {{unsupported}}</p><a href='{{unsubscribe_url}}'>u</a>",
+        {
+            "nome": "{{ .Subscriber.Attribs.nome }}",
+            "unsubscribe_url": "https://example.test/unsubscribe/token",
+        },
+    )
+
+    assert "{{unsupported}}" not in rendered
+    assert "{{ .Subscriber.Attribs.nome }}" in rendered
+    assert "https://example.test/unsubscribe/token" in rendered
+
+
+def test_render_replaces_missing_brand_blocks_with_empty_strings(tmp_path: Path) -> None:
+    renderer = write_template(
+        tmp_path,
+        "campaign",
+        (
+            "<html><body>{{logo}}|{{social_icons}}|"
+            "<a href='{{unsubscribe_url}}'>unsubscribe</a>{{body}}</body></html>"
+        ),
+    )
+
+    rendered = renderer.render(
+        template_name="campaign",
+        subject="Launch",
+        preview_text="Preview line",
+        body="<p>Hello</p>",
+        unsubscribe_url="https://example.test/unsubscribe",
+        client_name="Acme",
+        email_brand={},
+    )
+
+    assert "{{logo}}" not in rendered.body
+    assert "{{social_icons}}" not in rendered.body
+    assert "img src=" not in rendered.body
+    assert "min-width:32px" not in rendered.body
 
 
 def test_ensure_unsubscribe_link_appends_footer_when_missing() -> None:

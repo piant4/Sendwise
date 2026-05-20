@@ -133,6 +133,7 @@ def build_client(
     status: str = "active",
     email_limit_per_campaign: int | None = None,
     max_campaigns: int | None = None,
+    metadata: dict[str, Any] | None = None,
 ) -> ClientRecord:
     now = datetime.now(timezone.utc)
     return ClientRecord(
@@ -144,6 +145,7 @@ def build_client(
         max_campaigns=max_campaigns,
         monthly_email_limit=None,
         daily_email_limit=None,
+        metadata=metadata or {},
         created_at=now,
         updated_at=now,
     )
@@ -451,6 +453,52 @@ def test_admin_content_update_rejects_unsupported_template_placeholders() -> Non
         assert "Completa o rimuovi le variabili del template prima di salvare." in str(error)
     else:
         raise AssertionError("Expected unsupported placeholder validation")
+
+
+def test_admin_content_update_accepts_supported_template_placeholders() -> None:
+    repository = InMemoryCampaignRepository()
+    campaign = repository.add_campaign(campaign_id="campaign_123", client_id="client_123")
+    service = build_admin_service(campaign_repository=repository)
+
+    updated = service.update_campaign_content(
+        campaign_id=campaign.id,
+        subject="Aggiornamento {{campaign_name}}",
+        preview_text="Ciao {{nome}}",
+        body_html="<p>{{company_name}}</p><p>{{email}}</p><p>{{unsubscribe_url}}</p>",
+        body_text="Anno {{current_year}}",
+        current_step="content",
+    )
+
+    assert updated.subject == "Aggiornamento {{campaign_name}}"
+    assert "{{company_name}}" in str(updated.body_html)
+    assert "{{email}}" in str(updated.body_html)
+
+
+def test_admin_campaign_detail_includes_email_brand() -> None:
+    repository = InMemoryCampaignRepository()
+    campaign = repository.add_campaign(campaign_id="campaign_123", client_id="client_123")
+    service = build_admin_service(
+        campaign_repository=repository,
+        clients=[
+            build_client(
+                metadata={
+                    "email_brand": {
+                        "company_name": "Acme Labs",
+                        "sender_name": "Team Acme",
+                        "website_url": "https://acme.example.test",
+                    }
+                }
+            )
+        ],
+    )
+
+    detail = service.get_campaign_detail(campaign.id)
+
+    assert detail.email_brand == {
+        "company_name": "Acme Labs",
+        "sender_name": "Team Acme",
+        "website_url": "https://acme.example.test",
+    }
 
 
 def test_admin_select_slot_assigns_valid_slot() -> None:

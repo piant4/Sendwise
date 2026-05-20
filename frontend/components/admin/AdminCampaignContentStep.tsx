@@ -138,7 +138,84 @@ function getSafeUpdateErrorMessage(error: unknown): string {
   return "Non e stato possibile salvare il contenuto. Riprova.";
 }
 
-const ALLOWED_RECIPIENT_PLACEHOLDERS = new Set(["nome", "cognome"]);
+const SUPPORTED_TEMPLATE_VARIABLES = [
+  {
+    token: "{{nome}}",
+    description: "Nome del contatto dalla campagna.",
+  },
+  {
+    token: "{{cognome}}",
+    description: "Cognome del contatto dalla campagna.",
+  },
+  {
+    token: "{{email}}",
+    description: "Email del contatto dalla campagna.",
+  },
+  {
+    token: "{{campaign_name}}",
+    description: "Nome della campagna corrente.",
+  },
+  {
+    token: "{{unsubscribe_url}}",
+    description: "Link pubblico di disiscrizione, sempre preservato.",
+  },
+  {
+    token: "{{current_year}}",
+    description: "Anno corrente nel rendering finale.",
+  },
+  {
+    token: "{{company_name}}",
+    description: "Ragione sociale dal brand email del cliente.",
+  },
+  {
+    token: "{{sender_name}}",
+    description: "Nome mittente dal brand email del cliente.",
+  },
+  {
+    token: "{{logo}}",
+    description: "Logo gestito nel brand email del cliente.",
+  },
+  {
+    token: "{{social_icons}}",
+    description: "Blocco social generato solo con URL presenti.",
+  },
+  {
+    token: "{{website_url}}",
+    description: "URL sito dal brand email del cliente.",
+  },
+  {
+    token: "{{linkedin_url}}",
+    description: "URL LinkedIn dal brand email del cliente.",
+  },
+  {
+    token: "{{instagram_url}}",
+    description: "URL Instagram dal brand email del cliente.",
+  },
+  {
+    token: "{{facebook_url}}",
+    description: "URL Facebook dal brand email del cliente.",
+  },
+  {
+    token: "{{x_url}}",
+    description: "URL X dal brand email del cliente.",
+  },
+] as const;
+const BRAND_VARIABLE_TOKENS = new Set([
+  "{{company_name}}",
+  "{{sender_name}}",
+  "{{logo}}",
+  "{{social_icons}}",
+  "{{website_url}}",
+  "{{linkedin_url}}",
+  "{{instagram_url}}",
+  "{{facebook_url}}",
+  "{{x_url}}",
+]);
+const ALLOWED_RECIPIENT_PLACEHOLDERS = new Set(
+  SUPPORTED_TEMPLATE_VARIABLES.map((variable) =>
+    variable.token.replaceAll("{", "").replaceAll("}", ""),
+  ),
+);
 const PLACEHOLDER_PATTERN = /{{\s*([A-Za-z0-9_]+)\s*}}/g;
 
 function collectUnsupportedPlaceholders(value: string, allowed: Set<string>): string[] {
@@ -171,6 +248,42 @@ export function AdminCampaignContentStep({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const availableBrandVariables = SUPPORTED_TEMPLATE_VARIABLES.filter((variable) =>
+    BRAND_VARIABLE_TOKENS.has(variable.token),
+  ).filter((variable) => {
+    const brand = campaign.emailBrand;
+    if (!brand) {
+      return false;
+    }
+    switch (variable.token) {
+      case "{{company_name}}":
+        return Boolean(brand.company_name?.trim());
+      case "{{sender_name}}":
+        return Boolean(brand.sender_name?.trim());
+      case "{{logo}}":
+        return Boolean(brand.logo_url?.trim());
+      case "{{social_icons}}":
+        return Boolean(
+          brand.website_url ||
+            brand.linkedin_url ||
+            brand.instagram_url ||
+            brand.facebook_url ||
+            brand.x_url,
+        );
+      case "{{website_url}}":
+        return Boolean(brand.website_url?.trim());
+      case "{{linkedin_url}}":
+        return Boolean(brand.linkedin_url?.trim());
+      case "{{instagram_url}}":
+        return Boolean(brand.instagram_url?.trim());
+      case "{{facebook_url}}":
+        return Boolean(brand.facebook_url?.trim());
+      case "{{x_url}}":
+        return Boolean(brand.x_url?.trim());
+      default:
+        return false;
+    }
+  });
 
   function hasCurrentContent(): boolean {
     return [previewText, bodyHtml, bodyText].some((value) => normalizeText(value).length > 0);
@@ -210,7 +323,7 @@ export function AdminCampaignContentStep({
         : derivePlainTextFromHtml(bodyHtmlValue);
     const unsupportedSubjectPlaceholders = collectUnsupportedPlaceholders(
       normalizeText(campaign.subject),
-      new Set<string>(),
+      ALLOWED_RECIPIENT_PLACEHOLDERS,
     );
     const unsupportedPlaceholders = [
       ...unsupportedSubjectPlaceholders,
@@ -303,6 +416,31 @@ export function AdminCampaignContentStep({
             value={previewText}
           />
         </label>
+        <section className="campaign-variable-helper" aria-label="Variabili supportate">
+          <div className="campaign-variable-helper__header">
+            <div>
+              <p className="admin-surface__eyebrow">Variabili</p>
+              <h3 className="campaign-variable-helper__title">Placeholder supportati</h3>
+            </div>
+            <p className="campaign-variable-helper__note">
+              Le variabili contatto usano solo i destinatari collegati alla campagna.
+            </p>
+          </div>
+          <div className="campaign-variable-helper__grid">
+            {SUPPORTED_TEMPLATE_VARIABLES.map((variable) => (
+              <article key={variable.token} className="campaign-variable-chip">
+                <code>{variable.token}</code>
+                <span>{variable.description}</span>
+              </article>
+            ))}
+          </div>
+          <p className="campaign-variable-helper__availability">
+            Brand cliente disponibile ora:{" "}
+            {availableBrandVariables.length > 0
+              ? availableBrandVariables.map((variable) => variable.token).join(", ")
+              : "nessuna variabile brand valorizzata."}
+          </p>
+        </section>
         <section className="campaign-field">
           <div className="campaign-field__header">
             <span className="campaign-field__label">Anteprima email</span>

@@ -154,6 +154,9 @@ Admin-managed contract notes:
 - admin summary, review, and send responses expose campaign usage metadata: `daily_limit`, `daily_used`, `daily_remaining`, `period_limit`, `period_used`, `period_remaining`, `period_started_at`, and `period_ends_at`
 - admin review remains non-dispatching, but it may promote a draft campaign to `ready` only after content, recipients, and Deliverability Guard checks all pass
 - `POST /admin/campaigns/{campaign_id}/contacts` accepts `{ "contacts": [{ "email": string, "metadata": { "nome": string, "cognome"?: string } }] }`
+- `GET /admin/campaigns/{campaign_id}` now includes `email_brand` from `clients.metadata.email_brand` so the admin content step can expose the currently available brand variables
+- campaign subject, preview, HTML, and plain text content accept the supported placeholders `{{nome}}`, `{{cognome}}`, `{{email}}`, `{{campaign_name}}`, `{{unsubscribe_url}}`, `{{current_year}}`, `{{company_name}}`, `{{sender_name}}`, `{{logo}}`, `{{website_url}}`, `{{linkedin_url}}`, `{{instagram_url}}`, `{{facebook_url}}`, `{{x_url}}`, and `{{social_icons}}`
+- final campaign preparation resolves campaign/system and client brand placeholders directly, converts contact placeholders to the listmonk subscriber fields, and removes any leftover `{{variable}}` tokens before the prepared HTML is reused downstream
 - `DELETE /admin/campaigns/{campaign_id}/contacts/{contact_id}` removes only the `campaign_contacts` association, keeps the underlying `contacts` row and suppression data untouched, and returns backend-owned `contacts_ready`
 - Guard remains mandatory for simulation and real dispatch
 - `EMAIL_SENDING_ENABLED` remains the real-dispatch kill switch

@@ -79,6 +79,8 @@ from app.schemas.campaigns import (
 )
 from app.schemas.common import CampaignStatus
 from app.services.provider_runtime import build_provider_runtime_summary
+from app.services.clients import build_client_email_brand
+from app.services.template_renderer import KNOWN_TEMPLATE_VARIABLES
 from app.services.campaign_slots import (
     CampaignSlotConflictError,
     CampaignSlotService,
@@ -100,7 +102,12 @@ EDITABLE_CAMPAIGN_STATUSES = {
 NON_WRITABLE_CLIENT_STATUSES = {"blocked", "archived", "suspended"}
 BLOCKED_SENDS_LATEST_LIMIT = 5
 CONTACT_METADATA_ALLOWED_KEYS = {"nome", "cognome"}
-RECIPIENT_TEMPLATE_PLACEHOLDERS = {"nome", "cognome"}
+SUPPORTED_TEMPLATE_PLACEHOLDERS = set(KNOWN_TEMPLATE_VARIABLES) - {
+    "subject",
+    "preview_text",
+    "body",
+    "client_name",
+}
 TEMPLATE_PLACEHOLDER_PATTERN = re.compile(r"{{\s*([A-Za-z0-9_]+)\s*}}")
 DEFAULT_CAMPAIGN_PERIOD_EMAIL_LIMIT = 1000
 DEFAULT_CAMPAIGN_DAILY_EMAIL_LIMIT = 50
@@ -417,7 +424,10 @@ class AdminCampaignService:
             if subject is None
             else self._normalize_optional_text(subject)
         )
-        self._validate_template_placeholders(next_subject, allowed_placeholders=set())
+        self._validate_template_placeholders(
+            next_subject,
+            allowed_placeholders=SUPPORTED_TEMPLATE_PLACEHOLDERS,
+        )
         next_status = campaign.status
         if status_value is not None:
             normalized_status = status_value.strip().lower()
@@ -485,18 +495,21 @@ class AdminCampaignService:
             if body_text is None
             else self._normalize_optional_text(body_text)
         )
-        self._validate_template_placeholders(next_subject, allowed_placeholders=set())
+        self._validate_template_placeholders(
+            next_subject,
+            allowed_placeholders=SUPPORTED_TEMPLATE_PLACEHOLDERS,
+        )
         self._validate_template_placeholders(
             next_preview_text,
-            allowed_placeholders=RECIPIENT_TEMPLATE_PLACEHOLDERS,
+            allowed_placeholders=SUPPORTED_TEMPLATE_PLACEHOLDERS,
         )
         self._validate_template_placeholders(
             next_body_html,
-            allowed_placeholders=RECIPIENT_TEMPLATE_PLACEHOLDERS,
+            allowed_placeholders=SUPPORTED_TEMPLATE_PLACEHOLDERS,
         )
         self._validate_template_placeholders(
             next_body_text,
-            allowed_placeholders=RECIPIENT_TEMPLATE_PLACEHOLDERS,
+            allowed_placeholders=SUPPORTED_TEMPLATE_PLACEHOLDERS,
         )
         next_step = (
             self._validate_step(current_step)
@@ -973,12 +986,14 @@ class AdminCampaignService:
         limits: CampaignSendingLimitRecord | None = None,
     ) -> AdminCampaignDetail:
         client_name = client.personal_name or client.email
+        email_brand = build_client_email_brand(client.metadata)
         limit_record = limits or self._ensure_campaign_limits(campaign.id)
         return AdminCampaignDetail(
             campaign_id=campaign.id,
             client_id=campaign.client_id,
             client_name=client_name,
             client_status=client.status,
+            email_brand=email_brand.model_dump(exclude_none=True) if email_brand else None,
             name=campaign.name,
             status=campaign.status,
             subject=campaign.subject,

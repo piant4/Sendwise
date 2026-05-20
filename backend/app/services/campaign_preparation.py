@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from typing import Any
-import re
 
 from app.core.auth import AuthenticatedUser
 from app.core.config import Settings, get_settings
@@ -15,6 +15,7 @@ from app.repositories.clients import (
 from app.repositories.contacts import ContactRepository, PostgresContactRepository
 from app.repositories.listmonk_mappings import get_listmonk_mapping_repository
 from app.services.contact_subscriber_sync import ContactSubscriberSyncService
+from app.services.clients import build_client_email_brand
 from app.services.listmonk_mappings import (
     ENTITY_TYPE_CAMPAIGN,
     LISTMONK_TYPE_CAMPAIGN,
@@ -24,15 +25,19 @@ from app.services.template_renderer import (
     CompiledTemplateNotFoundError,
     TemplateRenderError,
     TemplateRenderer,
+    build_brand_template_variables,
     build_unsubscribe_url,
+    build_template_variable_values,
     ensure_unsubscribe_link,
     get_default_template_renderer,
+    render_template_string,
 )
 from app.services.unsubscribe import UnsubscribeTokenService
 
-RECIPIENT_PLACEHOLDER_MAP = {
+RECIPIENT_TEMPLATE_VARIABLES = {
     "nome": "{{ .Subscriber.Attribs.nome }}",
     "cognome": "{{ .Subscriber.Attribs.cognome }}",
+    "email": "{{ .Subscriber.Email }}",
 }
 
 
@@ -170,26 +175,36 @@ class CampaignPreparationService:
     ) -> dict[str, Any]:
         subject = (campaign.subject or "").strip() or f"Sendwise draft {campaign.id}"
         client_name = self._resolve_client_name(client)
+        email_brand = self._resolve_email_brand(client)
         unsubscribe_url = build_unsubscribe_url(
             settings=self.settings,
             campaign_id=campaign.id,
         )
+        template_variables = self._build_template_variables(
+            campaign=campaign,
+            client_name=client_name,
+            unsubscribe_url=unsubscribe_url,
+            email_brand=email_brand,
+        )
         if campaign.content_ready and (campaign.body_html or "").strip():
-            rendered_body = ensure_unsubscribe_link(
-                self._convert_recipient_placeholders(str(campaign.body_html)),
-                unsubscribe_url,
+            rendered_body = render_template_string(
+                str(campaign.body_html),
+                template_variables,
             )
+            rendered_body = ensure_unsubscribe_link(rendered_body, unsubscribe_url)
             return {
                 "template_name": "campaign_business_db",
                 "content_ready": True,
                 "reason": None,
                 "subject": subject,
-                "preview_text": self._convert_recipient_placeholders(
-                    (campaign.preview_text or "").strip()
+                "preview_text": render_template_string(
+                    (campaign.preview_text or "").strip(),
+                    template_variables,
                 ),
                 "body": rendered_body,
-                "body_text": self._convert_recipient_placeholders(
-                    str(campaign.body_text or "")
+                "body_text": render_template_string(
+                    str(campaign.body_text or ""),
+                    template_variables,
                 ),
                 "unsubscribe_url": unsubscribe_url,
                 "client_name": client_name,
@@ -212,6 +227,9 @@ class CampaignPreparationService:
                 body=body,
                 unsubscribe_url=unsubscribe_url,
                 client_name=client_name,
+                campaign_name=campaign.name,
+                current_year=datetime.now(timezone.utc).year,
+                email_brand=email_brand,
             )
         except (CompiledTemplateNotFoundError, TemplateRenderError) as error:
             return {
@@ -238,12 +256,34 @@ class CampaignPreparationService:
             "client_name": rendered.client_name,
         }
 
-    def _convert_recipient_placeholders(self, value: str) -> str:
-        def replacer(match: re.Match[str]) -> str:
-            key = match.group(1).strip().lower()
-            return RECIPIENT_PLACEHOLDER_MAP.get(key, match.group(0))
+    def _build_template_variables(
+        self,
+        *,
+        campaign: ClientCampaignRecord,
+        client_name: str,
+        unsubscribe_url: str,
+        email_brand: dict[str, str],
+    ) -> dict[str, str]:
+        variables = build_template_variable_values(
+            preview_text=(campaign.preview_text or "").strip(),
+            unsubscribe_url=unsubscribe_url,
+            client_name=client_name,
+            campaign_name=campaign.name,
+            current_year=datetime.now(timezone.utc).year,
+        )
+        variables.update(RECIPIENT_TEMPLATE_VARIABLES)
+        variables.update(email_brand)
+        return variables
 
-        return re.sub(r"{{\s*([A-Za-z0-9_]+)\s*}}", replacer, value)
+    def _resolve_email_brand(self, client: Any | None) -> dict[str, str]:
+        metadata = getattr(client, "metadata", None)
+        if not isinstance(metadata, dict):
+            return build_brand_template_variables(None)
+
+        brand = build_client_email_brand(metadata)
+        if brand is None:
+            return build_brand_template_variables(None)
+        return build_brand_template_variables(brand.model_dump(exclude_none=True))
 
     def _resolve_client_name(self, client: Any | None) -> str:
         if client is None:

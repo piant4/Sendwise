@@ -76,8 +76,22 @@ class FakeListmonkPreparationClient:
 
 
 class FakeCampaignRepository:
-    def __init__(self, campaigns: list[ClientCampaignRecord]) -> None:
+    def __init__(
+        self,
+        campaigns: list[ClientCampaignRecord],
+        *,
+        client_metadata: dict[str, Any] | None = None,
+    ) -> None:
         self._campaigns = campaigns
+        self._client_metadata = client_metadata or {
+            "email_brand": {
+                "company_name": "Acme Labs",
+                "sender_name": "Team Acme",
+                "website_url": "https://acme.example.test",
+                "linkedin_url": "https://linkedin.com/company/acme",
+                "logo_url": "/static/client-brand-logos/acme.webp",
+            }
+        }
 
     def get_by_id(self, client_id: str) -> Any | None:
         for campaign in self._campaigns:
@@ -89,6 +103,7 @@ class FakeCampaignRepository:
                         "id": client_id,
                         "personal_name": "Test Client",
                         "email": f"{client_id}@example.test",
+                        "metadata": self._client_metadata,
                     },
                 )()
         return None
@@ -153,6 +168,7 @@ def build_preparation_service(
     campaign: ClientCampaignRecord | None = None,
     contacts: list[ContactRecord] | None = None,
     campaign_contacts: set[tuple[str, str, str]] | None = None,
+    client_metadata: dict[str, Any] | None = None,
     mapping_repository: InMemoryListmonkMappingRepository | None = None,
     listmonk_client: FakeListmonkPreparationClient | None = None,
 ) -> tuple[CampaignPreparationService, FakeListmonkPreparationClient, InMemoryListmonkMappingRepository]:
@@ -194,7 +210,10 @@ def build_preparation_service(
         ),
         listmonk_client=fake_listmonk,  # type: ignore[arg-type]
         mapping_service=mapping_service,
-        client_repository=FakeCampaignRepository([campaign_record]),  # type: ignore[arg-type]
+        client_repository=FakeCampaignRepository(
+            [campaign_record],
+            client_metadata=client_metadata,
+        ),  # type: ignore[arg-type]
         contact_sync_service=contact_sync_service,
         template_renderer=get_default_template_renderer(),
     )
@@ -361,6 +380,67 @@ def test_prepare_campaign_converts_known_recipient_placeholders_for_listmonk() -
     assert "{{ .Subscriber.Attribs.nome }}" in result["content"]["body"]
     assert "{{ .Subscriber.Attribs.cognome }}" in result["content"]["body"]
     assert "{{ .Subscriber.Attribs.nome }}" in fake_listmonk.created_campaign_payloads[0]["body"]
+
+
+def test_prepare_campaign_renders_campaign_and_brand_variables() -> None:
+    service, fake_listmonk, _repository = build_preparation_service(
+        campaign=build_campaign(
+            preview_text="Aggiornamento {{campaign_name}}",
+            body_html=(
+                "<html><body>"
+                "<p>{{company_name}}</p><p>{{sender_name}}</p><p>{{email}}</p>"
+                "<p>{{current_year}}</p><p>{{social_icons}}</p><p>{{logo}}</p>"
+                "<a href='{{unsubscribe_url}}'>unsubscribe</a></body></html>"
+            ),
+            body_text="Campagna {{campaign_name}} per {{email}} nel {{current_year}}",
+        ),
+        contacts=[
+            build_contact(
+                contact_id="contact_1",
+                email="first@example.test",
+                metadata={"nome": "Mario", "cognome": "Rossi"},
+            ),
+        ],
+        campaign_contacts={("client_123", "campaign_123", "contact_1")},
+    )
+
+    result = service.prepare_campaign("campaign_123")
+
+    assert result["content"]["preview_text"] == "Aggiornamento Launch campaign"
+    assert "Acme Labs" in result["content"]["body"]
+    assert "Team Acme" in result["content"]["body"]
+    assert "{{ .Subscriber.Email }}" in result["content"]["body"]
+    assert str(datetime.now(timezone.utc).year) in result["content"]["body"]
+    assert "linkedin.com/company/acme" in result["content"]["body"]
+    assert "/static/client-brand-logos/acme.webp" in result["content"]["body"]
+    assert result["content"]["unsubscribe_url"] in result["content"]["body"]
+    assert "Launch campaign" in result["content"]["body_text"]
+    assert "{{ .Subscriber.Email }}" in result["content"]["body_text"]
+    assert result["content"]["unsubscribe_url"] in fake_listmonk.created_campaign_payloads[0]["body"]
+
+
+def test_prepare_campaign_cleans_unknown_placeholders_and_empty_brand_blocks() -> None:
+    service, _fake_listmonk, _repository = build_preparation_service(
+        campaign=build_campaign(
+            preview_text="Preview {{unknown}}",
+            body_html=(
+                "<html><body><p>{{nome}}</p><p>{{logo}}</p><p>{{social_icons}}</p>"
+                "<p>{{unknown}}</p></body></html>"
+            ),
+            body_text="Hello {{unknown}}",
+        ),
+        client_metadata={},
+    )
+
+    result = service.prepare_campaign("campaign_123")
+
+    assert "{{unknown}}" not in result["content"]["preview_text"]
+    assert "{{unknown}}" not in result["content"]["body"]
+    assert "{{logo}}" not in result["content"]["body"]
+    assert "{{social_icons}}" not in result["content"]["body"]
+    assert "img src=" not in result["content"]["body"]
+    assert "linkedin.com/company/acme" not in result["content"]["body"]
+    assert result["content"]["unsubscribe_url"] in result["content"]["body"]
 
 
 def test_sync_listmonk_endpoint_uses_backend_preparation_without_sending() -> None:

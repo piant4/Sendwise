@@ -70,6 +70,7 @@ class AdminCampaignDetail(BaseModel):
     client_id: str
     client_name: str
     client_status: str
+    email_brand: dict[str, str | None] | None = None
     name: str
     status: CampaignStatus
     subject: Optional[str] = None

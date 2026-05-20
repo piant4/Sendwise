@@ -1,12 +1,39 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from html import escape
 from pathlib import Path
+import re
 from typing import Mapping
 
 from app.core.config import Settings
 from app.services.unsubscribe import LISTMONK_UNSUBSCRIBE_TOKEN_PLACEHOLDER
+
+TEMPLATE_VARIABLE_PATTERN = re.compile(r"{{\s*([A-Za-z0-9_]+)\s*}}")
+KNOWN_TEMPLATE_VARIABLES = frozenset(
+    {
+        "subject",
+        "preview_text",
+        "body",
+        "unsubscribe_url",
+        "client_name",
+        "nome",
+        "cognome",
+        "email",
+        "campaign_name",
+        "current_year",
+        "company_name",
+        "sender_name",
+        "logo",
+        "website_url",
+        "linkedin_url",
+        "instagram_url",
+        "facebook_url",
+        "x_url",
+        "social_icons",
+    }
+)
 
 
 class TemplateRenderError(RuntimeError):
@@ -40,29 +67,32 @@ class TemplateRenderer:
         body: str,
         unsubscribe_url: str,
         client_name: str,
+        contact_first_name: str | None = None,
+        contact_last_name: str | None = None,
+        contact_email: str | None = None,
+        campaign_name: str | None = None,
+        current_year: int | None = None,
         email_brand: Mapping[str, str | None] | None = None,
     ) -> RenderedEmailTemplate:
         template_html = self.load_compiled_template(template_name)
         rendered_html = template_html
-        email_brand_payload = dict(email_brand or {})
-        replacements = {
-            "{{subject}}": subject,
-            "{{preview_text}}": preview_text,
-            "{{body}}": body,
-            "{{unsubscribe_url}}": unsubscribe_url,
-            "{{client_name}}": client_name,
-            "{{company_name}}": email_brand_payload.get("company_name") or "",
-            "{{sender_name}}": email_brand_payload.get("sender_name") or "",
-            "{{logo}}": build_logo_html(email_brand_payload.get("logo_url")),
-            "{{website_url}}": email_brand_payload.get("website_url") or "",
-            "{{linkedin_url}}": email_brand_payload.get("linkedin_url") or "",
-            "{{instagram_url}}": email_brand_payload.get("instagram_url") or "",
-            "{{facebook_url}}": email_brand_payload.get("facebook_url") or "",
-            "{{x_url}}": email_brand_payload.get("x_url") or "",
-            "{{social_icons}}": build_social_icons_html(email_brand_payload),
-        }
-        for placeholder, value in replacements.items():
+        replacements = build_template_variable_values(
+            subject=subject,
+            preview_text=preview_text,
+            body=body,
+            unsubscribe_url=unsubscribe_url,
+            client_name=client_name,
+            contact_first_name=contact_first_name,
+            contact_last_name=contact_last_name,
+            contact_email=contact_email,
+            campaign_name=campaign_name,
+            current_year=current_year,
+            email_brand=email_brand,
+        )
+        for key, value in replacements.items():
+            placeholder = f"{{{{{key}}}}}"
             rendered_html = rendered_html.replace(placeholder, value)
+        rendered_html = render_template_string(rendered_html, replacements)
         self._validate_rendered_html(
             template_name=template_name,
             rendered_html=rendered_html,
@@ -106,26 +136,76 @@ class TemplateRenderer:
             raise TemplateRenderError(
                 f"Compiled template '{template_name}' is missing the unsubscribe URL."
             )
-        for placeholder in (
-            "{{subject}}",
-            "{{preview_text}}",
-            "{{body}}",
-            "{{unsubscribe_url}}",
-            "{{client_name}}",
-            "{{company_name}}",
-            "{{sender_name}}",
-            "{{logo}}",
-            "{{website_url}}",
-            "{{linkedin_url}}",
-            "{{instagram_url}}",
-            "{{facebook_url}}",
-            "{{x_url}}",
-            "{{social_icons}}",
-        ):
-            if placeholder in rendered_html:
-                raise TemplateRenderError(
-                    f"Compiled template '{template_name}' still contains unresolved placeholders."
-                )
+        if TEMPLATE_VARIABLE_PATTERN.search(rendered_html):
+            raise TemplateRenderError(
+                f"Compiled template '{template_name}' still contains unresolved placeholders."
+            )
+
+
+def build_template_variable_values(
+    *,
+    subject: str = "",
+    preview_text: str = "",
+    body: str = "",
+    unsubscribe_url: str = "",
+    client_name: str = "",
+    contact_first_name: str | None = None,
+    contact_last_name: str | None = None,
+    contact_email: str | None = None,
+    campaign_name: str | None = None,
+    current_year: int | None = None,
+    email_brand: Mapping[str, str | None] | None = None,
+) -> dict[str, str]:
+    resolved_current_year = current_year or datetime.now(timezone.utc).year
+    return {
+        "subject": subject,
+        "preview_text": preview_text,
+        "body": body,
+        "unsubscribe_url": unsubscribe_url,
+        "client_name": client_name,
+        "nome": (contact_first_name or "").strip(),
+        "cognome": (contact_last_name or "").strip(),
+        "email": (contact_email or "").strip(),
+        "campaign_name": (campaign_name or "").strip(),
+        "current_year": str(resolved_current_year),
+        **build_brand_template_variables(email_brand),
+    }
+
+
+def render_template_string(
+    value: str,
+    replacements: Mapping[str, str],
+    *,
+    preserve_placeholders: set[str] | None = None,
+) -> str:
+    preserved_keys = {key.strip().lower() for key in (preserve_placeholders or set())}
+
+    def replacer(match: re.Match[str]) -> str:
+        key = match.group(1).strip().lower()
+        if key in replacements:
+            return replacements[key]
+        if key in preserved_keys:
+            return match.group(0)
+        return ""
+
+    return TEMPLATE_VARIABLE_PATTERN.sub(replacer, value)
+
+
+def build_brand_template_variables(
+    email_brand: Mapping[str, str | None] | None,
+) -> dict[str, str]:
+    email_brand_payload = dict(email_brand or {})
+    return {
+        "company_name": email_brand_payload.get("company_name") or "",
+        "sender_name": email_brand_payload.get("sender_name") or "",
+        "logo": build_logo_html(email_brand_payload.get("logo_url")),
+        "website_url": email_brand_payload.get("website_url") or "",
+        "linkedin_url": email_brand_payload.get("linkedin_url") or "",
+        "instagram_url": email_brand_payload.get("instagram_url") or "",
+        "facebook_url": email_brand_payload.get("facebook_url") or "",
+        "x_url": email_brand_payload.get("x_url") or "",
+        "social_icons": build_social_icons_html(email_brand_payload),
+    }
 
 
 def build_logo_html(logo_url: str | None) -> str:

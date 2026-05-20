@@ -194,6 +194,7 @@ interface AdminCampaignDetailApiResponse {
   client_id: string;
   client_name: string;
   client_status: string;
+  email_brand?: ClientEmailBrand | null;
   name: string;
   status: Campaign["status"];
   subject?: string | null;
@@ -1460,6 +1461,7 @@ function mapAdminCampaignDetail(
     clientId: payload.client_id,
     clientName: payload.client_name,
     clientStatus: payload.client_status,
+    emailBrand: payload.email_brand ?? null,
     name: payload.name,
     status: payload.status,
     subject: payload.subject ?? null,

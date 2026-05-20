@@ -3661,3 +3661,31 @@ Checks executed:
 Scope confirmation:
 - Only `README.md` and `docs/audit_log.md` were modified.
 - No backend, frontend, schema, migration, Docker, env, secret, config, send, SES, or listmonk action was performed.
+
+## Milestone 18.6Q - Email Template Variables And Better Defaults
+
+Date: 2026-05-20
+Branch: develop
+
+Verified state:
+- Audited `template_renderer.py`, `campaign_preparation.py`, contact persistence, admin campaign detail shaping, and `frontend/lib/campaignTemplates.ts` as the real default-template source; existing data paths already exposed `contacts.email`, `contacts.metadata.nome`, `contacts.metadata.cognome`, campaign name, and `clients.metadata.email_brand`, so no schema or migration work was required.
+- Expanded backend placeholder support to include `{{email}}`, `{{campaign_name}}`, `{{unsubscribe_url}}`, `{{current_year}}`, and all existing brand variables while keeping `{{nome}}` and `{{cognome}}` backward compatible in admin validation and final campaign preparation.
+- Final preparation now resolves campaign/system and brand variables in the prepared content path, converts contact placeholders to listmonk subscriber expressions, preserves the unsubscribe URL, and strips leftover `{{variable}}` tokens so prepared emails do not leak raw placeholders.
+- Admin campaign detail now exposes `email_brand`, and the admin content step now shows the supported placeholder list plus which brand-driven variables are currently populated for the selected client.
+- Default wizard templates in `frontend/lib/campaignTemplates.ts` were rebuilt as full mobile-friendly HTML email layouts with logo/header space, structured body copy, company/social footer, and mandatory unsubscribe copy.
+
+Checks executed:
+- `git diff --check`
+- `cd backend && pytest tests/test_template_renderer.py tests/test_campaign_preparation.py tests/test_admin_campaigns.py`
+- `cd frontend && npm run lint`
+- `cd frontend && npm run build`
+- `bash scripts/audit.sh`
+- `bash scripts/smoke_test.sh`
+- changed file scan for direct SES/Listmonk calls
+- changed file scan for fake metrics
+- changed file scan for auth/onboarding/provisioning/Clerk changes
+- changed file scan for schema/migration changes
+
+Scope confirmation:
+- No auth, onboarding, provisioning, Clerk, schema, migration, send/dispatch execution, SES action, or direct new listmonk action was added.
+- No secrets or env files were read or modified.

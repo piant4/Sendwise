@@ -436,6 +436,7 @@ export interface AdminCampaignDetail {
   clientId: string;
   clientName: string;
   clientStatus: string;
+  emailBrand?: ClientEmailBrand | null;
   name: string;
   status: CampaignStatus;
   subject?: string | null;

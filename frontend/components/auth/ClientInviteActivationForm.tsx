@@ -7,6 +7,16 @@ import { Eye, EyeOff, ShieldCheck } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useState } from "react";
 import { BrandMark } from "@/components/shared/BrandMark";
+import { getInviteActivationContext } from "@/lib/api";
+import {
+  buildInviteActivationPayload,
+  getPasswordMismatchState,
+  hasCompleteInviteActivationName,
+  INCOMPLETE_INVITE_DATA_MESSAGE,
+  isInviteActivationSubmitDisabled,
+  isInviteNameRequirementError,
+  normalizeInviteActivationContext,
+} from "./clientInviteActivation";
 
 const LOGIN_REDIRECT_PATH = "/auth/redirect";
 
@@ -74,8 +84,6 @@ export function ClientInviteActivationForm({
   const router = useRouter();
   const { isSignedIn } = useUser();
   const { fetchStatus, signUp } = useSignUp();
-  const [firstName, setFirstName] = useState("");
-  const [lastName, setLastName] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -85,6 +93,11 @@ export function ClientInviteActivationForm({
     "Completa qui l'attivazione del tuo accesso Sendwise.",
   );
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isInviteContextLoading, setIsInviteContextLoading] = useState(false);
+  const [inviteContext, setInviteContext] = useState<{
+    firstName: string | null;
+    lastName: string | null;
+  } | null>(null);
 
   useEffect(() => {
     if (!isSignedIn) {
@@ -94,6 +107,52 @@ export function ClientInviteActivationForm({
     router.replace(LOGIN_REDIRECT_PATH);
     router.refresh();
   }, [isSignedIn, router]);
+
+  useEffect(() => {
+    let isActive = true;
+
+    async function loadInviteContext() {
+      if (!ticket.trim()) {
+        return;
+      }
+
+      setIsInviteContextLoading(true);
+
+      try {
+        const context = await getInviteActivationContext(ticket);
+        if (!isActive) {
+          return;
+        }
+
+        setInviteContext(normalizeInviteActivationContext(context));
+      } catch {
+        if (!isActive) {
+          return;
+        }
+
+        setInviteContext(null);
+      } finally {
+        if (isActive) {
+          setIsInviteContextLoading(false);
+        }
+      }
+    }
+
+    void loadInviteContext();
+
+    return () => {
+      isActive = false;
+    };
+  }, [ticket]);
+
+  const mismatchState = getPasswordMismatchState(password, confirmPassword);
+  const isBusy =
+    fetchStatus === "fetching" || isSubmitting || isInviteContextLoading;
+  const isSubmitDisabled = isInviteActivationSubmitDisabled({
+    password,
+    confirmPassword,
+    isBusy,
+  });
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -106,8 +165,8 @@ export function ClientInviteActivationForm({
       return;
     }
 
-    if (password !== confirmPassword) {
-      setErrorMessage("Le password non coincidono.");
+    if (mismatchState.isMismatch) {
+      setErrorMessage(mismatchState.message);
       return;
     }
 
@@ -115,15 +174,23 @@ export function ClientInviteActivationForm({
     setHelperMessage("Attivazione accesso in corso...");
 
     try {
-      const result = await signUp.create({
-        strategy: "ticket",
+      const activationPayload = buildInviteActivationPayload({
         ticket,
-        firstName: firstName.trim() || undefined,
-        lastName: lastName.trim() || undefined,
         password,
-      });
+        inviteContext,
+      }) as Parameters<typeof signUp.create>[0];
+      const result = await signUp.create(activationPayload);
 
       if (result.error) {
+        if (
+          isInviteNameRequirementError(result.error) &&
+          !hasCompleteInviteActivationName(inviteContext)
+        ) {
+          setErrorMessage(INCOMPLETE_INVITE_DATA_MESSAGE);
+          setHelperMessage(null);
+          return;
+        }
+
         setErrorMessage(getInviteErrorMessage(result.error));
         setHelperMessage(null);
         return;
@@ -145,6 +212,15 @@ export function ClientInviteActivationForm({
         },
       });
     } catch (error) {
+      if (
+        isInviteNameRequirementError(error) &&
+        !hasCompleteInviteActivationName(inviteContext)
+      ) {
+        setErrorMessage(INCOMPLETE_INVITE_DATA_MESSAGE);
+        setHelperMessage(null);
+        return;
+      }
+
       setErrorMessage(getInviteErrorMessage(error));
       setHelperMessage(null);
     } finally {
@@ -168,8 +244,8 @@ export function ClientInviteActivationForm({
             </div>
             <h1 className="login-title">Attiva il tuo accesso Sendwise.</h1>
             <p className="login-lead">
-              Completa qui i dati richiesti dal tuo invito senza uscire dal
-              flusso Sendwise.
+              Imposta solo la password del tuo account senza uscire dal flusso
+              Sendwise.
             </p>
           </div>
         </section>
@@ -190,40 +266,6 @@ export function ClientInviteActivationForm({
             onSubmit={handleSubmit}
           >
             <div className="login-field">
-              <label className="login-field__label" htmlFor="invite-first-name">
-                Nome
-              </label>
-              <input
-                id="invite-first-name"
-                name="first-name"
-                type="text"
-                autoComplete="given-name"
-                className="login-input"
-                disabled={fetchStatus === "fetching" || isSubmitting}
-                onChange={(event) => setFirstName(event.target.value)}
-                placeholder="Inserisci il nome"
-                value={firstName}
-              />
-            </div>
-
-            <div className="login-field">
-              <label className="login-field__label" htmlFor="invite-last-name">
-                Cognome
-              </label>
-              <input
-                id="invite-last-name"
-                name="last-name"
-                type="text"
-                autoComplete="family-name"
-                className="login-input"
-                disabled={fetchStatus === "fetching" || isSubmitting}
-                onChange={(event) => setLastName(event.target.value)}
-                placeholder="Inserisci il cognome"
-                value={lastName}
-              />
-            </div>
-
-            <div className="login-field">
               <label className="login-field__label" htmlFor="invite-password">
                 Password
               </label>
@@ -234,7 +276,7 @@ export function ClientInviteActivationForm({
                   type={showPassword ? "text" : "password"}
                   autoComplete="new-password"
                   className="login-input login-input--password"
-                  disabled={fetchStatus === "fetching" || isSubmitting}
+                  disabled={isBusy}
                   onChange={(event) => setPassword(event.target.value)}
                   placeholder="Scegli la password"
                   required
@@ -245,7 +287,7 @@ export function ClientInviteActivationForm({
                   className="login-password-toggle"
                   aria-label={showPassword ? "Nascondi password" : "Mostra password"}
                   aria-pressed={showPassword}
-                  disabled={fetchStatus === "fetching" || isSubmitting}
+                  disabled={isBusy}
                   onClick={() => setShowPassword((currentValue) => !currentValue)}
                 >
                   {showPassword ? (
@@ -268,7 +310,7 @@ export function ClientInviteActivationForm({
                   type={showConfirmPassword ? "text" : "password"}
                   autoComplete="new-password"
                   className="login-input login-input--password"
-                  disabled={fetchStatus === "fetching" || isSubmitting}
+                  disabled={isBusy}
                   onChange={(event) => setConfirmPassword(event.target.value)}
                   placeholder="Ripeti la password"
                   required
@@ -283,7 +325,7 @@ export function ClientInviteActivationForm({
                       : "Mostra conferma password"
                   }
                   aria-pressed={showConfirmPassword}
-                  disabled={fetchStatus === "fetching" || isSubmitting}
+                  disabled={isBusy}
                   onClick={() =>
                     setShowConfirmPassword((currentValue) => !currentValue)
                   }
@@ -297,9 +339,17 @@ export function ClientInviteActivationForm({
               </div>
             </div>
 
+            {mismatchState.isMismatch ? (
+              <p className="login-feedback login-feedback--error" role="alert">
+                {mismatchState.message}
+              </p>
+            ) : null}
+
             {helperMessage ? (
               <p className="login-helper" role="status">
-                {helperMessage}
+                {isInviteContextLoading
+                  ? "Verifica invito protetto in corso..."
+                  : helperMessage}
               </p>
             ) : null}
 
@@ -312,7 +362,7 @@ export function ClientInviteActivationForm({
             <div className="login-actions">
               <button
                 className="login-submit"
-                disabled={fetchStatus === "fetching" || isSubmitting}
+                disabled={isSubmitDisabled}
                 type="submit"
               >
                 {isSubmitting ? "Attivazione in corso..." : "Attiva accesso"}

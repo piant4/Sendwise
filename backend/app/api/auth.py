@@ -1,10 +1,12 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from app.core.auth import AuthenticatedUser, get_current_user, require_auth_me_user
 from app.schemas.auth import AuthMeResponse, DeleteAccountRequest, DeleteAccountResponse
 from app.services.auth import (
     AccountDeletionService,
+    InviteActivationService,
     get_account_deletion_service,
+    get_invite_activation_service,
 )
 router = APIRouter(
     prefix="/auth",
@@ -45,6 +47,20 @@ def complete_client_onboarding() -> AuthMeResponse:
             "Questo flusso non e piu attivo. Accedi dal pannello o richiedi una nuova email di accesso."
         ),
     )
+
+
+@router.get("/invite-context")
+def get_invite_context(
+    ticket: str = Query(..., min_length=1),
+    invite_activation_service: InviteActivationService = Depends(
+        get_invite_activation_service
+    ),
+) -> dict[str, str | None]:
+    context = invite_activation_service.get_invite_context(ticket=ticket)
+    return {
+        "first_name": context.first_name,
+        "last_name": context.last_name,
+    }
 
 
 @router.post("/delete-account", response_model=DeleteAccountResponse)

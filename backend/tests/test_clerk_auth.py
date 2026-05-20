@@ -571,7 +571,7 @@ class FakeClerkInvitationGateway(ClerkInvitationGateway):
 
 class FakeClerkAccessGateway(ClerkAccessGateway):
     def __init__(self) -> None:
-        self.invitation_calls: list[dict[str, str]] = []
+        self.invitation_calls: list[dict[str, object]] = []
         self.sign_in_token_calls: list[str] = []
         self._counter = 0
 
@@ -580,10 +580,15 @@ class FakeClerkAccessGateway(ClerkAccessGateway):
         *,
         email: str,
         redirect_url: str,
+        public_metadata: Optional[dict[str, object]] = None,
     ) -> ClerkAccessLinkResult:
         self._counter += 1
         self.invitation_calls.append(
-            {"email": email, "redirect_url": redirect_url}
+            {
+                "email": email,
+                "redirect_url": redirect_url,
+                "public_metadata": public_metadata,
+            }
         )
         return ClerkAccessLinkResult(
             reference_id=f"inv_access_{self._counter}",
@@ -619,6 +624,7 @@ class FailingClerkAccessGateway(FakeClerkAccessGateway):
         *,
         email: str,
         redirect_url: str,
+        public_metadata: Optional[dict[str, object]] = None,
     ) -> ClerkAccessLinkResult:
         raise HTTPException(
             status_code=502,
@@ -1937,6 +1943,10 @@ def test_platform_admin_can_provision_client_access_with_clerk_native_email(
         {
             "email": "nuovo.cliente@example.test",
             "redirect_url": "https://app.sendwise.example.test/auth/redirect",
+            "public_metadata": {
+                "sendwise_first_name": "Giulia",
+                "sendwise_last_name": "Bianchi",
+            },
         }
     ]
     assert access_gateway.sign_in_token_calls == []
@@ -2010,12 +2020,83 @@ def test_platform_admin_can_create_access_with_email_only(
         {
             "email": "solo.email@example.test",
             "redirect_url": "https://app.sendwise.example.test/auth/redirect",
+            "public_metadata": None,
         }
     ]
     assert "https://clerk.example.test" not in response.text
     assert "__clerk_ticket" not in response.text
     assert "password" not in created_client.model_dump()
     assert "password" not in created_access.model_dump()
+
+
+def test_invite_context_returns_admin_provisioned_names_without_exposing_ticket(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("CLERK_SECRET_KEY", "configured-secret")
+    get_settings.cache_clear()
+
+    def fake_get(*args: object, **kwargs: object) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "data": [
+                    {
+                        "id": "inv_access_1",
+                        "url": "https://app.sendwise.example.test/auth/redirect?__clerk_ticket=ticket_123",
+                        "public_metadata": {
+                            "sendwise_first_name": "Giulia",
+                            "sendwise_last_name": "Bianchi",
+                        },
+                    }
+                ],
+                "total_count": 1,
+            },
+        )
+
+    monkeypatch.setattr("app.services.auth.httpx.get", fake_get)
+
+    response = client.get("/auth/invite-context", params={"ticket": "ticket_123"})
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "first_name": "Giulia",
+        "last_name": "Bianchi",
+    }
+    assert "__clerk_ticket" not in response.text
+
+
+def test_invite_context_returns_null_names_when_metadata_is_missing(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("CLERK_SECRET_KEY", "configured-secret")
+    get_settings.cache_clear()
+
+    def fake_get(*args: object, **kwargs: object) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "data": [
+                    {
+                        "id": "inv_access_1",
+                        "url": "https://app.sendwise.example.test/auth/redirect?__clerk_ticket=ticket_123",
+                        "public_metadata": {},
+                    }
+                ],
+                "total_count": 1,
+            },
+        )
+
+    monkeypatch.setattr("app.services.auth.httpx.get", fake_get)
+
+    response = client.get("/auth/invite-context", params={"ticket": "ticket_123"})
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "first_name": None,
+        "last_name": None,
+    }
 
 
 def test_clerk_invite_requires_configured_secret(
@@ -2970,7 +3051,15 @@ def test_resend_access_email_endpoint_preserves_portal_slug(
     stored_access = access_repository.get_by_client_id(existing_client.id)
     assert stored_access is not None
     assert stored_access.portal_slug == "y" * 32
-    assert len(access_gateway.invitation_calls) == 1
+    assert access_gateway.invitation_calls == [
+        {
+            "email": "client@example.test",
+            "redirect_url": "http://localhost:3000/auth/redirect",
+            "public_metadata": {
+                "sendwise_first_name": "Mario",
+            },
+        }
+    ]
 
 
 def test_client_delete_account_requires_strong_confirmation(

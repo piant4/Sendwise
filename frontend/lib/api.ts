@@ -37,6 +37,7 @@ import type {
   ClientCampaignStatsReadModel,
   ClientOverviewSummary,
   CompleteClientOnboardingInput,
+  InviteActivationContext,
   PublicUnsubscribeResponse,
 } from "../types";
 import * as mockApi from "./mock-api";
@@ -1338,6 +1339,15 @@ async function fetchAuthMe(accessToken?: string | null): Promise<AuthMeResponse>
   return apiGet<AuthMeResponse>("/auth/me", accessToken);
 }
 
+async function fetchInviteActivationContext(
+  ticket: string,
+): Promise<InviteActivationContext> {
+  const searchParams = new URLSearchParams({ ticket });
+  return publicApiRequest<InviteActivationContext>(
+    `/auth/invite-context?${searchParams.toString()}`,
+  );
+}
+
 async function postAdminClientAccessEmail(
   payload: AdminClientAccessInput,
   accessToken?: string | null,
@@ -2568,6 +2578,19 @@ export async function getPostLoginRedirectPath(
 
 export function getAuthMe(accessToken?: string | null): Promise<AuthMeResponse> {
   return fetchAuthMe(accessToken);
+}
+
+export function getInviteActivationContext(
+  ticket: string,
+): Promise<InviteActivationContext> {
+  if (USE_MOCK_API) {
+    return Promise.resolve({
+      first_name: null,
+      last_name: null,
+    });
+  }
+
+  return fetchInviteActivationContext(ticket);
 }
 
 export function completeClientOnboarding(

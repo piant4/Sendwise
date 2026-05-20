@@ -1,5 +1,15 @@
 # Audit Log
 
+## Milestone 18.6O-FIX13 - Simplify Clerk Invite Activation To Password Only
+
+Invite activation audit summary:
+- Audited `frontend/components/auth/ClientInviteActivationForm.tsx`, `backend/app/services/clients.py`, `backend/app/api/auth.py`, `backend/app/services/auth.py`, `/auth/redirect`, and the existing Clerk provisioning tests without reading secrets, sending email, dispatching campaigns, or touching Listmonk or SES flows.
+- Root cause of the broken UX: the custom Sendwise invite card still rendered first-name and last-name inputs and forwarded user-entered values into `signUp.create()` even though the admin provisioning flow already owns client name data.
+- The invite activation card is now password-only. Password mismatch feedback appears only after confirm-password has content, and submit stays disabled until the two password fields match.
+- Backend provisioning now attaches admin-provisioned invite names to Clerk invitation `public_metadata`, and the new safe `GET /auth/invite-context` endpoint resolves only `first_name` and `last_name` for the activation page.
+- If Clerk requires name fields and no admin-provisioned invite metadata is available, Sendwise now fails closed with `Dati invito incompleti. Richiedi una nuova email di accesso.`
+- `/auth/redirect` remains the only post-activation route chooser, and no Sendwise-owned password storage, Clerk secret logging, invitation URL leakage, SMTP transactional send, campaign dispatch, Listmonk action, or SES action was introduced.
+
 ## Milestone 18.6O-FIX11 - Clerk Native Invitation Email For Client Access
 
 Date: 2026-05-20

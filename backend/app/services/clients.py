@@ -424,6 +424,7 @@ class ClerkAccessGateway:
         *,
         email: str,
         redirect_url: str,
+        public_metadata: Optional[dict[str, object]] = None,
     ) -> ClerkAccessLinkResult:
         raise NotImplementedError
 
@@ -444,15 +445,20 @@ class HttpClerkAccessGateway(ClerkAccessGateway):
         *,
         email: str,
         redirect_url: str,
+        public_metadata: Optional[dict[str, object]] = None,
     ) -> ClerkAccessLinkResult:
+        payload: dict[str, object] = {
+            "email_address": email,
+            "redirect_url": redirect_url,
+            "notify": True,
+            "ignore_existing": True,
+        }
+        if public_metadata:
+            payload["public_metadata"] = public_metadata
+
         payload = self._post(
             "/invitations",
-            {
-                "email_address": email,
-                "redirect_url": redirect_url,
-                "notify": True,
-                "ignore_existing": True,
-            },
+            payload,
         )
 
         invitation_id = str(payload.get("id") or "").strip()
@@ -671,7 +677,13 @@ class ClientsService:
             )
 
         portal_slug = self._resolve_portal_slug(existing_access=existing_access)
-        link_result = self._build_client_access_link(existing_access=existing_access, email=normalized_email)
+        link_result = self._build_client_access_link(
+            existing_access=existing_access,
+            email=normalized_email,
+            personal_name=client.personal_name,
+            first_name=first_name,
+            last_name=last_name,
+        )
 
         if link_result.kind == "invitation":
             access = access_repository.upsert_invited_access(
@@ -731,6 +743,9 @@ class ClientsService:
         *,
         existing_access: Optional[ClientAccessRecord],
         email: str,
+        personal_name: Optional[str],
+        first_name: Optional[str],
+        last_name: Optional[str],
     ) -> ClerkAccessLinkResult:
         gateway = self._require_clerk_access_gateway()
         if (
@@ -747,7 +762,58 @@ class ClientsService:
         return gateway.create_invitation(
             email=email,
             redirect_url=self._build_invitation_redirect_url(),
+            public_metadata=self._build_invitation_public_metadata(
+                personal_name=personal_name,
+                first_name=first_name,
+                last_name=last_name,
+            ),
         )
+
+    def _build_invitation_public_metadata(
+        self,
+        *,
+        personal_name: Optional[str],
+        first_name: Optional[str],
+        last_name: Optional[str],
+    ) -> Optional[dict[str, object]]:
+        resolved_first_name = normalize_profile_value(
+            first_name,
+            field_label="first_name",
+        )
+        resolved_last_name = normalize_profile_value(
+            last_name,
+            field_label="last_name",
+        )
+
+        if resolved_first_name is None and resolved_last_name is None:
+            resolved_first_name, resolved_last_name = self._split_personal_name(
+                personal_name
+            )
+
+        metadata: dict[str, object] = {}
+        if resolved_first_name is not None:
+            metadata["sendwise_first_name"] = resolved_first_name
+        if resolved_last_name is not None:
+            metadata["sendwise_last_name"] = resolved_last_name
+
+        return metadata or None
+
+    def _split_personal_name(
+        self,
+        personal_name: Optional[str],
+    ) -> tuple[Optional[str], Optional[str]]:
+        normalized_personal_name = normalize_profile_value(
+            personal_name,
+            field_label="personal_name",
+        )
+        if normalized_personal_name is None:
+            return None, None
+
+        parts = normalized_personal_name.split()
+        if len(parts) == 1:
+            return parts[0], None
+
+        return parts[0], " ".join(parts[1:])
 
     def _build_invitation_redirect_url(self) -> str:
         redirect_url = self._settings.frontend_auth_redirect_url

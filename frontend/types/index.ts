@@ -67,6 +67,11 @@ export interface ClientContext {
   user: ClientUser;
 }
 
+export interface InviteActivationContext {
+  first_name: string | null;
+  last_name: string | null;
+}
+
 export interface ClientAccessSummary {
   id: string;
   client_id: string;

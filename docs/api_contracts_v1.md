@@ -25,11 +25,14 @@ All product APIs must be called through FastAPI. Frontend and external callers m
 | Endpoint | Purpose | Allowed caller | Required access | High-level input | High-level output | Main errors | Status |
 |---|---|---|---|---|---|---|---|
 | `GET /auth/me` | Resolve authenticated Sendwise access context for post-login routing and portal gating. | Authenticated frontend. | Active platform admin or active client account. | Clerk bearer token. | `access_type`, backend-owned `client_id`, `email`, `status`, `portal_slug` only after accepted active access, onboarding flags. | `401`, `403`. | `implemented` |
+| `GET /auth/invite-context` | Resolve admin-provisioned invite names for the Sendwise password-only Clerk activation screen. | Public invite-activation frontend. | None. | `ticket`. | Safe `first_name` and `last_name` only when Clerk invitation metadata exists. | `422`, `502`, `503`. | `implemented` |
 
 Auth flow notes:
 
 - admin-created client access is the only supported customer provisioning flow in this milestone
 - Sendwise provisions client access server-side and asks Clerk to send the native application invitation email
+- Sendwise invite activation is password-only on `/auth/redirect`; the customer must not be asked for first name or last name during activation
+- when admin-provisioned names exist, Sendwise passes them into Clerk invitation `public_metadata` and uses them only to satisfy Clerk-required name fields during ticket activation
 - `POST /auth/onboarding` is deprecated and intentionally returns a safe legacy message; no Sendwise-owned profile-completion step remains in the primary client access flow
 - pending client portal behavior remains backend-owned: `portal_slug` stays hidden from API summaries until accepted active access
 - Sendwise must not email permanent plaintext passwords and must not store passwords in the Sendwise database

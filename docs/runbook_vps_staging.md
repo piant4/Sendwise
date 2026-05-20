@@ -81,12 +81,15 @@ Client access note:
 - Admin client provisioning and resend now rely on Clerk native application invitations.
 - Sendwise does not send a separate SMTP transactional access email for `POST /admin/clients` or `POST /admin/clients/{client_id}/send-access-email`.
 - Sendwise now passes the application invite redirect URL from `FRONTEND_URL` and expects Clerk to redirect new invites to `${FRONTEND_URL}/auth/redirect`.
+- The Sendwise invite activation card on `/auth/redirect` is password-only. First name and last name are sourced from admin provisioning and Clerk invitation metadata when Clerk still requires them.
+- If Clerk requires first or last name and the invitation metadata is missing those values, the customer must see `Dati invito incompleti. Richiedi una nuova email di accesso.` and the admin should resend a fresh invite after correcting the provisioned client name.
 - Existing invite links created before this redirect change can still land in old Clerk-hosted paths. Create a fresh invite before QA.
 - Existing already-linked Clerk users cannot use the native resend flow from Sendwise; the backend returns a controlled unsupported code instead of sending a manual sign-in link.
 
 Clerk Dashboard checklist before staging QA:
 
 - Disable Social Connections such as Google and GitHub unless they are explicitly required for this client-access flow.
+- Keep Clerk password enabled. If `User & Authentication -> User profile -> First and last name` remains required, confirm the admin provisioning flow captures those names before sending the invite.
 - Set Component paths to:
   - `SignIn=/login`
   - `SignUp=/auth/redirect`

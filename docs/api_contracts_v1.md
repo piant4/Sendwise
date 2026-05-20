@@ -61,6 +61,8 @@ Admin request notes:
 - client account pages expose only legacy `max_campaigns` capacity; campaign send limits stay campaign-scoped
 - slot-management endpoints below are proposed and not yet implemented
 - pending or newly reactivated access responses may keep an internal reserved `client_access.portal_slug` in persistence, but API summaries must expose `portal_slug=null` until the customer completes the first secure Clerk login
+- `POST /admin/clients` and `POST /admin/clients/{client_id}/send-access-email` return only controlled provisioning codes for safe admin handling: `client_access_clerk_config_missing`, `client_access_clerk_link_failed`, `client_access_email_config_missing`, `client_access_email_send_failed`, `client_access_email_invalid`, and `client_access_existing_user_conflict`
+- if Clerk access is prepared but transactional email delivery fails, Sendwise keeps the access record active/pending and expects the admin to use the resend action after email delivery is fixed
 
 ## Admin Campaigns
 
@@ -145,6 +147,7 @@ Admin-managed contract notes:
 - admin may assign `campaign_slot_id`, save content, associate/import contacts, request review, simulate, and send
 - `POST /admin/campaigns` and `PATCH /admin/campaigns/{campaign_id}` accept campaign-scoped `period_email_limit` and `daily_email_limit`
 - `GET /admin/campaigns/{campaign_id}/summary` returns backend-owned `can_send`, `can_send_when_enabled`, and `sending_enabled` so the admin UI can distinguish review readiness from runtime send gating
+- admin summary and review evaluate the duplicate-send guard in read-only mode; queued or previously accepted logs block resend readiness, while fully failed retries remain eligible only when the original recipient set is unchanged
 - admin summary, review, and send responses expose campaign usage metadata: `daily_limit`, `daily_used`, `daily_remaining`, `period_limit`, `period_used`, `period_remaining`, `period_started_at`, and `period_ends_at`
 - admin review remains non-dispatching, but it may promote a draft campaign to `ready` only after content, recipients, and Deliverability Guard checks all pass
 - `POST /admin/campaigns/{campaign_id}/contacts` accepts `{ "contacts": [{ "email": string, "metadata": { "nome": string, "cognome"?: string } }] }`

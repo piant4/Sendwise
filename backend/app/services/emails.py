@@ -28,6 +28,7 @@ class ClientAccessEmailService:
 
     def send_client_access_email(self, payload: ClientAccessEmailPayload) -> None:
         self._ensure_delivery_is_allowed()
+        self._ensure_recipient_email_is_valid(payload.recipient_email)
 
         message = EmailMessage()
         message["Subject"] = "Il tuo accesso a Sendwise e pronto"
@@ -68,12 +69,12 @@ class ClientAccessEmailService:
         except OSError as error:
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,
-                detail="Unable to send the client access email.",
+                detail="client_access_email_send_failed",
             ) from error
         except smtplib.SMTPException as error:
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,
-                detail="SMTP rejected the client access email.",
+                detail="client_access_email_send_failed",
             ) from error
 
     def _ensure_delivery_is_allowed(self) -> None:
@@ -86,7 +87,7 @@ class ClientAccessEmailService:
         if not self._settings.email_sending_enabled:
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail="Transactional access emails are disabled in this environment.",
+                detail="client_access_email_config_missing",
             )
 
         self._ensure_smtp_config()
@@ -111,10 +112,15 @@ class ClientAccessEmailService:
 
         if missing:
             raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=(
-                    "SMTP configuration is incomplete for client access emails: "
-                    + ", ".join(missing)
-                    + "."
-                ),
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="client_access_email_config_missing",
             )
+
+    def _ensure_recipient_email_is_valid(self, email: str) -> None:
+        normalized_email = email.strip()
+        if "@" in normalized_email and "." in normalized_email.rsplit("@", 1)[-1]:
+            return
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="client_access_email_invalid",
+        )

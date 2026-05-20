@@ -144,6 +144,12 @@ ACCEPTED_EMAIL_LOG_STATUSES = (
 CLIENT_ACCESS_LINK_EXPIRATION_SECONDS = 60 * 60 * 24 * 30
 PORTAL_SLUG_ALPHABET = string.ascii_lowercase + string.digits
 PORTAL_SLUG_LENGTH = 32
+CLIENT_ACCESS_EMAIL_INVALID = "client_access_email_invalid"
+CLIENT_ACCESS_CLERK_CONFIG_MISSING = "client_access_clerk_config_missing"
+CLIENT_ACCESS_CLERK_LINK_FAILED = "client_access_clerk_link_failed"
+CLIENT_ACCESS_EMAIL_CONFIG_MISSING = "client_access_email_config_missing"
+CLIENT_ACCESS_EMAIL_SEND_FAILED = "client_access_email_send_failed"
+CLIENT_ACCESS_EXISTING_USER_CONFLICT = "client_access_existing_user_conflict"
 
 
 def _prefer_provider_metric(
@@ -161,6 +167,13 @@ def _prefer_provider_metric(
     if provider_events_available and not fallback_to_statuses:
         return 0
     return sum(status_counts.get(status_key, 0) for status_key in status_keys)
+
+
+def _is_invalid_email_error(detail: object) -> bool:
+    if not isinstance(detail, str):
+        return False
+    normalized_detail = detail.strip().lower()
+    return "email" in normalized_detail and "invalid" in normalized_detail
 
 
 RECENT_CAMPAIGNS_LIMIT = 5
@@ -355,8 +368,6 @@ class HttpClerkAccessGateway(ClerkAccessGateway):
                 "notify": False,
                 "ignore_existing": True,
             },
-            invalid_secret_detail="Backend Clerk credentials are invalid for client access provisioning.",
-            network_detail="Unable to reach Clerk while creating the client access invitation.",
         )
 
         invitation_url = str(payload.get("url") or "").strip()
@@ -364,7 +375,7 @@ class HttpClerkAccessGateway(ClerkAccessGateway):
         if not invitation_url or not invitation_id:
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,
-                detail="Clerk invitation response did not include a usable activation link.",
+                detail=CLIENT_ACCESS_CLERK_LINK_FAILED,
             )
 
         return ClerkAccessLinkResult(
@@ -384,8 +395,6 @@ class HttpClerkAccessGateway(ClerkAccessGateway):
                 "user_id": clerk_user_id,
                 "expires_in_seconds": CLIENT_ACCESS_LINK_EXPIRATION_SECONDS,
             },
-            invalid_secret_detail="Backend Clerk credentials are invalid for secure access links.",
-            network_detail="Unable to reach Clerk while creating the secure access link.",
         )
 
         token_url = str(payload.get("url") or "").strip()
@@ -393,7 +402,7 @@ class HttpClerkAccessGateway(ClerkAccessGateway):
         if not token_url or not token_id:
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,
-                detail="Clerk sign-in token response did not include a usable access link.",
+                detail=CLIENT_ACCESS_CLERK_LINK_FAILED,
             )
 
         return ClerkAccessLinkResult(
@@ -406,14 +415,11 @@ class HttpClerkAccessGateway(ClerkAccessGateway):
         self,
         path: str,
         payload: dict[str, object],
-        *,
-        invalid_secret_detail: str,
-        network_detail: str,
     ) -> dict[str, object]:
         if not self._settings.clerk_secret_key.strip():
             raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="CLERK_SECRET_KEY is required for client access provisioning.",
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail=CLIENT_ACCESS_CLERK_CONFIG_MISSING,
             )
 
         try:
@@ -429,13 +435,13 @@ class HttpClerkAccessGateway(ClerkAccessGateway):
         except httpx.RequestError as error:
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,
-                detail=network_detail,
+                detail=CLIENT_ACCESS_CLERK_LINK_FAILED,
             ) from error
 
         if response.status_code in {401, 403}:
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,
-                detail=invalid_secret_detail,
+                detail=CLIENT_ACCESS_CLERK_LINK_FAILED,
             )
 
         if response.status_code >= 400:
@@ -456,14 +462,16 @@ class HttpClerkAccessGateway(ClerkAccessGateway):
 
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,
-                detail=detail or "Clerk client access provisioning failed.",
+                detail=CLIENT_ACCESS_EMAIL_INVALID
+                if _is_invalid_email_error(detail)
+                else CLIENT_ACCESS_CLERK_LINK_FAILED,
             )
 
         payload = response.json()
         if not isinstance(payload, dict):
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,
-                detail="Clerk returned an invalid payload for client access provisioning.",
+                detail=CLIENT_ACCESS_CLERK_LINK_FAILED,
             )
 
         return payload
@@ -571,7 +579,7 @@ class ClientsService:
         ):
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail="Email is already assigned to another active client access.",
+                detail=CLIENT_ACCESS_EXISTING_USER_CONFLICT,
             )
 
         portal_slug = self._resolve_portal_slug(existing_access=existing_access)
@@ -620,7 +628,12 @@ class ClientsService:
         if not normalized_email:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail="Client email is required.",
+                detail=CLIENT_ACCESS_EMAIL_INVALID,
+            )
+        if "@" not in normalized_email or "." not in normalized_email.rsplit("@", 1)[-1]:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=CLIENT_ACCESS_EMAIL_INVALID,
             )
         return normalized_email
 
@@ -646,8 +659,8 @@ class ClientsService:
         frontend_origin = self._settings.frontend_origin or self._settings.frontend_url.strip()
         if not frontend_origin:
             raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="FRONTEND_URL must be an absolute URL for client access emails.",
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail=CLIENT_ACCESS_EMAIL_CONFIG_MISSING,
             )
         return frontend_origin.rstrip("/") + "/login"
 

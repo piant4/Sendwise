@@ -81,6 +81,14 @@ export interface AdminClientAccessResponse {
   access: ClientAccessSummary;
 }
 
+export type AdminClientAccessErrorCode =
+  | "client_access_clerk_config_missing"
+  | "client_access_clerk_link_failed"
+  | "client_access_email_config_missing"
+  | "client_access_email_send_failed"
+  | "client_access_email_invalid"
+  | "client_access_existing_user_conflict";
+
 export interface AdminClientUpdateInput {
   personal_name?: string | null;
   email_limit_per_campaign?: number | null;

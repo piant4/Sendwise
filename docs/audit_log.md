@@ -1,5 +1,34 @@
 # Audit Log
 
+## Milestone 18.6O-FIX8 - Fix VPS Provisioning Errors And Campaign Summary Regression
+
+Date: 2026-05-20
+
+VPS regression audit summary:
+- Audited only the allowed admin client provisioning, campaign summary, frontend admin access actions, and related regression tests without reading `.env`, printing secrets, dispatching campaigns, or touching live SES/Listmonk actions.
+- Exact campaign-summary root cause: `AdminCampaignService._evaluate_campaign()` still called `self._evaluate_duplicate_dispatch_guard(...)`, but the method existed only on `CampaignDispatchService`. Summary/readiness code therefore raised `AttributeError` before returning the read model.
+- Exact provisioning fault class on the backend: client-access provisioning still surfaced raw infra-style exceptions from Clerk-link creation and SMTP delivery/config checks, so the admin UI only received generic failure text instead of stable safe codes.
+- Restored the duplicate-send guard inside `AdminCampaignService` with the same blocked states as the dispatch path: queued logs block as in-progress, accepted/mixed real logs block as already accepted, and fully failed retries stay eligible only when every real log is failed and the recipient set is unchanged.
+- Provisioning now returns only controlled codes for the admin flow: `client_access_clerk_config_missing`, `client_access_clerk_link_failed`, `client_access_email_config_missing`, `client_access_email_send_failed`, `client_access_email_invalid`, and `client_access_existing_user_conflict`.
+- If Clerk access is created but transactional email delivery fails, Sendwise keeps the access record active with pending invitation state and relies on the safe resend action after SMTP recovery.
+- Frontend admin access actions now translate those provisioning codes into explicit Italian admin messages instead of echoing backend implementation text.
+
+Checks executed:
+- `git diff --check`
+- `'/Users/leonardo/.local/share/uv/python/cpython-3.13-macos-aarch64-none/bin/python3.13' -m py_compile backend/app/services/campaigns.py backend/app/services/clients.py backend/app/services/emails.py backend/tests/test_admin_campaigns.py backend/tests/test_clerk_auth.py`
+- `cd frontend && npm run lint`
+- `cd frontend && npm run build`
+- `bash scripts/audit.sh`
+- `bash scripts/smoke_test.sh`
+
+Checks result:
+- `git diff --check`, Python syntax compilation, frontend lint, frontend build, audit, and smoke checks passed.
+- Targeted backend pytest execution was not runnable in the current sandboxed local environment because the available Python with project dependencies is not configured locally: `/usr/bin/python3` is Python 3.9 and fails on modern union syntax during import, while the available Python 3.13 runtime does not have the project test dependencies installed.
+- No schema migration was required.
+- No secret, token, secure link, reset link, invitation URL, SMTP password, or Clerk key was logged or returned by the patched code paths.
+- No plaintext password handling was introduced.
+- No campaign send, direct Listmonk action, or direct SES action was executed during this fix.
+
 ## Milestone 18.6O-FIX7 - Replace Client Invite Onboarding With Account Provisioning
 
 Date: 2026-05-20

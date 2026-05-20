@@ -601,6 +601,21 @@ class FakeClientAccessEmailService(ClientAccessEmailService):
         self.messages.append(payload)
 
 
+class FailingClerkAccessGateway(FakeClerkAccessGateway):
+    def create_invitation(
+        self,
+        *,
+        email: str,
+    ) -> ClerkAccessLinkResult:
+        raise HTTPException(status_code=502, detail="client_access_clerk_link_failed")
+
+
+class FailingClientAccessEmailService(FakeClientAccessEmailService):
+    def send_client_access_email(self, payload: ClientAccessEmailPayload) -> None:
+        self.messages.append(payload)
+        raise HTTPException(status_code=502, detail="client_access_email_send_failed")
+
+
 class FakeClerkUserDeletionGateway(ClerkUserDeletionGateway):
     def __init__(self) -> None:
         self.deleted_user_ids: list[str] = []
@@ -2136,6 +2151,189 @@ def test_access_provisioning_reuses_fixed_portal_slug_on_resend(
     assert [record.id for record in client_repository.list_clients()] == [
         existing_client.id
     ]
+
+
+def test_platform_admin_provisioning_returns_controlled_clerk_failure_code(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    signing_keypair: rsa.RSAPrivateKey,
+) -> None:
+    set_auth_mappings(
+        monkeypatch,
+        {
+            "user_admin": {
+                "email": "admin@sendwise.test",
+                "access_type": "platform_admin",
+                "status": "active",
+            }
+        },
+    )
+    access_gateway = FailingClerkAccessGateway()
+    install_test_dependencies(
+        clerk_access_gateway=access_gateway,
+        client_access_email_service=FakeClientAccessEmailService(),
+    )
+    token = make_token(signing_keypair, clerk_user_id="user_admin")
+
+    response = client.post(
+        "/admin/clients",
+        headers=auth_header(token),
+        json={"email": "nuovo.cliente@example.test"},
+    )
+
+    assert response.status_code == 502
+    assert response.json()["detail"] == "client_access_clerk_link_failed"
+    assert "https://clerk.example.test" not in response.text
+
+
+def test_platform_admin_provisioning_returns_controlled_smtp_config_missing_code(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    signing_keypair: rsa.RSAPrivateKey,
+) -> None:
+    set_auth_mappings(
+        monkeypatch,
+        {
+            "user_admin": {
+                "email": "admin@sendwise.test",
+                "access_type": "platform_admin",
+                "status": "active",
+            }
+        },
+    )
+    access_gateway = FakeClerkAccessGateway()
+    monkeypatch.setenv("SMTP_FROM_EMAIL", "")
+    get_settings.cache_clear()
+    install_test_dependencies(
+        clerk_access_gateway=access_gateway,
+        client_access_email_service=ClientAccessEmailService(get_settings()),
+    )
+    token = make_token(signing_keypair, clerk_user_id="user_admin")
+
+    response = client.post(
+        "/admin/clients",
+        headers=auth_header(token),
+        json={"email": "nuovo.cliente@example.test"},
+    )
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == "client_access_email_config_missing"
+    assert "invitations" not in response.text
+
+
+def test_platform_admin_provisioning_returns_controlled_smtp_send_failure_code_and_keeps_access_active(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    signing_keypair: rsa.RSAPrivateKey,
+) -> None:
+    set_auth_mappings(
+        monkeypatch,
+        {
+            "user_admin": {
+                "email": "admin@sendwise.test",
+                "access_type": "platform_admin",
+                "status": "active",
+            }
+        },
+    )
+    email_service = FailingClientAccessEmailService()
+    _, access_repository, _, _ = install_test_dependencies(
+        clerk_access_gateway=FakeClerkAccessGateway(),
+        client_access_email_service=email_service,
+    )
+    token = make_token(signing_keypair, clerk_user_id="user_admin")
+
+    response = client.post(
+        "/admin/clients",
+        headers=auth_header(token),
+        json={"email": "nuovo.cliente@example.test"},
+    )
+
+    assert response.status_code == 502
+    assert response.json()["detail"] == "client_access_email_send_failed"
+    assert "https://clerk.example.test" not in response.text
+    stored_access = access_repository.get_by_email("nuovo.cliente@example.test")
+    assert stored_access is not None
+    assert stored_access.status == "active"
+    assert stored_access.invitation_status == "pending"
+    assert stored_access.clerk_invitation_id == "inv_access_1"
+
+
+def test_platform_admin_provisioning_rejects_invalid_email_with_controlled_code(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    signing_keypair: rsa.RSAPrivateKey,
+) -> None:
+    set_auth_mappings(
+        monkeypatch,
+        {
+            "user_admin": {
+                "email": "admin@sendwise.test",
+                "access_type": "platform_admin",
+                "status": "active",
+            }
+        },
+    )
+    install_test_dependencies()
+    token = make_token(signing_keypair, clerk_user_id="user_admin")
+
+    response = client.post(
+        "/admin/clients",
+        headers=auth_header(token),
+        json={"email": "not-an-email"},
+    )
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == "client_access_email_invalid"
+
+
+def test_platform_admin_provisioning_rejects_existing_active_access_conflict_with_controlled_code(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    signing_keypair: rsa.RSAPrivateKey,
+) -> None:
+    set_auth_mappings(
+        monkeypatch,
+        {
+            "user_admin": {
+                "email": "admin@sendwise.test",
+                "access_type": "platform_admin",
+                "status": "active",
+            }
+        },
+    )
+    existing_client = build_client_record(
+        client_id="client_existing",
+        email="shared@example.test",
+    )
+    other_client = build_client_record(
+        client_id="client_other",
+        email="other@example.test",
+    )
+    install_test_dependencies(
+        client_records=[existing_client, other_client],
+        access_records=[
+            build_access_record(
+                client_id=other_client.id,
+                email="shared@example.test",
+                status="active",
+                invitation_status="accepted",
+            )
+        ],
+    )
+    token = make_token(signing_keypair, clerk_user_id="user_admin")
+
+    conflict_response = client.post(
+        "/admin/clients",
+        headers=auth_header(token),
+        json={"email": "shared@example.test"},
+    )
+
+    assert conflict_response.status_code == 409
+    assert (
+        conflict_response.json()["detail"]
+        == "client_access_existing_user_conflict"
+    )
 
 
 def test_admin_client_detail_and_limits_update_work(

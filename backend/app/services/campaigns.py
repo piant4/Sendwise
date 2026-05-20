@@ -1495,6 +1495,92 @@ class AdminCampaignService:
             )
         return normalized
 
+    def _evaluate_duplicate_dispatch_guard(
+        self,
+        *,
+        campaign: ClientCampaignRecord,
+        contacts: list[ContactRecord],
+        email_log_repository: EmailLogRepository,
+    ) -> CampaignDispatchDuplicateGuard:
+        campaign_status = campaign.status.strip().lower()
+        if campaign_status == CampaignStatus.running.value:
+            return CampaignDispatchDuplicateGuard(
+                blocked=True,
+                code="campaign_send_already_in_progress",
+                reason="Campaign send is already in progress.",
+            )
+        if campaign_status == CampaignStatus.completed.value:
+            return CampaignDispatchDuplicateGuard(
+                blocked=True,
+                code="campaign_send_already_accepted",
+                reason="Campaign was already accepted by the provider.",
+            )
+
+        status_counts = email_log_repository.get_campaign_status_counts(
+            client_id=campaign.client_id,
+            campaign_id=campaign.id,
+        )
+        real_status_counts = {
+            log_status: count
+            for log_status, count in status_counts.items()
+            if log_status != "simulated" and count > 0
+        }
+        if not real_status_counts:
+            return CampaignDispatchDuplicateGuard(blocked=False)
+
+        if any(
+            log_status in IN_PROGRESS_LOG_STATUSES for log_status in real_status_counts
+        ):
+            return CampaignDispatchDuplicateGuard(
+                blocked=True,
+                code="campaign_send_already_in_progress",
+                reason="Campaign already has queued email logs.",
+            )
+
+        if any(
+            log_status in ACCEPTED_OR_COMPLETED_LOG_STATUSES
+            for log_status in real_status_counts
+        ):
+            return CampaignDispatchDuplicateGuard(
+                blocked=True,
+                code="campaign_send_already_accepted",
+                reason="Campaign already has accepted or processed email logs.",
+            )
+
+        latest_logs = email_log_repository.list_latest_for_campaign(
+            client_id=campaign.client_id,
+            campaign_id=campaign.id,
+        )
+        real_log_total = sum(real_status_counts.values())
+        if (
+            not latest_logs
+            or len(latest_logs) != real_log_total
+            or any(log.status not in RETRYABLE_FAILED_LOG_STATUSES for log in latest_logs)
+        ):
+            return CampaignDispatchDuplicateGuard(
+                blocked=True,
+                code="campaign_already_dispatched",
+                reason="Campaign already has existing email logs and cannot be retried safely.",
+            )
+
+        current_contact_ids = {contact.id for contact in contacts}
+        logged_contact_ids = {str(log.contact_id) for log in latest_logs if log.contact_id}
+        if logged_contact_ids != current_contact_ids:
+            return CampaignDispatchDuplicateGuard(
+                blocked=True,
+                code="campaign_already_dispatched",
+                reason="Campaign failed previously, but the recipient set changed and cannot be retried safely.",
+            )
+
+        return CampaignDispatchDuplicateGuard(
+            blocked=False,
+            retryable_log_ids_by_contact={
+                str(log.contact_id): log.id
+                for log in latest_logs
+                if log.contact_id is not None
+            },
+        )
+
 
 @dataclass(frozen=True)
 class CampaignDispatchService:

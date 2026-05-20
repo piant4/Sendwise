@@ -692,6 +692,40 @@ def test_admin_summary_aggregates_email_logs_for_operational_reporting() -> None
     assert result.logs.provider_events_available is False
 
 
+def test_admin_summary_evaluates_duplicate_guard_without_crashing() -> None:
+    repository = InMemoryCampaignRepository()
+    campaign = repository.add_campaign(
+        campaign_id="campaign_123",
+        client_id="client_123",
+        status="ready",
+        subject="Launch",
+        body_html="<p>Hello</p>",
+        current_step="review",
+    )
+    contact = build_contact(contact_id="contact_1", email="one@example.test")
+    email_logs = InMemoryEmailLogRepository()
+    email_logs.create_email_log(
+        client_id="client_123",
+        campaign_id=campaign.id,
+        contact_id=contact.id,
+        status="queued",
+    )
+    service = build_admin_service(
+        campaign_repository=repository,
+        contacts=[contact],
+        campaign_contacts={("client_123", campaign.id, contact.id)},
+        email_log_repository=email_logs,
+    )
+
+    result = service.get_campaign_summary(campaign.id)
+
+    assert result.can_send is False
+    assert result.can_send_when_enabled is False
+    assert (
+        "Campaign already has queued email logs." in result.blocking_errors
+    )
+
+
 def test_admin_summary_exposes_limit_usage_and_client_safe_period_usage() -> None:
     repository = InMemoryCampaignRepository()
     campaign = repository.add_campaign(

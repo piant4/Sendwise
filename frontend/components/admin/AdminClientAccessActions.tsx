@@ -10,6 +10,7 @@ import {
   revokeAdminClientAccess,
   sendAdminClientAccessEmail,
 } from "../../lib/api";
+import type { AdminClientAccessErrorCode } from "../../types";
 
 type ActionName = "send" | "resend" | "revoke";
 
@@ -28,6 +29,21 @@ interface AdminClientAccessActionsProps {
   invitationStatus?: string | null;
 }
 
+const CLIENT_ACCESS_ERROR_MESSAGES: Record<AdminClientAccessErrorCode, string> = {
+  client_access_clerk_config_missing:
+    "Configurazione Clerk mancante nel backend Sendwise. Completa la configurazione prima di creare l'accesso cliente.",
+  client_access_clerk_link_failed:
+    "Sendwise non e riuscito a preparare il link sicuro Clerk per questo cliente. Riprova dopo aver verificato l'integrazione Clerk.",
+  client_access_email_config_missing:
+    "Configurazione email transazionale incompleta nel backend Sendwise. Completa SMTP prima di inviare l'accesso cliente.",
+  client_access_email_send_failed:
+    "Accesso cliente preparato, ma l'email sicura non e stata inviata. Correggi la consegna email e usa il reinvio.",
+  client_access_email_invalid:
+    "Inserisci un indirizzo email cliente valido prima di inviare l'accesso.",
+  client_access_existing_user_conflict:
+    "Questa email e gia associata a un altro accesso cliente attivo o in attivazione.",
+};
+
 function getActionErrorMessage(error: unknown): string {
   if (isApiError(error)) {
     if (error.status === 404) {
@@ -36,6 +52,12 @@ function getActionErrorMessage(error: unknown): string {
 
     if (error.status === 401 || error.status === 403) {
       return "Solo un admin attivo puo modificare questo accesso cliente.";
+    }
+
+    if (error.detail in CLIENT_ACCESS_ERROR_MESSAGES) {
+      return CLIENT_ACCESS_ERROR_MESSAGES[
+        error.detail as AdminClientAccessErrorCode
+      ];
     }
 
     if (error.detail.trim()) {

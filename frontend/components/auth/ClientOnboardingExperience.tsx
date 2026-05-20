@@ -86,7 +86,7 @@ export function ClientOnboardingExperience({
             <h1 className="login-title">Completa il tuo profilo e entra nel portale cliente.</h1>
             <p className="login-lead">
               La password, la verifica email e la sicurezza dell&apos;account restano
-              gestite da Clerk. In questo passaggio confermi solo i dati profilo che
+              gestite nel flusso di accesso protetto. In questo passaggio confermi solo i dati profilo che
               Sendwise usa per il portale cliente.
             </p>
           </div>
@@ -174,7 +174,7 @@ export function ClientOnboardingExperience({
               </div>
               <span className="login-field__hint">
                 Sendwise salva il nome completo visibile nel portale, mentre
-                password e sicurezza restano in Clerk.
+                password e sicurezza restano gestite nel sistema di accesso protetto.
               </span>
             </div>
 
@@ -192,7 +192,7 @@ export function ClientOnboardingExperience({
           <div className="login-card__footer">
             <ShieldCheck aria-hidden="true" className="login-card__footer-icon" />
             <div className="login-card__support">
-              <strong>Sicurezza gestita da Clerk</strong>
+              <strong>Sicurezza gestita nel flusso di accesso</strong>
               <span>Sendwise salva solo dati profilo e autorizzazione del portale.</span>
             </div>
             <ShieldCheck aria-hidden="true" className="login-card__footer-accent" />

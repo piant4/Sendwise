@@ -1,5 +1,20 @@
 # Audit Log
 
+## Milestone 18.6O-FIX3 - Resolve Clerk Invite Follow-Up States
+
+Date: 2026-05-20
+
+Invite follow-up audit summary:
+- Audited the custom invite activation flow in `frontend/app/auth/redirect/page.tsx`, `frontend/components/auth/ClientInviteActivationForm.tsx`, and the signed-in onboarding gate without reading secrets, sending invites, or touching live provider actions.
+- Exact fallback root cause remained in `ClientInviteActivationForm`: after `signUp.create()` the screen treated `signUp.status="missing_requirements"` and any non-complete result without `createdSessionId` as a terminal unsupported state, then after `signUp.finalize()` it converted `session.currentTask` into raw technical copy instead of continuing the supported auth follow-up.
+- The installed auth SDK exposes three concrete session follow-up tasks in the current runtime typings: `choose-organization`, `reset-password`, and `setup-mfa`. Those tasks can be completed safely in-app with the existing provider components, so they no longer fall back to generic error copy.
+- `missing_requirements` and missing-session invite states now hand off to the existing secure sign-up completion UI from the same screen, while unsupported technical wording is replaced with product copy: `Completa la verifica`, `Per proteggere il tuo account, è necessario completare un ultimo passaggio di sicurezza.`, primary action `Continua in sicurezza`, and secondary action `Torna al login`.
+- The custom Sendwise password form, password validation semantics, and pending portal routing behavior remain unchanged. Sendwise still stores only profile completion data after the auth system finishes the secure account flow.
+
+Safety confirmation:
+- No password is stored in Sendwise persistence; password creation and protected follow-up states remain auth-system owned.
+- No send/dispatch execution, direct SES/Listmonk action, DB reset, destructive DB command, or schema migration was performed.
+
 ## Milestone 18.6O-FIX1 - Fix Invited Client Onboarding And Pending Portal State
 
 Date: 2026-05-20

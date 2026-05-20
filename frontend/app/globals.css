@@ -4263,7 +4263,8 @@ p {
   color: #be123c;
 }
 
-.login-state-card__icon-shell[data-tone="unsupported"] {
+.login-state-card__icon-shell[data-tone="unsupported"],
+.login-state-card__icon-shell[data-tone="follow_up"] {
   background: rgba(245, 158, 11, 0.14);
   color: #b45309;
 }
@@ -4293,6 +4294,16 @@ p {
 
 .login-state-card__support a {
   color: var(--sw-primary);
+}
+
+.login-follow-up-shell {
+  display: grid;
+  gap: 18px;
+  width: 100%;
+}
+
+.login-follow-up-shell > * {
+  min-width: 0;
 }
 
 .login-submit:active {

@@ -30,8 +30,9 @@ Auth flow notes:
 
 - invited client activation uses a custom Sendwise UI that collects `Nome`, `Cognome`, `Nuova password`, and `Conferma nuova password` while Clerk remains the password and session authority
 - frontend completes profile onboarding by posting the combined personal name to `POST /auth/onboarding` after Clerk activation succeeds
-- unsupported Clerk invitation outcomes must not surface raw Clerk text; the UI must either complete the supported path or fall back to a safe retry/contact-support state
-- pending Clerk session tasks after invite activation remain Clerk-owned follow-ups; Sendwise must not treat the portal as active until those tasks are cleared
+- unsupported invite follow-up outcomes must not surface raw provider/auth text; the UI must either complete the supported path or fall back to a safe product state
+- ticket activation follow-ups that expose `missing_requirements` or a missing `createdSessionId` must hand off to the existing secure sign-up completion UI instead of looping the custom password form
+- pending session follow-up tasks after invite activation currently supported by the installed auth SDK are `choose-organization`, `reset-password`, and `setup-mfa`; these stay security-owned follow-ups and must be completed before Sendwise treats the portal as active
 
 ## Health
 

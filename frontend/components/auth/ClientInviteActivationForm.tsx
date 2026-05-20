@@ -1,13 +1,19 @@
 "use client";
 
-import { useAuth, useSignUp } from "@clerk/nextjs";
+import {
+  SignUp,
+  TaskChooseOrganization,
+  TaskResetPassword,
+  TaskSetupMFA,
+  useAuth,
+  useSignUp,
+} from "@clerk/nextjs";
 import { isClerkAPIResponseError } from "@clerk/nextjs/errors";
 import {
   CheckCircle2,
   Circle,
   Eye,
   EyeOff,
-  RotateCcw,
   ShieldAlert,
   ShieldCheck,
 } from "lucide-react";
@@ -19,13 +25,19 @@ import { completeClientOnboarding, isApiError } from "@/lib/api";
 
 const LOGIN_REDIRECT_PATH = "/auth/redirect";
 
-type InviteViewState = "form" | "invalid" | "unsupported";
+type InviteViewState = "form" | "invalid" | "follow_up";
 type PasswordRequirement = {
   id: string;
   label: string;
   satisfied: boolean;
 };
-type PendingTaskKey = "choose-organization" | "reset-password" | "setup-mfa" | "other";
+type SupportedTaskKey = "choose-organization" | "reset-password" | "setup-mfa";
+type FollowUpMode = "sign-up" | SupportedTaskKey;
+
+const FOLLOW_UP_TITLE = "Completa la verifica";
+const FOLLOW_UP_COPY =
+  "Per proteggere il tuo account, è necessario completare un ultimo passaggio di sicurezza.";
+const FOLLOW_UP_PRIMARY_ACTION = "Continua in sicurezza";
 
 function getPasswordRequirements(password: string): PasswordRequirement[] {
   return [
@@ -128,20 +140,26 @@ function isPasswordValidationIssue(error: unknown): boolean {
   );
 }
 
-function getFriendlySessionTaskMessage(taskKey: PendingTaskKey): string {
+function getTaskSupportMessage(taskKey: SupportedTaskKey): string {
   switch (taskKey) {
     case "choose-organization":
-      return "Il tuo account richiede una scelta organizzativa finale gestita da Clerk prima dell'accesso al portale.";
+      return "Completa la selezione richiesta e poi tornerai automaticamente nel portale cliente.";
     case "reset-password":
-      return "Clerk richiede un ulteriore reset credenziali prima di completare l'accesso.";
+      return "Ti guideremo nell'ultimo aggiornamento necessario prima dell'accesso al portale cliente.";
     case "setup-mfa":
-      return "Clerk richiede la configurazione di un fattore di sicurezza aggiuntivo prima dell'accesso.";
-    default:
-      return "Il tuo account richiede un controllo di sicurezza aggiuntivo gestito da Clerk prima di entrare nel portale.";
+      return "Attiva la protezione aggiuntiva richiesta e poi potrai entrare nel portale cliente.";
   }
 }
 
-function mapSessionTaskKey(taskKey: string | null | undefined): PendingTaskKey {
+function getFollowUpSupportMessage(mode: FollowUpMode | null): string {
+  if (!mode || mode === "sign-up") {
+    return "Ti porteremo nella schermata sicura necessaria per concludere l'attivazione senza ricominciare da zero.";
+  }
+
+  return getTaskSupportMessage(mode);
+}
+
+function mapSessionTaskKey(taskKey: string | null | undefined): SupportedTaskKey | null {
   if (taskKey === "choose-organization") {
     return taskKey;
   }
@@ -154,7 +172,7 @@ function mapSessionTaskKey(taskKey: string | null | undefined): PendingTaskKey {
     return taskKey;
   }
 
-  return "other";
+  return null;
 }
 
 function getInviteErrorMessage(error: unknown): string {
@@ -204,7 +222,7 @@ function getInviteErrorMessage(error: unknown): string {
         return "La password deve avere almeno 8 caratteri.";
       }
 
-      return "La password non rispetta i requisiti di sicurezza richiesti da Clerk. Controlla la checklist e riprova.";
+      return "La password non rispetta i requisiti di sicurezza richiesti. Controlla la checklist e riprova.";
     }
   }
 
@@ -238,8 +256,9 @@ export function ClientInviteActivationForm({
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [fallbackMessage, setFallbackMessage] = useState<string | null>(null);
   const [viewState, setViewState] = useState<InviteViewState>("form");
+  const [followUpMode, setFollowUpMode] = useState<FollowUpMode | null>(null);
+  const [showHostedContinuation, setShowHostedContinuation] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isPasswordFocused, setIsPasswordFocused] = useState(false);
   const [isConfirmPasswordFocused, setIsConfirmPasswordFocused] = useState(false);
@@ -261,10 +280,11 @@ export function ClientInviteActivationForm({
   const showCompactMatchIndicator =
     !isConfirmPasswordFocused && !passwordMismatch && !hasPasswordValidationError;
 
-  function moveToFallback(state: InviteViewState, message: string) {
-    setViewState(state);
+  function moveToFollowUp(mode: FollowUpMode) {
+    setViewState("follow_up");
     setErrorMessage(null);
-    setFallbackMessage(message);
+    setFollowUpMode(mode);
+    setShowHostedContinuation(mode !== "sign-up");
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -292,7 +312,8 @@ export function ClientInviteActivationForm({
 
     setIsSubmitting(true);
     setErrorMessage(null);
-    setFallbackMessage(null);
+    setFollowUpMode(null);
+    setShowHostedContinuation(false);
     setHasPasswordValidationError(false);
     setViewState("form");
 
@@ -310,26 +331,36 @@ export function ClientInviteActivationForm({
         return;
       }
 
-      if (!signUp.createdSessionId || signUp.status !== "complete") {
+      if (!signUp.createdSessionId) {
+        moveToFollowUp("sign-up");
+        return;
+      }
+
+      if (signUp.status !== "complete") {
         const hasMissingRequirements =
           signUp.status === "missing_requirements" &&
           ((signUp.missingFields?.length ?? 0) > 0 ||
             (signUp.unverifiedFields?.length ?? 0) > 0);
 
-        moveToFallback(
-          hasMissingRequirements ? "unsupported" : "invalid",
-          hasMissingRequirements
-            ? "Il tuo invito richiede un passaggio aggiuntivo di verifica o dati extra configurati in Clerk che questa schermata non puo completare in autonomia."
-            : "Non è stato possibile completare l'attivazione con questo link. Riprova dall'email di invito oppure richiedi un nuovo invito.",
+        if (hasMissingRequirements || signUp.status === "missing_requirements") {
+          moveToFollowUp("sign-up");
+          return;
+        }
+
+        setViewState("invalid");
+        setFollowUpMode(null);
+        setShowHostedContinuation(false);
+        setErrorMessage(
+          "Non è stato possibile completare l'attivazione con questo link. Riprova dall'email di invito oppure richiedi un nuovo invito.",
         );
         return;
       }
 
-      let pendingTaskMessage: string | null = null;
+      let pendingTaskKey: SupportedTaskKey | null = null;
       const finalizeResult = await signUp.finalize({
         navigate: ({ session }) => {
-          pendingTaskMessage = session?.currentTask
-            ? getFriendlySessionTaskMessage(mapSessionTaskKey(session.currentTask.key))
+          pendingTaskKey = session?.currentTask
+            ? mapSessionTaskKey(session.currentTask.key)
             : null;
         },
       });
@@ -339,8 +370,8 @@ export function ClientInviteActivationForm({
         return;
       }
 
-      if (pendingTaskMessage) {
-        moveToFallback("unsupported", pendingTaskMessage);
+      if (pendingTaskKey) {
+        moveToFollowUp(pendingTaskKey);
         return;
       }
 
@@ -358,7 +389,10 @@ export function ClientInviteActivationForm({
       setHasPasswordValidationError(isPasswordValidationIssue(error));
 
       if (safeMessage.includes("invito non è più valido")) {
-        moveToFallback("invalid", safeMessage);
+        setViewState("invalid");
+        setFollowUpMode(null);
+        setShowHostedContinuation(false);
+        setErrorMessage(safeMessage);
         return;
       }
 
@@ -368,11 +402,19 @@ export function ClientInviteActivationForm({
     }
   }
 
-  function handleRetry() {
-    setViewState("form");
-    setErrorMessage(null);
-    setFallbackMessage(null);
-    setHasPasswordValidationError(false);
+  function renderFollowUpTask() {
+    if (!followUpMode || followUpMode === "sign-up") {
+      return null;
+    }
+
+    switch (followUpMode) {
+      case "choose-organization":
+        return <TaskChooseOrganization redirectUrlComplete={LOGIN_REDIRECT_PATH} />;
+      case "reset-password":
+        return <TaskResetPassword redirectUrlComplete={LOGIN_REDIRECT_PATH} />;
+      case "setup-mfa":
+        return <TaskSetupMFA redirectUrlComplete={LOGIN_REDIRECT_PATH} />;
+    }
   }
 
   const isInviteUnavailable = viewState !== "form";
@@ -393,10 +435,6 @@ export function ClientInviteActivationForm({
             </div>
             <h1 className="login-title">Attiva il tuo accesso Sendwise.</h1>
 
-            {/* <p className="login-lead">
-              Nome, cognome e nuova password vengono raccolti in una UI Sendwise,
-              mentre la password resta gestita da Clerk.
-            </p> */}
           </div>
 
           <div className="login-note-grid">
@@ -436,30 +474,58 @@ export function ClientInviteActivationForm({
                 <h3>
                   {viewState === "invalid"
                     ? "Invito non più disponibile"
-                    : "Verifica aggiuntiva richiesta"}
+                    : FOLLOW_UP_TITLE}
                 </h3>
                 <p>
-                  {fallbackMessage ??
-                    "Questa attivazione richiede un controllo aggiuntivo prima di entrare nel portale cliente."}
+                  {viewState === "invalid"
+                    ? errorMessage ??
+                      "Non è stato possibile completare l'attivazione con questo link. Riprova dall'email di invito oppure richiedi un nuovo invito."
+                    : FOLLOW_UP_COPY}
                 </p>
               </div>
-              <div className="login-state-card__actions">
-                <button
-                  type="button"
-                  className="login-submit login-submit--ghost"
-                  onClick={handleRetry}
-                >
-                  <RotateCcw aria-hidden="true" />
-                  Riprova da questa schermata
-                </button>
-                <Link className="login-submit login-submit--secondary" href="/login">
-                  Torna al login
-                </Link>
-              </div>
+              {viewState === "follow_up" && !showHostedContinuation ? (
+                <div className="login-state-card__actions">
+                  <button
+                    type="button"
+                    className="login-submit"
+                    onClick={() => setShowHostedContinuation(true)}
+                  >
+                    {FOLLOW_UP_PRIMARY_ACTION}
+                  </button>
+                  <Link className="login-submit login-submit--secondary" href="/login">
+                    Torna al login
+                  </Link>
+                </div>
+              ) : viewState === "invalid" ? (
+                <div className="login-state-card__actions">
+                  <Link className="login-submit login-submit--secondary" href="/login">
+                    Torna al login
+                  </Link>
+                </div>
+              ) : null}
               <p className="login-state-card__support">
-                Se il problema persiste, richiedi un nuovo invito oppure contatta il supporto
-                Sendwise.
+                {viewState === "invalid"
+                  ? "Se il problema persiste, richiedi un nuovo invito oppure contatta il supporto Sendwise."
+                  : getFollowUpSupportMessage(followUpMode)}
               </p>
+
+              {viewState === "follow_up" && showHostedContinuation ? (
+                <div className="login-follow-up-shell">
+                  {followUpMode === "sign-up" ? (
+                    <SignUp
+                      fallbackRedirectUrl={LOGIN_REDIRECT_PATH}
+                      forceRedirectUrl={LOGIN_REDIRECT_PATH}
+                      initialValues={{
+                        firstName: firstName.trim() || undefined,
+                        lastName: lastName.trim() || undefined,
+                      }}
+                      signInUrl="/login"
+                    />
+                  ) : (
+                    renderFollowUpTask()
+                  )}
+                </div>
+              ) : null}
             </div>
           ) : (
             <form
@@ -558,7 +624,7 @@ export function ClientInviteActivationForm({
                       <strong>{showPasswordDetails ? passwordStrength.label : passwordStrength.compactLabel}</strong>
                     ) : null}
                     {showPasswordDetails ? (
-                      <span>Clerk applica la verifica finale della policy password.</span>
+                      <span>La verifica finale della password viene completata nel passaggio di sicurezza.</span>
                     ) : null}
                   </div>
                 </div>
@@ -667,8 +733,8 @@ export function ClientInviteActivationForm({
           <div className="login-card__footer">
             <ShieldCheck aria-hidden="true" className="login-card__footer-icon" />
             <div className="login-card__support">
-              <strong>Credenziali protette da Clerk</strong>
-              <span>Sendwise non salva password e non aggira i controlli di identita.</span>
+              <strong>Credenziali protette</strong>
+              <span>Sendwise non salva password e non aggira i controlli di identità.</span>
             </div>
           </div>
         </section>

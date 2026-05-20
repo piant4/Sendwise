@@ -242,6 +242,7 @@ Current audited behavior:
 - provider and unsubscribe events may update `status` for correlated logs without adding a separate delivery-state table yet
 - the frontend public unsubscribe page is presentation-only; token validation, suppression writes, contact state changes, and provider-event persistence remain backend-owned
 - limit usage counts rely on real `email_logs.created_at` rows and exclude `simulated`
+- `sent`/accepted states mean the sending system accepted the message; they do not prove inbox delivery without provider events
 
 ### api_usage
 
@@ -257,6 +258,16 @@ Current verified fields:
 
 Future contract:
 - AI assistant calls, token counts, and costs should be recorded here or in a compatible future extension
+
+### suppression_list and provider_events
+
+Purpose: Deliverability side effects and event truth.
+
+Current contract notes:
+- `suppression_list` is the backend-owned suppression source used by unsubscribe and provider-event side effects.
+- `provider_events` stores normalized provider outcomes such as delivery, open, click, bounce, complaint, and Sendwise unsubscribe when correlated data is available.
+- Bounce and complaint suppression behavior depends on provider-event ingestion and correlation, not on accepted send rows alone.
+- SES SNS signature verification and `SubscriptionConfirmation` handling are still pending, so official trials must treat provider event coverage as partial until those follow-ups land.
 
 ### suppression_list
 

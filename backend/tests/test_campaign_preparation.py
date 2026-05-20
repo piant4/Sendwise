@@ -225,7 +225,7 @@ def test_prepare_campaign_creates_list_subscribers_campaign_and_mappings() -> No
     assert created_payload["from_email"] == "sender@example.test"
     assert (
         created_payload["body"]
-        == "<html><body><p>Persisted body.</p><p style=\"font-size:12px;line-height:20px;color:#52606d;\">Manage preferences or <a href=\"https://app.sendwise.example.test/unsubscribe/{{ .Subscriber.Attribs.sendwise_unsubscribe_token }}\">unsubscribe</a>.</p></body></html>"
+        == "<html><body><p>Persisted body.</p><p style=\"font-size:12px;line-height:20px;color:#52606d;\">You are receiving this email because you subscribed to updates from Sendwise. Manage preferences or <a href=\"https://app.sendwise.example.test/unsubscribe/{{ .Subscriber.Attribs.sendwise_unsubscribe_token }}\">unsubscribe</a>.</p></body></html>"
     )
     assert result["content"]["body"] == created_payload["body"]
     assert result["content"]["template_name"] == "campaign_business_db"

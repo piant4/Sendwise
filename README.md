@@ -191,6 +191,38 @@ Backups cover both the Sendwise business database and listmonk database. Restore
 - Do not commit `.env` files, secrets, tokens, passwords, API keys, AWS credentials, SMTP credentials, Clerk secrets, Listmonk credentials, unsubscribe secrets, or real recipient allowlists.
 - Consult the runbooks for destructive command policy instead of copying those procedures into ad hoc workflows.
 
+## SES Deliverability Readiness
+
+Official product trials require a documented SES posture before any approved real send:
+
+- Verify the SES sending identity at the domain level and use a `SMTP_FROM_EMAIL` address that belongs to that verified identity.
+- Enable SES DKIM and confirm the DNS records are verified before trials.
+- Publish SPF for the sending domain and include Amazon SES in that policy.
+- Publish a DMARC record for the sending domain before public trials.
+- Configure a MAIL FROM domain if the SES setup depends on a custom return path.
+- Move the SES account out of sandbox before sending to non-verified recipients.
+- Keep `SMTP_HOST` as a bare host name only; do not include `smtp://` or `smtps://`.
+- Use SES SMTP credentials for `SMTP_USERNAME` and `SMTP_PASSWORD`; do not use AWS access keys in Listmonk SMTP auth.
+- Keep `FRONTEND_URL` as the public unsubscribe origin and keep `BACKEND_PUBLIC_URL` as the public API origin only.
+- Expect real bounce and complaint handling to come from provider events plus suppression writes; do not assume inbox delivery from accepted sends alone.
+- Current provider webhook support is partial: normalized events are ingested, but SES SNS `SubscriptionConfirmation` handling and SNS signature validation remain pending.
+
+Safe warmup guidance:
+
+- Start with low-volume campaigns and raise volume gradually.
+- Keep campaign `daily_email_limit` conservative during the first trial days.
+- Watch bounce and complaint rates after each send window.
+- Stop the trial and investigate content, targeting, and DNS posture if bounce or complaint rates spike.
+
+Secret rotation remains required before official trials because earlier config output exposed secret values. Rotate at minimum:
+
+- `CLERK_SECRET_KEY`
+- `BACKEND_API_KEY`
+- `UNSUBSCRIBE_TOKEN_SECRET`
+- SES SMTP credentials
+- Listmonk API/admin token or password
+- PostgreSQL password if operationally feasible
+
 ## Documentation
 
 Main reference documents:

@@ -72,3 +72,4 @@ def test_ensure_unsubscribe_link_appends_footer_when_missing() -> None:
 
     assert "https://example.test/unsubscribe/token" in rendered
     assert rendered.count("unsubscribe") >= 1
+    assert "You are receiving this email because you subscribed to updates from Sendwise." in rendered

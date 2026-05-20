@@ -1,5 +1,32 @@
 # Audit Log
 
+## Milestone 18.6K - SES Deliverability Posture And Production Readiness
+
+Date: 2026-05-20
+
+SES deliverability readiness audit summary:
+- Audited the allowed docs, env example, and send-preparation surfaces without reading `.env`, printing secrets, sending mail, or touching live SES/Listmonk operations.
+- Confirmed the current config surfacing already covers `EMAIL_PROVIDER`, `EMAIL_SENDING_ENABLED`, `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_FROM_EMAIL`, and `AWS_SES_REGION`.
+- Confirmed campaign preparation uses `SMTP_FROM_EMAIL` as the sender when present, public unsubscribe URLs are built from `FRONTEND_URL`, and no dedicated Reply-To surface exists today.
+- Expanded the README and staging runbook with an official SES trial checklist covering verified SES identity/domain, DKIM, SPF, DMARC, optional MAIL FROM, sandbox exit, SES SMTP credential usage, correct public URL roles, warmup pacing, suppression expectations, and partial provider-event limitations.
+- Added a minimal compliance footer line to backend-rendered campaign HTML when a saved HTML body does not already include an unsubscribe link.
+- Documented required secret rotation for previously exposed values: Clerk secret, backend API key, unsubscribe token secret, SES SMTP credentials, Listmonk token/password, and PostgreSQL password where feasible.
+
+Checks executed:
+- `git diff --check`
+- targeted backend tests for template rendering and campaign preparation
+- `bash scripts/audit.sh`
+- `bash scripts/smoke_test.sh`
+- safe Compose config checks with `.env.example`
+- changed-file scan for real secrets
+- changed-file scan for direct SES/Listmonk send paths
+- changed-file scan for fake metrics
+
+Checks result:
+- All listed checks passed.
+- No live send, direct SES send, direct Listmonk send, or fake delivery/open/click metrics were introduced.
+- No `.env` or secret file was read or printed.
+
 ## Milestone 18.6G - Polish Admin Send And Post-Send UI
 
 Date: 2026-05-19

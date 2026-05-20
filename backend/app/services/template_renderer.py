@@ -121,6 +121,7 @@ def ensure_unsubscribe_link(body: str, unsubscribe_url: str) -> str:
 
     footer = (
         '<p style="font-size:12px;line-height:20px;color:#52606d;">'
+        "You are receiving this email because you subscribed to updates from Sendwise. "
         f'Manage preferences or <a href="{unsubscribe_url}">unsubscribe</a>.'
         "</p>"
     )

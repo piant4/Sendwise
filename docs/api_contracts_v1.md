@@ -143,11 +143,13 @@ Admin-managed contract notes:
 - Guard remains mandatory for simulation and real dispatch
 - `EMAIL_SENDING_ENABLED` remains the real-dispatch kill switch
 - `EMAIL_PROVIDER=ses` adds a backend safety gate requiring explicit dev/staging runtime, complete SES SMTP env, public unsubscribe URL, review readiness, optional allowlist enforcement, and an optional positive recipient max before listmonk dispatch
+- SES trial readiness outside the API also requires verified identity/domain, DKIM, SPF, DMARC, SES production access for non-verified recipients, and correct SES SMTP credentials in Listmonk
 - controlled send responses include provider and safety diagnostics such as `provider_status`, `queued_count`, `sent_or_accepted_count`, `failed_count`, `safety_checked`, `safety_passed`, `allowed_recipients_checked`, `eligible_contact_count`, `max_real_send_recipients`, `listmonk_dispatched`, `real_send_attempted`, `email_logs_created`, `unsubscribe_ready`, and `provider_events_ready`
 - Deliverability Guard blocks campaign dispatch with `campaign_daily_limit_reached` and `campaign_period_limit_reached` when campaign usage would exceed the configured table-backed limits
 - First SES validation may keep `REAL_SEND_MAX_RECIPIENTS=1` and `REAL_SEND_REQUIRE_ALLOWED_RECIPIENTS=true`; official product trials should use `REAL_SEND_MAX_RECIPIENTS=0` and `REAL_SEND_REQUIRE_ALLOWED_RECIPIENTS=false`
 - Campaign limits configured by admins are the real product limits; `EMAIL_SENDING_ENABLED=false` remains the emergency global off switch
 - listmonk remains a technical engine only
+- campaign preparation sets `from_email` from `SMTP_FROM_EMAIL`; no separate Reply-To contract is surfaced today
 
 ## Client Read-Only Campaign API Contract
 
@@ -226,3 +228,9 @@ Contacts notes:
 | `POST /unsubscribe/{token}` | Backend JSON endpoint used by the frontend public unsubscribe page. | Frontend public page. | None. | Signed opaque token. | Controlled JSON state for success, already-unsubscribed, invalid-token, or temporary-unavailable flows. | `400`, `503`. | `implemented` |
 | `POST /events/listmonk` | Receive supported listmonk event payloads. | listmonk. | Webhook secret or API key. | Event payload. | Accepted unsubscribe ingestion for supported normalized payloads; unsupported payloads are ignored. | `400`, `401`, `403`, `409`. | `implemented` |
 | `POST /events/provider` | Receive normalized provider events and minimal SES/SNS-like payloads. | SMTP/provider webhook. | Webhook secret or API key. | Event payload. | Accepted idempotent event persistence plus correlated email-log, suppression, and campaign-metric side effects when resolvable. | `400`, `401`, `403`, `409`. | `implemented` |
+
+Event limitations:
+
+- SES SNS signature verification is not implemented yet.
+- SES SNS `SubscriptionConfirmation` handling is not implemented yet.
+- Provider-event-backed metrics and suppression side effects depend on normalized events that can be correlated to existing logs/contacts.

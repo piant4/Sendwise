@@ -174,6 +174,40 @@ SES readiness is intentionally separated from first VPS deploy. A later controll
 - No direct Listmonk send is used.
 - No SES console send is used outside the approved validation plan.
 
+## SES Deliverability Checklist For Official Trials
+
+Before any approved official product trial:
+
+- Verify the SES domain identity used by `SMTP_FROM_EMAIL`.
+- Enable SES DKIM and wait for verification to complete.
+- Publish SPF that includes Amazon SES for the sending domain.
+- Publish a DMARC record for the sending domain.
+- Configure a custom MAIL FROM domain if the SES setup uses one, then verify it resolves correctly.
+- Move SES out of sandbox before sending to non-verified recipients.
+- Confirm `EMAIL_PROVIDER=ses` only in the intended runtime and keep `EMAIL_SENDING_ENABLED` as the emergency off switch.
+- Confirm `AWS_SES_REGION` matches the SES SMTP endpoint in use.
+- Confirm `SMTP_HOST` is a bare SES SMTP host with no protocol prefix.
+- Confirm `SMTP_USERNAME` and `SMTP_PASSWORD` are SES SMTP credentials, not AWS access keys.
+- Confirm `SMTP_FROM_EMAIL` matches a verified SES identity/domain.
+- Confirm `FRONTEND_URL` is the public unsubscribe origin used in email links.
+- Confirm `BACKEND_PUBLIC_URL` stays the public API origin and is not used as the recipient-facing unsubscribe page.
+- Confirm `NEXT_PUBLIC_API_BASE_URL` points at the public backend used by the unsubscribe page.
+- Recreate `listmonk` and `backend` after SMTP-related env changes.
+
+Provider event limitations for trials:
+
+- `POST /events/provider` ingests normalized provider events and minimal SES/SNS-like payloads only.
+- SES SNS signature validation is still pending.
+- SES SNS `SubscriptionConfirmation` handling is still pending.
+- Do not treat accepted send results as delivered inbox placement; delivery/open/click/bounce/complaint truth depends on processed provider events.
+- Bounce and complaint side effects are expected to create suppression behavior once matching provider events are received and correlated.
+
+Suppression expectations:
+
+- Unsubscribes remain backend-owned and write through the suppression path.
+- Bounced or complained recipients should be treated as suppression candidates once matching provider events are ingested.
+- Stop sending if complaint or bounce rates rise above acceptable trial thresholds; do not keep retrying affected audiences.
+
 ## Official Product Trial Send Posture
 
 Use the one-recipient gate only for first SES validation:
@@ -191,6 +225,24 @@ REAL_SEND_REQUIRE_ALLOWED_RECIPIENTS=false
 ```
 
 Campaign limits configured by the admin are the real product daily and 30-day limits. `EMAIL_SENDING_ENABLED=false` remains the emergency global off switch. Do not bypass Deliverability Guard, suppression checks, unsubscribe readiness, or the backend send path with direct Listmonk or SES sends.
+
+Warmup policy for official trials:
+
+- Start with low-volume campaigns only.
+- Keep `campaign_sending_limits.daily_email_limit` intentionally low at first.
+- Increase daily volume gradually only after acceptable bounce and complaint trends.
+- Review provider-event-backed bounce and complaint counts after every trial campaign.
+- Pause trial sends immediately if complaint or bounce rates become elevated.
+
+Secret rotation before official trials:
+
+- Rotate `CLERK_SECRET_KEY`.
+- Rotate `BACKEND_API_KEY`.
+- Rotate `UNSUBSCRIBE_TOKEN_SECRET`.
+- Rotate SES SMTP credentials.
+- Rotate Listmonk API/admin token or password.
+- Rotate the PostgreSQL password if operationally feasible.
+- Treat previous config-output exposure as a reason to rotate before public sending.
 
 Provider-event semantics:
 - `queued` means prepared and not yet accepted.

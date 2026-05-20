@@ -8,11 +8,13 @@ import type {
   AdminCampaignDispatchResult,
   AdminCampaignDetail,
   AdminCampaignContentInput,
+  AdminEmailTemplate,
   AdminCampaignReadinessSummary,
   AdminCampaignReviewResult,
   AdminCampaignSummary,
   AdminCampaignUpdateInput,
   AdminClientAccessInput,
+  AdminClientAccessErrorCode,
   AdminClientAccessResponse,
   AdminClientUpdateInput,
   AdminEmailLimitsResponse,
@@ -76,8 +78,14 @@ export interface DeleteAccountResponse {
 interface ApiErrorOptions {
   path: string;
   detail: string;
+  code?: string | null;
   status?: number | null;
   isNetworkError?: boolean;
+}
+
+interface ParsedApiErrorDetails {
+  code: string | null;
+  detail: string;
 }
 
 interface ApiRequestOptions<TPayload> {
@@ -209,6 +217,18 @@ interface AdminCampaignDetailApiResponse {
   period_email_limit: number;
   daily_email_limit: number;
   period_started_at?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+interface AdminEmailTemplateApiResponse {
+  id: string;
+  client_id: string;
+  name: string;
+  subject: string;
+  preview_text?: string | null;
+  body_html?: string | null;
+  body_text?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -607,12 +627,14 @@ interface ClientOverviewApiResponse {
 export class ApiError extends Error {
   readonly path: string;
   readonly detail: string;
+  readonly code: string | null;
   readonly status: number | null;
   readonly isNetworkError: boolean;
 
   constructor({
     path,
     detail,
+    code = null,
     status = null,
     isNetworkError = false,
   }: ApiErrorOptions) {
@@ -621,6 +643,7 @@ export class ApiError extends Error {
     this.name = "ApiError";
     this.path = path;
     this.detail = detail;
+    this.code = code;
     this.status = status;
     this.isNetworkError = isNetworkError;
   }
@@ -632,6 +655,46 @@ export function isApiError(error: unknown): error is ApiError {
 
 export function isApiConfigurationError(error: unknown): error is ApiError {
   return isApiError(error) && error.path === "config";
+}
+
+const ADMIN_CLIENT_ACCESS_ERROR_MESSAGES: Record<AdminClientAccessErrorCode, string> = {
+  client_access_clerk_config_missing:
+    "Configurazione Clerk mancante nel backend Sendwise. Completa la configurazione prima di creare l'accesso cliente.",
+  client_access_clerk_link_failed:
+    "Sendwise non e riuscito a preparare il link sicuro Clerk per questo cliente. Riprova dopo aver verificato l'integrazione Clerk.",
+  client_access_email_config_missing:
+    "Configurazione email transazionale incompleta nel backend Sendwise. Completa SMTP prima di inviare l'accesso cliente.",
+  client_access_email_send_failed:
+    "Il link e stato preparato, ma l'email di accesso non e stata inviata. Controlla SMTP e riprova.",
+  client_access_email_invalid:
+    "Inserisci un indirizzo email cliente valido prima di inviare l'accesso.",
+  client_access_existing_user_conflict:
+    "Questa email e gia associata a un altro accesso cliente attivo o in attivazione.",
+};
+
+export function getAdminClientAccessErrorCode(error: unknown): string | null {
+  if (!isApiError(error)) {
+    return null;
+  }
+
+  return readStringValue(error.code) ?? readStringValue(error.detail);
+}
+
+export function getAdminClientAccessErrorMessage(
+  error: unknown,
+): string | null {
+  const code = getAdminClientAccessErrorCode(error);
+  if (!code) {
+    return null;
+  }
+
+  if (code in ADMIN_CLIENT_ACCESS_ERROR_MESSAGES) {
+    return ADMIN_CLIENT_ACCESS_ERROR_MESSAGES[
+      code as AdminClientAccessErrorCode
+    ];
+  }
+
+  return null;
 }
 
 function getRequiredApiBaseUrl(): string {
@@ -684,25 +747,79 @@ function resolveBrowserApiBaseUrl(candidateApiBaseUrl: string): string {
   });
 }
 
-async function readErrorDetails(response: Response): Promise<string> {
+function readStringValue(value: unknown): string | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const normalizedValue = value.trim();
+  return normalizedValue || null;
+}
+
+function parseApiErrorPayload(
+  payload: { code?: unknown; detail?: unknown; message?: unknown; reason?: unknown } | null,
+): ParsedApiErrorDetails | null {
+  if (!payload) {
+    return null;
+  }
+
+  const topLevelCode = readStringValue(payload.code);
+  const reason = readStringValue(payload.reason);
+  const message = readStringValue(payload.message);
+
+  if (typeof payload.detail === "string") {
+    const detail = readStringValue(payload.detail);
+
+    if (detail) {
+      return {
+        code: topLevelCode ?? detail,
+        detail,
+      };
+    }
+  }
+
+  if (payload.detail && typeof payload.detail === "object") {
+    const nestedDetail = payload.detail as { code?: unknown; message?: unknown };
+    const nestedCode = readStringValue(nestedDetail.code);
+    const nestedMessage = readStringValue(nestedDetail.message);
+
+    if (nestedCode || nestedMessage) {
+      return {
+        code: topLevelCode ?? nestedCode,
+        detail: nestedMessage ?? message ?? reason ?? nestedCode ?? "Unknown error",
+      };
+    }
+  }
+
+  if (topLevelCode || message || reason) {
+    return {
+      code: topLevelCode ?? reason,
+      detail: message ?? reason ?? topLevelCode ?? "Unknown error",
+    };
+  }
+
+  return null;
+}
+
+async function readErrorDetails(response: Response): Promise<ParsedApiErrorDetails> {
   const contentType = response.headers.get("content-type") ?? "";
 
   if (contentType.includes("application/json")) {
     const payload = (await response.json().catch(() => null)) as
-      | { detail?: unknown; message?: unknown }
+      | { code?: unknown; detail?: unknown; message?: unknown; reason?: unknown }
       | null;
 
-    if (typeof payload?.detail === "string" && payload.detail.trim()) {
-      return payload.detail;
-    }
-
-    if (typeof payload?.message === "string" && payload.message.trim()) {
-      return payload.message;
+    const parsedPayload = parseApiErrorPayload(payload);
+    if (parsedPayload) {
+      return parsedPayload;
     }
   }
 
   const text = await response.text().catch(() => "");
-  return text.trim() || response.statusText || "Unknown error";
+  return {
+    code: null,
+    detail: text.trim() || response.statusText || "Unknown error",
+  };
 }
 
 async function getApiHeaders(
@@ -762,7 +879,8 @@ async function apiRequest<TResponse, TPayload = undefined>(
     throw new ApiError({
       path,
       status: response.status,
-      detail: details,
+      detail: details.detail,
+      code: details.code,
     });
   }
 
@@ -810,7 +928,8 @@ async function publicApiRequest<TResponse, TPayload = undefined>(
     throw new ApiError({
       path,
       status: response.status,
-      detail: details,
+      detail: details.detail,
+      code: details.code,
     });
   }
 
@@ -982,6 +1101,51 @@ async function postAdminCampaignContent(
   >(
     `/admin/campaigns/${campaignId}/content`,
     {
+      subject: payload.subject,
+      preview_text: payload.previewText,
+      body_html: payload.bodyHtml,
+      body_text: payload.bodyText,
+    },
+    accessToken,
+  );
+}
+
+async function fetchAdminEmailTemplates(
+  clientId: string,
+  accessToken?: string | null,
+): Promise<AdminEmailTemplateApiResponse[]> {
+  return apiGet<AdminEmailTemplateApiResponse[]>(
+    `/admin/templates?client_id=${encodeURIComponent(clientId)}`,
+    accessToken,
+  );
+}
+
+async function postAdminEmailTemplate(
+  payload: {
+    clientId: string;
+    name: string;
+    subject: string;
+    previewText?: string | null;
+    bodyHtml?: string | null;
+    bodyText?: string | null;
+  },
+  accessToken?: string | null,
+): Promise<AdminEmailTemplateApiResponse> {
+  return apiPost<
+    AdminEmailTemplateApiResponse,
+    {
+      client_id: string;
+      name: string;
+      subject: string;
+      preview_text?: string | null;
+      body_html?: string | null;
+      body_text?: string | null;
+    }
+  >(
+    "/admin/templates",
+    {
+      client_id: payload.clientId,
+      name: payload.name,
       subject: payload.subject,
       preview_text: payload.previewText,
       body_html: payload.bodyHtml,
@@ -1269,7 +1433,8 @@ async function postAdminClientBrandLogo(
     throw new ApiError({
       path,
       status: response.status,
-      detail: details,
+      detail: details.detail,
+      code: details.code,
     });
   }
 
@@ -1476,6 +1641,22 @@ function mapAdminCampaignDetail(
     periodEmailLimit: payload.period_email_limit,
     dailyEmailLimit: payload.daily_email_limit,
     periodStartedAt: payload.period_started_at ?? null,
+    createdAt: payload.created_at,
+    updatedAt: payload.updated_at,
+  };
+}
+
+function mapAdminEmailTemplate(
+  payload: AdminEmailTemplateApiResponse,
+): AdminEmailTemplate {
+  return {
+    id: payload.id,
+    clientId: payload.client_id,
+    name: payload.name,
+    subject: payload.subject,
+    previewText: payload.preview_text ?? null,
+    bodyHtml: payload.body_html ?? null,
+    bodyText: payload.body_text ?? null,
     createdAt: payload.created_at,
     updatedAt: payload.updated_at,
   };
@@ -2172,6 +2353,31 @@ export function updateAdminCampaignContent(
   return postAdminCampaignContent(campaignId, payload, accessToken).then(
     mapAdminCampaignDetail,
   );
+}
+
+export function getAdminEmailTemplates(
+  clientId: string,
+  accessToken?: string | null,
+): Promise<AdminEmailTemplate[]> {
+  assertAdminBackendEnabled("/admin/templates");
+  return fetchAdminEmailTemplates(clientId, accessToken).then((payload) =>
+    payload.map(mapAdminEmailTemplate),
+  );
+}
+
+export function createAdminEmailTemplate(
+  payload: {
+    clientId: string;
+    name: string;
+    subject: string;
+    previewText?: string | null;
+    bodyHtml?: string | null;
+    bodyText?: string | null;
+  },
+  accessToken?: string | null,
+): Promise<AdminEmailTemplate> {
+  assertAdminBackendEnabled("/admin/templates");
+  return postAdminEmailTemplate(payload, accessToken).then(mapAdminEmailTemplate);
 }
 
 export function attachAdminCampaignContacts(

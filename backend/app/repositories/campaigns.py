@@ -30,6 +30,18 @@ class CampaignRecord(BaseModel):
     updated_at: datetime
 
 
+class EmailTemplateRecord(BaseModel):
+    id: str
+    client_id: str
+    name: str
+    subject: str
+    preview_text: Optional[str] = None
+    body_html: Optional[str] = None
+    body_text: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+
+
 def _map_campaign_row(row: Optional[dict[str, Any]]) -> Optional[CampaignRecord]:
     if row is None:
         return None
@@ -103,6 +115,23 @@ class CampaignRepository:
         client_id: str,
         campaign_id: str,
     ) -> bool:
+        raise NotImplementedError
+
+
+class EmailTemplateRepository:
+    def list_by_client(self, client_id: str) -> list[EmailTemplateRecord]:
+        raise NotImplementedError
+
+    def create_template(
+        self,
+        *,
+        client_id: str,
+        name: str,
+        subject: str,
+        preview_text: str | None,
+        body_html: str | None,
+        body_text: str | None,
+    ) -> EmailTemplateRecord:
         raise NotImplementedError
 
 
@@ -427,6 +456,85 @@ class PostgresCampaignRepository(CampaignRepository):
         return row is not None
 
 
+class PostgresEmailTemplateRepository(EmailTemplateRepository):
+    def __init__(self, settings: Settings) -> None:
+        self._settings = settings
+
+    def list_by_client(self, client_id: str) -> list[EmailTemplateRecord]:
+        query = """
+            SELECT
+                id::text AS id,
+                client_id::text AS client_id,
+                name,
+                subject,
+                preview_text,
+                body_html,
+                body_text,
+                created_at,
+                updated_at
+            FROM email_templates
+            WHERE client_id::text = %s
+            ORDER BY updated_at DESC, id DESC
+        """
+
+        with postgres_connection(self._settings) as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(query, (client_id,))
+                rows = cursor.fetchall()
+
+        return [EmailTemplateRecord.model_validate(row) for row in rows]
+
+    def create_template(
+        self,
+        *,
+        client_id: str,
+        name: str,
+        subject: str,
+        preview_text: str | None,
+        body_html: str | None,
+        body_text: str | None,
+    ) -> EmailTemplateRecord:
+        query = """
+            INSERT INTO email_templates (
+                client_id,
+                name,
+                subject,
+                preview_text,
+                body_html,
+                body_text
+            )
+            VALUES (%s, %s, %s, %s, %s, %s)
+            RETURNING
+                id::text AS id,
+                client_id::text AS client_id,
+                name,
+                subject,
+                preview_text,
+                body_html,
+                body_text,
+                created_at,
+                updated_at
+        """
+
+        with postgres_connection(self._settings) as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    query,
+                    (
+                        client_id,
+                        name,
+                        subject,
+                        preview_text,
+                        body_html,
+                        body_text,
+                    ),
+                )
+                row = cursor.fetchone()
+            connection.commit()
+
+        return EmailTemplateRecord.model_validate(row)
+
+
 class InMemoryCampaignRepository(CampaignRepository):
     def __init__(
         self,
@@ -595,5 +703,50 @@ class InMemoryCampaignRepository(CampaignRepository):
         return record
 
 
+class InMemoryEmailTemplateRepository(EmailTemplateRepository):
+    def __init__(self, templates: list[EmailTemplateRecord] | None = None) -> None:
+        self._templates = {template.id: template for template in templates or []}
+
+    def list_by_client(self, client_id: str) -> list[EmailTemplateRecord]:
+        return sorted(
+            [
+                template
+                for template in self._templates.values()
+                if template.client_id == client_id
+            ],
+            key=lambda template: (template.updated_at, template.id),
+            reverse=True,
+        )
+
+    def create_template(
+        self,
+        *,
+        client_id: str,
+        name: str,
+        subject: str,
+        preview_text: str | None,
+        body_html: str | None,
+        body_text: str | None,
+    ) -> EmailTemplateRecord:
+        now = datetime.now(timezone.utc)
+        record = EmailTemplateRecord(
+            id=str(uuid4()),
+            client_id=client_id,
+            name=name,
+            subject=subject,
+            preview_text=preview_text,
+            body_html=body_html,
+            body_text=body_text,
+            created_at=now,
+            updated_at=now,
+        )
+        self._templates[record.id] = record
+        return record
+
+
 def get_campaign_repository() -> CampaignRepository:
     return PostgresCampaignRepository(get_settings())
+
+
+def get_email_template_repository() -> EmailTemplateRepository:
+    return PostgresEmailTemplateRepository(get_settings())

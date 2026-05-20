@@ -10,6 +10,8 @@ from app.schemas.campaigns import (
     AdminCampaignContentRequest,
     AdminCampaignCreateRequest,
     AdminCampaignDetail,
+    AdminEmailTemplateCreateRequest,
+    AdminEmailTemplateResponse,
     AdminCampaignReviewResponse,
     AdminCampaignSummaryResponse,
     AdminCampaignSelectSlotRequest,
@@ -373,6 +375,35 @@ def update_campaign_content(
         body_html=payload.body_html,
         body_text=payload.body_text,
         current_step=payload.current_step,
+    )
+
+
+@router.get("/templates", response_model=list[AdminEmailTemplateResponse])
+def list_email_templates(
+    client_id: str,
+    _current_user: AuthenticatedUser = Depends(require_platform_admin),
+    campaign_service: AdminCampaignService = Depends(get_admin_campaign_service),
+) -> list[AdminEmailTemplateResponse]:
+    return campaign_service.list_email_templates(client_id)
+
+
+@router.post(
+    "/templates",
+    response_model=AdminEmailTemplateResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_email_template(
+    payload: AdminEmailTemplateCreateRequest,
+    _current_user: AuthenticatedUser = Depends(require_platform_admin),
+    campaign_service: AdminCampaignService = Depends(get_admin_campaign_service),
+) -> AdminEmailTemplateResponse:
+    return campaign_service.create_email_template(
+        client_id=payload.client_id,
+        name=payload.name,
+        subject=payload.subject,
+        preview_text=payload.preview_text,
+        body_html=payload.body_html,
+        body_text=payload.body_text,
     )
 
 

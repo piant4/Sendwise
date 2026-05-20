@@ -59,6 +59,29 @@ class AdminCampaignContentRequest(BaseModel):
     current_step: Optional[str] = None
 
 
+class AdminEmailTemplateCreateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    client_id: str
+    name: str
+    subject: str
+    preview_text: Optional[str] = None
+    body_html: Optional[str] = None
+    body_text: Optional[str] = None
+
+
+class AdminEmailTemplateResponse(BaseModel):
+    id: str
+    client_id: str
+    name: str
+    subject: str
+    preview_text: Optional[str] = None
+    body_html: Optional[str] = None
+    body_text: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+
+
 class AdminCampaignSelectSlotRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

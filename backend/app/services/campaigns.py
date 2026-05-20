@@ -26,7 +26,9 @@ from app.repositories.campaign_slots import (
 from app.repositories.campaigns import (
     CampaignRecord,
     CampaignRepository,
+    EmailTemplateRepository,
     get_campaign_repository,
+    get_email_template_repository,
 )
 from app.repositories.campaign_sending_limits import (
     CampaignSendingLimitRecord,
@@ -65,6 +67,7 @@ from app.schemas.campaigns import (
     AdminCampaignContactRemoveResponse,
     AdminCampaignContactsResponse,
     AdminCampaignDetail,
+    AdminEmailTemplateResponse,
     AdminCampaignContactPayload,
     AdminCampaignReviewResponse,
     AdminCampaignSummaryResponse,
@@ -254,6 +257,7 @@ class AdminCampaignService:
     client_repository: ClientRepository
     campaign_slot_service: CampaignSlotService
     campaign_slot_repository: CampaignSlotRepository
+    template_repository: EmailTemplateRepository
     contact_repository: ContactRepository
     suppression_list_repository: SuppressionListRepository
     blocked_send_repository: BlockedSendRepository
@@ -535,6 +539,84 @@ class AdminCampaignService:
             campaign=updated,
             client=client,
             limits=self._ensure_campaign_limits(updated.id),
+        )
+
+    def list_email_templates(self, client_id: str) -> list[AdminEmailTemplateResponse]:
+        self._get_writable_client(client_id)
+        return [
+            AdminEmailTemplateResponse(
+                id=template.id,
+                client_id=template.client_id,
+                name=template.name,
+                subject=template.subject,
+                preview_text=template.preview_text,
+                body_html=template.body_html,
+                body_text=template.body_text,
+                created_at=template.created_at,
+                updated_at=template.updated_at,
+            )
+            for template in self.template_repository.list_by_client(client_id)
+        ]
+
+    def create_email_template(
+        self,
+        *,
+        client_id: str,
+        name: str,
+        subject: str,
+        preview_text: str | None,
+        body_html: str | None,
+        body_text: str | None,
+    ) -> AdminEmailTemplateResponse:
+        self._get_writable_client(client_id)
+
+        normalized_name = self._require_text(name, field_label="name")
+        normalized_subject = self._require_text(subject, field_label="subject")
+        normalized_preview_text = self._normalize_optional_text(preview_text)
+        normalized_body_html = self._normalize_optional_text(body_html)
+        normalized_body_text = self._normalize_optional_text(body_text)
+
+        if not normalized_body_html and not normalized_body_text:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Template body_html or body_text is required.",
+            )
+
+        self._validate_template_placeholders(
+            normalized_subject,
+            allowed_placeholders=SUPPORTED_TEMPLATE_PLACEHOLDERS,
+        )
+        self._validate_template_placeholders(
+            normalized_preview_text,
+            allowed_placeholders=SUPPORTED_TEMPLATE_PLACEHOLDERS,
+        )
+        self._validate_template_placeholders(
+            normalized_body_html,
+            allowed_placeholders=SUPPORTED_TEMPLATE_PLACEHOLDERS,
+        )
+        self._validate_template_placeholders(
+            normalized_body_text,
+            allowed_placeholders=SUPPORTED_TEMPLATE_PLACEHOLDERS,
+        )
+
+        created = self.template_repository.create_template(
+            client_id=client_id,
+            name=normalized_name,
+            subject=normalized_subject,
+            preview_text=normalized_preview_text,
+            body_html=normalized_body_html,
+            body_text=normalized_body_text,
+        )
+        return AdminEmailTemplateResponse(
+            id=created.id,
+            client_id=created.client_id,
+            name=created.name,
+            subject=created.subject,
+            preview_text=created.preview_text,
+            body_html=created.body_html,
+            body_text=created.body_text,
+            created_at=created.created_at,
+            updated_at=created.updated_at,
         )
 
     def add_campaign_contacts(
@@ -2932,6 +3014,7 @@ def get_admin_campaign_service() -> AdminCampaignService:
         client_repository=PostgresClientRepository(settings),
         campaign_slot_service=get_campaign_slot_service(),
         campaign_slot_repository=get_campaign_slot_repository(),
+        template_repository=get_email_template_repository(),
         contact_repository=PostgresContactRepository(settings),
         suppression_list_repository=get_suppression_list_repository(),
         blocked_send_repository=get_blocked_send_repository(),

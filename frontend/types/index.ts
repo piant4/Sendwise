@@ -101,6 +101,11 @@ export type AdminClientAccessErrorCode =
   | "client_access_email_invalid"
   | "client_access_existing_user_conflict";
 
+export interface AdminClientAccessErrorDetail {
+  code: AdminClientAccessErrorCode;
+  message: string;
+}
+
 export interface AdminClientUpdateInput {
   personal_name?: string | null;
   email_limit_per_campaign?: number | null;
@@ -337,6 +342,18 @@ export interface AdminCampaignContentInput {
   previewText?: string | null;
   bodyHtml?: string | null;
   bodyText?: string | null;
+}
+
+export interface AdminEmailTemplate {
+  id: string;
+  clientId: string;
+  name: string;
+  subject: string;
+  previewText?: string | null;
+  bodyHtml?: string | null;
+  bodyText?: string | null;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface AdminCampaignContact {

@@ -9,7 +9,11 @@ from app.guard.deliverability_guard import DeliverabilityGuard
 from app.main import app
 from app.repositories.blocked_sends import InMemoryBlockedSendRepository
 from app.repositories.campaign_slots import InMemoryCampaignSlotRepository
-from app.repositories.campaigns import CampaignRecord, InMemoryCampaignRepository
+from app.repositories.campaigns import (
+    CampaignRecord,
+    InMemoryCampaignRepository,
+    InMemoryEmailTemplateRepository,
+)
 from app.repositories.campaign_sending_limits import InMemoryCampaignSendingLimitRepository
 from app.repositories.clients import ClientRecord
 from app.repositories.contacts import ContactRecord, InMemoryContactRepository
@@ -158,6 +162,7 @@ def build_runtime(
             campaign_repository=campaign_repository,
         ),
         campaign_slot_repository=InMemoryCampaignSlotRepository(),
+        template_repository=InMemoryEmailTemplateRepository(),
         contact_repository=contact_repository,
         suppression_list_repository=suppression_repository,
         blocked_send_repository=InMemoryBlockedSendRepository(),

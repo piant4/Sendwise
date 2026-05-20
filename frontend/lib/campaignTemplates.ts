@@ -1,12 +1,15 @@
 export interface CampaignTemplate {
   id: string;
+  clientId?: string | null;
   name: string;
   description: string;
   category: string;
+  subject: string;
   recommendedUseCase: string;
   previewText: string;
   htmlBody: string;
   plainTextBody: string;
+  source: "builtin" | "saved";
 }
 
 interface TemplateCopy {
@@ -141,17 +144,22 @@ function buildTemplate(
   };
 }
 
+export const DEFAULT_CAMPAIGN_TEMPLATE_ID = "primo-contatto-commerciale";
+
 export const CAMPAIGN_TEMPLATES: CampaignTemplate[] = [
   buildTemplate(
     {
       id: "primo-contatto-commerciale",
+      clientId: null,
       name: "Primo contatto commerciale",
       description: "Apertura credibile con struttura piu solida e footer completo.",
       category: "Commerciale",
+      subject: "Una proposta rapida per {{company_name}}",
       recommendedUseCase:
         "Quando vuoi rompere il ghiaccio con un lead mantenendo un tono pulito e professionale.",
       previewText:
         "Una presentazione chiara con valore iniziale, contesto e uscita ordinata.",
+      source: "builtin",
     },
     {
       eyebrow: "Primo contatto",
@@ -172,13 +180,16 @@ export const CAMPAIGN_TEMPLATES: CampaignTemplate[] = [
   buildTemplate(
     {
       id: "follow-up-leggero",
+      clientId: null,
       name: "Follow-up leggero",
       description: "Follow-up elegante, con richiamo contestuale e CTA morbida.",
       category: "Follow-up",
+      subject: "Riprendiamo il filo su {{campaign_name}}",
       recommendedUseCase:
         "Quando hai gia inviato un primo messaggio e vuoi riaprire il dialogo senza pressione.",
       previewText:
         "Riprendiamo il filo con un follow-up misurato e leggibile anche da mobile.",
+      source: "builtin",
     },
     {
       eyebrow: "Follow-up",
@@ -199,13 +210,16 @@ export const CAMPAIGN_TEMPLATES: CampaignTemplate[] = [
   buildTemplate(
     {
       id: "newsletter-breve",
+      clientId: null,
       name: "Newsletter breve",
       description: "Aggiornamento essenziale con gerarchia migliore e footer operativo.",
       category: "Newsletter",
+      subject: "Le novita essenziali di {{campaign_name}}",
       recommendedUseCase:
         "Quando devi comunicare una novita sintetica e vuoi una lettura scorrevole su inbox mobile.",
       previewText:
         "Una newsletter breve con priorita evidenti, sezione centrale e chiusura chiara.",
+      source: "builtin",
     },
     {
       eyebrow: "Aggiornamento",
@@ -226,13 +240,16 @@ export const CAMPAIGN_TEMPLATES: CampaignTemplate[] = [
   buildTemplate(
     {
       id: "annuncio-prodotto",
+      clientId: null,
       name: "Annuncio prodotto",
       description: "Annuncio piu leggibile con focus sul beneficio e struttura da lancio.",
       category: "Prodotto",
+      subject: "Novita prodotto: {{campaign_name}}",
       recommendedUseCase:
         "Quando presenti una novita di prodotto e vuoi guidare lettura, beneficio e azione.",
       previewText:
         "Presentiamo una novita con un layout piu forte, adatto a lanci e release notes essenziali.",
+      source: "builtin",
     },
     {
       eyebrow: "Novita prodotto",
@@ -253,11 +270,14 @@ export const CAMPAIGN_TEMPLATES: CampaignTemplate[] = [
   buildTemplate(
     {
       id: "invito-consulenza-demo",
+      clientId: null,
       name: "Invito consulenza/demo",
       description: "Invito piu curato con sezione dedicata alla call-to-action.",
       category: "Invito",
+      subject: "Possiamo mostrarti {{campaign_name}} in 20 minuti",
       recommendedUseCase:
         "Quando vuoi proporre una demo o una call breve lasciando chiaro il perimetro del confronto.",
+      source: "builtin",
       previewText:
         "Un invito diretto a fissare una consulenza o una demo breve, con tono ordinato e non aggressivo.",
     },

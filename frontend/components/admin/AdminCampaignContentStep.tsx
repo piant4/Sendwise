@@ -1,20 +1,30 @@
 "use client";
 
 import { useAuth } from "@clerk/nextjs";
-import { Loader2, Save, X } from "lucide-react";
+import { Loader2, RotateCcw, Save, WandSparkles, X } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { type FormEvent, useState } from "react";
 import {
+  type FormEvent,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import {
+  createAdminEmailTemplate,
+  getAdminEmailTemplates,
   isApiError,
   updateAdminCampaignContent,
 } from "../../lib/api";
 import {
   CAMPAIGN_TEMPLATES,
+  DEFAULT_CAMPAIGN_TEMPLATE_ID,
+  type CampaignTemplate,
 } from "../../lib/campaignTemplates";
-import type { CampaignTemplate } from "../../lib/campaignTemplates";
-import type { AdminCampaignDetail } from "../../types";
-import { AdminCampaignTemplatePicker } from "./AdminCampaignTemplatePicker";
+import type { AdminCampaignDetail, AdminEmailTemplate } from "../../types";
 import { Button } from "../ui/button";
+import { CampaignCodeEditor } from "./CampaignCodeEditor";
+import { AdminCampaignTemplatePicker } from "./AdminCampaignTemplatePicker";
 
 interface AdminCampaignContentStepProps {
   campaign: AdminCampaignDetail;
@@ -22,7 +32,8 @@ interface AdminCampaignContentStepProps {
   onContinue?: () => void;
 }
 
-type ContentEditorMode = "html" | "preview";
+type ContentEditorMode = "split" | "html" | "preview";
+type ActiveField = "subject" | "preview" | "html" | "text";
 
 function getValue(value?: string | null): string {
   return value ?? "";
@@ -37,10 +48,7 @@ function stripScripts(value: string): string {
 }
 
 function normalizePlainText(value: string): string {
-  return value
-    .replace(/\r\n/g, "\n")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
+  return value.replace(/\r\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
 }
 
 function derivePlainTextFromHtml(value: string): string {
@@ -135,71 +143,27 @@ function getSafeUpdateErrorMessage(error: unknown): string {
     }
   }
 
-  return "Non e stato possibile salvare il contenuto. Riprova.";
+  return "Non e stato possibile completare l'azione. Riprova.";
 }
 
 const SUPPORTED_TEMPLATE_VARIABLES = [
-  {
-    token: "{{nome}}",
-    description: "Nome del contatto dalla campagna.",
-  },
-  {
-    token: "{{cognome}}",
-    description: "Cognome del contatto dalla campagna.",
-  },
-  {
-    token: "{{email}}",
-    description: "Email del contatto dalla campagna.",
-  },
-  {
-    token: "{{campaign_name}}",
-    description: "Nome della campagna corrente.",
-  },
-  {
-    token: "{{unsubscribe_url}}",
-    description: "Link pubblico di disiscrizione, sempre preservato.",
-  },
-  {
-    token: "{{current_year}}",
-    description: "Anno corrente nel rendering finale.",
-  },
-  {
-    token: "{{company_name}}",
-    description: "Ragione sociale dal brand email del cliente.",
-  },
-  {
-    token: "{{sender_name}}",
-    description: "Nome mittente dal brand email del cliente.",
-  },
-  {
-    token: "{{logo}}",
-    description: "Logo gestito nel brand email del cliente.",
-  },
-  {
-    token: "{{social_icons}}",
-    description: "Blocco social generato solo con URL presenti.",
-  },
-  {
-    token: "{{website_url}}",
-    description: "URL sito dal brand email del cliente.",
-  },
-  {
-    token: "{{linkedin_url}}",
-    description: "URL LinkedIn dal brand email del cliente.",
-  },
-  {
-    token: "{{instagram_url}}",
-    description: "URL Instagram dal brand email del cliente.",
-  },
-  {
-    token: "{{facebook_url}}",
-    description: "URL Facebook dal brand email del cliente.",
-  },
-  {
-    token: "{{x_url}}",
-    description: "URL X dal brand email del cliente.",
-  },
+  { token: "{{nome}}", description: "Nome del contatto dalla campagna." },
+  { token: "{{cognome}}", description: "Cognome del contatto dalla campagna." },
+  { token: "{{email}}", description: "Email del contatto dalla campagna." },
+  { token: "{{campaign_name}}", description: "Nome della campagna corrente." },
+  { token: "{{unsubscribe_url}}", description: "Link pubblico di disiscrizione, sempre preservato." },
+  { token: "{{current_year}}", description: "Anno corrente nel rendering finale." },
+  { token: "{{company_name}}", description: "Ragione sociale dal brand email del cliente." },
+  { token: "{{sender_name}}", description: "Nome mittente dal brand email del cliente." },
+  { token: "{{logo}}", description: "Logo gestito nel brand email del cliente." },
+  { token: "{{social_icons}}", description: "Blocco social generato solo con URL presenti." },
+  { token: "{{website_url}}", description: "URL sito dal brand email del cliente." },
+  { token: "{{linkedin_url}}", description: "URL LinkedIn dal brand email del cliente." },
+  { token: "{{instagram_url}}", description: "URL Instagram dal brand email del cliente." },
+  { token: "{{facebook_url}}", description: "URL Facebook dal brand email del cliente." },
+  { token: "{{x_url}}", description: "URL X dal brand email del cliente." },
 ] as const;
+
 const BRAND_VARIABLE_TOKENS = new Set([
   "{{company_name}}",
   "{{sender_name}}",
@@ -211,11 +175,13 @@ const BRAND_VARIABLE_TOKENS = new Set([
   "{{facebook_url}}",
   "{{x_url}}",
 ]);
+
 const ALLOWED_RECIPIENT_PLACEHOLDERS = new Set(
   SUPPORTED_TEMPLATE_VARIABLES.map((variable) =>
     variable.token.replaceAll("{", "").replaceAll("}", ""),
   ),
 );
+
 const PLACEHOLDER_PATTERN = /{{\s*([A-Za-z0-9_]+)\s*}}/g;
 
 function collectUnsupportedPlaceholders(value: string, allowed: Set<string>): string[] {
@@ -232,6 +198,22 @@ function collectUnsupportedPlaceholders(value: string, allowed: Set<string>): st
   return Array.from(unsupported);
 }
 
+function mapSavedTemplate(template: AdminEmailTemplate): CampaignTemplate {
+  return {
+    id: template.id,
+    clientId: template.clientId,
+    name: template.name,
+    description: "Template salvato da una campagna del cliente.",
+    category: "Salvato",
+    subject: template.subject,
+    recommendedUseCase: "Riutilizza soggetto, preview e contenuto gia approvati per questo cliente.",
+    previewText: template.previewText ?? "",
+    htmlBody: template.bodyHtml ?? "",
+    plainTextBody: template.bodyText ?? "",
+    source: "saved",
+  };
+}
+
 export function AdminCampaignContentStep({
   campaign,
   onBack,
@@ -239,15 +221,28 @@ export function AdminCampaignContentStep({
 }: AdminCampaignContentStepProps) {
   const router = useRouter();
   const { getToken } = useAuth();
+  const subjectRef = useRef<HTMLInputElement | null>(null);
+  const previewRef = useRef<HTMLInputElement | null>(null);
+  const htmlRef = useRef<HTMLTextAreaElement | null>(null);
+  const textRef = useRef<HTMLTextAreaElement | null>(null);
+
+  const [subject, setSubject] = useState(getValue(campaign.subject));
   const [previewText, setPreviewText] = useState(getValue(campaign.previewText));
   const [bodyHtml, setBodyHtml] = useState(getValue(campaign.bodyHtml));
   const [bodyText, setBodyText] = useState(getValue(campaign.bodyText));
-  const [editorMode, setEditorMode] = useState<ContentEditorMode>("html");
+  const [editorMode, setEditorMode] = useState<ContentEditorMode>("split");
+  const [activeField, setActiveField] = useState<ActiveField>("html");
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
   const [pendingTemplate, setPendingTemplate] = useState<CampaignTemplate | null>(null);
+  const [savedTemplates, setSavedTemplates] = useState<CampaignTemplate[]>([]);
+  const [isLoadingTemplates, setIsLoadingTemplates] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isSavingTemplate, setIsSavingTemplate] = useState(false);
+  const [isTemplateDialogOpen, setIsTemplateDialogOpen] = useState(false);
+  const [templateName, setTemplateName] = useState("");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+
   const availableBrandVariables = SUPPORTED_TEMPLATE_VARIABLES.filter((variable) =>
     BRAND_VARIABLE_TOKENS.has(variable.token),
   ).filter((variable) => {
@@ -285,18 +280,65 @@ export function AdminCampaignContentStep({
     }
   });
 
+  const templateCatalog = useMemo(
+    () => [...CAMPAIGN_TEMPLATES, ...savedTemplates],
+    [savedTemplates],
+  );
+  const defaultTemplate = useMemo(
+    () =>
+      templateCatalog.find((template) => template.id === DEFAULT_CAMPAIGN_TEMPLATE_ID) ??
+      CAMPAIGN_TEMPLATES[0],
+    [templateCatalog],
+  );
+
+  useEffect(() => {
+    let isCancelled = false;
+
+    async function loadTemplates() {
+      setIsLoadingTemplates(true);
+
+      try {
+        const token = await getToken();
+        const templates = await getAdminEmailTemplates(campaign.clientId, token);
+        if (!isCancelled) {
+          setSavedTemplates(templates.map(mapSavedTemplate));
+        }
+      } catch (error) {
+        if (!isCancelled) {
+          setErrorMessage(getSafeUpdateErrorMessage(error));
+        }
+      } finally {
+        if (!isCancelled) {
+          setIsLoadingTemplates(false);
+        }
+      }
+    }
+
+    void loadTemplates();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [campaign.clientId, getToken]);
+
   function hasCurrentContent(): boolean {
-    return [previewText, bodyHtml, bodyText].some((value) => normalizeText(value).length > 0);
+    return [subject, previewText, bodyHtml, bodyText].some(
+      (value) => normalizeText(value).length > 0,
+    );
   }
 
   function commitTemplate(template: CampaignTemplate) {
     setSelectedTemplateId(template.id);
+    setSubject(template.subject);
     setPreviewText(template.previewText);
     setBodyHtml(template.htmlBody);
     setBodyText(template.plainTextBody);
-    setEditorMode("html");
+    setEditorMode("split");
+    setActiveField("html");
     setErrorMessage(null);
-    setSuccessMessage(`Modello "${template.name}" applicato localmente. Salva per inviare il contenuto al backend.`);
+    setSuccessMessage(
+      `Modello "${template.name}" applicato localmente. Salva per inviare il contenuto al backend.`,
+    );
   }
 
   function applyTemplate(template: CampaignTemplate) {
@@ -308,6 +350,59 @@ export function AdminCampaignContentStep({
     commitTemplate(template);
   }
 
+  function updateFieldValue(field: ActiveField, nextValue: string) {
+    switch (field) {
+      case "subject":
+        setSubject(nextValue);
+        break;
+      case "preview":
+        setPreviewText(nextValue);
+        break;
+      case "html":
+        setBodyHtml(nextValue);
+        break;
+      case "text":
+        setBodyText(nextValue);
+        break;
+    }
+  }
+
+  function getFieldRef(field: ActiveField) {
+    switch (field) {
+      case "subject":
+        return subjectRef.current;
+      case "preview":
+        return previewRef.current;
+      case "html":
+        return htmlRef.current;
+      case "text":
+        return textRef.current;
+    }
+  }
+
+  function insertVariable(token: string) {
+    const field = activeField || "html";
+    const element = getFieldRef(field);
+    if (!element) {
+      return;
+    }
+
+    const start = element.selectionStart ?? element.value.length;
+    const end = element.selectionEnd ?? start;
+    const nextValue = `${element.value.slice(0, start)}${token}${element.value.slice(end)}`;
+    updateFieldValue(field, nextValue);
+
+    window.requestAnimationFrame(() => {
+      const nextElement = getFieldRef(field);
+      if (!nextElement) {
+        return;
+      }
+      nextElement.focus();
+      const caret = start + token.length;
+      nextElement.setSelectionRange(caret, caret);
+    });
+  }
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
@@ -315,29 +410,30 @@ export function AdminCampaignContentStep({
       return;
     }
 
+    const subjectValue = normalizeText(subject);
     const previewValue = normalizeText(previewText);
     const bodyHtmlValue = normalizeText(bodyHtml);
-    const bodyTextValue =
-      bodyHtmlValue === normalizeText(campaign.bodyHtml) && normalizeText(bodyText)
-        ? normalizeText(bodyText)
-        : derivePlainTextFromHtml(bodyHtmlValue);
-    const unsupportedSubjectPlaceholders = collectUnsupportedPlaceholders(
-      normalizeText(campaign.subject),
-      ALLOWED_RECIPIENT_PLACEHOLDERS,
-    );
+    const bodyTextValue = normalizeText(bodyText) || derivePlainTextFromHtml(bodyHtmlValue);
     const unsupportedPlaceholders = [
-      ...unsupportedSubjectPlaceholders,
+      ...collectUnsupportedPlaceholders(subjectValue, ALLOWED_RECIPIENT_PLACEHOLDERS),
       ...collectUnsupportedPlaceholders(previewValue, ALLOWED_RECIPIENT_PLACEHOLDERS),
       ...collectUnsupportedPlaceholders(bodyHtmlValue, ALLOWED_RECIPIENT_PLACEHOLDERS),
       ...collectUnsupportedPlaceholders(bodyTextValue, ALLOWED_RECIPIENT_PLACEHOLDERS),
     ];
     const contentChanged =
+      subjectValue !== normalizeText(campaign.subject) ||
       previewValue !== normalizeText(campaign.previewText) ||
       bodyHtmlValue !== normalizeText(campaign.bodyHtml) ||
       bodyTextValue !== normalizeText(campaign.bodyText);
 
     if (unsupportedPlaceholders.length > 0) {
       setErrorMessage("Completa o rimuovi le variabili del template prima di salvare.");
+      setSuccessMessage(null);
+      return;
+    }
+
+    if (!subjectValue || !bodyHtmlValue) {
+      setErrorMessage("Oggetto e HTML sono obbligatori per salvare il contenuto.");
       setSuccessMessage(null);
       return;
     }
@@ -359,6 +455,7 @@ export function AdminCampaignContentStep({
       await updateAdminCampaignContent(
         campaign.campaignId,
         {
+          subject: subjectValue,
           previewText: previewValue,
           bodyHtml: bodyHtmlValue,
           bodyText: bodyTextValue,
@@ -373,6 +470,67 @@ export function AdminCampaignContentStep({
       setErrorMessage(getSafeUpdateErrorMessage(error));
     } finally {
       setIsSubmitting(false);
+    }
+  }
+
+  async function handleSaveTemplate() {
+    if (isSavingTemplate) {
+      return;
+    }
+
+    const normalizedTemplateName = normalizeText(templateName);
+    const subjectValue = normalizeText(subject);
+    const previewValue = normalizeText(previewText);
+    const bodyHtmlValue = normalizeText(bodyHtml);
+    const bodyTextValue = normalizeText(bodyText) || derivePlainTextFromHtml(bodyHtmlValue);
+    const unsupportedPlaceholders = [
+      ...collectUnsupportedPlaceholders(subjectValue, ALLOWED_RECIPIENT_PLACEHOLDERS),
+      ...collectUnsupportedPlaceholders(previewValue, ALLOWED_RECIPIENT_PLACEHOLDERS),
+      ...collectUnsupportedPlaceholders(bodyHtmlValue, ALLOWED_RECIPIENT_PLACEHOLDERS),
+      ...collectUnsupportedPlaceholders(bodyTextValue, ALLOWED_RECIPIENT_PLACEHOLDERS),
+    ];
+
+    if (!normalizedTemplateName) {
+      setErrorMessage("Inserisci un nome template prima di salvare.");
+      return;
+    }
+
+    if (!subjectValue || !bodyHtmlValue) {
+      setErrorMessage("Salva un soggetto e un HTML validi prima di creare il template.");
+      return;
+    }
+
+    if (unsupportedPlaceholders.length > 0) {
+      setErrorMessage("Completa o rimuovi le variabili del template prima di salvarlo.");
+      return;
+    }
+
+    setIsSavingTemplate(true);
+    setErrorMessage(null);
+
+    try {
+      const token = await getToken();
+      const created = await createAdminEmailTemplate(
+        {
+          clientId: campaign.clientId,
+          name: normalizedTemplateName,
+          subject: subjectValue,
+          previewText: previewValue,
+          bodyHtml: bodyHtmlValue,
+          bodyText: bodyTextValue,
+        },
+        token,
+      );
+      const mappedTemplate = mapSavedTemplate(created);
+      setSavedTemplates((current) => [mappedTemplate, ...current]);
+      setSelectedTemplateId(mappedTemplate.id);
+      setTemplateName("");
+      setIsTemplateDialogOpen(false);
+      setSuccessMessage(`Template "${created.name}" salvato per ${campaign.clientName}.`);
+    } catch (error) {
+      setErrorMessage(getSafeUpdateErrorMessage(error));
+    } finally {
+      setIsSavingTemplate(false);
     }
   }
 
@@ -400,22 +558,70 @@ export function AdminCampaignContentStep({
 
       <div className="campaign-form-grid">
         <AdminCampaignTemplatePicker
-          disabled={isSubmitting}
+          disabled={isSubmitting || isLoadingTemplates || isSavingTemplate}
+          isLoading={isLoadingTemplates}
           onApply={applyTemplate}
           selectedTemplateId={selectedTemplateId}
-          templates={CAMPAIGN_TEMPLATES}
+          templates={templateCatalog}
         />
 
+        <section className="campaign-panel campaign-panel--subtle campaign-template-toolbar">
+          <div>
+            <p className="admin-surface__eyebrow">Libreria</p>
+            <h3 className="campaign-variable-helper__title">Template riutilizzabili</h3>
+            <p className="campaign-variable-helper__note">
+              I template salvati qui restano limitati al cliente {campaign.clientName}.
+            </p>
+          </div>
+          <div className="campaign-template-toolbar__actions">
+            <Button
+              type="button"
+              variant="outline"
+              className="admin-topbar-action campaign-action campaign-action--secondary"
+              disabled={isSubmitting || isSavingTemplate}
+              onClick={() => commitTemplate(defaultTemplate)}
+            >
+              <RotateCcw aria-hidden="true" className="admin-topbar-action__icon" />
+              Ripristina default
+            </Button>
+            <Button
+              type="button"
+              className="admin-topbar-action campaign-action campaign-action--primary"
+              disabled={isSubmitting || isSavingTemplate}
+              onClick={() => setIsTemplateDialogOpen(true)}
+            >
+              <WandSparkles aria-hidden="true" className="admin-topbar-action__icon" />
+              Salva come template
+            </Button>
+          </div>
+        </section>
+
         <label className="campaign-field">
-          <span className="campaign-field__label">Anteprima email</span>
+          <span className="campaign-field__label">Oggetto email</span>
           <input
+            ref={subjectRef}
+            className="campaign-input"
+            disabled={isSubmitting}
+            onChange={(event) => setSubject(event.target.value)}
+            onFocus={() => setActiveField("subject")}
+            placeholder="Oggetto della campagna"
+            value={subject}
+          />
+        </label>
+
+        <label className="campaign-field">
+          <span className="campaign-field__label">Preview text</span>
+          <input
+            ref={previewRef}
             className="campaign-input"
             disabled={isSubmitting}
             onChange={(event) => setPreviewText(event.target.value)}
+            onFocus={() => setActiveField("preview")}
             placeholder="Un riepilogo sintetico del contenuto dell'email"
             value={previewText}
           />
         </label>
+
         <section className="campaign-variable-helper" aria-label="Variabili supportate">
           <div className="campaign-variable-helper__header">
             <div>
@@ -423,15 +629,21 @@ export function AdminCampaignContentStep({
               <h3 className="campaign-variable-helper__title">Placeholder supportati</h3>
             </div>
             <p className="campaign-variable-helper__note">
-              Le variabili contatto usano solo i destinatari collegati alla campagna.
+              Inserimento rapido nel campo attivo: <strong>{activeField}</strong>.
             </p>
           </div>
           <div className="campaign-variable-helper__grid">
             {SUPPORTED_TEMPLATE_VARIABLES.map((variable) => (
-              <article key={variable.token} className="campaign-variable-chip">
+              <button
+                key={variable.token}
+                type="button"
+                className="campaign-variable-chip campaign-variable-chip--button"
+                disabled={isSubmitting}
+                onClick={() => insertVariable(variable.token)}
+              >
                 <code>{variable.token}</code>
                 <span>{variable.description}</span>
-              </article>
+              </button>
             ))}
           </div>
           <p className="campaign-variable-helper__availability">
@@ -441,11 +653,12 @@ export function AdminCampaignContentStep({
               : "nessuna variabile brand valorizzata."}
           </p>
         </section>
+
         <section className="campaign-field">
           <div className="campaign-field__header">
-            <span className="campaign-field__label">Anteprima email</span>
+            <span className="campaign-field__label">HTML email</span>
             <div className="campaign-editor-toggle" role="tablist" aria-label="Modalita editor email">
-              {(["html", "preview"] as const).map((mode) => {
+              {(["split", "html", "preview"] as const).map((mode) => {
                 const isActive = editorMode === mode;
 
                 return (
@@ -459,31 +672,65 @@ export function AdminCampaignContentStep({
                     disabled={isSubmitting}
                     onClick={() => setEditorMode(mode)}
                   >
-                    {mode === "html" ? "HTML" : "Preview"}
+                    {mode === "split" ? "Split" : mode === "html" ? "HTML" : "Preview"}
                   </button>
                 );
               })}
             </div>
           </div>
-          <div className="campaign-editor-shell">
-            {editorMode === "html" ? (
-              <textarea
-                className="campaign-textarea campaign-textarea--editor"
-                disabled={isSubmitting}
-                onChange={(event) => setBodyHtml(event.target.value)}
-                placeholder="<html>...</html>"
-                rows={14}
-                value={bodyHtml}
-              />
-            ) : (
-              <iframe
-                className="campaign-email-preview-frame"
-                sandbox=""
-                srcDoc={buildPreviewDocument(bodyHtml)}
-                title="Anteprima email"
-              />
-            )}
+
+          <div className="campaign-editor-shell" data-mode={editorMode}>
+            {editorMode !== "preview" ? (
+              <div className="campaign-editor-pane">
+                <div className="campaign-editor-pane__header">
+                  <strong>Markup</strong>
+                  <span>Editor monospace con numeri di riga.</span>
+                </div>
+                <CampaignCodeEditor
+                  ref={htmlRef}
+                  disabled={isSubmitting}
+                  onChange={setBodyHtml}
+                  onFocus={() => setActiveField("html")}
+                  placeholder="<html>...</html>"
+                  rows={22}
+                  value={bodyHtml}
+                />
+              </div>
+            ) : null}
+
+            {editorMode !== "html" ? (
+              <div className="campaign-editor-pane">
+                <div className="campaign-editor-pane__header">
+                  <strong>Preview</strong>
+                  <span>Render locale sicuro del contenuto HTML corrente.</span>
+                </div>
+                <iframe
+                  className="campaign-email-preview-frame campaign-email-preview-frame--editor"
+                  sandbox=""
+                  srcDoc={buildPreviewDocument(bodyHtml)}
+                  title="Anteprima email"
+                />
+              </div>
+            ) : null}
           </div>
+        </section>
+
+        <section className="campaign-field">
+          <div className="campaign-field__header">
+            <span className="campaign-field__label">Versione testo</span>
+            <p className="campaign-field__helper">
+              Se lasci vuoto, viene derivato automaticamente dall&apos;HTML al salvataggio.
+            </p>
+          </div>
+          <CampaignCodeEditor
+            ref={textRef}
+            disabled={isSubmitting}
+            onChange={setBodyText}
+            onFocus={() => setActiveField("text")}
+            placeholder="Versione testo semplice dell'email"
+            rows={8}
+            value={bodyText}
+          />
         </section>
       </div>
 
@@ -535,7 +782,7 @@ export function AdminCampaignContentStep({
                   Sostituire il contenuto?
                 </h3>
                 <p id="campaign-template-confirm-body" className="invite-modal__message">
-                  Il modello sostituira il contenuto email attuale.
+                  Il modello selezionato sostituira oggetto, preview, HTML e testo semplice.
                 </p>
               </div>
               <button
@@ -566,6 +813,94 @@ export function AdminCampaignContentStep({
               >
                 Usa modello
               </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {isTemplateDialogOpen ? (
+        <div
+          className="campaign-template-modal"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="campaign-template-save-title"
+          onClick={() => setIsTemplateDialogOpen(false)}
+        >
+          <div
+            className="campaign-template-modal__card"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="campaign-template-modal__header">
+              <div style={{ display: "grid", gap: 8 }}>
+                <p className="admin-surface__eyebrow">Salva template</p>
+                <div>
+                  <h4 id="campaign-template-save-title" className="campaign-template-card__title">
+                    Nuovo template cliente
+                  </h4>
+                  <p className="campaign-template-card__description">
+                    Salva il contenuto corrente per riutilizzarlo nelle prossime campagne di {campaign.clientName}.
+                  </p>
+                </div>
+              </div>
+
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                aria-label="Chiudi salvataggio template"
+                className="campaign-template-modal__close"
+                onClick={() => setIsTemplateDialogOpen(false)}
+              >
+                <X aria-hidden="true" />
+              </Button>
+            </div>
+
+            <section className="campaign-template-modal__section">
+              <label className="campaign-field">
+                <span className="campaign-field__label">Nome template</span>
+                <input
+                  className="campaign-input"
+                  disabled={isSavingTemplate}
+                  onChange={(event) => setTemplateName(event.target.value)}
+                  placeholder="Es. Promo onboarding giugno"
+                  value={templateName}
+                />
+              </label>
+              <div className="campaign-template-save-grid">
+                <article>
+                  <span>Oggetto</span>
+                  <strong>{normalizeText(subject) || "Non impostato"}</strong>
+                </article>
+                <article>
+                  <span>Preview</span>
+                  <strong>{normalizeText(previewText) || "Non impostata"}</strong>
+                </article>
+              </div>
+            </section>
+
+            <div className="campaign-action-row campaign-action-row--wizard">
+              <Button
+                type="button"
+                variant="outline"
+                className="admin-topbar-action campaign-action campaign-action--secondary"
+                disabled={isSavingTemplate}
+                onClick={() => setIsTemplateDialogOpen(false)}
+              >
+                Annulla
+              </Button>
+              <Button
+                type="button"
+                className="admin-topbar-action campaign-action campaign-action--primary"
+                disabled={isSavingTemplate}
+                onClick={handleSaveTemplate}
+              >
+                {isSavingTemplate ? (
+                  <Loader2 aria-hidden="true" className="admin-topbar-action__icon" />
+                ) : (
+                  <Save aria-hidden="true" className="admin-topbar-action__icon" />
+                )}
+                {isSavingTemplate ? "Salvataggio..." : "Salva template"}
+              </Button>
             </div>
           </div>
         </div>

@@ -9,6 +9,7 @@ interface AdminCampaignTemplatePickerProps {
   templates: CampaignTemplate[];
   selectedTemplateId: string | null;
   disabled?: boolean;
+  isLoading?: boolean;
   onApply: (template: CampaignTemplate) => void;
 }
 
@@ -80,6 +81,7 @@ export function AdminCampaignTemplatePicker({
   templates,
   selectedTemplateId,
   disabled = false,
+  isLoading = false,
   onApply,
 }: AdminCampaignTemplatePickerProps) {
   const [previewTemplateId, setPreviewTemplateId] = useState<string | null>(null);
@@ -98,12 +100,22 @@ export function AdminCampaignTemplatePicker({
               Template email
             </h3>
             <p className="admin-clients-card__description" style={{ marginTop: 8 }}>
-              Preset locali per precompilare il contenuto.
+              Preset built-in e template salvati per precompilare il contenuto.
             </p>
           </div>
         </div>
 
         <div className="campaign-template-grid" style={{ marginTop: 18 }}>
+          {isLoading ? (
+            <article className="campaign-template-card campaign-template-card--empty">
+              <div className="campaign-template-card__copy">
+                <h4 className="campaign-template-card__title">Caricamento template</h4>
+                <p className="campaign-template-card__description">
+                  Recupero dei template cliente in corso.
+                </p>
+              </div>
+            </article>
+          ) : null}
           {templates.map((template) => {
             const isSelected = selectedTemplateId === template.id;
 
@@ -114,6 +126,9 @@ export function AdminCampaignTemplatePicker({
               >
                 <div className="campaign-template-card__meta">
                   <span className="campaign-template-badge">{template.category}</span>
+                  <span className="campaign-template-badge campaign-template-badge--muted">
+                    {template.source === "saved" ? "Cliente" : "Default"}
+                  </span>
                   {isSelected ? (
                     <span className="campaign-template-selected">
                       <CheckCircle2 aria-hidden="true" size={11} />
@@ -125,6 +140,7 @@ export function AdminCampaignTemplatePicker({
                 <div className="campaign-template-card__copy">
                   <h4 className="campaign-template-card__title">{template.name}</h4>
                   <p className="campaign-template-card__description">{template.description}</p>
+                  <p className="campaign-template-card__subject">{template.subject}</p>
                   <p className="campaign-template-card__excerpt">{getPreviewExcerpt(template.previewText)}</p>
                 </div>
 
@@ -196,6 +212,13 @@ export function AdminCampaignTemplatePicker({
             </div>
 
             <div className="campaign-template-modal__grid">
+              <section className="campaign-template-modal__section">
+                <strong style={{ color: "#0f172a" }}>Oggetto</strong>
+                <p className="campaign-template-modal__preview-text">
+                  {previewTemplate.subject}
+                </p>
+              </section>
+
               <section className="campaign-template-modal__section">
                 <strong style={{ color: "#0f172a" }}>Anteprima email</strong>
                 <p className="campaign-template-modal__preview-text">

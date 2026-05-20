@@ -10,7 +10,11 @@ from app.guard.deliverability_guard import DeliverabilityGuard
 from app.main import app
 from app.repositories.blocked_sends import InMemoryBlockedSendRepository
 from app.repositories.campaign_slots import InMemoryCampaignSlotRepository
-from app.repositories.campaigns import CampaignRecord, InMemoryCampaignRepository
+from app.repositories.campaigns import (
+    CampaignRecord,
+    InMemoryCampaignRepository,
+    InMemoryEmailTemplateRepository,
+)
 from app.repositories.campaign_sending_limits import InMemoryCampaignSendingLimitRepository
 from app.repositories.clients import ClientCampaignRecord, ClientRecord
 from app.repositories.contacts import ContactRecord, InMemoryContactRepository
@@ -203,6 +207,7 @@ def build_admin_service(
     blocked_send_repository: InMemoryBlockedSendRepository | None = None,
     email_log_repository: InMemoryEmailLogRepository | None = None,
     campaign_limit_repository: InMemoryCampaignSendingLimitRepository | None = None,
+    email_template_repository: InMemoryEmailTemplateRepository | None = None,
 ) -> AdminCampaignService:
     repository = campaign_repository or InMemoryCampaignRepository()
     slots = slot_repository or InMemoryCampaignSlotRepository()
@@ -218,6 +223,7 @@ def build_admin_service(
             campaign_repository=repository,
         ),
         campaign_slot_repository=slots,
+        template_repository=email_template_repository or InMemoryEmailTemplateRepository(),
         contact_repository=InMemoryContactRepository(
             contacts=contacts or [],
             campaign_contacts=campaign_contacts or set(),
@@ -472,6 +478,45 @@ def test_admin_content_update_accepts_supported_template_placeholders() -> None:
     assert updated.subject == "Aggiornamento {{campaign_name}}"
     assert "{{company_name}}" in str(updated.body_html)
     assert "{{email}}" in str(updated.body_html)
+
+
+def test_admin_create_email_template_persists_client_scoped_content() -> None:
+    template_repository = InMemoryEmailTemplateRepository()
+    service = build_admin_service(email_template_repository=template_repository)
+
+    created = service.create_email_template(
+        client_id="client_123",
+        name="Promo giugno",
+        subject="Promo {{campaign_name}}",
+        preview_text="Preview {{nome}}",
+        body_html="<p>{{company_name}}</p>",
+        body_text="Testo {{current_year}}",
+    )
+
+    assert created.client_id == "client_123"
+    assert created.name == "Promo giugno"
+    assert created.subject == "Promo {{campaign_name}}"
+    listed = service.list_email_templates("client_123")
+    assert [template.id for template in listed] == [created.id]
+
+
+def test_admin_create_email_template_rejects_missing_body() -> None:
+    service = build_admin_service()
+
+    try:
+        service.create_email_template(
+            client_id="client_123",
+            name="Vuota",
+            subject="Oggetto",
+            preview_text=None,
+            body_html=None,
+            body_text=None,
+        )
+    except HTTPException as error:
+        assert error.status_code == 422
+        assert error.detail == "Template body_html or body_text is required."
+    else:
+        raise AssertionError("Expected template body validation error")
 
 
 def test_admin_campaign_detail_includes_email_brand() -> None:

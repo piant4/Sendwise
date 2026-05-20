@@ -62,7 +62,8 @@ Admin request notes:
 - client account pages expose only legacy `max_campaigns` capacity; campaign send limits stay campaign-scoped
 - slot-management endpoints below are proposed and not yet implemented
 - pending or newly reactivated access responses may keep an internal reserved `client_access.portal_slug` in persistence, but API summaries must expose `portal_slug=null` until the customer completes the first secure Clerk login
-- `POST /admin/clients` and `POST /admin/clients/{client_id}/send-access-email` return only controlled provisioning codes for safe admin handling: `client_access_clerk_config_missing`, `client_access_clerk_link_failed`, `client_access_email_config_missing`, `client_access_email_send_failed`, `client_access_email_invalid`, and `client_access_existing_user_conflict`
+- `POST /admin/clients` and `POST /admin/clients/{client_id}/send-access-email` return only controlled provisioning errors in the safe shape `detail: { code, message }`
+- supported provisioning codes are `client_access_clerk_config_missing`, `client_access_clerk_link_failed`, `client_access_email_config_missing`, `client_access_email_send_failed`, `client_access_email_invalid`, and `client_access_existing_user_conflict`
 - if Clerk access is prepared but transactional email delivery fails, Sendwise keeps the access record active/pending and expects the admin to use the resend action after email delivery is fixed
 - `email_brand` is a single client-scoped configuration under `clients.metadata.email_brand`
 - managed logo uploads accept only `.webp`, require valid WebP magic bytes, reject payloads over `500 KB`, ignore the original filename for storage, and expose only a backend-managed relative public path under `/static/client-brand-logos/`
@@ -135,7 +136,7 @@ These are the V1 product endpoints for the only operational campaign flow. Entri
 | `GET /admin/campaigns/{campaign_id}/summary` | Read final admin campaign summary without dispatching. | Admin dashboard. | Platform admin. | `campaign_id`. | Campaign, client, slot, recipient, log, blocked-send, and sendability summary. | `401`, `403`, `404`. | `implemented` |
 | `PATCH /admin/campaigns/{campaign_id}` | Update allowed campaign setup fields. | Admin dashboard. | Platform admin. | Partial setup fields. | Updated campaign. | `400`, `401`, `403`, `404`, `409`, `422`. | `implemented` |
 | `POST /admin/campaigns/{campaign_id}/select-slot` | Assign a slot to a campaign. | Admin dashboard. | Platform admin. | `slot_id`. | Slot assignment summary. | `400`, `401`, `403`, `404`, `409`, `422`. | `implemented` |
-| `POST /admin/campaigns/{campaign_id}/content` | Save content or apply a template into campaign content fields. | Admin dashboard. | Platform admin. | `subject`, `preview_text`, `body_html`, `body_text`, optional template reference. | Updated campaign content state. | `400`, `401`, `403`, `404`, `409`, `422`. | `implemented` |
+| `POST /admin/campaigns/{campaign_id}/content` | Save content or persist fields copied from a selected template into campaign content fields. | Admin dashboard. | Platform admin. | `subject`, `preview_text`, `body_html`, `body_text`. | Updated campaign content state. | `400`, `401`, `403`, `404`, `409`, `422`. | `implemented` |
 | `POST /admin/campaigns/{campaign_id}/contacts` | Import or associate contacts for the campaign. | Admin dashboard. | Platform admin. | Structured contact payload. | Import summary and validation preview. | `400`, `401`, `403`, `404`, `409`, `422`. | `implemented` |
 | `GET /admin/campaigns/{campaign_id}/contacts` | Read contacts associated with the campaign. | Admin dashboard. | Platform admin. | `campaign_id`. | Campaign contact list and summary. | `401`, `403`, `404`. | `implemented` |
 | `DELETE /admin/campaigns/{campaign_id}/contacts/{contact_id}` | Remove a contact association from the campaign without deleting the saved contact. | Admin dashboard. | Platform admin. | `campaign_id`, backend-owned `contact_id`. | Controlled detach result with backend-owned readiness. | `401`, `403`, `404`, `409`. | `implemented` |
@@ -191,14 +192,14 @@ Client read-only notes:
 - client-visible metrics may include queued, sent, delivered, opens, clicks, bounce, complaint/spam, unsubscribe, blocked sends, and period usage only when backed by real logs or provider events
 - client responses must not expose configured `daily_email_limit`
 
-## Admin Template API Future
+## Admin Template API
 
-Client-side template CRUD is not part of V1. If template catalog management is introduced later, it belongs under admin-owned routes.
+Client-side template CRUD is not part of V1. Template persistence remains admin-owned and client-scoped.
 
 | Endpoint | Purpose | Allowed caller | Required access | High-level input | High-level output | Main errors | Status |
 |---|---|---|---|---|---|---|---|
-| `GET /admin/templates` | List templates available to admins. | Admin dashboard. | Platform admin. | Filters. | System and client-scoped template summaries. | `401`, `403`. | `future` |
-| `POST /admin/templates` | Create a template for later campaign use. | Admin dashboard. | Platform admin. | Template fields. | Created template. | `400`, `401`, `403`, `409`, `422`. | `future` |
+| `GET /admin/templates` | List templates available to admins for a client. | Admin dashboard. | Platform admin. | Required `client_id`. | Client-scoped template summaries. | `401`, `403`, `404`. | `implemented` |
+| `POST /admin/templates` | Create a reusable client-scoped template. | Admin dashboard. | Platform admin. | `client_id`, `name`, `subject`, `preview_text`, `body_html`, `body_text`. | Created template. | `400`, `401`, `403`, `404`, `409`, `422`. | `implemented` |
 | `PATCH /admin/templates/{template_id}` | Update a template. | Admin dashboard. | Platform admin. | Partial template fields. | Updated template. | `400`, `401`, `403`, `404`, `409`, `422`. | `future` |
 
 ## Campaign Slot Admin API Proposed

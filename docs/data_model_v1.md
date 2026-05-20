@@ -390,36 +390,24 @@ Current V1 choice:
 
 ### email_templates
 
-Status: recommended contract, not implemented.
+Status: implemented for client-scoped reusable admin templates.
 
-Purpose: Product template catalog for system, client-scoped, campaign-derived, and AI-generated email content managed by admin in V1.
+Purpose: Reusable admin-owned email content snapshots copied into future campaigns for the same client.
 
-Recommended fields:
+Implemented fields:
 - `id`
-- `client_id` nullable
+- `client_id`
 - `name`
-- `description`
-- `category`
 - `subject`
 - `preview_text`
 - `body_html`
 - `body_text`
-- `source_type`
-- `status`
 - `created_at`
 - `updated_at`
 
-Recommended `source_type` values:
-- `system`
-- `client`
-- `campaign`
-- `ai_generated`
-
-Recommended rules:
-- only admin creates, edits, selects, or applies templates in V1
-- system templates are readable by admin for all eligible clients
-- client-scoped templates are visible to admin when operating for the owning client
-- client portal template management is not part of V1
-- applying a template copies content into the campaign record; the campaign becomes the active working copy
+Implemented rules:
+- only admin creates, lists, selects, or applies templates in V1
+- templates are client-scoped; no global or client-portal template persistence is implemented
+- applying a template copies content into the campaign record; the campaign remains the active working copy
 - Business PostgreSQL remains the source of truth
 - listmonk receives only final rendered HTML after backend approval

@@ -659,9 +659,11 @@ export function isApiConfigurationError(error: unknown): error is ApiError {
 
 const ADMIN_CLIENT_ACCESS_ERROR_MESSAGES: Record<AdminClientAccessErrorCode, string> = {
   client_access_clerk_config_missing:
-    "Configurazione Clerk mancante nel backend Sendwise. Completa la configurazione prima di creare l'accesso cliente.",
+    "Clerk non è riuscito a inviare l'email di accesso. Controlla inviti e template Clerk.",
   client_access_clerk_link_failed:
-    "Sendwise non e riuscito a preparare il link sicuro Clerk per questo cliente. Riprova dopo aver verificato l'integrazione Clerk.",
+    "Clerk non è riuscito a inviare l'email di accesso. Controlla inviti e template Clerk.",
+  client_access_clerk_email_failed:
+    "Clerk non è riuscito a inviare l'email di accesso. Controlla inviti e template Clerk.",
   client_access_email_config_missing:
     "Configurazione email transazionale incompleta nel backend Sendwise. Completa SMTP prima di inviare l'accesso cliente.",
   client_access_email_send_failed:
@@ -670,6 +672,8 @@ const ADMIN_CLIENT_ACCESS_ERROR_MESSAGES: Record<AdminClientAccessErrorCode, str
     "Inserisci un indirizzo email cliente valido prima di inviare l'accesso.",
   client_access_existing_user_conflict:
     "Questa email e gia associata a un altro accesso cliente attivo o in attivazione.",
+  client_access_existing_user_resend_unsupported:
+    "Questo accesso e gia collegato a un utente Clerk esistente. Il resend nativo non e supportato da questo flusso.",
 };
 
 export function getAdminClientAccessErrorCode(error: unknown): string | null {
@@ -2151,7 +2155,7 @@ export function sendAdminClientAccessEmail(
       path: "/admin/clients",
       status: 500,
       detail:
-        "Client access provisioning requires NEXT_PUBLIC_USE_MOCK_API=false so the backend can create the Clerk access link and send the transactional email.",
+        "Client access provisioning requires NEXT_PUBLIC_USE_MOCK_API=false so the backend can create the Clerk invitation and let Clerk send the email.",
     });
   }
 
@@ -2167,7 +2171,7 @@ export function resendAdminClientAccessEmail(
       path: `/admin/clients/${clientId}/send-access-email`,
       status: 500,
       detail:
-        "Client access email resend requires NEXT_PUBLIC_USE_MOCK_API=false so the backend can create a secure Clerk access link.",
+        "Client access email resend requires NEXT_PUBLIC_USE_MOCK_API=false so the backend can ask Clerk to send the invitation email.",
     });
   }
 

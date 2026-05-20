@@ -1,5 +1,18 @@
 # Audit Log
 
+## Milestone 18.6O-FIX11 - Clerk Native Invitation Email For Client Access
+
+Date: 2026-05-20
+
+Client access native-invite audit summary:
+- Audited only the allowed client-access provisioning files, admin frontend access actions, and related docs/tests without reading `.env`, sending live email, dispatching campaigns, or touching SES/Listmonk runtime actions.
+- Confirmed `backend/app/services/clients.py` previously created Clerk invitations with `notify=False`, extracted the invitation URL, and delegated delivery to the Sendwise SMTP transactional email service.
+- Confirmed the resend flow reused the same provisioning path, so resends also depended on Sendwise SMTP delivery.
+- Confirmed the existing linked-user branch previously generated Clerk sign-in tokens and relied on the Sendwise SMTP email layer to deliver them.
+- Final flow decision: new and unclaimed client access now uses Clerk native invitation email only; Sendwise no longer sends a separate SMTP transactional access email in create or resend.
+- Existing linked users now receive the controlled backend code `client_access_existing_user_resend_unsupported` because this flow no longer delivers manual sign-in-token links and Clerk native resend is not available here.
+- No Clerk invitation URL, sign-in token, SMTP credential, or plaintext password is returned to the frontend or added to logs by this change set.
+
 ## Milestone 18.6O-FIX9B - Normalize Client Access Error Shape End-To-End
 
 Date: 2026-05-20

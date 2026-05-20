@@ -15,10 +15,12 @@ InvitationStatus = Literal["pending", "accepted", "revoked", "expired"]
 AdminClientAccessErrorCode = Literal[
     "client_access_clerk_config_missing",
     "client_access_clerk_link_failed",
+    "client_access_clerk_email_failed",
     "client_access_email_config_missing",
     "client_access_email_send_failed",
     "client_access_email_invalid",
     "client_access_existing_user_conflict",
+    "client_access_existing_user_resend_unsupported",
 ]
 
 _OPTIONAL_HTTP_URL = TypeAdapter(AnyHttpUrl)
@@ -29,6 +31,9 @@ CLIENT_ACCESS_ERROR_MESSAGES: dict[AdminClientAccessErrorCode, str] = {
     "client_access_clerk_link_failed": (
         "Sendwise non e riuscito a preparare il link sicuro di accesso cliente."
     ),
+    "client_access_clerk_email_failed": (
+        "Clerk non e riuscito a inviare l'email di accesso. Controlla inviti e template Clerk."
+    ),
     "client_access_email_config_missing": (
         "La configurazione email transazionale necessaria per inviare l'accesso cliente e incompleta."
     ),
@@ -38,6 +43,9 @@ CLIENT_ACCESS_ERROR_MESSAGES: dict[AdminClientAccessErrorCode, str] = {
     "client_access_email_invalid": "L'indirizzo email cliente non e valido.",
     "client_access_existing_user_conflict": (
         "Questa email e gia associata a un altro accesso cliente attivo o in attivazione."
+    ),
+    "client_access_existing_user_resend_unsupported": (
+        "Questo accesso e gia collegato a un utente Clerk esistente e Clerk non puo inviare nativamente il resend da questo flusso."
     ),
 }
 

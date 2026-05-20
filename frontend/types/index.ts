@@ -96,10 +96,12 @@ export interface AdminClientAccessResponse {
 export type AdminClientAccessErrorCode =
   | "client_access_clerk_config_missing"
   | "client_access_clerk_link_failed"
+  | "client_access_clerk_email_failed"
   | "client_access_email_config_missing"
   | "client_access_email_send_failed"
   | "client_access_email_invalid"
-  | "client_access_existing_user_conflict";
+  | "client_access_existing_user_conflict"
+  | "client_access_existing_user_resend_unsupported";
 
 export interface AdminClientAccessErrorDetail {
   code: AdminClientAccessErrorCode;

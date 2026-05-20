@@ -68,12 +68,20 @@ REAL_SEND_ALLOWED_RECIPIENTS=
 Required secret-backed values must be configured only on the VPS:
 
 - Real Clerk issuer, JWKS URL, audience if used, publishable key, and secret key.
+- Clerk application invitation email templates and invitation redirect or Account Portal settings for client access.
 - Real Listmonk username and password.
 - Real PostgreSQL database, user, and password.
 - Real backend API key and unsubscribe/signing secrets required by the deployed backend.
 - Real SMTP or AWS SES credentials only in the later SES readiness milestone. When approved, set them only in the VPS `.env`; do not hardcode them in Compose or docs.
 
 For first deploy, use `EMAIL_PROVIDER=mailpit` or another safe non-send provider while `EMAIL_SENDING_ENABLED=false`. Keep `REAL_SEND_ALLOWED_RECIPIENTS=` empty until the controlled SES validation milestone.
+
+Client access note:
+
+- Admin client provisioning and resend now rely on Clerk native application invitations.
+- Sendwise does not send a separate SMTP transactional access email for `POST /admin/clients` or `POST /admin/clients/{client_id}/send-access-email`.
+- Verify the Clerk invitation template content, sender, and component path in the Clerk Dashboard before staging QA.
+- Existing already-linked Clerk users cannot use the native resend flow from Sendwise; the backend returns a controlled unsupported code instead of sending a manual sign-in link.
 
 ## Standard Staging Deploy
 

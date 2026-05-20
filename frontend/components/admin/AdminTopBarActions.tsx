@@ -25,6 +25,11 @@ function getSafeInviteErrorMessage(error: unknown): string {
       return "Il browser non riesce a raggiungere il backend Sendwise per inviare l'email di accesso.";
     }
 
+    const knownMessage = getAdminClientAccessErrorMessage(error);
+    if (knownMessage) {
+      return knownMessage;
+    }
+
     if (error.status === 409) {
       return "Questa email e gia associata a un altro accesso cliente attivo.";
     }
@@ -37,13 +42,8 @@ function getSafeInviteErrorMessage(error: unknown): string {
       return "La sessione admin non e valida per creare un nuovo accesso cliente.";
     }
 
-    const knownMessage = getAdminClientAccessErrorMessage(error);
-    if (knownMessage) {
-      return knownMessage;
-    }
-
     if (error.status != null && error.status >= 500) {
-      return "Il backend Sendwise non e riuscito a completare il provisioning dell'accesso cliente.";
+      return "Clerk non è riuscito a inviare l'email di accesso. Controlla inviti e template Clerk.";
     }
 
     if (error.detail.trim()) {
@@ -51,7 +51,7 @@ function getSafeInviteErrorMessage(error: unknown): string {
     }
   }
 
-  return "Non e stato possibile inviare l'email di accesso cliente. Riprova.";
+  return "Clerk non è riuscito a inviare l'email di accesso. Controlla inviti e template Clerk.";
 }
 
 export function AdminTopBarActions() {
@@ -91,7 +91,7 @@ export function AdminTopBarActions() {
       setLastName("");
       setToast({
         tone: "success",
-        message: "Email accesso inviata correttamente.",
+        message: "Email di accesso inviata da Clerk.",
       });
       router.refresh();
     } catch (error) {
@@ -133,9 +133,8 @@ export function AdminTopBarActions() {
               </div>
 
               <p className="invite-modal__message">
-                Crea o riattiva l&apos;accesso cliente. Sendwise prepara il link
-                sicuro tramite Clerk e invia un&apos;email con il pannello e il
-                percorso per impostare la password.
+                Crea o riattiva l&apos;accesso cliente. Clerk invia l&apos;email
+                di invito nativa e gestisce il percorso sicuro di attivazione.
               </p>
 
               <form className="invite-modal__form" onSubmit={handleInviteSubmit}>

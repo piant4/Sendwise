@@ -44,6 +44,7 @@ from app.services.clients import (
     ClerkAccessGateway,
     ClerkAccessLinkResult,
     ClientsService,
+    HttpClerkAccessGateway,
     build_client_brand_logo_filename,
     get_clients_service,
 )
@@ -583,7 +584,7 @@ class FakeClerkAccessGateway(ClerkAccessGateway):
         self.invitation_calls.append({"email": email})
         return ClerkAccessLinkResult(
             reference_id=f"inv_access_{self._counter}",
-            url=f"https://clerk.example.test/invitations/{self._counter}",
+            url=None,
             kind="invitation",
         )
 
@@ -617,7 +618,7 @@ class FailingClerkAccessGateway(FakeClerkAccessGateway):
     ) -> ClerkAccessLinkResult:
         raise HTTPException(
             status_code=502,
-            detail=build_client_access_error_detail("client_access_clerk_link_failed"),
+            detail=build_client_access_error_detail("client_access_clerk_email_failed"),
         )
 
 
@@ -1180,7 +1181,7 @@ def test_onboarding_endpoint_returns_gone_for_legacy_flow(
     )
 
 
-def test_existing_linked_user_can_receive_resend_access_email(
+def test_existing_linked_user_resend_access_email_returns_controlled_unsupported_code(
     client: TestClient,
     monkeypatch: pytest.MonkeyPatch,
     signing_keypair: rsa.RSAPrivateKey,
@@ -1204,12 +1205,10 @@ def test_existing_linked_user_can_receive_resend_access_email(
         invitation_status="accepted",
     )
     access_gateway = FakeClerkAccessGateway()
-    email_service = FakeClientAccessEmailService()
     _, access_repository, _, _ = install_test_dependencies(
         client_records=[client_record],
         access_records=[access_record],
         clerk_access_gateway=access_gateway,
-        client_access_email_service=email_service,
     )
     token = make_token(signing_keypair, clerk_user_id="user_admin")
 
@@ -1218,19 +1217,17 @@ def test_existing_linked_user_can_receive_resend_access_email(
         headers=auth_header(token),
     )
 
-    assert response.status_code == 200
-    assert response.json()["access"]["status"] == "active"
-    assert response.json()["access"]["invitation_status"] == "accepted"
+    assert response.status_code == 409
+    assert response.json()["detail"] == build_client_access_error_detail(
+        "client_access_existing_user_resend_unsupported"
+    )
     updated_access = access_repository.get_by_client_id(client_record.id)
     assert updated_access is not None
     assert updated_access.status == "active"
     assert updated_access.invitation_status == "accepted"
-    assert access_gateway.sign_in_token_calls == ["user_client"]
+    assert access_gateway.sign_in_token_calls == []
     assert access_gateway.invitation_calls == []
-    assert len(email_service.messages) == 1
-    assert email_service.messages[0].action_url.startswith(
-        "https://clerk.example.test/sign-in/"
-    )
+    assert "https://clerk.example.test" not in response.text
 
 
 def test_onboarding_endpoint_rejects_legacy_payload_shape(
@@ -1890,7 +1887,7 @@ def test_platform_admin_campaigns_are_loaded_from_cross_client_backend_data(
     assert payload[1]["subject"] is None
 
 
-def test_platform_admin_can_provision_client_access_and_send_email(
+def test_platform_admin_can_provision_client_access_with_clerk_native_email(
     client: TestClient,
     monkeypatch: pytest.MonkeyPatch,
     signing_keypair: rsa.RSAPrivateKey,
@@ -1906,10 +1903,8 @@ def test_platform_admin_can_provision_client_access_and_send_email(
         },
     )
     access_gateway = FakeClerkAccessGateway()
-    email_service = FakeClientAccessEmailService()
     _, access_repository, _, _ = install_test_dependencies(
         clerk_access_gateway=access_gateway,
-        client_access_email_service=email_service,
     )
     token = make_token(signing_keypair, clerk_user_id="user_admin")
 
@@ -1934,13 +1929,7 @@ def test_platform_admin_can_provision_client_access_and_send_email(
     assert payload["access"]["portal_slug"] is None
     assert access_gateway.invitation_calls == [{"email": "nuovo.cliente@example.test"}]
     assert access_gateway.sign_in_token_calls == []
-    assert len(email_service.messages) == 1
-    assert email_service.messages[0].recipient_email == "nuovo.cliente@example.test"
-    assert email_service.messages[0].login_email == "nuovo.cliente@example.test"
-    assert email_service.messages[0].panel_url == "http://localhost:3000/login"
-    assert email_service.messages[0].action_url.startswith(
-        "https://clerk.example.test/invitations/"
-    )
+    assert "https://clerk.example.test" not in response.text
     stored_access = access_repository.get_by_client_id(payload["client"]["id"])
     assert stored_access is not None
     assert len(stored_access.portal_slug) >= 32
@@ -1979,10 +1968,8 @@ def test_platform_admin_can_create_access_with_email_only(
         },
     )
     access_gateway = FakeClerkAccessGateway()
-    email_service = FakeClientAccessEmailService()
     client_repository, access_repository, _, _ = install_test_dependencies(
         clerk_access_gateway=access_gateway,
-        client_access_email_service=email_service,
     )
     token = make_token(signing_keypair, clerk_user_id="user_admin")
 
@@ -2005,10 +1992,7 @@ def test_platform_admin_can_create_access_with_email_only(
     assert created_access.email == "solo.email@example.test"
     assert created_access.status == "active"
     assert created_access.invitation_status == "pending"
-    assert len(email_service.messages) == 1
-    assert email_service.messages[0].action_url.startswith(
-        "https://clerk.example.test/invitations/"
-    )
+    assert "https://clerk.example.test" not in response.text
     assert "password" not in created_client.model_dump()
     assert "password" not in created_access.model_dump()
 
@@ -2129,12 +2113,10 @@ def test_access_provisioning_reuses_fixed_portal_slug_on_resend(
         invitation_status="pending",
     )
     access_gateway = FakeClerkAccessGateway()
-    email_service = FakeClientAccessEmailService()
     client_repository, access_repository, _, _ = install_test_dependencies(
         client_records=[existing_client],
         access_records=[existing_access],
         clerk_access_gateway=access_gateway,
-        client_access_email_service=email_service,
     )
     token = make_token(signing_keypair, clerk_user_id="user_admin")
 
@@ -2162,7 +2144,6 @@ def test_access_provisioning_reuses_fixed_portal_slug_on_resend(
     assert first_slug == "z" * 32
     assert second_slug == first_slug
     assert len(access_gateway.invitation_calls) == 2
-    assert len(email_service.messages) == 2
     updated_access = access_repository.get_by_client_id(existing_client.id)
     assert updated_access is not None
     assert updated_access.portal_slug == first_slug
@@ -2191,7 +2172,6 @@ def test_platform_admin_provisioning_returns_controlled_clerk_failure_code(
     access_gateway = FailingClerkAccessGateway()
     install_test_dependencies(
         clerk_access_gateway=access_gateway,
-        client_access_email_service=FakeClientAccessEmailService(),
     )
     token = make_token(signing_keypair, clerk_user_id="user_admin")
 
@@ -2203,12 +2183,12 @@ def test_platform_admin_provisioning_returns_controlled_clerk_failure_code(
 
     assert response.status_code == 502
     assert response.json()["detail"] == build_client_access_error_detail(
-        "client_access_clerk_link_failed"
+        "client_access_clerk_email_failed"
     )
     assert "https://clerk.example.test" not in response.text
 
 
-def test_platform_admin_provisioning_returns_controlled_smtp_config_missing_code(
+def test_platform_admin_provisioning_returns_controlled_clerk_config_missing_code(
     client: TestClient,
     monkeypatch: pytest.MonkeyPatch,
     signing_keypair: rsa.RSAPrivateKey,
@@ -2223,12 +2203,10 @@ def test_platform_admin_provisioning_returns_controlled_smtp_config_missing_code
             }
         },
     )
-    access_gateway = FakeClerkAccessGateway()
-    monkeypatch.setenv("SMTP_FROM_EMAIL", "")
+    monkeypatch.setenv("CLERK_SECRET_KEY", "")
     get_settings.cache_clear()
     install_test_dependencies(
-        clerk_access_gateway=access_gateway,
-        client_access_email_service=ClientAccessEmailService(get_settings()),
+        clerk_access_gateway=HttpClerkAccessGateway(get_settings()),
     )
     token = make_token(signing_keypair, clerk_user_id="user_admin")
 
@@ -2240,12 +2218,12 @@ def test_platform_admin_provisioning_returns_controlled_smtp_config_missing_code
 
     assert response.status_code == 503
     assert response.json()["detail"] == build_client_access_error_detail(
-        "client_access_email_config_missing"
+        "client_access_clerk_config_missing"
     )
     assert "invitations" not in response.text
 
 
-def test_platform_admin_provisioning_returns_controlled_smtp_send_failure_code_and_keeps_access_active(
+def test_platform_admin_provisioning_returns_controlled_clerk_email_failure_code_and_keeps_access_pending(
     client: TestClient,
     monkeypatch: pytest.MonkeyPatch,
     signing_keypair: rsa.RSAPrivateKey,
@@ -2260,10 +2238,8 @@ def test_platform_admin_provisioning_returns_controlled_smtp_send_failure_code_a
             }
         },
     )
-    email_service = FailingClientAccessEmailService()
     _, access_repository, _, _ = install_test_dependencies(
-        clerk_access_gateway=FakeClerkAccessGateway(),
-        client_access_email_service=email_service,
+        clerk_access_gateway=FailingClerkAccessGateway(),
     )
     token = make_token(signing_keypair, clerk_user_id="user_admin")
 
@@ -2275,14 +2251,11 @@ def test_platform_admin_provisioning_returns_controlled_smtp_send_failure_code_a
 
     assert response.status_code == 502
     assert response.json()["detail"] == build_client_access_error_detail(
-        "client_access_email_send_failed"
+        "client_access_clerk_email_failed"
     )
     assert "https://clerk.example.test" not in response.text
     stored_access = access_repository.get_by_email("nuovo.cliente@example.test")
-    assert stored_access is not None
-    assert stored_access.status == "active"
-    assert stored_access.invitation_status == "pending"
-    assert stored_access.clerk_invitation_id == "inv_access_1"
+    assert stored_access is None
 
 
 def test_platform_admin_provisioning_rejects_invalid_email_with_controlled_code(
@@ -2934,12 +2907,10 @@ def test_resend_access_email_endpoint_preserves_portal_slug(
         invitation_status="pending",
     )
     access_gateway = FakeClerkAccessGateway()
-    email_service = FakeClientAccessEmailService()
     _, access_repository, _, _ = install_test_dependencies(
         client_records=[existing_client],
         access_records=[existing_access],
         clerk_access_gateway=access_gateway,
-        client_access_email_service=email_service,
     )
     token = make_token(signing_keypair, clerk_user_id="user_admin")
 
@@ -2956,7 +2927,6 @@ def test_resend_access_email_endpoint_preserves_portal_slug(
     assert stored_access is not None
     assert stored_access.portal_slug == "y" * 32
     assert len(access_gateway.invitation_calls) == 1
-    assert len(email_service.messages) == 1
 
 
 def test_client_delete_account_requires_strong_confirmation(

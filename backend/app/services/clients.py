@@ -101,7 +101,7 @@ from app.schemas.campaigns import (
 )
 from app.schemas.common import CampaignStatus
 from app.schemas.usage import ApiUsage
-from app.services.emails import ClientAccessEmailPayload, ClientAccessEmailService
+from app.services.emails import ClientAccessEmailService
 from app.services.provider_runtime import build_provider_runtime_summary
 
 ACTIVE_CAMPAIGN_STATUSES = {CampaignStatus.ready.value, CampaignStatus.running.value}
@@ -151,9 +151,13 @@ PORTAL_SLUG_LENGTH = 32
 CLIENT_ACCESS_EMAIL_INVALID = "client_access_email_invalid"
 CLIENT_ACCESS_CLERK_CONFIG_MISSING = "client_access_clerk_config_missing"
 CLIENT_ACCESS_CLERK_LINK_FAILED = "client_access_clerk_link_failed"
+CLIENT_ACCESS_CLERK_EMAIL_FAILED = "client_access_clerk_email_failed"
 CLIENT_ACCESS_EMAIL_CONFIG_MISSING = "client_access_email_config_missing"
 CLIENT_ACCESS_EMAIL_SEND_FAILED = "client_access_email_send_failed"
 CLIENT_ACCESS_EXISTING_USER_CONFLICT = "client_access_existing_user_conflict"
+CLIENT_ACCESS_EXISTING_USER_RESEND_UNSUPPORTED = (
+    "client_access_existing_user_resend_unsupported"
+)
 CLIENT_BRAND_LOGO_UPLOAD_DIR = (
     Path(__file__).resolve().parents[2] / "uploads" / "client-brand-logos"
 )
@@ -410,7 +414,7 @@ def has_any_email_limit_configured(client: ClientRecord) -> bool:
 @dataclass(frozen=True)
 class ClerkAccessLinkResult:
     reference_id: str
-    url: str
+    url: str | None
     kind: str
 
 
@@ -443,22 +447,21 @@ class HttpClerkAccessGateway(ClerkAccessGateway):
             "/invitations",
             {
                 "email_address": email,
-                "notify": False,
+                "notify": True,
                 "ignore_existing": True,
             },
         )
 
-        invitation_url = str(payload.get("url") or "").strip()
         invitation_id = str(payload.get("id") or "").strip()
-        if not invitation_url or not invitation_id:
+        if not invitation_id:
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,
-                detail=build_client_access_error_detail(CLIENT_ACCESS_CLERK_LINK_FAILED),
+                detail=build_client_access_error_detail(CLIENT_ACCESS_CLERK_EMAIL_FAILED),
             )
 
         return ClerkAccessLinkResult(
             reference_id=invitation_id,
-            url=invitation_url,
+            url=None,
             kind="invitation",
         )
 
@@ -513,13 +516,13 @@ class HttpClerkAccessGateway(ClerkAccessGateway):
         except httpx.RequestError as error:
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,
-                detail=build_client_access_error_detail(CLIENT_ACCESS_CLERK_LINK_FAILED),
+                detail=build_client_access_error_detail(CLIENT_ACCESS_CLERK_EMAIL_FAILED),
             ) from error
 
         if response.status_code in {401, 403}:
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,
-                detail=build_client_access_error_detail(CLIENT_ACCESS_CLERK_LINK_FAILED),
+                detail=build_client_access_error_detail(CLIENT_ACCESS_CLERK_EMAIL_FAILED),
             )
 
         if response.status_code >= 400:
@@ -542,14 +545,14 @@ class HttpClerkAccessGateway(ClerkAccessGateway):
                 status_code=status.HTTP_502_BAD_GATEWAY,
                 detail=build_client_access_error_detail(CLIENT_ACCESS_EMAIL_INVALID)
                 if _is_invalid_email_error(detail)
-                else build_client_access_error_detail(CLIENT_ACCESS_CLERK_LINK_FAILED),
+                else build_client_access_error_detail(CLIENT_ACCESS_CLERK_EMAIL_FAILED),
             )
 
         payload = response.json()
         if not isinstance(payload, dict):
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,
-                detail=build_client_access_error_detail(CLIENT_ACCESS_CLERK_LINK_FAILED),
+                detail=build_client_access_error_detail(CLIENT_ACCESS_CLERK_EMAIL_FAILED),
             )
 
         return payload
@@ -690,16 +693,6 @@ class ClientsService:
                 accepted_at=existing_access.accepted_at or datetime.now(timezone.utc),
             )
 
-        self._require_client_access_email_service().send_client_access_email(
-            ClientAccessEmailPayload(
-                recipient_email=normalized_email,
-                recipient_name=self._build_recipient_name(client=client),
-                login_email=normalized_email,
-                panel_url=self._build_panel_url(),
-                action_url=link_result.url,
-            )
-        )
-
         return ProvisionClientAccessResult(
             client=client,
             access_link_kind=link_result.kind,
@@ -730,22 +723,6 @@ class ClientsService:
         combined = " ".join(part for part in (first, last) if part)
         return combined or None
 
-    def _build_recipient_name(self, *, client: ClientRecord) -> str:
-        if client.personal_name and client.personal_name.strip():
-            return client.personal_name.strip()
-
-        local_part = client.email.split("@", 1)[0].strip()
-        return local_part or "cliente"
-
-    def _build_panel_url(self) -> str:
-        frontend_origin = self._settings.frontend_origin or self._settings.frontend_url.strip()
-        if not frontend_origin:
-            raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail=build_client_access_error_detail(CLIENT_ACCESS_EMAIL_CONFIG_MISSING),
-            )
-        return frontend_origin.rstrip("/") + "/login"
-
     def _build_client_access_link(
         self,
         *,
@@ -757,8 +734,11 @@ class ClientsService:
             existing_access is not None
             and existing_access.clerk_user_id
         ):
-            return gateway.create_sign_in_token(
-                clerk_user_id=existing_access.clerk_user_id,
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=build_client_access_error_detail(
+                    CLIENT_ACCESS_EXISTING_USER_RESEND_UNSUPPORTED
+                ),
             )
 
         return gateway.create_invitation(email=email)
@@ -799,11 +779,6 @@ class ClientsService:
         if self._clerk_access_gateway is None:
             raise RuntimeError("Clerk access gateway is not configured.")
         return self._clerk_access_gateway
-
-    def _require_client_access_email_service(self) -> ClientAccessEmailService:
-        if self._client_access_email_service is None:
-            raise RuntimeError("Client access email service is not configured.")
-        return self._client_access_email_service
 
     def update_client(
         self,

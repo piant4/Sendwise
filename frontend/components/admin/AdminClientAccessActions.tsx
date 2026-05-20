@@ -85,13 +85,13 @@ export function AdminClientAccessActions({
         await resendAdminClientAccessEmail(clientId, token);
         setToast({
           tone: "success",
-          message: "Email accesso inviata nuovamente.",
+          message: "Email di accesso inviata da Clerk.",
         });
       } else if (action === "send") {
         await sendAdminClientAccessEmail({ email: clientEmail ?? "" }, token);
         setToast({
           tone: "success",
-          message: "Email accesso inviata correttamente.",
+          message: "Email di accesso inviata da Clerk.",
         });
       } else if (action === "revoke") {
         await revokeAdminClientAccess(clientId, token);
@@ -136,10 +136,10 @@ export function AdminClientAccessActions({
             <h2 className="admin-clients-card__title">Azioni admin</h2>
             <p className="admin-clients-card__description">
               {accessPendingActivation
-                ? "L'accesso cliente e attivo ma il primo ingresso non e ancora stato completato. Puoi rimandare l'email sicura o disattivare l'accesso."
+                ? "L'accesso cliente e attivo ma il primo ingresso non e ancora stato completato. Puoi chiedere a Clerk di inviare una nuova email o disattivare l'accesso."
                 : accessDisabled || !accessConfigured
-                  ? "Invia una nuova email di accesso per riattivare il cliente con un link Clerk sicuro."
-                  : "Rimanda l'email di accesso o disattiva il portale cliente senza toccare lo storico business."}
+                  ? "Invia una nuova email di accesso per riattivare il cliente tramite l'invito nativo di Clerk."
+                  : "Rimanda l'email di accesso da Clerk o disattiva il portale cliente senza toccare lo storico business."}
             </p>
           </div>
         </div>

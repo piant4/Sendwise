@@ -33,6 +33,9 @@ Auth flow notes:
 - Sendwise provisions client access server-side and asks Clerk to send the native application invitation email
 - Sendwise invite activation is password-only on `/auth/redirect`; the customer must not be asked for first name or last name during activation
 - when admin-provisioned names exist, Sendwise passes them into Clerk invitation `public_metadata` and uses them only to satisfy Clerk-required name fields during ticket activation
+- Clerk password-policy rejections must be normalized into Sendwise-owned Italian copy; raw Clerk English messages must not be rendered in the invite activation UI
+- invalid, expired, already-used, or otherwise terminal Clerk ticket failures must fail closed with `Questo invito non è più valido. Richiedi una nuova email di accesso.`
+- compromised password responses must be treated as terminal for the current invite page state unless Clerk retry safety is explicitly verified in a future milestone
 - `POST /auth/onboarding` is deprecated and intentionally returns a safe legacy message; no Sendwise-owned profile-completion step remains in the primary client access flow
 - pending client portal behavior remains backend-owned: `portal_slug` stays hidden from API summaries until accepted active access
 - Sendwise must not email permanent plaintext passwords and must not store passwords in the Sendwise database

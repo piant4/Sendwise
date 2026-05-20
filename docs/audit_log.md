@@ -1,5 +1,16 @@
 # Audit Log
 
+## Milestone 18.6O-FIX15 - Harden Clerk Invite Ticket Error Handling
+
+Invite activation hardening audit summary:
+- Audited the password-only Clerk invite activation flow in `frontend/components/auth/ClientInviteActivationForm.tsx` and its helper tests without reading secrets, sending email, dispatching campaigns, calling Listmonk or SES, or touching database schema state.
+- Confirmed the current UI collapsed Clerk password-policy, ticket, and other sign-up failures into a generic activation error path and kept the page able to reuse a stale invite attempt after terminal Clerk failures.
+- The invite helper now classifies Clerk failures into `retryable_password_policy`, `terminal_ticket_invalid`, and `generic_terminal`, with Sendwise-owned Italian copy only.
+- `form_password_pwned` and `form_password_compromised` now fail closed as terminal invite errors for this page state because Clerk retry safety for the same invite attempt is not proven in this milestone.
+- Invalid, expired, already-used, and observed sign-up ticket failures now render `Questo invito non è più valido. Richiedi una nuova email di accesso.` and disable the activation submit action while visually emphasizing `Torna al login`.
+- Password edits clear only retryable password-policy errors; terminal Clerk errors keep the invite locked to avoid reusing stale ticket or sign-up state.
+- No password, Clerk ticket, session token, secret, or full Clerk API response is logged, stored, surfaced, or added to Sendwise email, campaign, Listmonk, or SES paths.
+
 ## Milestone 18.6O-FIX13 - Simplify Clerk Invite Activation To Password Only
 
 Invite activation audit summary:

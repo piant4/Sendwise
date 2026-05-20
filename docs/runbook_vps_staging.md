@@ -84,6 +84,8 @@ Client access note:
 - The Sendwise invite activation card on `/auth/redirect` is password-only. First name and last name are sourced from admin provisioning and Clerk invitation metadata when Clerk still requires them.
 - If Clerk requires first or last name and the invitation metadata is missing those values, the customer must see `Dati invito incompleti. Richiedi una nuova email di accesso.` and the admin should resend a fresh invite after correcting the provisioned client name.
 - Existing invite links created before this redirect change can still land in old Clerk-hosted paths. Create a fresh invite before QA.
+- After terminal Clerk invite failures such as invalid, expired, already-used, or consumed tickets, the same invite link must be treated as non-reusable and QA must request a fresh invite before trying again.
+- If Clerk rejects the password as compromised (`form_password_pwned` or `form_password_compromised`), Sendwise must fail closed, disable resubmission from the same page state, and direct the user back to login or to request a fresh invite.
 - Existing already-linked Clerk users cannot use the native resend flow from Sendwise; the backend returns a controlled unsupported code instead of sending a manual sign-in link.
 
 Clerk Dashboard checklist before staging QA:

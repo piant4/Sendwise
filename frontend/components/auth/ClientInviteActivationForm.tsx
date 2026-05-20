@@ -10,12 +10,17 @@ import { BrandMark } from "@/components/shared/BrandMark";
 import { getInviteActivationContext } from "@/lib/api";
 import {
   buildInviteActivationPayload,
+  getInviteActivationErrorState,
   getPasswordMismatchState,
   hasCompleteInviteActivationName,
+  INVITE_ACTIVATION_DEFAULT_HELPER_MESSAGE,
   INCOMPLETE_INVITE_DATA_MESSAGE,
+  INVITE_PASSWORD_HELPER_MESSAGE,
+  isInviteActivationTerminalError,
   isInviteActivationSubmitDisabled,
   isInviteNameRequirementError,
   normalizeInviteActivationContext,
+  shouldResetInviteActivationErrorOnPasswordEdit,
 } from "./clientInviteActivation";
 
 const LOGIN_REDIRECT_PATH = "/auth/redirect";
@@ -25,56 +30,11 @@ interface ClientInviteActivationFormProps {
 }
 
 function getInviteErrorMessage(error: unknown) {
-  if (isClerkAPIResponseError(error)) {
-    const firstError = error.errors[0];
-    const errorCode = firstError?.code ?? "";
-    const longMessage = firstError?.longMessage?.toLowerCase() ?? "";
-    const shortMessage = firstError?.message?.toLowerCase() ?? "";
-    const combinedMessage = `${longMessage} ${shortMessage}`.trim();
-
-    if (
-      errorCode === "form_param_value_invalid" ||
-      combinedMessage.includes("ticket") ||
-      combinedMessage.includes("invitation") ||
-      combinedMessage.includes("expired") ||
-      combinedMessage.includes("not found")
-    ) {
-      return "Questo invito non e piu valido. Accedi dal pannello oppure chiedi una nuova email di accesso.";
-    }
-
-    if (
-      combinedMessage.includes("password") &&
-      (combinedMessage.includes("weak") ||
-        combinedMessage.includes("strength") ||
-        combinedMessage.includes("breached") ||
-        combinedMessage.includes("length"))
-    ) {
-      return "Scegli una password piu sicura con almeno 8 caratteri e riprova.";
-    }
-
-    if (
-      combinedMessage.includes("already exists") ||
-      combinedMessage.includes("already in use")
-    ) {
-      return "Questo indirizzo e gia collegato a un account Clerk. Accedi dal pannello Sendwise.";
-    }
-
-    if (
-      combinedMessage.includes("missing") ||
-      combinedMessage.includes("required")
-    ) {
-      return "Completa tutti i campi richiesti per attivare l'accesso.";
-    }
-
-    if (
-      combinedMessage.includes("not supported") ||
-      combinedMessage.includes("unsupported")
-    ) {
-      return "Questo invito richiede un passaggio di sicurezza non supportato direttamente in Sendwise. Accedi dal pannello oppure chiedi una nuova email di accesso.";
-    }
+  if (!isClerkAPIResponseError(error)) {
+    return getInviteActivationErrorState(null);
   }
 
-  return "Non e stato possibile attivare l'accesso. Riprova oppure richiedi una nuova email di accesso.";
+  return getInviteActivationErrorState(error);
 }
 
 export function ClientInviteActivationForm({
@@ -88,9 +48,13 @@ export function ClientInviteActivationForm({
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [activationError, setActivationError] = useState<{
+    classification: string;
+    isTerminal: boolean;
+    message: string;
+  } | null>(null);
   const [helperMessage, setHelperMessage] = useState<string | null>(
-    "Completa qui l'attivazione del tuo accesso Sendwise.",
+    INVITE_ACTIVATION_DEFAULT_HELPER_MESSAGE,
   );
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isInviteContextLoading, setIsInviteContextLoading] = useState(false);
@@ -146,27 +110,47 @@ export function ClientInviteActivationForm({
   }, [ticket]);
 
   const mismatchState = getPasswordMismatchState(password, confirmPassword);
+  const hasTerminalActivationError = isInviteActivationTerminalError(
+    activationError,
+  );
   const isBusy =
     fetchStatus === "fetching" || isSubmitting || isInviteContextLoading;
   const isSubmitDisabled = isInviteActivationSubmitDisabled({
     password,
     confirmPassword,
     isBusy,
+    hasTerminalError: hasTerminalActivationError,
   });
+
+  function handlePasswordChange(nextPassword: string) {
+    setPassword(nextPassword);
+
+    if (shouldResetInviteActivationErrorOnPasswordEdit(activationError)) {
+      setActivationError(null);
+      setHelperMessage(INVITE_ACTIVATION_DEFAULT_HELPER_MESSAGE);
+    }
+  }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setErrorMessage(null);
+    setActivationError(null);
 
     if (!ticket.trim()) {
-      setErrorMessage(
-        "Questo invito non e disponibile. Accedi dal pannello oppure richiedi una nuova email di accesso.",
+      setActivationError(
+        getInviteActivationErrorState({
+          errors: [{ code: "form_ticket_invalid" }],
+        }),
       );
+      setHelperMessage(null);
       return;
     }
 
     if (mismatchState.isMismatch) {
-      setErrorMessage(mismatchState.message);
+      setActivationError({
+        classification: "retryable_password_policy",
+        isTerminal: false,
+        message: mismatchState.message ?? "",
+      });
       return;
     }
 
@@ -174,6 +158,12 @@ export function ClientInviteActivationForm({
     setHelperMessage("Attivazione accesso in corso...");
 
     try {
+      if (!signUp) {
+        setActivationError(getInviteActivationErrorState(null));
+        setHelperMessage(null);
+        return;
+      }
+
       const activationPayload = buildInviteActivationPayload({
         ticket,
         password,
@@ -186,19 +176,25 @@ export function ClientInviteActivationForm({
           isInviteNameRequirementError(result.error) &&
           !hasCompleteInviteActivationName(inviteContext)
         ) {
-          setErrorMessage(INCOMPLETE_INVITE_DATA_MESSAGE);
+          setActivationError({
+            classification: "generic_terminal",
+            isTerminal: true,
+            message: INCOMPLETE_INVITE_DATA_MESSAGE,
+          });
           setHelperMessage(null);
           return;
         }
 
-        setErrorMessage(getInviteErrorMessage(result.error));
+        setActivationError(getInviteErrorMessage(result.error));
         setHelperMessage(null);
         return;
       }
 
       if (signUp.status !== "complete" || !signUp.createdSessionId) {
-        setErrorMessage(
-          "Questo invito richiede un passaggio di sicurezza non supportato direttamente in Sendwise. Accedi dal pannello oppure chiedi una nuova email di accesso.",
+        setActivationError(
+          getInviteActivationErrorState({
+            errors: [{ code: "unsupported_clerk_ticket_flow" }],
+          }),
         );
         setHelperMessage(null);
         return;
@@ -216,12 +212,16 @@ export function ClientInviteActivationForm({
         isInviteNameRequirementError(error) &&
         !hasCompleteInviteActivationName(inviteContext)
       ) {
-        setErrorMessage(INCOMPLETE_INVITE_DATA_MESSAGE);
+        setActivationError({
+          classification: "generic_terminal",
+          isTerminal: true,
+          message: INCOMPLETE_INVITE_DATA_MESSAGE,
+        });
         setHelperMessage(null);
         return;
       }
 
-      setErrorMessage(getInviteErrorMessage(error));
+      setActivationError(getInviteErrorMessage(error));
       setHelperMessage(null);
     } finally {
       setIsSubmitting(false);
@@ -277,7 +277,7 @@ export function ClientInviteActivationForm({
                   autoComplete="new-password"
                   className="login-input login-input--password"
                   disabled={isBusy}
-                  onChange={(event) => setPassword(event.target.value)}
+                  onChange={(event) => handlePasswordChange(event.target.value)}
                   placeholder="Scegli la password"
                   required
                   value={password}
@@ -297,6 +297,7 @@ export function ClientInviteActivationForm({
                   )}
                 </button>
               </div>
+              <p className="login-field__hint">{INVITE_PASSWORD_HELPER_MESSAGE}</p>
             </div>
 
             <div className="login-field">
@@ -353,9 +354,9 @@ export function ClientInviteActivationForm({
               </p>
             ) : null}
 
-            {errorMessage ? (
+            {activationError ? (
               <p className="login-feedback login-feedback--error" role="alert">
-                {errorMessage}
+                {activationError.message}
               </p>
             ) : null}
 
@@ -367,7 +368,10 @@ export function ClientInviteActivationForm({
               >
                 {isSubmitting ? "Attivazione in corso..." : "Attiva accesso"}
               </button>
-              <Link href="/login" className="login-submit login-submit--secondary">
+              <Link
+                href="/login"
+                className={`login-submit login-submit--secondary${hasTerminalActivationError ? " login-submit--secondary-urgent" : ""}`}
+              >
                 Torna al login
               </Link>
             </div>

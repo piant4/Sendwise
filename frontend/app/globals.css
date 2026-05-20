@@ -4733,6 +4733,17 @@ p {
   border-color: rgba(81, 118, 100, 0.22);
 }
 
+.login-submit--secondary-urgent {
+  background: rgba(166, 70, 63, 0.08);
+  border-color: rgba(166, 70, 63, 0.28);
+  color: var(--sw-danger);
+}
+
+.login-submit--secondary-urgent:hover {
+  background: rgba(166, 70, 63, 0.12);
+  border-color: rgba(166, 70, 63, 0.34);
+}
+
 .login-reset-action {
   background: transparent;
   border: 0;

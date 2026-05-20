@@ -1043,7 +1043,7 @@ def test_pending_invited_client_claims_access_on_first_valid_login(
     assert response.json() == {
         "access_type": "client",
         "client_id": "client_demo",
-        "portal_slug": "a" * 32,
+        "portal_slug": None,
         "email": "client@example.test",
         "status": "invited",
         "invitation_status": "accepted",
@@ -1829,9 +1829,7 @@ def test_platform_admin_can_call_invite_endpoint(
     assert payload["access"]["status"] == "invited"
     assert payload["access"]["invitation_status"] == "pending"
     assert payload["access"]["clerk_invitation_id"] == "inv_1"
-    assert payload["access"]["portal_slug"]
-    assert len(payload["access"]["portal_slug"]) >= 32
-    assert payload["access"]["portal_slug"].isalnum()
+    assert payload["access"]["portal_slug"] is None
     assert gateway.calls == [
         {
             "email": "nuovo.cliente@example.test",
@@ -1840,7 +1838,8 @@ def test_platform_admin_can_call_invite_endpoint(
     ]
     stored_access = access_repository.get_by_client_id(payload["client"]["id"])
     assert stored_access is not None
-    assert stored_access.portal_slug == payload["access"]["portal_slug"]
+    assert len(stored_access.portal_slug) >= 32
+    assert stored_access.portal_slug.isalnum()
 
 
 def test_admin_invite_preflight_allows_frontend_origin(client: TestClient) -> None:
@@ -2032,8 +2031,14 @@ def test_invite_endpoint_reuses_fixed_portal_slug_on_reinvite(
 
     assert first_response.status_code == 200
     assert second_response.status_code == 200
-    first_slug = first_response.json()["access"]["portal_slug"]
-    second_slug = second_response.json()["access"]["portal_slug"]
+    first_stored_access = access_repository.get_by_client_id(existing_client.id)
+    second_stored_access = access_repository.get_by_client_id(existing_client.id)
+    assert first_stored_access is not None
+    assert second_stored_access is not None
+    first_slug = first_stored_access.portal_slug
+    second_slug = second_stored_access.portal_slug
+    assert first_response.json()["access"]["portal_slug"] is None
+    assert second_response.json()["access"]["portal_slug"] is None
     assert first_slug == "z" * 32
     assert second_slug == first_slug
     assert len(gateway.calls) == 2
@@ -2378,7 +2383,7 @@ def test_reinvite_access_endpoint_preserves_portal_slug(
     )
 
     assert response.status_code == 200
-    assert response.json()["access"]["portal_slug"] == "y" * 32
+    assert response.json()["access"]["portal_slug"] is None
     stored_access = access_repository.get_by_client_id(existing_client.id)
     assert stored_access is not None
     assert stored_access.portal_slug == "y" * 32

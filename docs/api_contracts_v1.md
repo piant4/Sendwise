@@ -24,12 +24,14 @@ All product APIs must be called through FastAPI. Frontend and external callers m
 
 | Endpoint | Purpose | Allowed caller | Required access | High-level input | High-level output | Main errors | Status |
 |---|---|---|---|---|---|---|---|
-| `GET /auth/me` | Resolve authenticated Sendwise access context for post-login routing and portal gating. | Authenticated frontend. | Active platform admin or active client account. | Clerk bearer token. | `access_type`, backend-owned `client_id`, `email`, `status`, `portal_slug`, onboarding flags. | `401`, `403`. | `implemented` |
+| `GET /auth/me` | Resolve authenticated Sendwise access context for post-login routing and portal gating. | Authenticated frontend. | Active platform admin or active client account. | Clerk bearer token. | `access_type`, backend-owned `client_id`, `email`, `status`, `portal_slug` only after accepted active access, onboarding flags. | `401`, `403`. | `implemented` |
 
 Auth flow notes:
 
 - invited client activation uses a custom Sendwise UI that collects `Nome`, `Cognome`, `Nuova password`, and `Conferma nuova password` while Clerk remains the password and session authority
 - frontend completes profile onboarding by posting the combined personal name to `POST /auth/onboarding` after Clerk activation succeeds
+- unsupported Clerk invitation outcomes must not surface raw Clerk text; the UI must either complete the supported path or fall back to a safe retry/contact-support state
+- pending Clerk session tasks after invite activation remain Clerk-owned follow-ups; Sendwise must not treat the portal as active until those tasks are cleared
 
 ## Health
 
@@ -57,6 +59,7 @@ Admin request notes:
 - admin endpoints remain platform-admin only
 - client account pages expose only legacy `max_campaigns` capacity; campaign send limits stay campaign-scoped
 - slot-management endpoints below are proposed and not yet implemented
+- pending invited access responses may keep an internal reserved `client_access.portal_slug` in persistence, but API summaries must expose `portal_slug=null` until the invite is accepted and the Sendwise portal is active
 
 ## Admin Campaigns
 

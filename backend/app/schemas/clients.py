@@ -19,7 +19,7 @@ class ClientAccessSummary(BaseModel):
     email: str
     clerk_user_id: Optional[str] = None
     clerk_invitation_id: Optional[str] = None
-    portal_slug: str
+    portal_slug: Optional[str] = None
     status: ClientAccessStatus
     invitation_status: Optional[InvitationStatus] = None
     invited_at: Optional[datetime] = None

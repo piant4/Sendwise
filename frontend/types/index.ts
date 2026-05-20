@@ -61,7 +61,7 @@ export interface ClientAccessSummary {
   email: string;
   clerk_user_id?: string | null;
   clerk_invitation_id?: string | null;
-  portal_slug: string;
+  portal_slug?: string | null;
   status: "invited" | "active" | "suspended" | "archived";
   invitation_status?: "pending" | "accepted" | "revoked" | "expired" | null;
   invited_at?: string | null;

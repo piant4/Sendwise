@@ -1178,6 +1178,17 @@ async function postAdminClientInvite(
   );
 }
 
+async function postAdminClientReinvite(
+  clientId: string,
+  accessToken?: string | null,
+): Promise<AdminClientInviteResponse> {
+  return apiPost<AdminClientInviteResponse, Record<string, never>>(
+    `/admin/clients/${clientId}/invite-access`,
+    {},
+    accessToken,
+  );
+}
+
 async function patchAdminClient(
   clientId: string,
   payload: AdminClientUpdateInput,
@@ -1903,6 +1914,22 @@ export function createAdminClientInvite(
   }
 
   return postAdminClientInvite(email, accessToken);
+}
+
+export function resendAdminClientInvite(
+  clientId: string,
+  accessToken?: string | null,
+): Promise<AdminClientInviteResponse> {
+  if (USE_MOCK_API) {
+    throw new ApiError({
+      path: `/admin/clients/${clientId}/invite-access`,
+      status: 500,
+      detail:
+        "Client invite resend requires NEXT_PUBLIC_USE_MOCK_API=false so the backend can create a new Clerk invite.",
+    });
+  }
+
+  return postAdminClientReinvite(clientId, accessToken);
 }
 
 export async function getAdminClient(

@@ -119,6 +119,7 @@ Current verified fields:
 Contract rule:
 - backend derives trusted `client_id` from this mapping
 - frontend never supplies trusted `client_id`
+- `portal_slug` stays persistence-owned and may be reserved before acceptance, but frontend/admin API summaries must expose it only after `status=active` and `invitation_status=accepted`
 
 ### campaigns
 

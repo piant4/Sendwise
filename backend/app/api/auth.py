@@ -24,6 +24,16 @@ router = APIRouter(
 )
 
 
+def _get_exposed_portal_slug(current_user: AuthenticatedUser) -> str | None:
+    if (
+        current_user.status == "active"
+        and (current_user.invitation_status or "pending") == "accepted"
+    ):
+        return current_user.portal_slug
+
+    return None
+
+
 @router.get("/me", response_model=AuthMeResponse)
 def get_me(
     current_user: AuthenticatedUser = Depends(require_auth_me_user),
@@ -31,7 +41,7 @@ def get_me(
     return AuthMeResponse(
         access_type=current_user.access_type,
         client_id=current_user.client_id,
-        portal_slug=current_user.portal_slug,
+        portal_slug=_get_exposed_portal_slug(current_user),
         email=current_user.email,
         status=current_user.status,
         invitation_status=current_user.invitation_status,
@@ -53,7 +63,19 @@ def complete_client_onboarding(
     return AuthMeResponse(
         access_type="client",
         client_id=resolved_access.access.client_id,
-        portal_slug=resolved_access.access.portal_slug,
+        portal_slug=_get_exposed_portal_slug(
+            AuthenticatedUser(
+                id=resolved_access.access.id,
+                clerk_user_id=current_user.clerk_user_id,
+                email=resolved_access.access.email,
+                access_type="client",
+                client_id=resolved_access.access.client_id,
+                portal_slug=resolved_access.access.portal_slug,
+                status=resolved_access.access.status,
+                invitation_status=resolved_access.access.invitation_status,
+                onboarding_required=False,
+            )
+        ),
         email=resolved_access.access.email,
         status=resolved_access.access.status,
         invitation_status=resolved_access.access.invitation_status,

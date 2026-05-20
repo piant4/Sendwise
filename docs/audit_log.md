@@ -1,5 +1,20 @@
 # Audit Log
 
+## Milestone 18.6O-FIX1 - Fix Invited Client Onboarding And Pending Portal State
+
+Date: 2026-05-20
+
+Invite onboarding and pending portal audit summary:
+- Audited the invite activation UI, Clerk ticket handoff, backend auth mapping, admin client detail surface, and current client-access persistence without reading secrets, sending invites manually, or touching live SES/Listmonk operations.
+- Root cause for the raw fallback message was the custom invite UI treating every non-`complete` Clerk sign-up outcome as a generic unsupported security error. The audited unsupported states are `signUp.status="missing_requirements"` during ticket activation and pending Clerk `session.currentTask` values after `finalize()`, which Clerk documents for tasks like `choose-organization`, `reset-password`, and `setup-mfa`.
+- The invite activation form now keeps Clerk as the password authority, adds a local strength meter, password checklist, confirm-password match feedback, friendlier Italian Clerk password error mapping, and safe fallback states for invalid invites or unsupported Clerk follow-ups.
+- Backend and admin API summaries now hide `portal_slug` while access remains invited/pending even though persistence still keeps a reserved internal slug. No schema migration was required because the database already supports keeping the slug internally while the API exposes it only after active accepted access.
+- Admin client detail now shows pending invite semantics only: no active portal slug copy, `Rimanda invito`, and `Annulla invito` until acceptance. Accepted access keeps the existing revoke/archive flow.
+
+Safety confirmation:
+- No password is stored in Sendwise persistence; password creation remains Clerk-owned.
+- No send/dispatch execution, direct SES/Listmonk action, DB reset, destructive DB command, or schema migration was performed.
+
 ## Milestone 18.6K - SES Deliverability Posture And Production Readiness
 
 Date: 2026-05-20

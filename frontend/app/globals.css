@@ -4025,6 +4025,120 @@ p {
   padding: 14px 15px;
 }
 
+.login-password-meter,
+.login-password-meter__meta,
+.login-checklist,
+.login-state-card,
+.login-state-card__copy,
+.login-state-card__actions {
+  display: grid;
+}
+
+.login-password-meter {
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.login-password-meter__track {
+  background: rgba(203, 213, 225, 0.72);
+  border-radius: 999px;
+  height: 10px;
+  overflow: hidden;
+}
+
+.login-password-meter__fill {
+  border-radius: inherit;
+  display: block;
+  height: 100%;
+  transition:
+    width 0.18s ease,
+    background-color 0.18s ease;
+}
+
+.login-password-meter__fill[data-tone="empty"] {
+  background: rgba(148, 163, 184, 0.6);
+}
+
+.login-password-meter__fill[data-tone="weak"] {
+  background: #e11d48;
+}
+
+.login-password-meter__fill[data-tone="medium"] {
+  background: #f59e0b;
+}
+
+.login-password-meter__fill[data-tone="strong"] {
+  background: #0f9f6e;
+}
+
+.login-password-meter__meta {
+  gap: 4px;
+}
+
+.login-password-meter__meta strong {
+  color: var(--sw-olive);
+  font-size: 0.9rem;
+}
+
+.login-password-meter__meta span {
+  color: var(--sw-text-muted);
+  font-size: 0.82rem;
+  line-height: 1.55;
+}
+
+.login-checklist {
+  gap: 8px;
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+}
+
+.login-checklist__item,
+.login-match-indicator {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+}
+
+.login-checklist__item {
+  color: var(--sw-text-muted);
+  font-size: 0.84rem;
+}
+
+.login-checklist__item svg,
+.login-match-indicator svg {
+  flex-shrink: 0;
+  height: 16px;
+  width: 16px;
+}
+
+.login-checklist__item[data-satisfied="true"] {
+  color: #0f9f6e;
+}
+
+.login-match-indicator {
+  border-radius: 14px;
+  font-size: 0.84rem;
+  line-height: 1.5;
+  margin-top: 12px;
+  padding: 10px 12px;
+}
+
+.login-match-indicator[data-match="true"] {
+  background: rgba(16, 185, 129, 0.1);
+  color: #0f9f6e;
+}
+
+.login-match-indicator[data-invalid="true"] {
+  background: rgba(225, 29, 72, 0.08);
+  color: #be123c;
+}
+
+.login-match-indicator:not([data-match="true"]):not([data-invalid="true"]) {
+  background: rgba(241, 245, 249, 0.82);
+  color: var(--sw-text-muted);
+}
+
 .login-feedback {
   border-radius: 18px;
   font-size: 0.88rem;
@@ -4039,16 +4153,28 @@ p {
   color: var(--sw-danger);
 }
 
+.login-feedback--info {
+  background: var(--sw-info-bg);
+  border: 1px solid rgba(37, 99, 235, 0.16);
+  color: var(--sw-primary);
+}
+
 .login-submit {
+  align-items: center;
   background: var(--sw-primary);
   border: 0;
   border-radius: 16px;
   box-shadow: 0 16px 30px rgba(81, 118, 100, 0.25);
   color: #fff;
   cursor: pointer;
+  display: inline-flex;
   font-size: 0.95rem;
   font-weight: 700;
+  gap: 8px;
+  justify-content: center;
   min-height: 48px;
+  padding: 0 18px;
+  text-decoration: none;
   transition:
     background-color 0.15s ease,
     transform 0.15s ease;
@@ -4062,6 +4188,85 @@ p {
   box-shadow: none;
   cursor: wait;
   opacity: 0.72;
+}
+
+.login-submit--secondary,
+.login-submit--ghost {
+  box-shadow: none;
+}
+
+.login-submit--secondary {
+  background: rgba(248, 250, 252, 0.98);
+  border: 1px solid rgba(203, 213, 225, 0.88);
+  color: var(--sw-text);
+}
+
+.login-submit--secondary:hover {
+  background: rgba(241, 245, 249, 0.98);
+}
+
+.login-submit--ghost {
+  background: rgba(37, 99, 235, 0.08);
+  border: 1px solid rgba(37, 99, 235, 0.16);
+  color: var(--sw-primary);
+}
+
+.login-state-card {
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.98),
+    rgba(248, 250, 252, 0.94)
+  );
+  border: 1px solid rgba(203, 213, 225, 0.82);
+  border-radius: 24px;
+  gap: 18px;
+  padding: 20px;
+}
+
+.login-state-card__icon-shell {
+  align-items: center;
+  border-radius: 18px;
+  display: inline-flex;
+  height: 48px;
+  justify-content: center;
+  width: 48px;
+}
+
+.login-state-card__icon-shell[data-tone="invalid"] {
+  background: rgba(225, 29, 72, 0.12);
+  color: #be123c;
+}
+
+.login-state-card__icon-shell[data-tone="unsupported"] {
+  background: rgba(245, 158, 11, 0.14);
+  color: #b45309;
+}
+
+.login-state-card__copy {
+  gap: 8px;
+}
+
+.login-state-card__copy h3 {
+  color: var(--sw-olive);
+  font-size: 1.1rem;
+  letter-spacing: -0.02em;
+  margin: 0;
+}
+
+.login-state-card__copy p,
+.login-state-card__support {
+  color: var(--sw-text-muted);
+  font-size: 0.9rem;
+  line-height: 1.65;
+  margin: 0;
+}
+
+.login-state-card__actions {
+  gap: 10px;
+}
+
+.login-state-card__support a {
+  color: var(--sw-primary);
 }
 
 .login-submit:active {

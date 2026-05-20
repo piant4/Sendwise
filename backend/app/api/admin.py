@@ -27,10 +27,14 @@ from app.schemas.clients import (
     AdminOverviewSummary,
     AdminSystemStatus,
     Client,
-    ClientAccessSummary,
 )
 from app.services.client_access import ClientAccessService, get_client_access_service
-from app.services.clients import ClientsService, build_client_schema, get_clients_service
+from app.services.clients import (
+    ClientsService,
+    build_client_access_summary,
+    build_client_schema,
+    get_clients_service,
+)
 from app.services.campaigns import (
     AdminCampaignService,
     CampaignDispatchService,
@@ -79,7 +83,7 @@ def create_client(
     )
     return AdminClientInviteResponse(
         client=build_client_schema(result.client, access=result.access),
-        access=ClientAccessSummary.model_validate(result.access.model_dump()),
+        access=build_client_access_summary(result.access),
     )
 
 
@@ -152,7 +156,7 @@ def reinvite_client_access(
     )
     return AdminClientInviteResponse(
         client=build_client_schema(result.client, access=result.access),
-        access=ClientAccessSummary.model_validate(result.access.model_dump()),
+        access=build_client_access_summary(result.access),
     )
 
 

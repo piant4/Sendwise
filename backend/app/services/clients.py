@@ -252,9 +252,7 @@ def build_client_schema(
     *,
     access: Optional[ClientAccessRecord] = None,
 ) -> Client:
-    access_summary = (
-        ClientAccessSummary.model_validate(access.model_dump()) if access else None
-    )
+    access_summary = build_client_access_summary(access)
     return Client(
         id=client.id,
         email=client.email,
@@ -269,6 +267,20 @@ def build_client_schema(
         updated_at=client.updated_at,
         access=access_summary,
     )
+
+
+def build_client_access_summary(
+    access: Optional[ClientAccessRecord],
+) -> Optional[ClientAccessSummary]:
+    if access is None:
+        return None
+
+    payload = access.model_dump()
+    should_expose_portal_slug = (
+        access.status == "active" and (access.invitation_status or "pending") == "accepted"
+    )
+    payload["portal_slug"] = access.portal_slug if should_expose_portal_slug else None
+    return ClientAccessSummary.model_validate(payload)
 
 
 def build_admin_email_limit_row(

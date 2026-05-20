@@ -1,16 +1,17 @@
 "use client";
 
 import { useAuth } from "@clerk/nextjs";
-import { Archive, Ban, X } from "lucide-react";
+import { Archive, Ban, Mail, Send, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import {
   archiveAdminClient,
   isApiError,
+  resendAdminClientInvite,
   revokeAdminClientAccess,
 } from "../../lib/api";
 
-type ActionName = "revoke" | "archive";
+type ActionName = "resend" | "revoke" | "archive";
 
 type ToastState =
   | {
@@ -23,6 +24,7 @@ interface AdminClientAccessActionsProps {
   clientId: string;
   clientStatus: string;
   accessStatus?: string | null;
+  invitationStatus?: string | null;
 }
 
 function getActionErrorMessage(error: unknown): string {
@@ -47,17 +49,21 @@ export function AdminClientAccessActions({
   clientId,
   clientStatus,
   accessStatus,
+  invitationStatus,
 }: AdminClientAccessActionsProps) {
   const router = useRouter();
   const { getToken } = useAuth();
   const [confirmAction, setConfirmAction] = useState<ActionName | null>(null);
   const [pendingAction, setPendingAction] = useState<ActionName | null>(null);
   const [toast, setToast] = useState<ToastState>(null);
+  const isPendingInvite =
+    accessStatus === "invited" || invitationStatus === "pending";
 
   const revokeDisabled =
     pendingAction !== null ||
     accessStatus === "suspended" ||
     accessStatus === "archived";
+  const resendDisabled = pendingAction !== null || !isPendingInvite;
   const archiveDisabled = pendingAction !== null || clientStatus === "archived";
 
   async function handleConfirmedAction(action: ActionName) {
@@ -67,11 +73,19 @@ export function AdminClientAccessActions({
     try {
       const token = await getToken();
 
-      if (action === "revoke") {
+      if (action === "resend") {
+        await resendAdminClientInvite(clientId, token);
+        setToast({
+          tone: "success",
+          message: "Nuovo invito inviato correttamente.",
+        });
+      } else if (action === "revoke") {
         await revokeAdminClientAccess(clientId, token);
         setToast({
           tone: "success",
-          message: "Accesso cliente revocato correttamente.",
+          message: isPendingInvite
+            ? "Invito annullato correttamente."
+            : "Accesso cliente revocato correttamente.",
         });
       } else {
         await archiveAdminClient(clientId, token);
@@ -115,31 +129,57 @@ export function AdminClientAccessActions({
             <p className="admin-surface__eyebrow">Accesso</p>
             <h2 className="admin-clients-card__title">Azioni admin</h2>
             <p className="admin-clients-card__description">
-              Revoca l&apos;accesso al portale o archivia il cliente senza
-              cancellarne lo storico business.
+              {isPendingInvite
+                ? "Finche l'invito e in attesa puoi solo rimandarlo o annullarlo senza mostrare un portale attivo."
+                : "Revoca l&apos;accesso al portale o archivia il cliente senza cancellarne lo storico business."}
             </p>
           </div>
         </div>
 
         <div className="admin-client-actions__buttons">
-          <button
-            type="button"
-            className="admin-client-actions__button admin-client-actions__button--warning"
-            disabled={revokeDisabled}
-            onClick={() => setConfirmAction("revoke")}
-          >
-            <Ban aria-hidden="true" />
-            Revoca accesso
-          </button>
-          <button
-            type="button"
-            className="admin-client-actions__button admin-client-actions__button--danger"
-            disabled={archiveDisabled}
-            onClick={() => setConfirmAction("archive")}
-          >
-            <Archive aria-hidden="true" />
-            Archivia cliente
-          </button>
+          {isPendingInvite ? (
+            <>
+              <button
+                type="button"
+                className="admin-client-actions__button"
+                disabled={resendDisabled}
+                onClick={() => handleConfirmedAction("resend")}
+              >
+                <Send aria-hidden="true" />
+                Rimanda invito
+              </button>
+              <button
+                type="button"
+                className="admin-client-actions__button admin-client-actions__button--warning"
+                disabled={revokeDisabled}
+                onClick={() => setConfirmAction("revoke")}
+              >
+                <Mail aria-hidden="true" />
+                Annulla invito
+              </button>
+            </>
+          ) : (
+            <>
+              <button
+                type="button"
+                className="admin-client-actions__button admin-client-actions__button--warning"
+                disabled={revokeDisabled}
+                onClick={() => setConfirmAction("revoke")}
+              >
+                <Ban aria-hidden="true" />
+                Revoca accesso
+              </button>
+              <button
+                type="button"
+                className="admin-client-actions__button admin-client-actions__button--danger"
+                disabled={archiveDisabled}
+                onClick={() => setConfirmAction("archive")}
+              >
+                <Archive aria-hidden="true" />
+                Archivia cliente
+              </button>
+            </>
+          )}
         </div>
 
         {confirmAction ? (
@@ -151,7 +191,9 @@ export function AdminClientAccessActions({
             </strong>
             <span>
               {confirmAction === "revoke"
-                ? "Il cliente non potra piu accedere a /c/{portal_slug} finche l'accesso non verra riattivato manualmente."
+                ? isPendingInvite
+                  ? "L'invito verra annullato e il cliente dovra ricevere un nuovo invito per completare l'attivazione."
+                  : "Il cliente non potra piu accedere a /c/{portal_slug} finche l'accesso non verra riattivato manualmente."
                 : "Il cliente restera nello storico admin ma non avra piu un accesso portale attivo."}
             </span>
             <div className="admin-client-actions__confirm-buttons">
@@ -172,7 +214,9 @@ export function AdminClientAccessActions({
                 {pendingAction === confirmAction
                   ? "Aggiornamento in corso..."
                   : confirmAction === "revoke"
-                    ? "Conferma revoca"
+                    ? isPendingInvite
+                      ? "Conferma annullamento"
+                      : "Conferma revoca"
                     : "Conferma archivio"}
               </button>
             </div>

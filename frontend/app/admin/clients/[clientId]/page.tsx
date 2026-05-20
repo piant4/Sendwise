@@ -69,6 +69,14 @@ function getInvitationStatusLabel(status?: string | null): string {
   }
 }
 
+function shouldExposePortalSlug(client: Client): boolean {
+  return (
+    client.access?.status === "active" &&
+    client.access?.invitation_status === "accepted" &&
+    Boolean(client.access?.portal_slug)
+  );
+}
+
 async function updateClientLimitsAction(clientId: string, formData: FormData) {
   "use server";
 
@@ -131,6 +139,10 @@ export default async function AdminClientDetailPage({
   }
 
   const { client } = result;
+  const showPortalSlug = shouldExposePortalSlug(client);
+  const isPendingInvite =
+    client.access?.status === "invited" ||
+    client.access?.invitation_status === "pending";
 
   return (
     <main className="shell">
@@ -213,7 +225,11 @@ export default async function AdminClientDetailPage({
               <div>
                 <dt>Portal slug</dt>
                 <dd className="admin-client-detail__portal-slug">
-                  {client.access?.portal_slug ?? "-"}
+                  {showPortalSlug
+                    ? client.access?.portal_slug
+                    : isPendingInvite
+                      ? "Disponibile solo dopo accettazione invito e attivazione portale"
+                      : "-"}
                 </dd>
               </div>
               <div>
@@ -296,6 +312,7 @@ export default async function AdminClientDetailPage({
           clientId={client.id}
           clientStatus={client.status}
           accessStatus={client.access?.status}
+          invitationStatus={client.access?.invitation_status}
         />
       </section>
     </main>

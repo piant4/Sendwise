@@ -45,7 +45,6 @@ export function ClientDeliveryCard({ summary }: ClientDeliveryCardProps) {
     <div className="client-rail client-dashboard-rail">
       <ClientSurface
         title="Stato metriche reali"
-        description="I volumi di invio arrivano dal backend. Le metriche provider compaiono solo dopo eventi reali."
       >
         <div className="client-delivery-state">
           <strong>{getProviderEventsAvailabilityLabel(logs)}</strong>

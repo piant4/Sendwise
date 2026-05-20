@@ -28,12 +28,11 @@ All product APIs must be called through FastAPI. Frontend and external callers m
 
 Auth flow notes:
 
-- invited client activation now defaults to a framed Clerk sign-up card inside the Sendwise onboarding shell from the first screen, because Clerk does not expose all ticket follow-up requirements safely before submission
-- a `custom-sdk` invite mode is allowed only when the runtime can prove ahead of time that `ticket + first_name + last_name + password` completes without extra Clerk UI; the current implementation therefore selects `clerk-framed` by default
-- frontend completes profile onboarding by posting the combined personal name to `POST /auth/onboarding` only after Clerk has created a valid session, typically by reusing the Clerk first/last name through the signed-in onboarding step and then redirecting to `/auth/redirect`
-- unsupported invite follow-up outcomes must not surface raw provider/auth text or appear after a Sendwise password form submission; the initial screen must choose either Sendwise custom-only or Clerk framed activation before the user starts
-- pending client portal behavior remains backend-owned: `portal_slug` stays hidden until accepted active access and backend onboarding completion
-- if the framed Clerk card must avoid social/OAuth buttons, disable those providers in Clerk Dashboard under `User & Authentication -> Social Connections`; they are not disabled per-component in the current frontend implementation
+- admin-created client access is the only supported customer provisioning flow in this milestone
+- Sendwise creates or refreshes the Clerk access link server-side and sends a transactional access email with the login email, panel URL, and secure activation/reset link
+- `POST /auth/onboarding` is deprecated and intentionally returns a safe legacy message; no Sendwise-owned profile-completion step remains in the primary client access flow
+- pending client portal behavior remains backend-owned: `portal_slug` stays hidden from API summaries until accepted active access
+- Sendwise must not email permanent plaintext passwords and must not store passwords in the Sendwise database
 
 ## Health
 
@@ -46,11 +45,11 @@ Auth flow notes:
 | Endpoint | Purpose | Allowed caller | Required access | High-level input | High-level output | Main errors | Status |
 |---|---|---|---|---|---|---|---|
 | `GET /admin/clients` | List clients. | Admin dashboard. | Platform admin. | Filters, pagination. | Client summaries. | `401`, `403`. | `implemented` |
-| `POST /admin/clients` | Create/invite a client profile. | Admin dashboard. | Platform admin. | `email`, optional profile fields. | Client profile plus access summary. | `400`, `401`, `403`, `409`, `422`. | `implemented` |
+| `POST /admin/clients` | Create or reactivate client access and send the secure access email. | Admin dashboard. | Platform admin. | `email`, optional `first_name`, optional `last_name`. | Client profile plus access summary. | `400`, `401`, `403`, `409`, `422`, `502`, `503`. | `implemented` |
 | `GET /admin/clients/{client_id}` | Read client detail. | Admin dashboard. | Platform admin. | `client_id`. | Client detail and access summary. | `401`, `403`, `404`. | `implemented` |
 | `PATCH /admin/clients/{client_id}` | Update client profile and legacy account-capacity fields. | Admin dashboard. | Platform admin. | `client_id`, partial profile and compatibility fields. | Updated client profile. | `400`, `401`, `403`, `404`, `409`. | `implemented` |
-| `POST /admin/clients/{client_id}/invite-access` | Re-issue access invite. | Admin dashboard. | Platform admin. | `client_id`. | Refreshed access state. | `400`, `401`, `403`, `404`, `409`, `422`. | `implemented` |
-| `POST /admin/clients/{client_id}/revoke-access` | Revoke pending access. | Admin dashboard. | Platform admin. | `client_id`. | Updated access state. | `401`, `403`, `404`, `409`. | `implemented` |
+| `POST /admin/clients/{client_id}/send-access-email` | Send or resend the secure client access email. | Admin dashboard. | Platform admin. | `client_id`. | Refreshed access state. | `400`, `401`, `403`, `404`, `409`, `422`, `502`, `503`. | `implemented` |
+| `POST /admin/clients/{client_id}/revoke-access` | Disable client portal access without deleting the client record. | Admin dashboard. | Platform admin. | `client_id`. | Updated access state. | `401`, `403`, `404`, `409`. | `implemented` |
 | `POST /admin/clients/{client_id}/archive` | Archive client and access. | Admin dashboard. | Platform admin. | `client_id`. | Archived client state. | `401`, `403`, `404`, `409`. | `implemented` |
 | `GET /admin/clients/{client_id}/campaigns` | List campaigns for a client. | Admin dashboard. | Platform admin. | `client_id`, filters. | Campaign summaries. | `401`, `403`, `404`. | `stub` |
 | `GET /admin/clients/{client_id}/usage` | View usage for a client. | Admin dashboard. | Platform admin. | `client_id`, date range. | Usage records. | `401`, `403`, `404`. | `stub` |
@@ -61,7 +60,7 @@ Admin request notes:
 - admin endpoints remain platform-admin only
 - client account pages expose only legacy `max_campaigns` capacity; campaign send limits stay campaign-scoped
 - slot-management endpoints below are proposed and not yet implemented
-- pending invited access responses may keep an internal reserved `client_access.portal_slug` in persistence, but API summaries must expose `portal_slug=null` until the invite is accepted and the Sendwise portal is active
+- pending or newly reactivated access responses may keep an internal reserved `client_access.portal_slug` in persistence, but API summaries must expose `portal_slug=null` until the customer completes the first secure Clerk login
 
 ## Admin Campaigns
 

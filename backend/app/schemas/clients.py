@@ -202,14 +202,15 @@ class ClientOverviewSummary(BaseModel):
     client_dashboard: Optional[ClientDashboardSummary] = None
 
 
-class AdminClientInviteRequest(BaseModel):
+class AdminClientAccessProvisionRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     email: str
-    personal_name: Optional[str] = None
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
 
 
-class AdminClientInviteResponse(BaseModel):
+class AdminClientAccessResponse(BaseModel):
     client: Client
     access: ClientAccessSummary
 

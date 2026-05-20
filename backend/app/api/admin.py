@@ -20,8 +20,8 @@ from app.schemas.campaigns import (
 from app.schemas.clients import (
     AdminBlockedSendItem,
     AdminCampaignSummary,
-    AdminClientInviteRequest,
-    AdminClientInviteResponse,
+    AdminClientAccessProvisionRequest,
+    AdminClientAccessResponse,
     AdminClientUpdateRequest,
     AdminEmailLimitsResponse,
     AdminOverviewSummary,
@@ -71,19 +71,22 @@ def list_clients(
     ]
 
 
-@router.post("/clients", response_model=AdminClientInviteResponse)
+@router.post("/clients", response_model=AdminClientAccessResponse)
 def create_client(
-    payload: AdminClientInviteRequest,
+    payload: AdminClientAccessProvisionRequest,
     _current_user: AuthenticatedUser = Depends(require_platform_admin),
+    clients_service: ClientsService = Depends(get_clients_service),
     client_access_service: ClientAccessService = Depends(get_client_access_service),
-) -> AdminClientInviteResponse:
-    result = client_access_service.invite_client_access(
+) -> AdminClientAccessResponse:
+    result = clients_service.provision_client_access(
         email=payload.email,
-        personal_name=payload.personal_name,
+        first_name=payload.first_name,
+        last_name=payload.last_name,
     )
-    return AdminClientInviteResponse(
-        client=build_client_schema(result.client, access=result.access),
-        access=build_client_access_summary(result.access),
+    access = client_access_service.get_access_by_client_id(result.client.id)
+    return AdminClientAccessResponse(
+        client=build_client_schema(result.client, access=access),
+        access=build_client_access_summary(access),
     )
 
 
@@ -140,23 +143,25 @@ def update_client(
 
 
 @router.post(
-    "/clients/{client_id}/invite-access",
-    response_model=AdminClientInviteResponse,
+    "/clients/{client_id}/send-access-email",
+    response_model=AdminClientAccessResponse,
 )
-def reinvite_client_access(
+def resend_client_access_email(
     client_id: str,
     _current_user: AuthenticatedUser = Depends(require_platform_admin),
     clients_service: ClientsService = Depends(get_clients_service),
     client_access_service: ClientAccessService = Depends(get_client_access_service),
-) -> AdminClientInviteResponse:
+) -> AdminClientAccessResponse:
     client = clients_service.get_client_by_id(client_id)
-    result = client_access_service.invite_client_access(
+    result = clients_service.provision_client_access(
         email=client.email,
-        personal_name=client.personal_name,
+        first_name=client.personal_name,
+        last_name=None,
     )
-    return AdminClientInviteResponse(
-        client=build_client_schema(result.client, access=result.access),
-        access=build_client_access_summary(result.access),
+    access = client_access_service.get_access_by_client_id(result.client.id)
+    return AdminClientAccessResponse(
+        client=build_client_schema(result.client, access=access),
+        access=build_client_access_summary(access),
     )
 
 

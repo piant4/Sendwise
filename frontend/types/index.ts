@@ -70,11 +70,13 @@ export interface ClientAccessSummary {
   updated_at: string;
 }
 
-export interface AdminClientInviteInput {
+export interface AdminClientAccessInput {
   email: string;
+  first_name?: string | null;
+  last_name?: string | null;
 }
 
-export interface AdminClientInviteResponse {
+export interface AdminClientAccessResponse {
   client: Client;
   access: ClientAccessSummary;
 }

@@ -119,7 +119,9 @@ Current verified fields:
 Contract rule:
 - backend derives trusted `client_id` from this mapping
 - frontend never supplies trusted `client_id`
-- `portal_slug` stays persistence-owned and may be reserved before acceptance, but frontend/admin API summaries must expose it only after `status=active` and `invitation_status=accepted`
+- `portal_slug` stays persistence-owned and may be reserved before the first successful Clerk login, but frontend/admin API summaries must expose it only after `status=active` and `invitation_status=accepted`
+- `clerk_invitation_id` may hold either the latest Clerk invitation id for unclaimed access or the previous invite reference kept for audit purposes after activation
+- Sendwise never stores plaintext passwords in this table or any other Business DB table
 
 ### campaigns
 

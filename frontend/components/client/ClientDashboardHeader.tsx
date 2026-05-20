@@ -35,7 +35,8 @@ export function ClientDashboardHeader({ summary }: ClientDashboardHeaderProps) {
     <section className="client-hero client-dashboard-hero">
       <span className="client-surface__eyebrow">Dashboard</span>
       <div className="client-dashboard-hero__copy">
-        <h1 className="client-hero__title">Bentornato, {getGreetingName(summary)}</h1>
+        <h2>Bentornato,</h2>
+        <h1 className="client-hero__title">{getGreetingName(summary)}</h1>
       </div>
     </section>
   );

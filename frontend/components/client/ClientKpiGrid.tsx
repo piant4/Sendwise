@@ -72,17 +72,34 @@ export function ClientKpiGrid({ summary }: ClientKpiGridProps) {
     },
   ];
 
+  const topCards = cards.slice(0, 2);
+  const bottomCards = cards.slice(2);
+
   return (
     <section className="client-kpi-grid" aria-label="Riepilogo dashboard cliente">
-      {cards.map((card) => (
-        <article key={card.title} className="client-kpi-card" data-tone={card.tone}>
-          <div className="client-kpi-card__topline">
-            <span className="client-kpi-card__title">{card.title}</span>
-            <span className="client-kpi-card__pulse" aria-hidden="true" />
-          </div>
-          <strong className="client-kpi-card__value">{card.value}</strong>
-        </article>
-      ))}
+      <div className="client-kpi-grid__row client-kpi-grid__row--top">
+        {topCards.map((card) => (
+          <article key={card.title} className="client-kpi-card" data-tone={card.tone}>
+            <div className="client-kpi-card__topline">
+              <span className="client-kpi-card__title">{card.title}</span>
+              <span className="client-kpi-card__pulse" aria-hidden="true" />
+            </div>
+            <strong className="client-kpi-card__value">{card.value}</strong>
+          </article>
+        ))}
+      </div>
+
+      <div className="client-kpi-grid__row client-kpi-grid__row--bottom">
+        {bottomCards.map((card) => (
+          <article key={card.title} className="client-kpi-card" data-tone={card.tone}>
+            <div className="client-kpi-card__topline">
+              <span className="client-kpi-card__title">{card.title}</span>
+              <span className="client-kpi-card__pulse" aria-hidden="true" />
+            </div>
+            <strong className="client-kpi-card__value">{card.value}</strong>
+          </article>
+        ))}
+      </div>
     </section>
   );
 }

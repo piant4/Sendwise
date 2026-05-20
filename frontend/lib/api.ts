@@ -12,7 +12,8 @@ import type {
   AdminCampaignReviewResult,
   AdminCampaignSummary,
   AdminCampaignUpdateInput,
-  AdminClientInviteResponse,
+  AdminClientAccessInput,
+  AdminClientAccessResponse,
   AdminClientUpdateInput,
   AdminEmailLimitsResponse,
   AdminOverviewSummary,
@@ -1167,23 +1168,23 @@ async function fetchAuthMe(accessToken?: string | null): Promise<AuthMeResponse>
   return apiGet<AuthMeResponse>("/auth/me", accessToken);
 }
 
-async function postAdminClientInvite(
-  email: string,
+async function postAdminClientAccessEmail(
+  payload: AdminClientAccessInput,
   accessToken?: string | null,
-): Promise<AdminClientInviteResponse> {
-  return apiPost<AdminClientInviteResponse, { email: string }>(
+): Promise<AdminClientAccessResponse> {
+  return apiPost<AdminClientAccessResponse, AdminClientAccessInput>(
     "/admin/clients",
-    { email },
+    payload,
     accessToken,
   );
 }
 
-async function postAdminClientReinvite(
+async function postAdminClientAccessEmailResend(
   clientId: string,
   accessToken?: string | null,
-): Promise<AdminClientInviteResponse> {
-  return apiPost<AdminClientInviteResponse, Record<string, never>>(
-    `/admin/clients/${clientId}/invite-access`,
+): Promise<AdminClientAccessResponse> {
+  return apiPost<AdminClientAccessResponse, Record<string, never>>(
+    `/admin/clients/${clientId}/send-access-email`,
     {},
     accessToken,
   );
@@ -1900,36 +1901,36 @@ export function getAdminClients(accessToken?: string | null): Promise<Client[]> 
   return USE_MOCK_API ? mockApi.getAdminClients() : fetchAdminClients(accessToken);
 }
 
-export function createAdminClientInvite(
-  email: string,
+export function sendAdminClientAccessEmail(
+  payload: AdminClientAccessInput,
   accessToken?: string | null,
-): Promise<AdminClientInviteResponse> {
+): Promise<AdminClientAccessResponse> {
   if (USE_MOCK_API) {
     throw new ApiError({
       path: "/admin/clients",
       status: 500,
       detail:
-        "Client invitations require NEXT_PUBLIC_USE_MOCK_API=false so the backend can create Clerk invites.",
+        "Client access provisioning requires NEXT_PUBLIC_USE_MOCK_API=false so the backend can create the Clerk access link and send the transactional email.",
     });
   }
 
-  return postAdminClientInvite(email, accessToken);
+  return postAdminClientAccessEmail(payload, accessToken);
 }
 
-export function resendAdminClientInvite(
+export function resendAdminClientAccessEmail(
   clientId: string,
   accessToken?: string | null,
-): Promise<AdminClientInviteResponse> {
+): Promise<AdminClientAccessResponse> {
   if (USE_MOCK_API) {
     throw new ApiError({
-      path: `/admin/clients/${clientId}/invite-access`,
+      path: `/admin/clients/${clientId}/send-access-email`,
       status: 500,
       detail:
-        "Client invite resend requires NEXT_PUBLIC_USE_MOCK_API=false so the backend can create a new Clerk invite.",
+        "Client access email resend requires NEXT_PUBLIC_USE_MOCK_API=false so the backend can create a secure Clerk access link.",
     });
   }
 
-  return postAdminClientReinvite(clientId, accessToken);
+  return postAdminClientAccessEmailResend(clientId, accessToken);
 }
 
 export async function getAdminClient(

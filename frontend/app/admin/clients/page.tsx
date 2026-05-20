@@ -35,9 +35,9 @@ function getAccessStatusLabel(status?: string | null): string {
     case "active":
       return "Accesso attivo";
     case "invited":
-      return "Accesso invitato";
+      return "Accesso in attivazione";
     case "suspended":
-      return "Accesso revocato";
+      return "Accesso disattivato";
     case "archived":
       return "Accesso archiviato";
     default:
@@ -48,15 +48,15 @@ function getAccessStatusLabel(status?: string | null): string {
 function getInvitationStatusLabel(status?: string | null): string {
   switch (status) {
     case "accepted":
-      return "Invito accettato";
+      return "Accesso confermato";
     case "pending":
-      return "Invito in attesa";
+      return "Email accesso inviata";
     case "revoked":
-      return "Invito revocato";
+      return "Accesso disattivato";
     case "expired":
-      return "Invito scaduto";
+      return "Link accesso scaduto";
     default:
-      return "Invito non inviato";
+      return "Email accesso non inviata";
   }
 }
 
@@ -88,7 +88,7 @@ function getClientLimitsLabel(client: Client): string {
 function buildClientStats(clients: Client[]) {
   return {
     total: clients.length,
-    invitedPending: clients.filter(
+    accessEmailSent: clients.filter(
       (client) =>
         client.access?.status === "invited" ||
         client.access?.invitation_status === "pending",
@@ -132,8 +132,8 @@ export default async function AdminClientsPage() {
             <p className="admin-surface__eyebrow">Admin</p>
             <h1 className="admin-clients-hero__title">Clienti</h1>
             <p className="admin-clients-hero__description">
-              Gestisci inviti, onboarding, capacita campagne e stato di accesso dei
-              clienti da un unico pannello operativo.
+              Gestisci provisioning account, email di accesso sicure, capacita
+              campagne e stato del portale cliente da un unico pannello operativo.
             </p>
           </div>
         </header>
@@ -153,8 +153,8 @@ export default async function AdminClientsPage() {
                   value: stats?.total ?? 0,
                 },
                 {
-                  label: "Invitati o pending",
-                  value: stats?.invitedPending ?? 0,
+                  label: "Email accesso inviate",
+                  value: stats?.accessEmailSent ?? 0,
                 },
                 {
                   label: "Attivi",
@@ -177,8 +177,8 @@ export default async function AdminClientsPage() {
                   <p className="admin-surface__eyebrow">Controllo clienti</p>
                   <h2 className="admin-clients-card__title">Elenco accessi</h2>
                   <p className="admin-clients-card__description">
-                    Ogni riga mostra lo stato reale dell&apos;invito, il portale
-                    associato e la capacita campagne configurata.
+                    Ogni riga mostra lo stato reale dell&apos;accesso, la
+                    consegna dell&apos;email sicura e la capacita campagne configurata.
                   </p>
                 </div>
               </div>
@@ -192,7 +192,7 @@ export default async function AdminClientsPage() {
                   <div className="admin-clients-table admin-clients-table--header">
                     <span>Cliente</span>
                     <span>Accesso</span>
-                    <span>Invito</span>
+                    <span>Email accesso</span>
                     <span>Capacita</span>
                     <span>Stato profilo</span>
                     <span aria-hidden="true"></span>
@@ -217,16 +217,18 @@ export default async function AdminClientsPage() {
                           <div className="admin-clients-cell">
                             <strong>{getAccessStatusLabel(client.access?.status)}</strong>
                             <span>
-                              {client.access?.portal_slug
+                              {client.access?.status === "active" &&
+                              client.access?.invitation_status === "accepted" &&
+                              client.access?.portal_slug
                                 ? `Portale ${truncatePortalSlug(client.access.portal_slug)}`
-                                : "Portal slug non disponibile"}
+                                : "Portal slug non ancora esposto"}
                             </span>
                           </div>
 
                           <div className="admin-clients-cell">
                             <strong>{getInvitationStatusLabel(client.access?.invitation_status)}</strong>
                             <span>
-                              Invitato: {formatDateLabel(client.access?.invited_at)}
+                              Inviata: {formatDateLabel(client.access?.invited_at)}
                             </span>
                           </div>
 
@@ -238,7 +240,7 @@ export default async function AdminClientsPage() {
                           <div className="admin-clients-cell">
                             <strong>{getProfileStatusLabel(client.status)}</strong>
                             <span>
-                              Accettato: {formatDateLabel(client.access?.accepted_at)}
+                              Accesso completato: {formatDateLabel(client.access?.accepted_at)}
                             </span>
                           </div>
 

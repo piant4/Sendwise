@@ -44,7 +44,7 @@ function buildAccessErrorContent(error: unknown) {
       return {
         title: "Accesso non disponibile",
         message:
-          "L'account potrebbe non essere ancora stato associato a Sendwise oppure l'invito non e stato completato.",
+          "L'account potrebbe non essere ancora stato associato a Sendwise oppure l'accesso cliente non e disponibile.",
         detail: sanitizeAccessErrorDetail(error),
       };
     }

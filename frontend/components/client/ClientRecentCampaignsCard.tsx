@@ -158,7 +158,7 @@ export function ClientRecentCampaignsCard({
       className="client-surface--performance"
       bodyClassName="client-surface__body--performance"
       title="Trend invii e segnali provider"
-      description="Mail inviate = accettate dal sistema. Consegne, aperture e click arrivano solo da eventi provider."
+      // description="Mail inviate = accettate dal sistema. Consegne, aperture e click arrivano solo da eventi provider."
       aside={
         <div className="client-period-selector" aria-label="Selettore periodo">
           {(Object.keys(WINDOW_LABELS) as ClientDashboardWindowKey[]).map((windowKey) => (

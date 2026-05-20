@@ -1,17 +1,17 @@
 "use client";
 
 import { useAuth } from "@clerk/nextjs";
-import { Archive, Ban, Mail, Send, X } from "lucide-react";
+import { Ban, Mail, Send, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import {
-  archiveAdminClient,
   isApiError,
-  resendAdminClientInvite,
+  resendAdminClientAccessEmail,
   revokeAdminClientAccess,
+  sendAdminClientAccessEmail,
 } from "../../lib/api";
 
-type ActionName = "resend" | "revoke" | "archive";
+type ActionName = "send" | "resend" | "revoke";
 
 type ToastState =
   | {
@@ -23,6 +23,7 @@ type ToastState =
 interface AdminClientAccessActionsProps {
   clientId: string;
   clientStatus: string;
+  clientEmail?: string | null;
   accessStatus?: string | null;
   invitationStatus?: string | null;
 }
@@ -48,6 +49,7 @@ function getActionErrorMessage(error: unknown): string {
 export function AdminClientAccessActions({
   clientId,
   clientStatus,
+  clientEmail,
   accessStatus,
   invitationStatus,
 }: AdminClientAccessActionsProps) {
@@ -56,15 +58,15 @@ export function AdminClientAccessActions({
   const [confirmAction, setConfirmAction] = useState<ActionName | null>(null);
   const [pendingAction, setPendingAction] = useState<ActionName | null>(null);
   const [toast, setToast] = useState<ToastState>(null);
-  const isPendingInvite =
-    accessStatus === "invited" || invitationStatus === "pending";
-
+  const accessConfigured = Boolean(accessStatus);
+  const accessEnabled = accessStatus === "active";
+  const accessPendingActivation = accessEnabled && invitationStatus !== "accepted";
+  const accessDisabled = accessStatus === "suspended";
+  const sendDisabled =
+    pendingAction !== null || !clientEmail || clientStatus === "archived";
+  const resendDisabled = pendingAction !== null || !accessConfigured || !accessEnabled;
   const revokeDisabled =
-    pendingAction !== null ||
-    accessStatus === "suspended" ||
-    accessStatus === "archived";
-  const resendDisabled = pendingAction !== null || !isPendingInvite;
-  const archiveDisabled = pendingAction !== null || clientStatus === "archived";
+    pendingAction !== null || !accessConfigured || accessDisabled || clientStatus === "archived";
 
   async function handleConfirmedAction(action: ActionName) {
     setPendingAction(action);
@@ -74,24 +76,22 @@ export function AdminClientAccessActions({
       const token = await getToken();
 
       if (action === "resend") {
-        await resendAdminClientInvite(clientId, token);
+        await resendAdminClientAccessEmail(clientId, token);
         setToast({
           tone: "success",
-          message: "Nuovo invito inviato correttamente.",
+          message: "Email accesso inviata nuovamente.",
+        });
+      } else if (action === "send") {
+        await sendAdminClientAccessEmail({ email: clientEmail ?? "" }, token);
+        setToast({
+          tone: "success",
+          message: "Email accesso inviata correttamente.",
         });
       } else if (action === "revoke") {
         await revokeAdminClientAccess(clientId, token);
         setToast({
           tone: "success",
-          message: isPendingInvite
-            ? "Invito annullato correttamente."
-            : "Accesso cliente revocato correttamente.",
-        });
-      } else {
-        await archiveAdminClient(clientId, token);
-        setToast({
-          tone: "success",
-          message: "Cliente archiviato correttamente.",
+          message: "Accesso cliente disattivato correttamente.",
         });
       }
 
@@ -129,72 +129,60 @@ export function AdminClientAccessActions({
             <p className="admin-surface__eyebrow">Accesso</p>
             <h2 className="admin-clients-card__title">Azioni admin</h2>
             <p className="admin-clients-card__description">
-              {isPendingInvite
-                ? "Finche l'invito e in attesa puoi solo rimandarlo o annullarlo senza mostrare un portale attivo."
-                : "Revoca l&apos;accesso al portale o archivia il cliente senza cancellarne lo storico business."}
+              {accessPendingActivation
+                ? "L'accesso cliente e attivo ma il primo ingresso non e ancora stato completato. Puoi rimandare l'email sicura o disattivare l'accesso."
+                : accessDisabled || !accessConfigured
+                  ? "Invia una nuova email di accesso per riattivare il cliente con un link Clerk sicuro."
+                  : "Rimanda l'email di accesso o disattiva il portale cliente senza toccare lo storico business."}
             </p>
           </div>
         </div>
 
         <div className="admin-client-actions__buttons">
-          {isPendingInvite ? (
-            <>
-              <button
-                type="button"
-                className="admin-client-actions__button"
-                disabled={resendDisabled}
-                onClick={() => handleConfirmedAction("resend")}
-              >
-                <Send aria-hidden="true" />
-                Rimanda invito
-              </button>
-              <button
-                type="button"
-                className="admin-client-actions__button admin-client-actions__button--warning"
-                disabled={revokeDisabled}
-                onClick={() => setConfirmAction("revoke")}
-              >
-                <Mail aria-hidden="true" />
-                Annulla invito
-              </button>
-            </>
-          ) : (
-            <>
-              <button
-                type="button"
-                className="admin-client-actions__button admin-client-actions__button--warning"
-                disabled={revokeDisabled}
-                onClick={() => setConfirmAction("revoke")}
-              >
-                <Ban aria-hidden="true" />
-                Revoca accesso
-              </button>
-              <button
-                type="button"
-                className="admin-client-actions__button admin-client-actions__button--danger"
-                disabled={archiveDisabled}
-                onClick={() => setConfirmAction("archive")}
-              >
-                <Archive aria-hidden="true" />
-                Archivia cliente
-              </button>
-            </>
-          )}
+          {accessDisabled || !accessConfigured ? (
+            <button
+              type="button"
+              className="admin-client-actions__button"
+              disabled={sendDisabled}
+              onClick={() => handleConfirmedAction("send")}
+            >
+              <Mail aria-hidden="true" />
+              Invia email accesso
+            </button>
+          ) : null}
+
+          {accessConfigured ? (
+            <button
+              type="button"
+              className="admin-client-actions__button"
+              disabled={resendDisabled}
+              onClick={() => handleConfirmedAction("resend")}
+            >
+              <Send aria-hidden="true" />
+              Rimanda email accesso
+            </button>
+          ) : null}
+
+          {accessConfigured ? (
+            <button
+              type="button"
+              className="admin-client-actions__button admin-client-actions__button--warning"
+              disabled={revokeDisabled}
+              onClick={() => setConfirmAction("revoke")}
+            >
+              <Ban aria-hidden="true" />
+              Disattiva accesso
+            </button>
+          ) : null}
         </div>
 
         {confirmAction ? (
           <div className="admin-client-actions__confirm" role="alert">
             <strong>
-              {confirmAction === "revoke"
-                ? "Conferma revoca accesso"
-                : "Conferma archiviazione cliente"}
+              Conferma disattivazione accesso
             </strong>
             <span>
-              {confirmAction === "revoke"
-                ? isPendingInvite
-                  ? "L'invito verra annullato e il cliente dovra ricevere un nuovo invito per completare l'attivazione."
-                  : "Il cliente non potra piu accedere a /c/{portal_slug} finche l'accesso non verra riattivato manualmente."
-                : "Il cliente restera nello storico admin ma non avra piu un accesso portale attivo."}
+              Il cliente non potra piu accedere al portale finche un admin non inviera una nuova email di accesso.
             </span>
             <div className="admin-client-actions__confirm-buttons">
               <button
@@ -213,11 +201,7 @@ export function AdminClientAccessActions({
               >
                 {pendingAction === confirmAction
                   ? "Aggiornamento in corso..."
-                  : confirmAction === "revoke"
-                    ? isPendingInvite
-                      ? "Conferma annullamento"
-                      : "Conferma revoca"
-                    : "Conferma archivio"}
+                  : "Conferma disattivazione"}
               </button>
             </div>
           </div>

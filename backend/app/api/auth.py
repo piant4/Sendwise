@@ -1,23 +1,11 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, status
 
-from app.core.auth import (
-    AuthenticatedUser,
-    get_current_user,
-    require_auth_me_user,
-    require_client_onboarding_user,
-)
-from app.schemas.auth import (
-    AuthMeResponse,
-    CompleteClientOnboardingRequest,
-    DeleteAccountRequest,
-    DeleteAccountResponse,
-)
+from app.core.auth import AuthenticatedUser, get_current_user, require_auth_me_user
+from app.schemas.auth import AuthMeResponse, DeleteAccountRequest, DeleteAccountResponse
 from app.services.auth import (
     AccountDeletionService,
     get_account_deletion_service,
 )
-from app.services.client_access import ClientAccessService, get_client_access_service
-
 router = APIRouter(
     prefix="/auth",
     tags=["auth"],
@@ -50,36 +38,12 @@ def get_me(
 
 
 @router.post("/onboarding", response_model=AuthMeResponse)
-def complete_client_onboarding(
-    payload: CompleteClientOnboardingRequest,
-    current_user: AuthenticatedUser = Depends(require_client_onboarding_user),
-    client_access_service: ClientAccessService = Depends(get_client_access_service),
-) -> AuthMeResponse:
-    resolved_access = client_access_service.complete_onboarding(
-        clerk_user_id=current_user.clerk_user_id,
-        emails=[current_user.email] if current_user.email else [],
-        personal_name=payload.personal_name,
-    )
-    return AuthMeResponse(
-        access_type="client",
-        client_id=resolved_access.access.client_id,
-        portal_slug=_get_exposed_portal_slug(
-            AuthenticatedUser(
-                id=resolved_access.access.id,
-                clerk_user_id=current_user.clerk_user_id,
-                email=resolved_access.access.email,
-                access_type="client",
-                client_id=resolved_access.access.client_id,
-                portal_slug=resolved_access.access.portal_slug,
-                status=resolved_access.access.status,
-                invitation_status=resolved_access.access.invitation_status,
-                onboarding_required=False,
-            )
+def complete_client_onboarding() -> AuthMeResponse:
+    raise HTTPException(
+        status_code=status.HTTP_410_GONE,
+        detail=(
+            "Questo flusso non e piu attivo. Accedi dal pannello o richiedi una nuova email di accesso."
         ),
-        email=resolved_access.access.email,
-        status=resolved_access.access.status,
-        invitation_status=resolved_access.access.invitation_status,
-        onboarding_required=resolved_access.onboarding_required,
     )
 
 

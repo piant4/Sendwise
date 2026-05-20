@@ -15,6 +15,7 @@ The repository is the public reference for the current product/runtime shape. De
 ## Product Summary
 
 - Admin campaign creation and setup for selected clients.
+- Admin-created client account provisioning with Clerk-owned password setup/reset and a Sendwise transactional access email.
 - Campaign content management and review readiness without dispatching.
 - Manual and CSV contact management for campaigns.
 - Recipient metadata in `contacts.metadata`, including `nome` and optional `cognome` for `{{nome}}` / `{{cognome}}` personalization.
@@ -47,6 +48,7 @@ Core ownership rules:
 - listmonk is the email mechanics engine only. It does not own product state.
 - The frontend calls the backend only. It must not call listmonk or PostgreSQL directly.
 - Real dispatch remains backend-authorized and fail-closed unless all safety gates pass.
+- Client passwords remain Clerk-owned; Sendwise must not persist or email permanent plaintext passwords.
 
 ## Sending Limits
 

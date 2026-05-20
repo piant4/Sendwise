@@ -1,90 +1,17 @@
-import { auth } from "@clerk/nextjs/server";
-import { redirect } from "next/navigation";
 import { AccessStateCard } from "../../../components/shared/AccessStateCard";
-import { ClientOnboardingExperience } from "../../../components/auth/ClientOnboardingExperience";
 import { buildPageMetadata } from "../../../components/shared/metadata";
-import { getAuthMe, isApiError } from "../../../lib/api";
 
 export const dynamic = "force-dynamic";
-export const metadata = buildPageMetadata("Account");
+export const metadata = buildPageMetadata("Accesso cliente");
 
-function buildOnboardingErrorContent(error: unknown) {
-  if (isApiError(error)) {
-    if (error.status === 401 || error.status === 403) {
-      return {
-        title: "Accesso cliente non disponibile",
-        message:
-          "L'account autenticato non risulta associato a un invito cliente valido oppure l'accesso non è più disponibile.",
-        detail: error.detail,
-      };
-    }
-
-    return {
-      title: "Onboarding non disponibile",
-      message:
-        "Non è stato possibile verificare lo stato dell'onboarding in questo momento.",
-      detail: error.detail,
-    };
-  }
-
-  return {
-    title: "Onboarding non disponibile",
-    message:
-      "Non è stato possibile verificare lo stato dell'onboarding in questo momento.",
-    detail: error instanceof Error ? error.message : null,
-  };
-}
-
-export default async function OnboardingPage() {
-  const { getToken, userId } = await auth();
-
-  if (!userId) {
-    redirect("/login");
-  }
-
-  let authResult:
-    | { authMe: Awaited<ReturnType<typeof getAuthMe>> }
-    | {
-        error: unknown;
-      };
-
-  try {
-    authResult = { authMe: await getAuthMe(await getToken()) };
-  } catch (error) {
-    authResult = { error };
-  }
-
-  if ("error" in authResult) {
-    const content = buildOnboardingErrorContent(authResult.error);
-
-    return (
-      <AccessStateCard
-        eyebrow="Onboarding"
-        title={content.title}
-        message={content.message}
-        detail={content.detail}
-        retryHref="/onboarding"
-      />
-    );
-  }
-
-  if (authResult.authMe.access_type !== "client") {
-    return (
-      <AccessStateCard
-        eyebrow="Accesso"
-        title="Accesso non disponibile"
-        message="Questo account autenticato non dispone di un accesso Sendwise da completare."
-        retryHref="/onboarding"
-      />
-    );
-  }
-
-  if (
-    authResult.authMe.status === "active" &&
-    !authResult.authMe.onboarding_required
-  ) {
-    redirect("/auth/redirect");
-  }
-
-  return <ClientOnboardingExperience authMe={authResult.authMe} />;
+export default function OnboardingPage() {
+  return (
+    <AccessStateCard
+      eyebrow="Accesso cliente"
+      title="Questo flusso non e piu attivo"
+      message="Accedi dal pannello o richiedi una nuova email di accesso."
+      detail="Il precedente passaggio di onboarding Sendwise e stato disattivato."
+      retryHref="/login"
+    />
+  );
 }

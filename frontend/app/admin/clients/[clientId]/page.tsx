@@ -43,12 +43,12 @@ function getAccessStatusLabel(status?: string | null): string {
   switch (status) {
     case "active":
       return "Accesso attivo";
-    case "invited":
-      return "Accesso invitato";
     case "suspended":
-      return "Accesso revocato";
+      return "Accesso disattivato";
     case "archived":
       return "Accesso archiviato";
+    case "invited":
+      return "Accesso in attivazione";
     default:
       return "Accesso non configurato";
   }
@@ -57,15 +57,15 @@ function getAccessStatusLabel(status?: string | null): string {
 function getInvitationStatusLabel(status?: string | null): string {
   switch (status) {
     case "accepted":
-      return "Invito accettato";
+      return "Accesso confermato";
     case "pending":
-      return "Invito in attesa";
+      return "Email accesso inviata";
     case "revoked":
-      return "Invito revocato";
+      return "Accesso disattivato";
     case "expired":
-      return "Invito scaduto";
+      return "Link accesso scaduto";
     default:
-      return "Invito non inviato";
+      return "Email accesso non inviata";
   }
 }
 
@@ -188,7 +188,7 @@ export default async function AdminClientDetailPage({
               </div>
               <div>
                 <dt>Nome persona</dt>
-                <dd>{client.personal_name || "Da completare in onboarding"}</dd>
+                <dd>{client.personal_name || "Non impostato"}</dd>
               </div>
               <div>
                 <dt>Stato profilo</dt>
@@ -209,7 +209,7 @@ export default async function AdminClientDetailPage({
             <div className="admin-clients-card__intro">
               <div>
                 <p className="admin-surface__eyebrow">Accesso</p>
-                <h2 className="admin-clients-card__title">Stato invito e portale</h2>
+                <h2 className="admin-clients-card__title">Stato accesso e portale</h2>
               </div>
             </div>
 
@@ -219,7 +219,7 @@ export default async function AdminClientDetailPage({
                 <dd>{getAccessStatusLabel(client.access?.status)}</dd>
               </div>
               <div>
-                <dt>Stato invito</dt>
+                <dt>Stato email accesso</dt>
                 <dd>{getInvitationStatusLabel(client.access?.invitation_status)}</dd>
               </div>
               <div>
@@ -228,16 +228,16 @@ export default async function AdminClientDetailPage({
                   {showPortalSlug
                     ? client.access?.portal_slug
                     : isPendingInvite
-                      ? "Disponibile solo dopo accettazione invito e attivazione portale"
+                      ? "Disponibile dopo il primo accesso completato dal cliente"
                       : "-"}
                 </dd>
               </div>
               <div>
-                <dt>Invitato il</dt>
+                <dt>Email accesso inviata il</dt>
                 <dd>{formatDateLabel(client.access?.invited_at)}</dd>
               </div>
               <div>
-                <dt>Accettato il</dt>
+                <dt>Primo accesso completato il</dt>
                 <dd>{formatDateLabel(client.access?.accepted_at)}</dd>
               </div>
               <div>
@@ -311,6 +311,7 @@ export default async function AdminClientDetailPage({
         <AdminClientAccessActions
           clientId={client.id}
           clientStatus={client.status}
+          clientEmail={client.email}
           accessStatus={client.access?.status}
           invitationStatus={client.access?.invitation_status}
         />

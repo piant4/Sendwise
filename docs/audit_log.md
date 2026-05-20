@@ -1,5 +1,20 @@
 # Audit Log
 
+## Milestone 18.6O-FIX7 - Replace Client Invite Onboarding With Account Provisioning
+
+Date: 2026-05-20
+
+Account provisioning audit summary:
+- Audited the current client-access flow in `backend/app/api/admin.py`, `backend/app/api/auth.py`, `backend/app/services/client_access.py`, the frontend auth/onboarding surfaces, and the existing template/email utilities without reading secrets, dispatching campaigns, or touching live SES/Listmonk sends.
+- The verified safe path is now admin-created account provisioning: Sendwise prepares a Clerk invitation for unclaimed access, reuses Clerk sign-in tokens for already linked users, activates the `client_access` record immediately in Business DB, and sends a transactional access email with the login email, panel URL, and secure Clerk link.
+- The legacy onboarding route and ticket-based Sendwise activation shell are intentionally disabled. `/onboarding` and legacy ticket handoff now return product-safe copy that directs the customer back to the main login flow or to request a new access email.
+- No schema migration was required. Existing `client_access` fields already support reserved `portal_slug`, Clerk linkage, pending/accepted access state, and revoke/archive transitions.
+- Password ownership remains fully Clerk-managed. Sendwise does not generate, persist, or email permanent plaintext passwords.
+
+Safety confirmation:
+- No password is stored in Sendwise persistence; password creation and reset remain Clerk-owned.
+- No send/dispatch execution, direct SES/Listmonk campaign action, DB reset, destructive DB command, or schema migration was performed during this milestone work.
+
 ## Milestone 18.6O-FIX6 - Make Invite Onboarding Single-Step And Coherent
 
 Date: 2026-05-20

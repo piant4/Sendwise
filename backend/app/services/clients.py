@@ -1,7 +1,12 @@
 from __future__ import annotations
 
+import secrets
+import string
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Optional
+
+import httpx
 
 from fastapi import Depends, HTTPException, status
 
@@ -9,7 +14,11 @@ from app.core.config import Settings, get_settings
 from app.repositories.blocked_sends import BlockedSendRepository, get_blocked_send_repository
 from app.repositories.campaign_slots import CampaignSlotRepository, get_campaign_slot_repository
 from app.repositories.campaigns import CampaignRepository, get_campaign_repository
-from app.repositories.client_access import ClientAccessRecord
+from app.repositories.client_access import (
+    ClientAccessRecord,
+    ClientAccessRepository,
+    get_client_access_repository,
+)
 from app.repositories.clients import (
     AdminBlockedSendRecord,
     AdminCampaignEmailVolumeRecord,
@@ -88,6 +97,7 @@ from app.schemas.campaigns import (
 )
 from app.schemas.common import CampaignStatus
 from app.schemas.usage import ApiUsage
+from app.services.emails import ClientAccessEmailPayload, ClientAccessEmailService
 from app.services.provider_runtime import build_provider_runtime_summary
 
 ACTIVE_CAMPAIGN_STATUSES = {CampaignStatus.ready.value, CampaignStatus.running.value}
@@ -131,6 +141,9 @@ ACCEPTED_EMAIL_LOG_STATUSES = (
     "spam",
     "unsubscribed",
 )
+CLIENT_ACCESS_LINK_EXPIRATION_SECONDS = 60 * 60 * 24 * 30
+PORTAL_SLUG_ALPHABET = string.ascii_lowercase + string.digits
+PORTAL_SLUG_LENGTH = 32
 
 
 def _prefer_provider_metric(
@@ -222,12 +235,7 @@ def normalize_profile_value(
 
 
 def is_client_profile_complete(client: ClientRecord) -> bool:
-    return bool(
-        normalize_profile_value(
-            client.personal_name,
-            field_label="personal_name",
-        )
-    )
+    return bool(client.email.strip())
 
 
 def validate_non_negative_int(
@@ -308,11 +316,173 @@ def has_any_email_limit_configured(client: ClientRecord) -> bool:
     )
 
 
+@dataclass(frozen=True)
+class ClerkAccessLinkResult:
+    reference_id: str
+    url: str
+    kind: str
+
+
+class ClerkAccessGateway:
+    def create_invitation(
+        self,
+        *,
+        email: str,
+    ) -> ClerkAccessLinkResult:
+        raise NotImplementedError
+
+    def create_sign_in_token(
+        self,
+        *,
+        clerk_user_id: str,
+    ) -> ClerkAccessLinkResult:
+        raise NotImplementedError
+
+
+class HttpClerkAccessGateway(ClerkAccessGateway):
+    def __init__(self, settings: Settings) -> None:
+        self._settings = settings
+
+    def create_invitation(
+        self,
+        *,
+        email: str,
+    ) -> ClerkAccessLinkResult:
+        payload = self._post(
+            "/invitations",
+            {
+                "email_address": email,
+                "notify": False,
+                "ignore_existing": True,
+            },
+            invalid_secret_detail="Backend Clerk credentials are invalid for client access provisioning.",
+            network_detail="Unable to reach Clerk while creating the client access invitation.",
+        )
+
+        invitation_url = str(payload.get("url") or "").strip()
+        invitation_id = str(payload.get("id") or "").strip()
+        if not invitation_url or not invitation_id:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail="Clerk invitation response did not include a usable activation link.",
+            )
+
+        return ClerkAccessLinkResult(
+            reference_id=invitation_id,
+            url=invitation_url,
+            kind="invitation",
+        )
+
+    def create_sign_in_token(
+        self,
+        *,
+        clerk_user_id: str,
+    ) -> ClerkAccessLinkResult:
+        payload = self._post(
+            "/sign_in_tokens",
+            {
+                "user_id": clerk_user_id,
+                "expires_in_seconds": CLIENT_ACCESS_LINK_EXPIRATION_SECONDS,
+            },
+            invalid_secret_detail="Backend Clerk credentials are invalid for secure access links.",
+            network_detail="Unable to reach Clerk while creating the secure access link.",
+        )
+
+        token_url = str(payload.get("url") or "").strip()
+        token_id = str(payload.get("id") or "").strip()
+        if not token_url or not token_id:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail="Clerk sign-in token response did not include a usable access link.",
+            )
+
+        return ClerkAccessLinkResult(
+            reference_id=token_id,
+            url=token_url,
+            kind="sign_in_token",
+        )
+
+    def _post(
+        self,
+        path: str,
+        payload: dict[str, object],
+        *,
+        invalid_secret_detail: str,
+        network_detail: str,
+    ) -> dict[str, object]:
+        if not self._settings.clerk_secret_key.strip():
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="CLERK_SECRET_KEY is required for client access provisioning.",
+            )
+
+        try:
+            response = httpx.post(
+                f"{self._settings.clerk_api_base_url.rstrip('/')}{path}",
+                headers={
+                    "Authorization": f"Bearer {self._settings.clerk_secret_key}",
+                    "Content-Type": "application/json",
+                },
+                json=payload,
+                timeout=10.0,
+            )
+        except httpx.RequestError as error:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=network_detail,
+            ) from error
+
+        if response.status_code in {401, 403}:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=invalid_secret_detail,
+            )
+
+        if response.status_code >= 400:
+            try:
+                error_payload = response.json()
+            except ValueError:
+                error_payload = None
+
+            first_error = None
+            if isinstance(error_payload, dict):
+                errors = error_payload.get("errors")
+                if isinstance(errors, list) and errors:
+                    first_error = errors[0]
+
+            detail = None
+            if isinstance(first_error, dict):
+                detail = first_error.get("long_message") or first_error.get("message")
+
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=detail or "Clerk client access provisioning failed.",
+            )
+
+        payload = response.json()
+        if not isinstance(payload, dict):
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail="Clerk returned an invalid payload for client access provisioning.",
+            )
+
+        return payload
+
+
+@dataclass(frozen=True)
+class ProvisionClientAccessResult:
+    client: ClientRecord
+    access_link_kind: str
+
+
 class ClientsService:
     def __init__(
         self,
         repository: ClientRepository,
         settings: Optional[Settings] = None,
+        client_access_repository: ClientAccessRepository | None = None,
+        clerk_access_gateway: ClerkAccessGateway | None = None,
+        client_access_email_service: ClientAccessEmailService | None = None,
         campaign_repository: CampaignRepository | None = None,
         campaign_slot_repository: CampaignSlotRepository | None = None,
         contact_repository: ContactRepository | None = None,
@@ -323,6 +493,9 @@ class ClientsService:
     ) -> None:
         self._repository = repository
         self._settings = settings or get_settings()
+        self._client_access_repository = client_access_repository
+        self._clerk_access_gateway = clerk_access_gateway
+        self._client_access_email_service = client_access_email_service
         self._campaign_repository = campaign_repository
         self._campaign_slot_repository = campaign_slot_repository
         self._contact_repository = contact_repository
@@ -373,6 +546,169 @@ class ClientsService:
             monthly_email_limit=existing.monthly_email_limit,
             daily_email_limit=existing.daily_email_limit,
         )
+
+    def provision_client_access(
+        self,
+        *,
+        email: str,
+        first_name: Optional[str],
+        last_name: Optional[str],
+    ) -> ProvisionClientAccessResult:
+        normalized_email = self._normalize_email(email)
+        personal_name = self._build_personal_name(first_name=first_name, last_name=last_name)
+        client = self.upsert_client_profile(
+            email=normalized_email,
+            personal_name=personal_name,
+        )
+        access_repository = self._require_client_access_repository()
+        existing_access = access_repository.get_by_client_id(client.id)
+        conflicting_access = access_repository.get_by_email(normalized_email)
+
+        if (
+            conflicting_access is not None
+            and conflicting_access.client_id != client.id
+            and conflicting_access.status in {"active", "invited"}
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Email is already assigned to another active client access.",
+            )
+
+        portal_slug = self._resolve_portal_slug(existing_access=existing_access)
+        link_result = self._build_client_access_link(existing_access=existing_access, email=normalized_email)
+
+        if link_result.kind == "invitation":
+            access = access_repository.upsert_invited_access(
+                client_id=client.id,
+                email=normalized_email,
+                clerk_invitation_id=link_result.reference_id,
+                portal_slug=portal_slug,
+                invited_at=datetime.now(timezone.utc),
+            )
+            if access.status != "active":
+                access_repository.update_access(
+                    access_id=access.id,
+                    status="active",
+                    invitation_status="pending",
+                    accepted_at=None,
+                )
+        elif existing_access is not None and existing_access.status != "active":
+            access_repository.update_access(
+                access_id=existing_access.id,
+                status="active",
+                invitation_status="accepted",
+                accepted_at=existing_access.accepted_at or datetime.now(timezone.utc),
+            )
+
+        self._require_client_access_email_service().send_client_access_email(
+            ClientAccessEmailPayload(
+                recipient_email=normalized_email,
+                recipient_name=self._build_recipient_name(client=client),
+                login_email=normalized_email,
+                panel_url=self._build_panel_url(),
+                action_url=link_result.url,
+            )
+        )
+
+        return ProvisionClientAccessResult(
+            client=client,
+            access_link_kind=link_result.kind,
+        )
+
+    def _normalize_email(self, email: str) -> str:
+        normalized_email = email.strip().lower()
+        if not normalized_email:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Client email is required.",
+            )
+        return normalized_email
+
+    def _build_personal_name(
+        self,
+        *,
+        first_name: Optional[str],
+        last_name: Optional[str],
+    ) -> Optional[str]:
+        first = normalize_profile_value(first_name, field_label="first_name")
+        last = normalize_profile_value(last_name, field_label="last_name")
+        combined = " ".join(part for part in (first, last) if part)
+        return combined or None
+
+    def _build_recipient_name(self, *, client: ClientRecord) -> str:
+        if client.personal_name and client.personal_name.strip():
+            return client.personal_name.strip()
+
+        local_part = client.email.split("@", 1)[0].strip()
+        return local_part or "cliente"
+
+    def _build_panel_url(self) -> str:
+        frontend_origin = self._settings.frontend_origin or self._settings.frontend_url.strip()
+        if not frontend_origin:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="FRONTEND_URL must be an absolute URL for client access emails.",
+            )
+        return frontend_origin.rstrip("/") + "/login"
+
+    def _build_client_access_link(
+        self,
+        *,
+        existing_access: Optional[ClientAccessRecord],
+        email: str,
+    ) -> ClerkAccessLinkResult:
+        gateway = self._require_clerk_access_gateway()
+        if (
+            existing_access is not None
+            and existing_access.clerk_user_id
+        ):
+            return gateway.create_sign_in_token(
+                clerk_user_id=existing_access.clerk_user_id,
+            )
+
+        return gateway.create_invitation(email=email)
+
+    def _resolve_portal_slug(
+        self,
+        *,
+        existing_access: Optional[ClientAccessRecord],
+    ) -> str:
+        if existing_access is not None:
+            portal_slug = existing_access.portal_slug.strip()
+            if portal_slug and len(portal_slug) >= PORTAL_SLUG_LENGTH and portal_slug.isalnum():
+                return portal_slug
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Existing client access has an invalid portal slug.",
+            )
+
+        access_repository = self._require_client_access_repository()
+        for _ in range(10):
+            portal_slug = "".join(
+                secrets.choice(PORTAL_SLUG_ALPHABET) for _ in range(PORTAL_SLUG_LENGTH)
+            )
+            if access_repository.get_by_portal_slug(portal_slug) is None:
+                return portal_slug
+
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Unable to allocate a unique portal slug.",
+        )
+
+    def _require_client_access_repository(self) -> ClientAccessRepository:
+        if self._client_access_repository is None:
+            raise RuntimeError("Client access repository is not configured.")
+        return self._client_access_repository
+
+    def _require_clerk_access_gateway(self) -> ClerkAccessGateway:
+        if self._clerk_access_gateway is None:
+            raise RuntimeError("Clerk access gateway is not configured.")
+        return self._clerk_access_gateway
+
+    def _require_client_access_email_service(self) -> ClientAccessEmailService:
+        if self._client_access_email_service is None:
+            raise RuntimeError("Client access email service is not configured.")
+        return self._client_access_email_service
 
     def update_client(
         self,
@@ -1547,11 +1883,15 @@ class ClientsService:
 
 def get_clients_service(
     repository: ClientRepository = Depends(get_client_repository),
+    client_access_repository: ClientAccessRepository = Depends(get_client_access_repository),
     settings: Settings = Depends(get_settings),
 ) -> ClientsService:
     return ClientsService(
         repository,
         settings=settings,
+        client_access_repository=client_access_repository,
+        clerk_access_gateway=get_clerk_access_gateway(settings),
+        client_access_email_service=get_client_access_email_service(settings),
         campaign_repository=get_campaign_repository(),
         campaign_slot_repository=get_campaign_slot_repository(),
         contact_repository=PostgresContactRepository(settings),
@@ -1560,3 +1900,11 @@ def get_clients_service(
         email_log_repository=get_email_log_repository(),
         provider_event_repository=get_provider_event_repository(),
     )
+
+
+def get_clerk_access_gateway(settings: Settings) -> ClerkAccessGateway:
+    return HttpClerkAccessGateway(settings)
+
+
+def get_client_access_email_service(settings: Settings) -> ClientAccessEmailService:
+    return ClientAccessEmailService(settings)

@@ -579,9 +579,12 @@ class FakeClerkAccessGateway(ClerkAccessGateway):
         self,
         *,
         email: str,
+        redirect_url: str,
     ) -> ClerkAccessLinkResult:
         self._counter += 1
-        self.invitation_calls.append({"email": email})
+        self.invitation_calls.append(
+            {"email": email, "redirect_url": redirect_url}
+        )
         return ClerkAccessLinkResult(
             reference_id=f"inv_access_{self._counter}",
             url=None,
@@ -615,6 +618,7 @@ class FailingClerkAccessGateway(FakeClerkAccessGateway):
         self,
         *,
         email: str,
+        redirect_url: str,
     ) -> ClerkAccessLinkResult:
         raise HTTPException(
             status_code=502,
@@ -1892,6 +1896,8 @@ def test_platform_admin_can_provision_client_access_with_clerk_native_email(
     monkeypatch: pytest.MonkeyPatch,
     signing_keypair: rsa.RSAPrivateKey,
 ) -> None:
+    monkeypatch.setenv("FRONTEND_URL", "https://app.sendwise.example.test/")
+    get_settings.cache_clear()
     set_auth_mappings(
         monkeypatch,
         {
@@ -1927,9 +1933,15 @@ def test_platform_admin_can_provision_client_access_with_clerk_native_email(
     assert payload["access"]["invitation_status"] == "pending"
     assert payload["access"]["clerk_invitation_id"] == "inv_access_1"
     assert payload["access"]["portal_slug"] is None
-    assert access_gateway.invitation_calls == [{"email": "nuovo.cliente@example.test"}]
+    assert access_gateway.invitation_calls == [
+        {
+            "email": "nuovo.cliente@example.test",
+            "redirect_url": "https://app.sendwise.example.test/auth/redirect",
+        }
+    ]
     assert access_gateway.sign_in_token_calls == []
     assert "https://clerk.example.test" not in response.text
+    assert "__clerk_ticket" not in response.text
     stored_access = access_repository.get_by_client_id(payload["client"]["id"])
     assert stored_access is not None
     assert len(stored_access.portal_slug) >= 32
@@ -1957,6 +1969,8 @@ def test_platform_admin_can_create_access_with_email_only(
     monkeypatch: pytest.MonkeyPatch,
     signing_keypair: rsa.RSAPrivateKey,
 ) -> None:
+    monkeypatch.setenv("FRONTEND_URL", "https://app.sendwise.example.test")
+    get_settings.cache_clear()
     set_auth_mappings(
         monkeypatch,
         {
@@ -1992,7 +2006,14 @@ def test_platform_admin_can_create_access_with_email_only(
     assert created_access.email == "solo.email@example.test"
     assert created_access.status == "active"
     assert created_access.invitation_status == "pending"
+    assert access_gateway.invitation_calls == [
+        {
+            "email": "solo.email@example.test",
+            "redirect_url": "https://app.sendwise.example.test/auth/redirect",
+        }
+    ]
     assert "https://clerk.example.test" not in response.text
+    assert "__clerk_ticket" not in response.text
     assert "password" not in created_client.model_dump()
     assert "password" not in created_access.model_dump()
 
@@ -2037,6 +2058,29 @@ def test_clerk_invite_failure_returns_controlled_backend_error(
         error.value.detail
         == "Backend Clerk credentials are invalid for client invitations."
     )
+
+
+def test_clients_service_invite_requires_absolute_frontend_url(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("FRONTEND_URL", "/sendwise")
+    get_settings.cache_clear()
+    service = ClientsService(
+        repository=FakeClientRepository(),
+        settings=get_settings(),
+        client_access_repository=FakeClientAccessRepository(),
+        clerk_access_gateway=FakeClerkAccessGateway(),
+    )
+
+    with pytest.raises(HTTPException) as error:
+        service.provision_client_access(
+            email="client@example.test",
+            first_name="Giulia",
+            last_name="Bianchi",
+        )
+
+    assert error.value.status_code == 500
+    assert error.value.detail == "FRONTEND_URL must be an absolute URL for client invitations."
 
 
 def test_platform_admin_invite_rejects_company_name_field(

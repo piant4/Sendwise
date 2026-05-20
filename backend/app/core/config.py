@@ -172,6 +172,22 @@ class Settings(BaseModel):
         return self._origin_from_url(self.frontend_url)
 
     @property
+    def frontend_auth_redirect_url(self) -> str:
+        frontend_url = self.frontend_url.strip()
+
+        if not frontend_url:
+            return ""
+
+        parsed_url = urlsplit(frontend_url)
+
+        if not parsed_url.scheme or not parsed_url.netloc:
+            return ""
+
+        normalized_path = parsed_url.path.rstrip("/")
+        base_url = f"{parsed_url.scheme}://{parsed_url.netloc}{normalized_path}"
+        return f"{base_url}/auth/redirect"
+
+    @property
     def backend_public_origin(self) -> str:
         return self._origin_from_url(self.backend_public_url)
 

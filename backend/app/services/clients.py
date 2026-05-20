@@ -423,6 +423,7 @@ class ClerkAccessGateway:
         self,
         *,
         email: str,
+        redirect_url: str,
     ) -> ClerkAccessLinkResult:
         raise NotImplementedError
 
@@ -442,11 +443,13 @@ class HttpClerkAccessGateway(ClerkAccessGateway):
         self,
         *,
         email: str,
+        redirect_url: str,
     ) -> ClerkAccessLinkResult:
         payload = self._post(
             "/invitations",
             {
                 "email_address": email,
+                "redirect_url": redirect_url,
                 "notify": True,
                 "ignore_existing": True,
             },
@@ -741,7 +744,21 @@ class ClientsService:
                 ),
             )
 
-        return gateway.create_invitation(email=email)
+        return gateway.create_invitation(
+            email=email,
+            redirect_url=self._build_invitation_redirect_url(),
+        )
+
+    def _build_invitation_redirect_url(self) -> str:
+        redirect_url = self._settings.frontend_auth_redirect_url
+
+        if not redirect_url:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="FRONTEND_URL must be an absolute URL for client invitations.",
+            )
+
+        return redirect_url
 
     def _resolve_portal_slug(
         self,

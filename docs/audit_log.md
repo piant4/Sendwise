@@ -1,5 +1,22 @@
 # Audit Log
 
+## Milestone 18.6O-FIX6 - Make Invite Onboarding Single-Step And Coherent
+
+Date: 2026-05-20
+
+Invite onboarding audit summary:
+- Audited `frontend/components/auth/ClientInviteActivationForm.tsx`, `frontend/components/auth/ClientOnboardingExperience.tsx`, `frontend/app/onboarding/[[...onboarding]]/page.tsx`, and the documented auth contract without reading secrets, sending invites, or touching provider actions.
+- Exact root cause of the double-step UX: the invite route started with a Sendwise-owned password form even though Clerk can still require additional protected UI after `ticket` submission, while Clerk exposes those follow-up requirements only after the invite flow starts. That made the first screen optimistic and forced the user into either `Invito non completabile` or a later Clerk screen.
+- Final mode decision is `clerk-framed first`. The current code makes the onboarding mode explicit and defaults ticket activation to `clerk-framed` because reliable pre-submit detection for missing protected requirements and pending Clerk tasks is not available in the installed runtime.
+- The initial invite screen now renders the Clerk activation UI directly inside the Sendwise card, so the user never fills a custom Sendwise password form before seeing Clerk-managed requirements.
+- After Clerk creates a valid session, the signed-in onboarding step now reuses Clerk `firstName` and `lastName` to complete backend onboarding automatically when possible, then routes through `/auth/redirect`. If those names are unavailable or backend completion fails, the existing Sendwise profile form remains as the controlled fallback.
+- Pending portal behavior remains unchanged: `portal_slug` is still hidden until accepted active access, and backend onboarding still runs only after true auth completion.
+- Required Clerk dashboard note: if the framed invite card must remain password-only, disable social providers in `User & Authentication -> Social Connections`.
+
+Safety confirmation:
+- No password is stored in Sendwise persistence; password creation remains Clerk-owned.
+- No send/dispatch execution, direct SES/Listmonk action, DB reset, destructive DB command, or schema migration was performed.
+
 ## Milestone 18.6O-FIX5 - Enforce Fully Custom Invite Activation
 
 Date: 2026-05-20

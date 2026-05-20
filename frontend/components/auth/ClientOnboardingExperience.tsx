@@ -1,9 +1,9 @@
 "use client";
 
-import { useAuth } from "@clerk/nextjs";
+import { useAuth, useUser } from "@clerk/nextjs";
 import { ShieldCheck, UserRound } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { type FormEvent, useState } from "react";
+import { type FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { BrandMark } from "@/components/shared/BrandMark";
 import {
   completeClientOnboarding,
@@ -38,35 +38,102 @@ export function ClientOnboardingExperience({
 }: ClientOnboardingExperienceProps) {
   const router = useRouter();
   const { getToken } = useAuth();
-  const [firstName, setFirstName] = useState("");
-  const [lastName, setLastName] = useState("");
+  const { isLoaded, isSignedIn, user } = useUser();
+  const [firstNameDraft, setFirstNameDraft] = useState<string | null>(null);
+  const [lastNameDraft, setLastNameDraft] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isAutoCompleting, setIsAutoCompleting] = useState(false);
+  const autoCompletionAttemptedRef = useRef(false);
+  const submitOnboardingRef = useRef<typeof submitOnboarding | null>(null);
 
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setErrorMessage(null);
+  const clerkFirstName = user?.firstName?.trim() ?? "";
+  const clerkLastName = user?.lastName?.trim() ?? "";
+  const firstName = firstNameDraft ?? clerkFirstName;
+  const lastName = lastNameDraft ?? clerkLastName;
+
+  const submitOnboarding = useCallback(async (
+    personalName: string,
+    options?: {
+      auto?: boolean;
+    },
+  ) => {
+    if (options?.auto) {
+      setIsAutoCompleting(true);
+    }
+
     setIsSubmitting(true);
+    setErrorMessage(null);
 
     try {
       const token = await getToken();
-      const normalizedFirstName = firstName.trim();
-      const normalizedLastName = lastName.trim();
 
       await completeClientOnboarding(
         {
-          personal_name: `${normalizedFirstName} ${normalizedLastName}`.trim(),
+          personal_name: personalName,
         },
         token,
       );
 
       router.replace("/auth/redirect");
       router.refresh();
+      return true;
     } catch (error) {
       setErrorMessage(getSafeOnboardingErrorMessage(error));
+      return false;
     } finally {
       setIsSubmitting(false);
+      if (options?.auto) {
+        setIsAutoCompleting(false);
+      }
     }
+  }, [getToken, router]);
+
+  useEffect(() => {
+    submitOnboardingRef.current = submitOnboarding;
+  }, [submitOnboarding]);
+
+  useEffect(() => {
+    if (autoCompletionAttemptedRef.current) {
+      return;
+    }
+
+    if (!isLoaded || !isSignedIn || !user || !authMe.onboarding_required) {
+      return;
+    }
+
+    const normalizedPersonalName = `${clerkFirstName} ${clerkLastName}`.trim();
+    if (!clerkFirstName || !clerkLastName || !normalizedPersonalName) {
+      return;
+    }
+
+    autoCompletionAttemptedRef.current = true;
+    const timerId = window.setTimeout(() => {
+      if (!submitOnboardingRef.current) {
+        return;
+      }
+
+      void submitOnboardingRef.current(normalizedPersonalName, { auto: true });
+    }, 0);
+
+    return () => {
+      window.clearTimeout(timerId);
+    };
+  }, [
+    authMe.onboarding_required,
+    clerkFirstName,
+    clerkLastName,
+    isLoaded,
+    isSignedIn,
+    user,
+  ]);
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const normalizedFirstName = firstName.trim();
+    const normalizedLastName = lastName.trim();
+
+    await submitOnboarding(`${normalizedFirstName} ${normalizedLastName}`.trim());
   }
 
   return (
@@ -86,8 +153,8 @@ export function ClientOnboardingExperience({
             <h1 className="login-title">Completa il tuo profilo e entra nel portale cliente.</h1>
             <p className="login-lead">
               La password, la verifica email e la sicurezza dell&apos;account restano
-              gestite nel flusso di accesso protetto. In questo passaggio confermi solo i dati profilo che
-              Sendwise usa per il portale cliente.
+              gestite nel flusso di accesso protetto. Se l&apos;invito ha gia raccolto
+              nome e cognome, Sendwise prova a completare questo passaggio in automatico.
             </p>
           </div>
 
@@ -119,8 +186,8 @@ export function ClientOnboardingExperience({
             <p className="login-card__eyebrow">Onboarding</p>
             <h2 className="login-card__title">Completa il tuo invito</h2>
             <p className="login-card__description">
-              L&apos;invito e gia autenticato. Conferma ora i dati profilo richiesti
-              da Sendwise per aprire il portale cliente.
+              L&apos;invito e gia autenticato. Sendwise usa questi dati profilo per
+              aprire il portale cliente dopo la conferma finale.
             </p>
           </div>
 
@@ -146,7 +213,7 @@ export function ClientOnboardingExperience({
                   autoComplete="given-name"
                   className="login-input pl-11"
                   disabled={isSubmitting}
-                  onChange={(event) => setFirstName(event.target.value)}
+                  onChange={(event) => setFirstNameDraft(event.target.value)}
                   placeholder="Mario"
                   required
                   value={firstName}
@@ -166,7 +233,7 @@ export function ClientOnboardingExperience({
                   autoComplete="family-name"
                   className="login-input pl-11"
                   disabled={isSubmitting}
-                  onChange={(event) => setLastName(event.target.value)}
+                  onChange={(event) => setLastNameDraft(event.target.value)}
                   placeholder="Rossi"
                   required
                   value={lastName}
@@ -184,8 +251,14 @@ export function ClientOnboardingExperience({
               </p>
             ) : null}
 
+            {isAutoCompleting ? (
+              <p className="login-feedback login-feedback--info" role="status">
+                Stiamo completando il profilo con i dati gia confermati nell&apos;invito.
+              </p>
+            ) : null}
+
             <button type="submit" className="login-submit" disabled={isSubmitting}>
-              {isSubmitting ? "Attivazione in corso..." : "Continua al portale"}
+              {isSubmitting ? "Completamento in corso..." : "Continua al portale"}
             </button>
           </form>
 

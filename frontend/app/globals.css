@@ -4029,10 +4029,77 @@ p {
 .login-password-meter,
 .login-password-meter__meta,
 .login-checklist,
+.login-clerk-shell,
 .login-state-card,
 .login-state-card__copy,
 .login-state-card__actions {
   display: grid;
+}
+
+.login-clerk-shell {
+  border-top: 1px solid rgba(203, 213, 225, 0.72);
+  gap: 18px;
+  padding: 22px 20px 28px;
+}
+
+.login-clerk-shell > * {
+  min-width: 0;
+}
+
+.login-clerk-shell :where(h1, h2, h3, h4, h5, h6) {
+  color: var(--sw-olive);
+  letter-spacing: -0.02em;
+}
+
+.login-clerk-shell :where(p, span, small, label, a) {
+  color: var(--sw-text-muted);
+}
+
+.login-clerk-shell :where(input, select, button) {
+  border-radius: 14px;
+  font: inherit;
+}
+
+.login-clerk-shell :where(input, select) {
+  background: #fcfcfa;
+  border: 1px solid #d9ddd7;
+  color: var(--sw-olive);
+  min-height: 48px;
+  outline: none;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease,
+    background-color 0.15s ease;
+}
+
+.login-clerk-shell :where(input:focus, select:focus) {
+  border-color: var(--sw-primary);
+  box-shadow: 0 0 0 4px rgba(214, 229, 227, 0.88);
+}
+
+.login-clerk-shell :where(button) {
+  min-height: 48px;
+}
+
+.login-clerk-shell :where(button[type="submit"]) {
+  background: var(--sw-primary);
+  border: 0;
+  box-shadow: 0 16px 30px rgba(81, 118, 100, 0.25);
+  color: #fff;
+  font-size: 0.95rem;
+  font-weight: 700;
+  justify-content: center;
+  transition:
+    background-color 0.15s ease,
+    transform 0.15s ease;
+}
+
+.login-clerk-shell :where(button[type="submit"]:hover) {
+  background: var(--sw-primary-hover);
+}
+
+.login-clerk-shell :where(a) {
+  font-weight: 600;
 }
 
 .login-password-meter {

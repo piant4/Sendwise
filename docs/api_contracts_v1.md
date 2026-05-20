@@ -28,12 +28,12 @@ All product APIs must be called through FastAPI. Frontend and external callers m
 
 Auth flow notes:
 
-- invited client activation uses a custom Sendwise UI that collects `Nome`, `Cognome`, `Nuova password`, and `Conferma nuova password` while Clerk remains the password and session authority
-- frontend completes profile onboarding by posting the combined personal name to `POST /auth/onboarding` after Clerk activation succeeds
-- unsupported invite follow-up outcomes must not surface raw provider/auth text; the UI must either complete the supported path or fall back to a safe product state
-- accepted custom invite activation configuration is limited to `ticket + first_name + last_name + password`, followed by a complete session with no pending task and backend onboarding completion
-- if ticket activation still reports unsupported pending fields or unresolved protected follow-up, onboarding must stop inside Sendwise and show `Invito non completabile` without redirecting to hosted auth UI
-- social/OAuth, email or phone verification, enterprise SSO, organization selection, MFA setup, password-reset tasks, hosted continuation URLs, or any other post-ticket auth requirement are not supported in the custom invite activation flow
+- invited client activation now defaults to a framed Clerk sign-up card inside the Sendwise onboarding shell from the first screen, because Clerk does not expose all ticket follow-up requirements safely before submission
+- a `custom-sdk` invite mode is allowed only when the runtime can prove ahead of time that `ticket + first_name + last_name + password` completes without extra Clerk UI; the current implementation therefore selects `clerk-framed` by default
+- frontend completes profile onboarding by posting the combined personal name to `POST /auth/onboarding` only after Clerk has created a valid session, typically by reusing the Clerk first/last name through the signed-in onboarding step and then redirecting to `/auth/redirect`
+- unsupported invite follow-up outcomes must not surface raw provider/auth text or appear after a Sendwise password form submission; the initial screen must choose either Sendwise custom-only or Clerk framed activation before the user starts
+- pending client portal behavior remains backend-owned: `portal_slug` stays hidden until accepted active access and backend onboarding completion
+- if the framed Clerk card must avoid social/OAuth buttons, disable those providers in Clerk Dashboard under `User & Authentication -> Social Connections`; they are not disabled per-component in the current frontend implementation
 
 ## Health
 

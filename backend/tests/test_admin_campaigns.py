@@ -480,6 +480,29 @@ def test_admin_content_update_accepts_supported_template_placeholders() -> None:
     assert "{{email}}" in str(updated.body_html)
 
 
+def test_admin_content_update_accepts_preview_and_optional_brand_placeholders() -> None:
+    repository = InMemoryCampaignRepository()
+    campaign = repository.add_campaign(campaign_id="campaign_123", client_id="client_123")
+    service = build_admin_service(campaign_repository=repository)
+
+    updated = service.update_campaign_content(
+        campaign_id=campaign.id,
+        subject="Aggiornamento {{campaign_name}}",
+        preview_text="Preview {{nome}}",
+        body_html=(
+            "<p>{{preview_text}}</p><p>{{logo}}</p><p>{{social_icons}}</p>"
+            "<p>{{instagram_url}}</p><p>{{sender_name}}</p>"
+        ),
+        body_text="Testo {{logo}} {{social_icons}}",
+        current_step="content",
+    )
+
+    assert "{{preview_text}}" in str(updated.body_html)
+    assert "{{logo}}" in str(updated.body_html)
+    assert "{{social_icons}}" in str(updated.body_html)
+    assert "{{instagram_url}}" in str(updated.body_html)
+
+
 def test_admin_create_email_template_persists_client_scoped_content() -> None:
     template_repository = InMemoryEmailTemplateRepository()
     service = build_admin_service(email_template_repository=template_repository)

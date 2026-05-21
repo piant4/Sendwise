@@ -35,6 +35,7 @@ interface AdminCampaignContentStepProps {
 type ContentEditorMode = "split" | "html" | "preview";
 type ActiveField = "subject" | "preview" | "html";
 type PreviewDevice = "desktop" | "mobile";
+type PreviewBrand = AdminCampaignDetail["emailBrand"];
 
 function getValue(value?: string | null): string {
   return value ?? "";
@@ -117,6 +118,48 @@ function buildPreviewDocument(value: string): string {
 </html>`;
 }
 
+function normalizePlaceholderValue(value?: string | null): string {
+  return (value ?? "").trim();
+}
+
+function buildPreviewLogoHtml(logoUrl?: string | null): string {
+  const safeLogoUrl = normalizePlaceholderValue(logoUrl);
+  if (!safeLogoUrl) {
+    return "";
+  }
+
+  return `<img src="${safeLogoUrl.replaceAll("\"", "&quot;")}" alt="" width="120" style="display:block;max-width:120px;height:auto;border:0;outline:none;text-decoration:none;" />`;
+}
+
+function buildPreviewSocialIconsHtml(brand?: PreviewBrand | null): string {
+  const socialItems = [
+    ["website_url", "WEB", "#2563eb"],
+    ["linkedin_url", "in", "#0a66c2"],
+    ["instagram_url", "ig", "#d946ef"],
+    ["facebook_url", "f", "#1877f2"],
+    ["x_url", "x", "#111827"],
+  ] as const;
+
+  const iconCells = socialItems
+    .map(([key, label, backgroundColor]) => {
+      const socialUrl = normalizePlaceholderValue(brand?.[key]);
+      if (!socialUrl) {
+        return "";
+      }
+
+      const escapedUrl = socialUrl.replaceAll("\"", "&quot;");
+      return `<td style="padding-right:8px;"><a href="${escapedUrl}" style="display:inline-block;text-decoration:none;"><span style="display:inline-block;min-width:32px;padding:8px 10px;border-radius:999px;background:${backgroundColor};color:#ffffff;font-size:12px;line-height:1;font-weight:700;text-align:center;text-transform:uppercase;">${label}</span></a></td>`;
+    })
+    .filter(Boolean)
+    .join("");
+
+  if (!iconCells) {
+    return "";
+  }
+
+  return `<table role="presentation" cellspacing="0" cellpadding="0" border="0"><tr>${iconCells}</tr></table>`;
+}
+
 function getSafeUpdateErrorMessage(error: unknown): string {
   if (isApiError(error)) {
     if (error.isNetworkError) {
@@ -177,10 +220,12 @@ const BRAND_VARIABLE_TOKENS = new Set([
   "{{x_url}}",
 ]);
 
-const ALLOWED_RECIPIENT_PLACEHOLDERS = new Set(
+const EDITOR_ONLY_TEMPLATE_VARIABLES = ["preview_text"] as const;
+
+const ALLOWED_EDITOR_PLACEHOLDERS = new Set(
   SUPPORTED_TEMPLATE_VARIABLES.map((variable) =>
     variable.token.replaceAll("{", "").replaceAll("}", ""),
-  ),
+  ).concat(Array.from(EDITOR_ONLY_TEMPLATE_VARIABLES)),
 );
 
 const PLACEHOLDER_PATTERN = /{{\s*([A-Za-z0-9_]+)\s*}}/g;
@@ -197,6 +242,51 @@ function collectUnsupportedPlaceholders(value: string, allowed: Set<string>): st
   }
 
   return Array.from(unsupported);
+}
+
+function buildLocalPreviewReplacements(
+  campaign: AdminCampaignDetail,
+  previewText: string,
+): Record<string, string> {
+  const brand = campaign.emailBrand;
+  const companyName = normalizePlaceholderValue(brand?.company_name);
+  const senderName =
+    normalizePlaceholderValue(brand?.sender_name) || companyName || "Sendwise";
+
+  return {
+    preview_text: previewText,
+    nome: "Nome",
+    cognome: "Cognome",
+    email: "contatto@example.test",
+    campaign_name: campaign.name,
+    unsubscribe_url: "#unsubscribe",
+    current_year: String(new Date().getUTCFullYear()),
+    company_name: companyName,
+    sender_name: senderName,
+    logo: buildPreviewLogoHtml(brand?.logo_url),
+    social_icons: buildPreviewSocialIconsHtml(brand),
+    website_url: normalizePlaceholderValue(brand?.website_url),
+    linkedin_url: normalizePlaceholderValue(brand?.linkedin_url),
+    instagram_url: normalizePlaceholderValue(brand?.instagram_url),
+    facebook_url: normalizePlaceholderValue(brand?.facebook_url),
+    x_url: normalizePlaceholderValue(brand?.x_url),
+  };
+}
+
+function renderLocalPreviewTemplate(
+  value: string,
+  replacements: Record<string, string>,
+): string {
+  return value.replaceAll(PLACEHOLDER_PATTERN, (match, rawKey: string) => {
+    const key = rawKey.trim().toLowerCase();
+    if (key in replacements) {
+      return replacements[key] ?? "";
+    }
+    if (ALLOWED_EDITOR_PLACEHOLDERS.has(key)) {
+      return "";
+    }
+    return match;
+  });
 }
 
 function mapSavedTemplate(template: AdminEmailTemplate): CampaignTemplate {
@@ -318,10 +408,13 @@ export function AdminCampaignContentStep({
       CAMPAIGN_TEMPLATES[0],
     [templateCatalog],
   );
-  const previewHtml = useMemo(
-    () => normalizeText(bodyHtml) || defaultTemplate.htmlBody,
-    [bodyHtml, defaultTemplate.htmlBody],
-  );
+  const previewHtml = useMemo(() => {
+    const previewSource = normalizeText(bodyHtml) || defaultTemplate.htmlBody;
+    return renderLocalPreviewTemplate(
+      previewSource,
+      buildLocalPreviewReplacements(campaign, normalizeText(previewText)),
+    );
+  }, [bodyHtml, campaign, defaultTemplate.htmlBody, previewText]);
 
   useEffect(() => {
     let isCancelled = false;
@@ -443,10 +536,10 @@ export function AdminCampaignContentStep({
     const bodyHtmlValue = normalizeText(bodyHtml);
     const bodyTextValue = derivePlainTextFromHtml(bodyHtmlValue);
     const unsupportedPlaceholders = [
-      ...collectUnsupportedPlaceholders(subjectValue, ALLOWED_RECIPIENT_PLACEHOLDERS),
-      ...collectUnsupportedPlaceholders(previewValue, ALLOWED_RECIPIENT_PLACEHOLDERS),
-      ...collectUnsupportedPlaceholders(bodyHtmlValue, ALLOWED_RECIPIENT_PLACEHOLDERS),
-      ...collectUnsupportedPlaceholders(bodyTextValue, ALLOWED_RECIPIENT_PLACEHOLDERS),
+      ...collectUnsupportedPlaceholders(subjectValue, ALLOWED_EDITOR_PLACEHOLDERS),
+      ...collectUnsupportedPlaceholders(previewValue, ALLOWED_EDITOR_PLACEHOLDERS),
+      ...collectUnsupportedPlaceholders(bodyHtmlValue, ALLOWED_EDITOR_PLACEHOLDERS),
+      ...collectUnsupportedPlaceholders(bodyTextValue, ALLOWED_EDITOR_PLACEHOLDERS),
     ];
     const contentChanged =
       subjectValue !== normalizeText(campaign.subject) ||
@@ -512,10 +605,10 @@ export function AdminCampaignContentStep({
     const bodyHtmlValue = normalizeText(bodyHtml);
     const bodyTextValue = derivePlainTextFromHtml(bodyHtmlValue);
     const unsupportedPlaceholders = [
-      ...collectUnsupportedPlaceholders(subjectValue, ALLOWED_RECIPIENT_PLACEHOLDERS),
-      ...collectUnsupportedPlaceholders(previewValue, ALLOWED_RECIPIENT_PLACEHOLDERS),
-      ...collectUnsupportedPlaceholders(bodyHtmlValue, ALLOWED_RECIPIENT_PLACEHOLDERS),
-      ...collectUnsupportedPlaceholders(bodyTextValue, ALLOWED_RECIPIENT_PLACEHOLDERS),
+      ...collectUnsupportedPlaceholders(subjectValue, ALLOWED_EDITOR_PLACEHOLDERS),
+      ...collectUnsupportedPlaceholders(previewValue, ALLOWED_EDITOR_PLACEHOLDERS),
+      ...collectUnsupportedPlaceholders(bodyHtmlValue, ALLOWED_EDITOR_PLACEHOLDERS),
+      ...collectUnsupportedPlaceholders(bodyTextValue, ALLOWED_EDITOR_PLACEHOLDERS),
     ];
 
     if (!normalizedTemplateName) {

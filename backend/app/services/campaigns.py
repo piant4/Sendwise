@@ -107,7 +107,6 @@ BLOCKED_SENDS_LATEST_LIMIT = 5
 CONTACT_METADATA_ALLOWED_KEYS = {"nome", "cognome"}
 SUPPORTED_TEMPLATE_PLACEHOLDERS = set(KNOWN_TEMPLATE_VARIABLES) - {
     "subject",
-    "preview_text",
     "body",
     "client_name",
 }

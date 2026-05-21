@@ -195,15 +195,18 @@ def build_brand_template_variables(
     email_brand: Mapping[str, str | None] | None,
 ) -> dict[str, str]:
     email_brand_payload = dict(email_brand or {})
+    company_name = (email_brand_payload.get("company_name") or "").strip()
+    sender_name = (email_brand_payload.get("sender_name") or "").strip()
+
     return {
-        "company_name": email_brand_payload.get("company_name") or "",
-        "sender_name": email_brand_payload.get("sender_name") or "",
+        "company_name": company_name,
+        "sender_name": sender_name or company_name or "Sendwise",
         "logo": build_logo_html(email_brand_payload.get("logo_url")),
-        "website_url": email_brand_payload.get("website_url") or "",
-        "linkedin_url": email_brand_payload.get("linkedin_url") or "",
-        "instagram_url": email_brand_payload.get("instagram_url") or "",
-        "facebook_url": email_brand_payload.get("facebook_url") or "",
-        "x_url": email_brand_payload.get("x_url") or "",
+        "website_url": (email_brand_payload.get("website_url") or "").strip(),
+        "linkedin_url": (email_brand_payload.get("linkedin_url") or "").strip(),
+        "instagram_url": (email_brand_payload.get("instagram_url") or "").strip(),
+        "facebook_url": (email_brand_payload.get("facebook_url") or "").strip(),
+        "x_url": (email_brand_payload.get("x_url") or "").strip(),
         "social_icons": build_social_icons_html(email_brand_payload),
     }
 

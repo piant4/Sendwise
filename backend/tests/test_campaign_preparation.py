@@ -429,7 +429,7 @@ def test_prepare_campaign_cleans_unknown_placeholders_and_empty_brand_blocks() -
             ),
             body_text="Hello {{unknown}}",
         ),
-        client_metadata={},
+        client_metadata={"email_brand": {}},
     )
 
     result = service.prepare_campaign("campaign_123")
@@ -441,6 +441,32 @@ def test_prepare_campaign_cleans_unknown_placeholders_and_empty_brand_blocks() -
     assert "img src=" not in result["content"]["body"]
     assert "linkedin.com/company/acme" not in result["content"]["body"]
     assert result["content"]["unsubscribe_url"] in result["content"]["body"]
+
+
+def test_prepare_campaign_renders_only_configured_instagram_social_link() -> None:
+    service, _fake_listmonk, _repository = build_preparation_service(
+        campaign=build_campaign(
+            preview_text="Preview {{campaign_name}}",
+            body_html=(
+                "<html><body><p>{{social_icons}}</p><p>{{instagram_url}}</p>"
+                "<p>{{linkedin_url}}</p><a href='{{unsubscribe_url}}'>unsubscribe</a></body></html>"
+            ),
+            body_text="Segui {{instagram_url}}",
+        ),
+        client_metadata={
+            "email_brand": {
+                "company_name": "Acme Labs",
+                "instagram_url": "https://instagram.com/acme",
+            }
+        },
+    )
+
+    result = service.prepare_campaign("campaign_123")
+
+    assert "instagram.com/acme" in result["content"]["body"]
+    assert "linkedin.com/company/acme" not in result["content"]["body"]
+    assert "{{linkedin_url}}" not in result["content"]["body"]
+    assert "instagram.com/acme" in result["content"]["body_text"]
 
 
 def test_sync_listmonk_endpoint_uses_backend_preparation_without_sending() -> None:

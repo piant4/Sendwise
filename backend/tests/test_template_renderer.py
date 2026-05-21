@@ -5,6 +5,7 @@ import pytest
 from app.services.template_renderer import (
     CompiledTemplateNotFoundError,
     TemplateRenderer,
+    build_brand_template_variables,
     build_social_icons_html,
     render_template_string,
     ensure_unsubscribe_link,
@@ -144,6 +145,33 @@ def test_build_social_icons_html_omits_missing_urls() -> None:
 
     assert "linkedin.com/company/acme" in html
     assert "facebook.com" not in html
+
+
+def test_build_social_icons_html_renders_only_configured_instagram_icon() -> None:
+    html = build_social_icons_html(
+        {
+            "instagram_url": "https://instagram.com/acme",
+        }
+    )
+
+    assert "instagram.com/acme" in html
+    assert "linkedin.com" not in html
+    assert "facebook.com" not in html
+    assert "x.com" not in html
+
+
+def test_build_brand_template_variables_falls_back_sender_name_to_company_name() -> None:
+    variables = build_brand_template_variables({"company_name": "Acme Labs"})
+
+    assert variables["company_name"] == "Acme Labs"
+    assert variables["sender_name"] == "Acme Labs"
+
+
+def test_build_brand_template_variables_falls_back_sender_name_to_sendwise() -> None:
+    variables = build_brand_template_variables({})
+
+    assert variables["company_name"] == ""
+    assert variables["sender_name"] == "Sendwise"
 
 
 def test_render_template_string_cleans_unknown_placeholders() -> None:

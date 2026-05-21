@@ -700,6 +700,49 @@ def test_admin_summary_endpoint_exposes_safe_runtime_shape_without_secrets() -> 
     assert "eu-west-1" not in response.text
 
 
+def test_admin_summary_endpoint_reports_listmonk_mailgun_fallback_without_sender_leak() -> None:
+    repository = InMemoryCampaignRepository()
+    campaign = repository.add_campaign(campaign_id="campaign_123", client_id="client_123")
+    admin_service = build_admin_service(
+        settings=Settings(
+            email_sending_enabled_raw="false",
+            email_provider="listmonk",
+            smtp_host="smtp.mailgun.org",
+            smtp_port=587,
+            smtp_username="postmaster-secret@send.mailerpro.it",
+            smtp_password="smtp-password-secret",
+            smtp_tls_raw="true",
+            smtp_from_email="sendwise@send.mailerpro.it",
+        ),
+        campaign_repository=repository,
+    )
+
+    app.dependency_overrides[require_platform_admin] = build_admin_user
+    app.dependency_overrides[get_admin_campaign_service] = lambda: admin_service
+
+    try:
+        response = TestClient(app).get(f"/admin/campaigns/{campaign.id}/summary")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["runtime"] == {
+        "email_sending_enabled": False,
+        "email_provider": "listmonk",
+        "provider_mode_label": (
+            "Listmonk SMTP relay configured - Mailgun SMTP ready for production fallback"
+        ),
+        "real_send_available": False,
+        "ses_live_validation_status": None,
+        "provider_events_available": False,
+        "mailpit_dev_mode": False,
+    }
+    assert "postmaster-secret@send.mailerpro.it" not in response.text
+    assert "smtp-password-secret" not in response.text
+    assert "sendwise@send.mailerpro.it" not in response.text
+
+
 def test_admin_summary_returns_recipients_summary() -> None:
     repository = InMemoryCampaignRepository(
         campaign_contacts={

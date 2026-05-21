@@ -67,6 +67,7 @@ function AdminDashboardContent({ summary }: { summary: AdminOverviewSummary }) {
     summary.system.emailProvider === "ses"
       ? "AWS non ha ancora approvato l'accesso production di SES. Mantieni Sendwise in QA sandbox e considera bloccato l'invio verso destinatari reali di produzione."
       : null;
+  const smtpRelayFallbackNotice = summary.system.providerModeLabel.includes("SMTP relay");
   const providerEventsState = summary.system.providerEventsAvailable
     ? {
         label: "Disponibili",
@@ -106,6 +107,13 @@ function AdminDashboardContent({ summary }: { summary: AdminOverviewSummary }) {
             {sesSandboxNotice ? (
               <p className="admin-record-row__note" style={{ marginTop: 6 }}>
                 {sesSandboxNotice}
+              </p>
+            ) : null}
+            {smtpRelayFallbackNotice ? (
+              <p className="admin-record-row__note" style={{ marginTop: 6 }}>
+                Sendwise continua ad autorizzare il flusso, il delivery engine
+                resta il boundary di dispatch e Mailgun SMTP e il fallback
+                production raccomandato quando il relay e configurato.
               </p>
             ) : null}
           </div>

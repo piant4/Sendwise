@@ -115,6 +115,25 @@ class Settings(BaseModel):
         return self.smtp_tls_raw == "true"
 
     @property
+    def smtp_host_normalized(self) -> str:
+        return self.smtp_host.strip().lower()
+
+    @property
+    def smtp_relay_configured(self) -> bool:
+        return bool(
+            self.smtp_host_normalized
+            and self.smtp_port > 0
+            and self.smtp_username.strip()
+            and self.smtp_password.strip()
+            and self.smtp_from_email.strip()
+        )
+
+    @property
+    def smtp_host_is_mailgun(self) -> bool:
+        host = self.smtp_host_normalized
+        return host == "smtp.mailgun.org" or host.endswith(".mailgun.org")
+
+    @property
     def real_send_allowed_recipients(self) -> set[str]:
         return {
             email.strip().lower()

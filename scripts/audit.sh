@@ -85,11 +85,11 @@ else
   echo "OK EMAIL_SENDING_ENABLED defaults false"
 fi
 
-if ! grep -q '^EMAIL_PROVIDER=mailpit$' .env.example; then
-  echo "FAIL .env.example must default EMAIL_PROVIDER to mailpit for dev"
+if ! grep -q '^EMAIL_PROVIDER=listmonk$' .env.example; then
+  echo "FAIL .env.example must default EMAIL_PROVIDER to listmonk as the production fallback boundary"
   failures=$((failures + 1))
 else
-  echo "OK EMAIL_PROVIDER defaults to mailpit"
+  echo "OK EMAIL_PROVIDER defaults to listmonk"
 fi
 
 if grep -q '^EMAIL_SENDING_ENABLED=true$' .env.example docker-compose.yml docker-compose.dev.yml; then

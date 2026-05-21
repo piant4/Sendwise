@@ -50,7 +50,7 @@ Required public URLs:
 ## Staging Environment Requirements
 
 Configure real values only on the VPS environment. Do not place secrets in versioned files.
-The VPS `.env` is the source of truth for Docker Compose runtime builds and container runtime environment. Always pass `--env-file .env` to staging runtime commands. `--env-file` controls Docker Compose interpolation, while service-level `env_file` controls container environment injection. Listmonk SMTP runtime config is also sourced from `.env` through the `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_TLS`, and `SMTP_FROM_EMAIL` values. For safe validation against `.env.example`, set `SENDWISE_ENV_FILE=.env.example` so service-level `env_file` does not read the real `.env`. After editing `.env`, recreate the affected containers; old containers keep their old environment. After SMTP env changes, recreate at least `listmonk` and `backend`. Never commit `.env`.
+The VPS `.env` is the source of truth for Docker Compose runtime builds and container runtime environment. Always pass `--env-file .env` to staging runtime commands. `--env-file` controls Docker Compose interpolation, while service-level `env_file` controls container environment injection. Listmonk SMTP runtime config is also sourced from `.env` through the provider-neutral `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_TLS`, and `SMTP_FROM_EMAIL` values. For safe validation against `.env.example`, set `SENDWISE_ENV_FILE=.env.example` so service-level `env_file` does not read the real `.env`. After editing `.env`, recreate the affected containers; old containers keep their old environment. After SMTP env changes, recreate at least `listmonk` and `backend`. Never commit `.env`.
 
 Required non-secret staging values:
 
@@ -60,7 +60,7 @@ BACKEND_PUBLIC_URL=https://staging-api.mailerpro.it
 NEXT_PUBLIC_API_BASE_URL=https://staging-api.mailerpro.it
 ENVIRONMENT=staging
 EMAIL_SENDING_ENABLED=false
-EMAIL_PROVIDER=mailpit
+EMAIL_PROVIDER=listmonk
 REAL_SEND_REQUIRE_ALLOWED_RECIPIENTS=true
 REAL_SEND_MAX_RECIPIENTS=1
 REAL_SEND_ALLOWED_RECIPIENTS=
@@ -75,7 +75,7 @@ Required secret-backed values must be configured only on the VPS:
 - Real backend API key and unsubscribe/signing secrets required by the deployed backend.
 - Real SMTP or AWS SES credentials only in the later SES readiness milestone. When approved, set them only in the VPS `.env`; do not hardcode them in Compose or docs.
 
-For first deploy, use `EMAIL_PROVIDER=mailpit` or another safe non-send provider while `EMAIL_SENDING_ENABLED=false`. Keep `REAL_SEND_ALLOWED_RECIPIENTS=` empty until the controlled SES validation milestone.
+For first deploy, keep `EMAIL_PROVIDER=listmonk` and `EMAIL_SENDING_ENABLED=false` so the runtime contract matches the production fallback while real dispatch stays fail-closed. Keep `REAL_SEND_ALLOWED_RECIPIENTS=` empty until the controlled SES validation milestone.
 
 Client access note:
 
@@ -129,7 +129,7 @@ SES reapplication checklist:
 Provider fallback options while SES is blocked:
 
 - Keep staging and QA on `mailpit` plus backend simulation for no-send validation.
-- Evaluate an alternate SMTP relay that can sit behind listmonk using the existing `SMTP_*` contract.
+- Preferred production fallback: keep `EMAIL_PROVIDER=listmonk` and point the existing `SMTP_*` contract at Mailgun SMTP.
 - Evaluate whether the provider also exposes delivery/bounce/complaint webhooks that can be normalized into `POST /events/provider`.
 - Do not activate a new provider in production until runtime classification, env contract, and webhook needs are reviewed and explicitly approved.
 
@@ -140,6 +140,59 @@ Recommended next provider evaluation criteria:
 - Low-friction production approval process and transparent reputation/compliance posture.
 - EU-friendly operations, rate limits, support responsiveness, and predictable pricing.
 - Ability to support gradual warmup, suppression discipline, and audit-friendly logs without bypassing Sendwise backend ownership.
+
+## Mailgun SMTP Fallback Through Listmonk
+
+Production fallback contract:
+
+- Keep `EMAIL_PROVIDER=listmonk`.
+- Keep Sendwise as the authorization boundary and listmonk as the dispatch boundary.
+- Use Mailgun SMTP relay behind listmonk; do not add a direct Mailgun API send path in this milestone.
+- Mailgun sending domain for this fallback: `send.mailerpro.it`.
+
+DNS and relay setup notes:
+
+- Publish SPF for `send.mailerpro.it` with the Mailgun include for the chosen region.
+- Enable and verify Mailgun DKIM for `send.mailerpro.it`.
+- Keep DMARC aligned with the visible sender and verified domain posture.
+- Delay Mailgun click/open tracking until provider-webhook follow-up work is approved; this milestone does not implement Mailgun webhook ingestion.
+- Use `SMTP_HOST=smtp.mailgun.org` and `SMTP_PORT=587`.
+- Keep `SMTP_TLS=true` for the STARTTLS relay path on port `587`.
+- Keep `SMTP_HOST` as a bare host with no protocol prefix.
+
+Suggested `.env` placeholders for the production fallback:
+
+- `EMAIL_PROVIDER=listmonk`
+- `SMTP_HOST=smtp.mailgun.org`
+- `SMTP_PORT=587`
+- `SMTP_USERNAME=postmaster@send.mailerpro.it`
+- `SMTP_PASSWORD=` set only in the real VPS `.env`
+- `SMTP_FROM_EMAIL=sendwise@send.mailerpro.it`
+- `SMTP_FROM_NAME=Sendwise` for operator/display-name guidance only
+
+Listmonk SMTP setup expectations:
+
+- The committed Compose contract already passes `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_TLS`, and `SMTP_FROM_EMAIL` into the listmonk container.
+- After editing relay env values, recreate `listmonk` and `backend`.
+- Do not print rendered Compose output from a real `.env`; it expands SMTP secrets.
+- Keep listmonk non-public and continue to drive campaign actions only through Sendwise backend routes.
+
+No-live-send validation steps:
+
+1. Keep `EMAIL_SENDING_ENABLED=false`.
+2. Render Compose safely with `SENDWISE_ENV_FILE=.env.example docker compose --env-file .env.example -f docker-compose.yml -f docker-compose.staging.yml config`.
+3. Verify the backend/admin runtime labels show SES as sandbox-blocked when selected, and listmonk SMTP relay as configured or pending without exposing usernames, passwords, or the full sender address.
+4. Use backend `review`, `simulate-send`, and `sync-listmonk` flows only. Do not call send endpoints and do not dispatch from listmonk directly.
+5. Confirm `/health` and normal staging smoke checks only after safe no-send startup; no SMTP live test is part of this milestone.
+
+First controlled live-send checklist for a later approved milestone:
+
+1. Confirm Mailgun domain verification, SPF, DKIM, and DMARC for `send.mailerpro.it`.
+2. Confirm the SMTP relay credentials exist only in the VPS `.env`.
+3. Confirm `EMAIL_PROVIDER=listmonk`, `EMAIL_SENDING_ENABLED=true`, and the public unsubscribe URLs are correct only in the approved runtime.
+4. Confirm the target campaign is already reviewed and the recipient set is intentionally bounded.
+5. Confirm the operator runbook for bounce/complaint monitoring before any first real send.
+6. Execute only after explicit approval; this milestone does not perform the send.
 
 ## Standard Staging Deploy
 

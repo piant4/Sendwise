@@ -12,6 +12,19 @@ def build_provider_runtime_summary(
 
     if email_provider == "ses":
         provider_mode_label = "SES sandbox only - production blocked pending AWS approval"
+    elif email_provider == "listmonk":
+        if settings.smtp_relay_configured and settings.smtp_host_is_mailgun:
+            provider_mode_label = (
+                "Listmonk SMTP relay configured - Mailgun SMTP ready for production fallback"
+            )
+        elif settings.smtp_relay_configured:
+            provider_mode_label = (
+                "Listmonk SMTP relay configured - Mailgun SMTP recommended for production fallback"
+            )
+        else:
+            provider_mode_label = (
+                "Listmonk SMTP relay pending - configure Mailgun SMTP for production fallback"
+            )
     elif not settings.email_sending_enabled:
         provider_mode_label = "Sending disabled"
     elif mailpit_dev_mode:

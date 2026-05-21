@@ -1807,6 +1807,59 @@ def test_platform_admin_can_read_safe_system_status_without_secret_values(
     assert "POSTGRES_PASSWORD" not in response.text
 
 
+def test_platform_admin_system_status_reports_listmonk_mailgun_fallback_safely(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    signing_keypair: rsa.RSAPrivateKey,
+) -> None:
+    set_auth_mappings(
+        monkeypatch,
+        {
+            "user_admin": {
+                "email": "admin@sendwise.test",
+                "access_type": "platform_admin",
+                "status": "active",
+            }
+        },
+    )
+    monkeypatch.setenv("ENVIRONMENT", "staging")
+    monkeypatch.setenv("EMAIL_SENDING_ENABLED", "false")
+    monkeypatch.setenv("EMAIL_PROVIDER", "listmonk")
+    monkeypatch.setenv("SMTP_HOST", "smtp.mailgun.org")
+    monkeypatch.setenv("SMTP_PORT", "587")
+    monkeypatch.setenv("SMTP_USERNAME", "postmaster-secret@send.mailerpro.it")
+    monkeypatch.setenv("SMTP_PASSWORD", "smtp-password-secret")
+    monkeypatch.setenv("SMTP_TLS", "true")
+    monkeypatch.setenv("SMTP_FROM_EMAIL", "sendwise@send.mailerpro.it")
+    get_settings.cache_clear()
+    install_test_dependencies()
+    token = make_token(signing_keypair, clerk_user_id="user_admin")
+
+    response = client.get("/admin/system", headers=auth_header(token))
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["email_provider"] == "listmonk"
+    assert (
+        payload["provider_mode_label"]
+        == "Listmonk SMTP relay configured - Mailgun SMTP ready for production fallback"
+    )
+    assert payload["runtime"] == {
+        "email_sending_enabled": False,
+        "email_provider": "listmonk",
+        "provider_mode_label": (
+            "Listmonk SMTP relay configured - Mailgun SMTP ready for production fallback"
+        ),
+        "real_send_available": False,
+        "ses_live_validation_status": None,
+        "provider_events_available": False,
+        "mailpit_dev_mode": False,
+    }
+    assert "postmaster-secret@send.mailerpro.it" not in response.text
+    assert "smtp-password-secret" not in response.text
+    assert "sendwise@send.mailerpro.it" not in response.text
+
+
 def test_platform_admin_system_status_reports_database_issue_without_leaking_config(
     client: TestClient,
     monkeypatch: pytest.MonkeyPatch,

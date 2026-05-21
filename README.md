@@ -38,7 +38,7 @@ Business PostgreSQL
         |
 listmonk
         |
-SMTP / Amazon SES
+SMTP Relay / Amazon SES sandbox / Mailgun SMTP fallback
 ```
 
 Core ownership rules:
@@ -46,7 +46,7 @@ Core ownership rules:
 - FastAPI is the gatekeeper for product APIs, send decisions, client isolation, and business rules.
 - Business PostgreSQL is the source of truth for clients, campaigns, contacts, usage, suppressions, provider events, blocked sends, and limit state.
 - listmonk is the email mechanics engine only. It does not own product state.
-- Campaign sending remains provider-adapter based: backend authorization and preparation lead to listmonk dispatch, and listmonk uses the configured SMTP provider. There is no direct SES API send path in the product flow.
+- Campaign sending remains provider-adapter based: backend authorization and preparation lead to listmonk dispatch, and listmonk uses the configured SMTP relay. There is no direct SES API send path or direct Mailgun API send path in the product flow.
 - The frontend calls the backend only. It must not call listmonk or PostgreSQL directly.
 - Real dispatch remains backend-authorized and fail-closed unless all safety gates pass.
 - Client passwords remain Clerk-owned; Sendwise must not persist or email permanent plaintext passwords.
@@ -160,7 +160,7 @@ SENDWISE_ENV_FILE=.env.example docker compose --env-file .env.example -f docker-
 docker compose --env-file .env -f docker-compose.yml -f docker-compose.staging.yml up -d --build
 ```
 
-The VPS `.env` is the source of truth for runtime builds and container runtime environment. `--env-file` controls Docker Compose interpolation, while service-level `env_file` controls container environment injection. Listmonk SMTP config is sourced from `.env` with the `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_TLS`, and `SMTP_FROM_EMAIL` values; after SMTP env changes, recreate `listmonk` and `backend`. For safe validation against `.env.example`, set `SENDWISE_ENV_FILE=.env.example` so service-level `env_file` does not read the real `.env`. Never run public or shared config dumps against a real `.env`, and never commit `.env`.
+The VPS `.env` is the source of truth for runtime builds and container runtime environment. `--env-file` controls Docker Compose interpolation, while service-level `env_file` controls container environment injection. Listmonk SMTP config is sourced from `.env` with the provider-neutral `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_TLS`, and `SMTP_FROM_EMAIL` values; after SMTP env changes, recreate `listmonk` and `backend`. For safe validation against `.env.example`, set `SENDWISE_ENV_FILE=.env.example` so service-level `env_file` does not read the real `.env`. Never run public or shared config dumps against a real `.env`, and never commit `.env`.
 
 Recommended staging domains:
 
@@ -186,6 +186,7 @@ Backups cover both the Sendwise business database and listmonk database. Restore
 
 - Keep `EMAIL_SENDING_ENABLED=false` for first staging deploy and any no-send validation.
 - Do not run production-targeted real sends while SES production access is blocked.
+- Keep `EMAIL_PROVIDER=listmonk` as the production fallback contract when the SMTP relay is Mailgun; Listmonk remains the dispatch boundary.
 - First SES validation may use `REAL_SEND_MAX_RECIPIENTS=1` and `REAL_SEND_REQUIRE_ALLOWED_RECIPIENTS=true`.
 - Official product trials should use `REAL_SEND_MAX_RECIPIENTS=0` and `REAL_SEND_REQUIRE_ALLOWED_RECIPIENTS=false`; admin-configured campaign daily and 30-day limits are the real product limits.
 - `EMAIL_SENDING_ENABLED=false` remains the emergency global off switch.
@@ -213,8 +214,9 @@ Official product trials require a documented SES posture before any approved rea
 ## Provider Fallback Posture
 
 - Sandbox QA can continue with `EMAIL_PROVIDER=ses`, verified SES sandbox recipients only, and the existing backend safety gates, or with `EMAIL_PROVIDER=mailpit` for no-send UI and workflow validation.
-- The current production send path is provider-agnostic only at the listmonk SMTP boundary. Reusing that path with another SMTP relay is possible in principle because campaign dispatch does not hardcode direct SES API calls.
-- A new production provider still needs explicit product approval before activation because runtime provider classification currently recognizes `mailpit`, `smtp_dev`, and `ses` only, and provider-event webhook normalization or verification may need provider-specific work.
+- The current production fallback is `EMAIL_PROVIDER=listmonk`: Sendwise authorizes, listmonk dispatches, and the SMTP relay may be Mailgun without introducing a direct Mailgun API adapter.
+- The existing `SMTP_*` contract is provider-neutral enough for Mailgun SMTP relay use because campaign dispatch does not hardcode direct SES API calls.
+- Runtime provider classification now recognizes `listmonk`, `mailpit`, `smtp_dev`, and `ses`; provider-event webhook normalization or verification for non-SES providers remains follow-up work.
 - Keep Clerk native invitations unchanged. Client access remains Clerk-owned and does not depend on campaign provider approval state.
 
 Safe warmup guidance:

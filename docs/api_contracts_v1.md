@@ -170,9 +170,10 @@ Admin-managed contract notes:
 - Guard remains mandatory for simulation and real dispatch
 - `EMAIL_SENDING_ENABLED` remains the real-dispatch kill switch
 - `EMAIL_PROVIDER=ses` adds a backend safety gate requiring explicit dev/staging runtime, complete SES SMTP env, public unsubscribe URL, review readiness, optional allowlist enforcement, and an optional positive recipient max before listmonk dispatch
+- `EMAIL_PROVIDER=listmonk` means Sendwise authorizes, listmonk dispatches, and the configured SMTP relay may be Mailgun without introducing a direct Mailgun API adapter
 - SES trial readiness outside the API also requires verified identity/domain, DKIM, SPF, DMARC, SES production access for non-verified recipients, and correct SES SMTP credentials in Listmonk
 - AWS has currently denied SES production access for Sendwise, so SES must be treated as sandbox-only until AWS approval changes
-- current controlled runtime classification recognizes `mailpit`, `smtp_dev`, and `ses` only; enabling another production provider or provider-specific webhook contract is follow-up work and requires explicit approval
+- current controlled runtime classification recognizes `listmonk`, `mailpit`, `smtp_dev`, and `ses`; provider-specific webhook normalization outside SES remains follow-up work and requires explicit approval
 - controlled send responses include provider and safety diagnostics such as `provider_status`, `queued_count`, `sent_or_accepted_count`, `failed_count`, `safety_checked`, `safety_passed`, `allowed_recipients_checked`, `eligible_contact_count`, `max_real_send_recipients`, `listmonk_dispatched`, `real_send_attempted`, `email_logs_created`, `unsubscribe_ready`, and `provider_events_ready`
 - Deliverability Guard blocks campaign dispatch with `campaign_daily_limit_reached` and `campaign_period_limit_reached` when campaign usage would exceed the configured table-backed limits
 - All user-facing admin/client day and month windows are evaluated against `Europe/Rome`; timestamps remain persisted in UTC

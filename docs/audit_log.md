@@ -1,5 +1,29 @@
 # Audit Log
 
+## Milestone 18.6U-FIX1 - Align Audit Scripts With Listmonk Provider Default
+
+Date: 2026-05-21
+Branch: develop
+
+Validation drift audit summary:
+- Audited only `scripts/audit.sh`, `scripts/smoke_test.sh`, and this log entry without reading `.env`, printing secrets, dispatching campaigns, triggering listmonk send execution, calling SMTP live tests, or touching runtime code.
+- Root cause: `scripts/audit.sh` still hard-required `.env.example` to contain `EMAIL_PROVIDER=mailpit`, while Milestone 18.6U changed the approved versioned default to `EMAIL_PROVIDER=listmonk`. `scripts/smoke_test.sh` inherited the failure because it executes `bash scripts/audit.sh`.
+- Updated the audit assertion so `.env.example` must now default `EMAIL_PROVIDER=listmonk` as the approved production fallback boundary.
+- Preserved the existing fail-closed checks that require `EMAIL_SENDING_ENABLED=false`, forbid versioned real-send defaults, and keep real sending gated to explicit runtime enablement only.
+- No live send path, no direct Mailgun/SES/Listmonk dispatch action, and no secret or credential output was introduced.
+
+## Milestone 18.6U - Prepare Mailgun SMTP Relay For Campaign Sending
+
+Date: 2026-05-21
+
+Mailgun SMTP fallback audit summary:
+- Audited only the allowed runtime, config, frontend admin status, Compose/config docs, and tests without reading `.env`, printing secrets, dispatching campaigns, calling Mailgun APIs, calling direct SES APIs, or triggering listmonk send execution.
+- Confirmed the existing `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_TLS`, and `SMTP_FROM_EMAIL` mapping is already provider-neutral enough for Mailgun SMTP relay use through listmonk.
+- Updated controlled provider resolution so `EMAIL_PROVIDER=listmonk` is accepted as the Listmonk-backed SMTP boundary while existing `mailpit`, `smtp_dev`, and `ses` behavior remains intact.
+- Updated safe runtime/admin labels so SES stays sandbox-blocked and listmonk can report pending or configured Mailgun SMTP fallback state without exposing SMTP usernames, passwords, or the full sender address.
+- Updated `.env.example`, README, the staging runbook, and API contract notes to document Mailgun SMTP as the recommended production fallback behind listmonk, while keeping SES documented as sandbox-only until AWS approval.
+- No Mailgun API adapter, direct provider send path, webhook implementation, follow-up logic, reply detection, inbound route, schema change, or destructive action was introduced.
+
 ## Milestone 18.6T - Provider Strategy After SES Production Access Rejection
 
 Date: 2026-05-21

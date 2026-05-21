@@ -2485,7 +2485,7 @@ class CampaignDispatchService:
         environment = self.settings.environment.strip().lower()
         email_provider = self.settings.email_provider_normalized
         allowed_environments = {"development", "staging", "test"}
-        allowed_providers = {"mailpit", "smtp_dev", "ses"}
+        allowed_providers = {"listmonk", "mailpit", "smtp_dev", "ses"}
 
         if environment not in allowed_environments:
             return None
@@ -2494,6 +2494,8 @@ class CampaignDispatchService:
 
         if email_provider == "ses":
             return "ses"
+        if email_provider == "listmonk":
+            return "listmonk"
         return "mailpit"
 
     def _evaluate_real_send_safety(
@@ -2505,6 +2507,20 @@ class CampaignDispatchService:
         guard_result: GuardResult,
         preparation: dict[str, Any] | None,
     ) -> dict[str, Any]:
+        if provider == "listmonk":
+            return self._safety_result(
+                provider=provider,
+                safety_passed=True,
+                code="listmonk_controlled_dispatch",
+                reason=(
+                    "Listmonk remains the dispatch boundary and uses the configured SMTP relay."
+                ),
+                eligible_contact_count=guard_result.eligible_contact_count,
+                max_real_send_recipients=self.settings.effective_real_send_max_recipients,
+                allowed_recipients_checked=False,
+                unsubscribe_ready=True,
+            )
+
         if provider != "ses":
             return self._safety_result(
                 provider=provider,

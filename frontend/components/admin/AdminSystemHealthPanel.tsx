@@ -16,6 +16,46 @@ function getBooleanBadge(value: boolean) {
     : ({ label: "Assente", variant: "warning" } as const);
 }
 
+function getProviderBadge(status: AdminSystemStatus) {
+  const usesSmtpRelayBoundary = status.providerModeLabel.includes("SMTP relay");
+
+  if (status.emailProvider === "ses") {
+    return { label: status.providerModeLabel, variant: "warning" as const };
+  }
+
+  if (usesSmtpRelayBoundary) {
+    return {
+      label: status.providerModeLabel,
+      variant: status.providerModeLabel.includes("configured")
+        ? ("success" as const)
+        : ("warning" as const),
+    };
+  }
+
+  if (status.realSendAvailable) {
+    return { label: status.providerModeLabel, variant: "success" as const };
+  }
+
+  return { label: status.providerModeLabel, variant: "neutral" as const };
+}
+
+function getSmtpRelayBadge(status: AdminSystemStatus) {
+  if (!status.providerModeLabel.includes("SMTP relay")) {
+    return {
+      title: "Mailpit dev",
+      label: status.mailpitDevMode ? "Mailpit/dev" : "Assente",
+      variant: status.mailpitDevMode ? ("success" as const) : ("neutral" as const),
+    };
+  }
+
+  const configured = status.providerModeLabel.includes("configured");
+  return {
+    title: "SMTP relay",
+    label: configured ? "Configurato" : "Da configurare",
+    variant: configured ? ("success" as const) : ("warning" as const),
+  };
+}
+
 export function AdminSystemHealthPanel({
   status,
 }: AdminSystemHealthPanelProps) {
@@ -26,13 +66,12 @@ export function AdminSystemHealthPanel({
   const emailBadge = status.emailSendingEnabled
     ? { label: "Abilitato", variant: "warning" as const }
     : { label: "Disabilitato", variant: "neutral" as const };
-  const providerBadge = status.realSendAvailable
-    ? { label: status.providerModeLabel, variant: "success" as const }
-    : { label: status.providerModeLabel, variant: "neutral" as const };
+  const providerBadge = getProviderBadge(status);
   const authProviderBadge = getBooleanBadge(status.authProviderConfigured);
   const clerkManagementBadge = getBooleanBadge(status.clerkManagementApiConfigured);
   const frontendOriginBadge = getBooleanBadge(status.frontendOriginConfigured);
   const deliveryEngineBadge = getBooleanBadge(status.deliveryEngineConfigured);
+  const smtpRelayBadge = getSmtpRelayBadge(status);
 
   return (
     <div className="admin-system-panel">
@@ -102,10 +141,10 @@ export function AdminSystemHealthPanel({
           />
         </div>
         <div className="admin-system-config-card">
-          <span>Mailpit dev</span>
+          <span>{smtpRelayBadge.title}</span>
           <StatusBadge
-            label={status.mailpitDevMode ? "Mailpit/dev" : "Assente"}
-            variant={status.mailpitDevMode ? "success" : "neutral"}
+            label={smtpRelayBadge.label}
+            variant={smtpRelayBadge.variant}
           />
         </div>
       </div>
@@ -115,6 +154,15 @@ export function AdminSystemHealthPanel({
           SES resta in modalita sandbox. L&apos;invio production rimane bloccato finche
           AWS non approva l&apos;accesso production; gli inviti nativi Clerk non sono
           coinvolti.
+        </p>
+      ) : null}
+
+      {status.providerModeLabel.includes("SMTP relay") ? (
+        <p className="admin-system-note">
+          Sendwise autorizza il send, il delivery engine resta il boundary di
+          dispatch e il relay SMTP configurato puo usare Mailgun come fallback
+          production senza introdurre API Mailgun dirette o webhook provider in
+          questo milestone.
         </p>
       ) : null}
 

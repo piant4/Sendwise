@@ -1524,6 +1524,51 @@ def test_disabled_campaign_send_without_campaign_context_does_not_persist_fake_b
     assert fake_listmonk.sent_campaign_ids == []
 
 
+def test_controlled_provider_resolution_accepts_listmonk_boundary() -> None:
+    service = build_dispatch_service(
+        settings=Settings(
+            email_sending_enabled_raw="true",
+            environment="staging",
+            email_provider="listmonk",
+        )
+    )
+
+    assert service._resolve_controlled_provider() == "listmonk"
+
+
+def test_controlled_provider_resolution_keeps_existing_providers() -> None:
+    assert (
+        build_dispatch_service(
+            settings=Settings(
+                email_sending_enabled_raw="true",
+                environment="staging",
+                email_provider="mailpit",
+            )
+        )._resolve_controlled_provider()
+        == "mailpit"
+    )
+    assert (
+        build_dispatch_service(
+            settings=Settings(
+                email_sending_enabled_raw="true",
+                environment="staging",
+                email_provider="smtp_dev",
+            )
+        )._resolve_controlled_provider()
+        == "mailpit"
+    )
+    assert (
+        build_dispatch_service(
+            settings=Settings(
+                email_sending_enabled_raw="true",
+                environment="staging",
+                email_provider="ses",
+            )
+        )._resolve_controlled_provider()
+        == "ses"
+    )
+
+
 def test_enabled_campaign_send_creates_mapping_after_guard_authorizes() -> None:
     fake_listmonk = FakeListmonkClient()
     email_log_repository = InMemoryEmailLogRepository()

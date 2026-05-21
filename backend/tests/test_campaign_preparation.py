@@ -240,8 +240,10 @@ def test_prepare_campaign_creates_list_subscribers_campaign_and_mappings() -> No
     assert created_payload["lists"] == [1]
     assert created_payload["type"] == "regular"
     assert created_payload["content_type"] == "html"
+    assert created_payload["messenger"] == "email"
     assert created_payload["tags"] == ["sendwise", "content_ready:true"]
     assert created_payload["from_email"] == "sender@example.test"
+    assert created_payload["altbody"] == "Persisted body."
     assert (
         created_payload["body"]
         == "<html><body><p>Persisted body.</p><p style=\"font-size:12px;line-height:20px;color:#52606d;\">You are receiving this email because you subscribed to updates from Sendwise. Manage preferences or <a href=\"https://app.sendwise.example.test/unsubscribe/{{ .Subscriber.Attribs.sendwise_unsubscribe_token }}\">unsubscribe</a>.</p></body></html>"

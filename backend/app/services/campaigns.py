@@ -92,9 +92,11 @@ from app.services.campaign_slots import (
 from app.services.listmonk_mappings import (
     ENTITY_TYPE_CAMPAIGN,
     LISTMONK_TYPE_CAMPAIGN,
+    LISTMONK_TYPE_LIST,
     ListmonkMappingConflictError,
     ListmonkMappingService,
 )
+from app.services.campaign_preparation import build_listmonk_campaign_payload
 
 ALLOWED_CAMPAIGN_STEPS = {"setup", "content", "recipients", "review", "send"}
 EDITABLE_CAMPAIGN_STATUSES = {
@@ -2054,7 +2056,11 @@ class CampaignDispatchService:
             )
 
             if mapping is None:
-                create_payload = self._build_listmonk_campaign_payload(campaign)
+                create_payload = self._build_listmonk_campaign_payload(
+                    campaign=campaign,
+                    preparation=preparation,
+                    mapping_service=mapping_service,
+                )
                 if create_payload is None:
                     return self._diagnostic_response(
                         campaign_id=campaign_id,
@@ -2821,15 +2827,38 @@ class CampaignDispatchService:
 
     def _build_listmonk_campaign_payload(
         self,
+        *,
         campaign: ClientCampaignRecord,
+        preparation: dict[str, Any],
+        mapping_service: ListmonkMappingService,
     ) -> dict[str, Any] | None:
         if not campaign.name.strip() or not (campaign.subject or "").strip():
             return None
+        content = preparation.get("content")
+        if not isinstance(content, dict):
+            return None
 
-        return {
-            "name": campaign.name,
-            "subject": campaign.subject,
-        }
+        list_mapping = mapping_service.get_mapping(
+            client_id=campaign.client_id,
+            entity_type=ENTITY_TYPE_CAMPAIGN,
+            entity_id=campaign.id,
+            listmonk_type=LISTMONK_TYPE_LIST,
+        )
+        if list_mapping is None:
+            return None
+
+        try:
+            list_id = int(str(list_mapping.listmonk_id).strip())
+        except ValueError:
+            return None
+
+        payload, _content_ready = build_listmonk_campaign_payload(
+            settings=self.settings,
+            campaign=campaign,
+            list_id=list_id,
+            content=content,
+        )
+        return payload
 
     def _diagnostic_response(
         self,

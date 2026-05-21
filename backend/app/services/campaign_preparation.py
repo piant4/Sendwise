@@ -41,6 +41,36 @@ RECIPIENT_TEMPLATE_VARIABLES = {
 }
 
 
+def build_listmonk_campaign_payload(
+    *,
+    settings: Settings,
+    campaign: ClientCampaignRecord,
+    list_id: int,
+    content: dict[str, Any],
+) -> tuple[dict[str, Any], bool]:
+    subject = (campaign.subject or "").strip()
+    content_ready = bool(content["content_ready"])
+    body = str(content.get("body") or "")
+    altbody = str(content.get("body_text") or "")
+
+    payload: dict[str, Any] = {
+        "name": campaign.name,
+        "subject": subject or f"Sendwise technical draft {campaign.id}",
+        "lists": [list_id],
+        "type": "regular",
+        "content_type": "html",
+        "body": body,
+        "messenger": "email",
+        "tags": ["sendwise", f"content_ready:{str(content_ready).lower()}"],
+    }
+    if altbody:
+        payload["altbody"] = altbody
+    if settings.smtp_from_email.strip():
+        payload["from_email"] = settings.smtp_from_email.strip()
+
+    return payload, content_ready
+
+
 @dataclass(frozen=True)
 class CampaignPreparationService:
     settings: Settings
@@ -149,23 +179,12 @@ class CampaignPreparationService:
         list_id: int,
         content: dict[str, Any],
     ) -> tuple[dict[str, Any], bool]:
-        subject = (campaign.subject or "").strip()
-        content_ready = bool(content["content_ready"])
-        body = str(content.get("body") or "")
-
-        payload: dict[str, Any] = {
-            "name": campaign.name,
-            "subject": subject or f"Sendwise technical draft {campaign.id}",
-            "lists": [list_id],
-            "type": "regular",
-            "content_type": "html",
-            "body": body,
-            "tags": ["sendwise", f"content_ready:{str(content_ready).lower()}"],
-        }
-        if self.settings.smtp_from_email.strip():
-            payload["from_email"] = self.settings.smtp_from_email.strip()
-
-        return payload, content_ready
+        return build_listmonk_campaign_payload(
+            settings=self.settings,
+            campaign=campaign,
+            list_id=list_id,
+            content=content,
+        )
 
     def _render_campaign_content(
         self,

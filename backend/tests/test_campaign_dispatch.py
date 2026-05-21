@@ -214,6 +214,15 @@ def build_dispatch_service(
 ) -> CampaignDispatchService:
     selected_campaigns = [build_campaign()] if campaigns is None else campaigns
     selected_clients = [build_client()] if clients is None else clients
+    resolved_mapping_service = mapping_service or ListmonkMappingService(
+        InMemoryListmonkMappingRepository()
+    )
+    for campaign in selected_campaigns:
+        resolved_mapping_service.ensure_campaign_list_mapping(
+            client_id=campaign.client_id,
+            campaign_id=campaign.id,
+            listmonk_list_id="1",
+        )
     selected_contact_repository = contact_repository or InMemoryContactRepository(
         contacts=[build_contact()],
         campaign_contacts={("client_123", "campaign_123", "contact_123")},
@@ -227,8 +236,7 @@ def build_dispatch_service(
         ),
         guard=DeliverabilityGuard(),
         listmonk_client=fake_listmonk or FakeListmonkClient(),  # type: ignore[arg-type]
-        mapping_service=mapping_service
-        or ListmonkMappingService(InMemoryListmonkMappingRepository()),
+        mapping_service=resolved_mapping_service,
         client_repository=FakeClientRepository(  # type: ignore[arg-type]
             selected_campaigns,
             selected_clients,
@@ -1596,7 +1604,16 @@ def test_enabled_campaign_send_creates_mapping_after_guard_authorizes() -> None:
     assert result["listmonk_mapping"]["created"] is True
     assert preparation_service.prepared_campaign_ids == ["campaign_123"]
     assert fake_listmonk.created_campaign_payloads == [
-        {"name": "Launch campaign", "subject": "Launch"}
+        {
+            "name": "Launch campaign",
+            "subject": "Launch",
+            "lists": [1],
+            "type": "regular",
+            "content_type": "html",
+            "body": "<html><body><p>Body</p></body></html>",
+            "messenger": "email",
+            "tags": ["sendwise", "content_ready:true"],
+        }
     ]
     assert fake_listmonk.sent_campaign_ids == ["lm_1"]
     logs = email_log_repository.list_by_campaign("campaign_123")
@@ -1809,6 +1826,68 @@ def test_listmonk_client_maps_upstream_errors(monkeypatch: Any) -> None:
         client.health()
     except ListmonkError as error:
         assert str(error) == "listmonk returned HTTP 500"
+    else:
+        raise AssertionError("Expected ListmonkError")
+
+
+def test_listmonk_client_400_maps_to_safe_campaign_diagnostics(monkeypatch: Any) -> None:
+    def fake_request(*_args: object, **_kwargs: object) -> httpx.Response:
+        request = httpx.Request("POST", "http://listmonk.test/api/campaigns")
+        return httpx.Response(
+            400,
+            request=request,
+            json={"message": "invalid campaign payload"},
+        )
+
+    monkeypatch.setattr(httpx, "request", fake_request)
+    client = ListmonkClient(
+        base_url="http://listmonk.test",
+        username="admin",
+        password="change_me",
+        timeout_seconds=1,
+    )
+    payload = {
+        "name": "Launch campaign",
+        "subject": "Top secret subject",
+        "lists": [1, "oops"],
+        "type": "regular",
+        "content_type": "html",
+        "body": "<p>Hidden body</p>",
+        "altbody": "Hidden altbody",
+        "from_email": "Sender <sender@example.test>",
+        "tags": ["sendwise"],
+        "subscribers": ["person@example.test"],
+        "template_id": 1,
+    }
+
+    try:
+        client.create_campaign(payload)
+    except ListmonkError as error:
+        message = str(error)
+        assert error.status_code == 400
+        assert error.method == "POST"
+        assert error.path == "/api/campaigns"
+        assert error.response_message == "invalid campaign payload"
+        assert "method=POST" in message
+        assert "endpoint=/api/campaigns" in message
+        assert "status_code=400" in message
+        assert "response_message=invalid campaign payload" in message
+        assert "payload_keys=['altbody', 'body', 'content_type', 'from_email', 'lists', 'name', 'subject', 'subscribers', 'tags', 'template_id', 'type']" in message
+        assert "list_ids_count=1" in message
+        assert "list_ids=[1]" in message
+        assert "content_type=html" in message
+        assert "campaign_type=regular" in message
+        assert "template_id=1" in message
+        assert "has_body=True" in message
+        assert "has_altbody=True" in message
+        assert "has_subject=True" in message
+        assert "Top secret subject" not in message
+        assert "Hidden body" not in message
+        assert "Hidden altbody" not in message
+        assert "person@example.test" not in message
+        assert "sender@example.test" not in message
+        assert "change_me" not in message
+        assert "admin" not in message
     else:
         raise AssertionError("Expected ListmonkError")
 

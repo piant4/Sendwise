@@ -14,11 +14,13 @@ class ListmonkError(RuntimeError):
         status_code: int | None = None,
         method: str | None = None,
         path: str | None = None,
+        response_message: str | None = None,
     ) -> None:
         super().__init__(message)
         self.status_code = status_code
         self.method = method
         self.path = path
+        self.response_message = response_message
 
 
 def extract_listmonk_id(payload: dict[str, Any]) -> str:
@@ -146,11 +148,19 @@ class ListmonkClient:
             status_code = error.response.status_code
             if status_code == 403:
                 raise self._build_forbidden_error(method=method, path=path) from error
+            response_message = self._extract_response_message(error.response)
             raise ListmonkError(
-                f"listmonk returned HTTP {status_code}",
+                self._build_http_error_message(
+                    method=method,
+                    path=path,
+                    status_code=status_code,
+                    response=error.response,
+                    payload=json,
+                ),
                 status_code=status_code,
-                method=method,
+                method=method.upper(),
                 path=self._redact_path(path),
+                response_message=response_message,
             ) from error
         except httpx.RequestError as error:
             raise ListmonkError("listmonk request failed") from error
@@ -203,6 +213,116 @@ class ListmonkClient:
             method=method.upper(),
             path=redacted_path,
         )
+
+    def _build_http_error_message(
+        self,
+        *,
+        method: str,
+        path: str,
+        status_code: int,
+        response: httpx.Response,
+        payload: dict[str, Any] | None,
+    ) -> str:
+        diagnostics = self._build_safe_http_diagnostics(
+            method=method,
+            path=path,
+            status_code=status_code,
+            response=response,
+            payload=payload,
+        )
+        return f"listmonk returned HTTP {status_code}. Safe diagnostics: {diagnostics}"
+
+    def _build_safe_http_diagnostics(
+        self,
+        *,
+        method: str,
+        path: str,
+        status_code: int,
+        response: httpx.Response,
+        payload: dict[str, Any] | None,
+    ) -> str:
+        payload_keys = sorted(payload.keys()) if isinstance(payload, dict) else []
+        numeric_list_ids = self._extract_numeric_list_ids(payload)
+        template_id = self._extract_numeric_template_id(payload)
+        response_message = self._extract_response_message(response)
+        message_parts = [
+            f"method={method.upper()}",
+            f"endpoint={self._redact_path(path)}",
+            f"status_code={status_code}",
+            f"response_message={response_message or 'none'}",
+            f"payload_keys={payload_keys}",
+            f"list_ids_count={len(numeric_list_ids)}",
+            f"list_ids={numeric_list_ids}",
+            f"content_type={self._string_or_none(payload, 'content_type')}",
+            f"campaign_type={self._string_or_none(payload, 'type')}",
+            (
+                f"template_id={template_id}"
+                if template_id is not None
+                else "template_id=absent"
+            ),
+            f"has_body={self._has_non_empty_string(payload, 'body')}",
+            f"has_altbody={self._has_non_empty_string(payload, 'altbody')}",
+            f"has_subject={self._has_non_empty_string(payload, 'subject')}",
+        ]
+        return ", ".join(message_parts)
+
+    def _extract_response_message(self, response: httpx.Response) -> str | None:
+        try:
+            payload = response.json()
+        except ValueError:
+            text = response.text.strip()
+            return text or None
+        return self._extract_message_from_payload(payload)
+
+    def _extract_message_from_payload(self, payload: Any) -> str | None:
+        if isinstance(payload, dict):
+            for key in ("message", "error", "detail"):
+                value = payload.get(key)
+                if isinstance(value, str) and value.strip():
+                    return value.strip()
+            errors = payload.get("errors")
+            if isinstance(errors, list):
+                normalized = [str(item).strip() for item in errors if str(item).strip()]
+                if normalized:
+                    return "; ".join(normalized)
+            data = payload.get("data")
+            if isinstance(data, dict):
+                return self._extract_message_from_payload(data)
+        return None
+
+    def _extract_numeric_list_ids(self, payload: dict[str, Any] | None) -> list[int]:
+        if not isinstance(payload, dict):
+            return []
+        list_value = payload.get("lists")
+        if not isinstance(list_value, list):
+            return []
+        numeric_ids: list[int] = []
+        for item in list_value:
+            try:
+                numeric_ids.append(int(str(item).strip()))
+            except (TypeError, ValueError):
+                continue
+        return numeric_ids
+
+    def _extract_numeric_template_id(self, payload: dict[str, Any] | None) -> int | None:
+        if not isinstance(payload, dict):
+            return None
+        template_id = payload.get("template_id")
+        try:
+            return int(str(template_id).strip())
+        except (TypeError, ValueError):
+            return None
+
+    def _string_or_none(self, payload: dict[str, Any] | None, key: str) -> str:
+        if not isinstance(payload, dict):
+            return "none"
+        value = str(payload.get(key) or "").strip()
+        return value or "none"
+
+    def _has_non_empty_string(self, payload: dict[str, Any] | None, key: str) -> bool:
+        if not isinstance(payload, dict):
+            return False
+        return bool(str(payload.get(key) or "").strip())
 
     def _permission_hint(self, *, method: str, path: str) -> dict[str, str]:
         normalized_method = method.upper()

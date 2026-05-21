@@ -1,5 +1,15 @@
 from app.core.config import Settings
+from app.integrations.listmonk.client import ListmonkClient
 from app.schemas.campaigns import ProviderRuntimeSummary
+
+
+def build_listmonk_client(settings: Settings) -> ListmonkClient:
+    return ListmonkClient(
+        base_url=settings.listmonk_url,
+        username=settings.listmonk_username,
+        password=settings.listmonk_password,
+        timeout_seconds=settings.listmonk_timeout_seconds,
+    )
 
 
 def build_provider_runtime_summary(

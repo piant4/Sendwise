@@ -15,7 +15,6 @@ from app.repositories.contacts import (
     PostgresContactRepository,
 )
 from app.repositories.listmonk_mappings import get_listmonk_mapping_repository
-from app.services.campaigns import build_listmonk_client
 from app.services.listmonk_mappings import (
     ENTITY_TYPE_CAMPAIGN,
     ENTITY_TYPE_CLIENT,
@@ -25,6 +24,7 @@ from app.services.listmonk_mappings import (
     ListmonkMappingConflictError,
     ListmonkMappingService,
 )
+from app.services.provider_runtime import build_listmonk_client
 from app.services.unsubscribe import LISTMONK_UNSUBSCRIBE_TOKEN_ATTR, UnsubscribeTokenService
 
 BLOCKLISTED_CONTACT_STATUSES = {

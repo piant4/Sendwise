@@ -81,7 +81,10 @@ from app.schemas.campaigns import (
     CampaignSummaryItem,
 )
 from app.schemas.common import CampaignStatus
-from app.services.provider_runtime import build_provider_runtime_summary
+from app.services.provider_runtime import (
+    build_listmonk_client,
+    build_provider_runtime_summary,
+)
 from app.services.clients import build_client_email_brand
 from app.services.template_renderer import KNOWN_TEMPLATE_VARIABLES
 from app.services.campaign_slots import (
@@ -3078,17 +3081,6 @@ class CampaignDispatchService:
         if error.path:
             response["provider_endpoint"] = error.path
         return response
-
-
-def build_listmonk_client(settings: Settings) -> ListmonkClient:
-    return ListmonkClient(
-        base_url=settings.listmonk_url,
-        username=settings.listmonk_username,
-        password=settings.listmonk_password,
-        timeout_seconds=settings.listmonk_timeout_seconds,
-    )
-
-
 def get_campaign_state_service() -> CampaignStateService:
     return CampaignStateService(repository=get_campaign_repository())
 

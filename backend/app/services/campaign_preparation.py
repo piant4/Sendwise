@@ -21,6 +21,7 @@ from app.services.listmonk_mappings import (
     LISTMONK_TYPE_CAMPAIGN,
     ListmonkMappingService,
 )
+from app.services.provider_runtime import build_listmonk_client
 from app.services.template_renderer import (
     CompiledTemplateNotFoundError,
     TemplateRenderError,
@@ -361,8 +362,6 @@ class CampaignPreparationService:
 
 
 def get_campaign_preparation_service() -> CampaignPreparationService:
-    from app.services.campaigns import build_listmonk_client
-
     settings = get_settings()
     listmonk_client = build_listmonk_client(settings)
     mapping_repository = get_listmonk_mapping_repository()

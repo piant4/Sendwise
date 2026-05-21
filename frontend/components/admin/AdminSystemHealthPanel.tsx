@@ -93,7 +93,7 @@ export function AdminSystemHealthPanel({
           <StatusBadge
             label={
               status.sesLiveValidationStatus === "pending"
-                ? "Pending"
+                ? "AWS approval pending"
                 : "Non richiesta"
             }
             variant={
@@ -109,6 +109,14 @@ export function AdminSystemHealthPanel({
           />
         </div>
       </div>
+
+      {status.emailProvider === "ses" ? (
+        <p className="admin-system-note">
+          SES resta in modalita sandbox. L&apos;invio production rimane bloccato finche
+          AWS non approva l&apos;accesso production; gli inviti nativi Clerk non sono
+          coinvolti.
+        </p>
+      ) : null}
 
       <p className="admin-system-note">
         Ultimo aggiornamento: {formatDateTimeLabel(status.generatedAt)}

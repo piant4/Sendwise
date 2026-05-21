@@ -688,7 +688,7 @@ def test_admin_summary_endpoint_exposes_safe_runtime_shape_without_secrets() -> 
     assert payload["runtime"] == {
         "email_sending_enabled": True,
         "email_provider": "ses",
-        "provider_mode_label": "SES configured but live validation pending",
+        "provider_mode_label": "SES sandbox only - production blocked pending AWS approval",
         "real_send_available": False,
         "ses_live_validation_status": "pending",
         "provider_events_available": False,

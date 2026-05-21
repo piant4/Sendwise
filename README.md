@@ -9,13 +9,13 @@ The repository is the public reference for the current product/runtime shape. De
 - Local product runtime is verified for admin-managed campaign setup, campaign-level sending limits, Deliverability Guard checks, backend-backed client dashboard analytics, contact metadata, and unsubscribe handling.
 - VPS staging assets are present, including `docker-compose.staging.yml` and deployment runbooks.
 - VPS deployment is not marked complete by this repository. First deploy must follow the staging runbook and keep real sends disabled.
-- SES live sending is not generally enabled. Controlled send paths remain fail-closed behind backend safety gates and runtime configuration.
+- AWS has not approved SES production access for Sendwise. SES remains sandbox-only for QA, and production sending to non-verified recipients is blocked until AWS approval.
 - The first staging deploy must use a no-send posture: `EMAIL_SENDING_ENABLED=false`.
 
 ## Product Summary
 
 - Admin campaign creation and setup for selected clients.
-- Admin-created client account provisioning with Clerk-owned password setup/reset and a Sendwise transactional access email.
+- Admin-created client account provisioning with Clerk-owned password setup/reset and Clerk native invitation email delivery.
 - Campaign content management and review readiness without dispatching.
 - Manual and CSV contact management for campaigns.
 - Recipient metadata in `contacts.metadata`, including `nome` and optional `cognome` for `{{nome}}` / `{{cognome}}` personalization.
@@ -46,6 +46,7 @@ Core ownership rules:
 - FastAPI is the gatekeeper for product APIs, send decisions, client isolation, and business rules.
 - Business PostgreSQL is the source of truth for clients, campaigns, contacts, usage, suppressions, provider events, blocked sends, and limit state.
 - listmonk is the email mechanics engine only. It does not own product state.
+- Campaign sending remains provider-adapter based: backend authorization and preparation lead to listmonk dispatch, and listmonk uses the configured SMTP provider. There is no direct SES API send path in the product flow.
 - The frontend calls the backend only. It must not call listmonk or PostgreSQL directly.
 - Real dispatch remains backend-authorized and fail-closed unless all safety gates pass.
 - Client passwords remain Clerk-owned; Sendwise must not persist or email permanent plaintext passwords.
@@ -184,7 +185,7 @@ Backups cover both the Sendwise business database and listmonk database. Restore
 ## Safety Defaults
 
 - Keep `EMAIL_SENDING_ENABLED=false` for first staging deploy and any no-send validation.
-- Do not run real sends before SES readiness and controlled validation are explicitly approved.
+- Do not run production-targeted real sends while SES production access is blocked.
 - First SES validation may use `REAL_SEND_MAX_RECIPIENTS=1` and `REAL_SEND_REQUIRE_ALLOWED_RECIPIENTS=true`.
 - Official product trials should use `REAL_SEND_MAX_RECIPIENTS=0` and `REAL_SEND_REQUIRE_ALLOWED_RECIPIENTS=false`; admin-configured campaign daily and 30-day limits are the real product limits.
 - `EMAIL_SENDING_ENABLED=false` remains the emergency global off switch.
@@ -202,12 +203,19 @@ Official product trials require a documented SES posture before any approved rea
 - Publish SPF for the sending domain and include Amazon SES in that policy.
 - Publish a DMARC record for the sending domain before public trials.
 - Configure a MAIL FROM domain if the SES setup depends on a custom return path.
-- Move the SES account out of sandbox before sending to non-verified recipients.
+- Move the SES account out of sandbox before sending to non-verified recipients. Sendwise is currently blocked at this step because AWS denied production access / sending-limit expansion.
 - Keep `SMTP_HOST` as a bare host name only; do not include `smtp://` or `smtps://`.
 - Use SES SMTP credentials for `SMTP_USERNAME` and `SMTP_PASSWORD`; do not use AWS access keys in Listmonk SMTP auth.
 - Keep `FRONTEND_URL` as the public unsubscribe origin and keep `BACKEND_PUBLIC_URL` as the public API origin only.
 - Expect real bounce and complaint handling to come from provider events plus suppression writes; do not assume inbox delivery from accepted sends alone.
 - Current provider webhook support is partial: normalized events are ingested, but SES SNS `SubscriptionConfirmation` handling and SNS signature validation remain pending.
+
+## Provider Fallback Posture
+
+- Sandbox QA can continue with `EMAIL_PROVIDER=ses`, verified SES sandbox recipients only, and the existing backend safety gates, or with `EMAIL_PROVIDER=mailpit` for no-send UI and workflow validation.
+- The current production send path is provider-agnostic only at the listmonk SMTP boundary. Reusing that path with another SMTP relay is possible in principle because campaign dispatch does not hardcode direct SES API calls.
+- A new production provider still needs explicit product approval before activation because runtime provider classification currently recognizes `mailpit`, `smtp_dev`, and `ses` only, and provider-event webhook normalization or verification may need provider-specific work.
+- Keep Clerk native invitations unchanged. Client access remains Clerk-owned and does not depend on campaign provider approval state.
 
 Safe warmup guidance:
 

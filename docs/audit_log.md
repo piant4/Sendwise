@@ -1,5 +1,18 @@
 # Audit Log
 
+## Milestone 18.6T - Provider Strategy After SES Production Access Rejection
+
+Date: 2026-05-21
+
+SES fallback audit summary:
+- Audited the allowed provider runtime, campaign preparation/dispatch, provider-event ingestion, admin runtime surfaces, and staging docs without reading `.env`, printing secrets, dispatching campaigns, or touching live SES/Listmonk/provider sends.
+- Confirmed campaign sending remains backend-authorized and provider-adapter based: the product path prepares in backend, dispatches through listmonk, and uses SMTP configuration at the listmonk boundary. No direct SES API send path was found in the campaign flow.
+- Confirmed provider-event ingestion is backend-owned through `POST /events/provider` and currently supports normalized payloads plus minimal SES/SNS-like payloads, while SES SNS signature verification and `SubscriptionConfirmation` remain pending.
+- Confirmed Clerk native invitations for client access are separate from campaign provider status and remain unaffected by the SES production-access rejection.
+- Updated safe runtime/admin copy so SES now shows as sandbox-only with production blocked pending AWS approval instead of looking generally ready for live validation.
+- Updated README, API contract notes, and the staging runbook with the SES rejection meaning, sandbox-only QA procedure, reapplication checklist, provider fallback options, and recommended next-provider evaluation criteria.
+- Documented the remaining blocker truthfully: activating a new production provider would still require explicit approval if runtime classification, env contract, or webhook normalization/verification work changes.
+
 ## Milestone 18.6O-FIX15 - Harden Clerk Invite Ticket Error Handling
 
 Invite activation hardening audit summary:

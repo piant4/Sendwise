@@ -10,10 +10,10 @@ def build_provider_runtime_summary(
     email_provider = settings.email_provider_normalized or "unknown"
     mailpit_dev_mode = email_provider in {"mailpit", "smtp_dev"}
 
-    if not settings.email_sending_enabled:
+    if email_provider == "ses":
+        provider_mode_label = "SES sandbox only - production blocked pending AWS approval"
+    elif not settings.email_sending_enabled:
         provider_mode_label = "Sending disabled"
-    elif email_provider == "ses":
-        provider_mode_label = "SES configured but live validation pending"
     elif mailpit_dev_mode:
         provider_mode_label = "Mailpit/dev"
     else:

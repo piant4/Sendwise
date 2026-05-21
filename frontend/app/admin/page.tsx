@@ -63,6 +63,10 @@ function EmptyState({ message }: { message: string }) {
 function AdminDashboardContent({ summary }: { summary: AdminOverviewSummary }) {
   const attentionCount = getCampaignAttentionCount(summary);
   const campaignsReadyOrRunning = summary.campaigns.statusCounts.active;
+  const sesSandboxNotice =
+    summary.system.emailProvider === "ses"
+      ? "AWS non ha ancora approvato l'accesso production di SES. Mantieni Sendwise in QA sandbox e considera bloccato l'invio verso destinatari reali di produzione."
+      : null;
   const providerEventsState = summary.system.providerEventsAvailable
     ? {
         label: "Disponibili",
@@ -99,6 +103,11 @@ function AdminDashboardContent({ summary }: { summary: AdminOverviewSummary }) {
                 variant={summary.system.emailSendingEnabled ? "warning" : "neutral"}
               />
             </div>
+            {sesSandboxNotice ? (
+              <p className="admin-record-row__note" style={{ marginTop: 6 }}>
+                {sesSandboxNotice}
+              </p>
+            ) : null}
           </div>
 
           <div className="admin-overview__hero-meta">

@@ -127,6 +127,7 @@ Current runtime notes:
 
 - real dispatch still depends on `EMAIL_SENDING_ENABLED=true`
 - send remains fail-closed outside controlled runtime/provider conditions
+- current campaign dispatch is provider-adapter based through listmonk; the backend does not call a direct SES send API in the campaign path
 - current generic routes do not define the final product ownership model and are not the recommended frontend path
 - final V1 product contract remains admin-managed for campaign write actions
 
@@ -170,6 +171,8 @@ Admin-managed contract notes:
 - `EMAIL_SENDING_ENABLED` remains the real-dispatch kill switch
 - `EMAIL_PROVIDER=ses` adds a backend safety gate requiring explicit dev/staging runtime, complete SES SMTP env, public unsubscribe URL, review readiness, optional allowlist enforcement, and an optional positive recipient max before listmonk dispatch
 - SES trial readiness outside the API also requires verified identity/domain, DKIM, SPF, DMARC, SES production access for non-verified recipients, and correct SES SMTP credentials in Listmonk
+- AWS has currently denied SES production access for Sendwise, so SES must be treated as sandbox-only until AWS approval changes
+- current controlled runtime classification recognizes `mailpit`, `smtp_dev`, and `ses` only; enabling another production provider or provider-specific webhook contract is follow-up work and requires explicit approval
 - controlled send responses include provider and safety diagnostics such as `provider_status`, `queued_count`, `sent_or_accepted_count`, `failed_count`, `safety_checked`, `safety_passed`, `allowed_recipients_checked`, `eligible_contact_count`, `max_real_send_recipients`, `listmonk_dispatched`, `real_send_attempted`, `email_logs_created`, `unsubscribe_ready`, and `provider_events_ready`
 - Deliverability Guard blocks campaign dispatch with `campaign_daily_limit_reached` and `campaign_period_limit_reached` when campaign usage would exceed the configured table-backed limits
 - All user-facing admin/client day and month windows are evaluated against `Europe/Rome`; timestamps remain persisted in UTC
@@ -261,3 +264,4 @@ Event limitations:
 - SES SNS signature verification is not implemented yet.
 - SES SNS `SubscriptionConfirmation` handling is not implemented yet.
 - Provider-event-backed metrics and suppression side effects depend on normalized events that can be correlated to existing logs/contacts.
+- A non-SES production provider may still need provider-specific normalization or signature verification before event-backed metrics are trustworthy in production.

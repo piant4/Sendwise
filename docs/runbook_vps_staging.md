@@ -17,6 +17,7 @@ This staging runbook defines the safe first VPS deploy flow for Sendwise without
 - During first VPS deploy, do not use direct Listmonk send.
 - During first VPS deploy, do not use SES console send.
 - SES readiness and controlled SES validation are later milestones, not part of first VPS deploy.
+- AWS has denied SES production access for Sendwise at this time. Treat SES as sandbox-only until AWS explicitly approves production access.
 - Do not run destructive Docker volume or database commands during routine operations.
 
 Reference:
@@ -101,6 +102,44 @@ Clerk Dashboard checklist before staging QA:
   - `Unauthorized sign in URL=/login`
 - Verify the Clerk invitation template content, sender, and application invitation redirect behavior.
 - Do not rely on Clerk Account Portal paths for Sendwise client invitations.
+
+## SES Production Access Rejection
+
+Meaning of the rejection:
+
+- AWS denied the current request to move SES into production and/or increase sending capacity for public recipients.
+- Sendwise must treat SES as sandbox-only. Production sending to non-verified recipients is blocked until AWS approves a new request.
+- This does not remove SES support from the codebase, and it does not affect Clerk native invitation emails for client access.
+
+Smallest safe QA path while SES is sandboxed:
+
+- Keep `EMAIL_SENDING_ENABLED=false` for staging UI, review, and smoke validation.
+- Use `EMAIL_PROVIDER=mailpit` for no-send workflow checks and Mailpit capture.
+- If SES sandbox validation is explicitly approved later, keep `EMAIL_PROVIDER=ses`, `REAL_SEND_REQUIRE_ALLOWED_RECIPIENTS=true`, `REAL_SEND_MAX_RECIPIENTS=1`, and use only verified SES sandbox recipients.
+- Continue using backend `review`, `simulate-send`, and `sync-listmonk` flows for campaign QA. Do not use direct Listmonk send, SES console send, or any shortcut around backend gates.
+
+SES reapplication checklist:
+
+- Prepare a clear production use case, audience source, unsubscribe flow, and complaint-handling description.
+- Confirm the sending domain identity, DKIM, SPF, DMARC, and `SMTP_FROM_EMAIL` alignment.
+- Document that Sendwise uses backend authorization, suppression handling, unsubscribe pages, and controlled rollout limits.
+- Prepare examples of the website, privacy policy, signup/contact source, and sample campaign content reviewers can inspect.
+- Reconfirm that sandbox tests use verified recipients only and that production is still fail-closed pending approval.
+
+Provider fallback options while SES is blocked:
+
+- Keep staging and QA on `mailpit` plus backend simulation for no-send validation.
+- Evaluate an alternate SMTP relay that can sit behind listmonk using the existing `SMTP_*` contract.
+- Evaluate whether the provider also exposes delivery/bounce/complaint webhooks that can be normalized into `POST /events/provider`.
+- Do not activate a new provider in production until runtime classification, env contract, and webhook needs are reviewed and explicitly approved.
+
+Recommended next provider evaluation criteria:
+
+- SMTP compatibility with listmonk and support for a verified custom sending domain.
+- Clear webhook coverage for delivery, bounce, complaint, open, and click events.
+- Low-friction production approval process and transparent reputation/compliance posture.
+- EU-friendly operations, rate limits, support responsiveness, and predictable pricing.
+- Ability to support gradual warmup, suppression discipline, and audit-friendly logs without bypassing Sendwise backend ownership.
 
 ## Standard Staging Deploy
 
@@ -198,6 +237,7 @@ SES readiness is intentionally separated from first VPS deploy. A later controll
 - `REAL_SEND_REQUIRE_ALLOWED_RECIPIENTS=true`.
 - `REAL_SEND_MAX_RECIPIENTS=1`.
 - `REAL_SEND_ALLOWED_RECIPIENTS` contains only the single approved validation recipient.
+- The recipient is verified in the SES sandbox account.
 - No direct Listmonk send is used.
 - No SES console send is used outside the approved validation plan.
 
@@ -211,6 +251,7 @@ Before any approved official product trial:
 - Publish a DMARC record for the sending domain.
 - Configure a custom MAIL FROM domain if the SES setup uses one, then verify it resolves correctly.
 - Move SES out of sandbox before sending to non-verified recipients.
+- If AWS denies production access again, keep SES in sandbox-only QA posture and do not widen the recipient set.
 - Confirm `EMAIL_PROVIDER=ses` only in the intended runtime and keep `EMAIL_SENDING_ENABLED` as the emergency off switch.
 - Confirm `AWS_SES_REGION` matches the SES SMTP endpoint in use.
 - Confirm `SMTP_HOST` is a bare SES SMTP host with no protocol prefix.
@@ -226,6 +267,7 @@ Provider event limitations for trials:
 - `POST /events/provider` ingests normalized provider events and minimal SES/SNS-like payloads only.
 - SES SNS signature validation is still pending.
 - SES SNS `SubscriptionConfirmation` handling is still pending.
+- A non-SES provider may require its own webhook normalization or signature-verification work before event-backed metrics can be trusted in production.
 - Do not treat accepted send results as delivered inbox placement; delivery/open/click/bounce/complaint truth depends on processed provider events.
 - Bounce and complaint side effects are expected to create suppression behavior once matching provider events are received and correlated.
 

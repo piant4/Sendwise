@@ -1774,7 +1774,10 @@ def test_platform_admin_can_read_safe_system_status_without_secret_values(
     assert payload["db_status"] == "ok"
     assert payload["email_sending_enabled"] is True
     assert payload["email_provider"] == "ses"
-    assert payload["provider_mode_label"] == "SES configured but live validation pending"
+    assert (
+        payload["provider_mode_label"]
+        == "SES sandbox only - production blocked pending AWS approval"
+    )
     assert payload["real_send_available"] is False
     assert payload["ses_live_validation_status"] == "pending"
     assert payload["provider_events_available"] is False
@@ -1782,7 +1785,7 @@ def test_platform_admin_can_read_safe_system_status_without_secret_values(
     assert payload["runtime"] == {
         "email_sending_enabled": True,
         "email_provider": "ses",
-        "provider_mode_label": "SES configured but live validation pending",
+        "provider_mode_label": "SES sandbox only - production blocked pending AWS approval",
         "real_send_available": False,
         "ses_live_validation_status": "pending",
         "provider_events_available": False,

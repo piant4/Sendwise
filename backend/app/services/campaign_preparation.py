@@ -31,7 +31,7 @@ from app.services.template_renderer import (
     build_template_variable_values,
     ensure_unsubscribe_link,
     get_default_template_renderer,
-    render_template_string,
+    render_sendwise_template_string,
 )
 from app.services.unsubscribe import UnsubscribeTokenService
 
@@ -49,7 +49,7 @@ def build_listmonk_campaign_payload(
     list_id: int,
     content: dict[str, Any],
 ) -> tuple[dict[str, Any], bool]:
-    subject = (campaign.subject or "").strip()
+    subject = str(content.get("subject") or "").strip() or (campaign.subject or "").strip()
     content_ready = bool(content["content_ready"])
     body = str(content.get("body") or "")
     altbody = str(content.get("body_text") or "")
@@ -109,6 +109,29 @@ class CampaignPreparationService:
             client_id=campaign.client_id,
             campaign_id=campaign.id,
         )
+        if not content.get("allow_listmonk_sync", True):
+            return {
+                "status": "blocked",
+                "campaign_id": campaign.id,
+                "client_id": campaign.client_id,
+                "listmonk_synced": False,
+                "content_ready": False,
+                "reason": str(
+                    content.get(
+                        "reason",
+                        "Campaign content contains unsupported Sendwise placeholders.",
+                    )
+                ),
+                "contact_summary": contact_summary,
+                "content": content,
+                "list_mapping": {
+                    "entity_type": list_mapping.entity_type,
+                    "entity_id": list_mapping.entity_id,
+                    "listmonk_type": list_mapping.listmonk_type,
+                    "listmonk_id": list_mapping.listmonk_id,
+                    "created": list_created,
+                },
+            }
         campaign_mapping, campaign_created, content_ready = (
             self._ensure_listmonk_campaign(
                 campaign=campaign,
@@ -194,6 +217,7 @@ class CampaignPreparationService:
         client: Any | None,
     ) -> dict[str, Any]:
         subject = (campaign.subject or "").strip() or f"Sendwise draft {campaign.id}"
+        preview_text_value = (campaign.preview_text or "").strip()
         client_name = self._resolve_client_name(client)
         email_brand = self._resolve_email_brand(client)
         unsubscribe_url = build_unsubscribe_url(
@@ -207,30 +231,53 @@ class CampaignPreparationService:
             email_brand=email_brand,
         )
         if campaign.content_ready and (campaign.body_html or "").strip():
-            rendered_body = render_template_string(
-                str(campaign.body_html),
-                template_variables,
-            )
+            try:
+                rendered_preview_text, rendered_subject = self._render_business_db_metadata(
+                    subject=subject,
+                    preview_text=preview_text_value,
+                    template_variables=template_variables,
+                )
+                content_variables = dict(template_variables)
+                content_variables["preview_text"] = rendered_preview_text
+                content_variables["subject"] = rendered_subject
+                rendered_body = render_sendwise_template_string(
+                    str(campaign.body_html),
+                    content_variables,
+                    field_name="body_html",
+                )
+                rendered_body_text = render_sendwise_template_string(
+                    str(campaign.body_text or ""),
+                    content_variables,
+                    field_name="body_text",
+                )
+            except TemplateRenderError as error:
+                return {
+                    "template_name": "campaign_business_db",
+                    "content_ready": False,
+                    "allow_listmonk_sync": False,
+                    "reason": str(error),
+                    "subject": "",
+                    "preview_text": "",
+                    "body": "",
+                    "body_text": "",
+                    "unsubscribe_url": unsubscribe_url,
+                    "client_name": client_name,
+                }
             rendered_body = ensure_unsubscribe_link(rendered_body, unsubscribe_url)
             return {
                 "template_name": "campaign_business_db",
                 "content_ready": True,
+                "allow_listmonk_sync": True,
                 "reason": None,
-                "subject": subject,
-                "preview_text": render_template_string(
-                    (campaign.preview_text or "").strip(),
-                    template_variables,
-                ),
+                "subject": rendered_subject,
+                "preview_text": rendered_preview_text,
                 "body": rendered_body,
-                "body_text": render_template_string(
-                    str(campaign.body_text or ""),
-                    template_variables,
-                ),
+                "body_text": rendered_body_text,
                 "unsubscribe_url": unsubscribe_url,
                 "client_name": client_name,
             }
 
-        preview_text = (campaign.preview_text or "").strip() or (
+        preview_text = preview_text_value or (
             f"Technical preview for campaign {campaign.name}."
         )
         body = (
@@ -255,6 +302,7 @@ class CampaignPreparationService:
             return {
                 "template_name": "campaign",
                 "content_ready": False,
+                "allow_listmonk_sync": True,
                 "reason": str(error),
                 "subject": subject,
                 "preview_text": preview_text,
@@ -267,6 +315,7 @@ class CampaignPreparationService:
         return {
             "template_name": rendered.template_name,
             "content_ready": False,
+            "allow_listmonk_sync": True,
             "reason": "Campaign content is not ready in Business DB.",
             "subject": rendered.subject,
             "preview_text": rendered.preview_text,
@@ -285,6 +334,7 @@ class CampaignPreparationService:
         email_brand: dict[str, str],
     ) -> dict[str, str]:
         variables = build_template_variable_values(
+            subject=(campaign.subject or "").strip(),
             preview_text=(campaign.preview_text or "").strip(),
             unsubscribe_url=unsubscribe_url,
             client_name=client_name,
@@ -313,6 +363,31 @@ class CampaignPreparationService:
         if getattr(client, "email", None):
             return str(client.email).split("@")[0]
         return "Sendwise client"
+
+    def _render_business_db_metadata(
+        self,
+        *,
+        subject: str,
+        preview_text: str,
+        template_variables: dict[str, str],
+    ) -> tuple[str, str]:
+        preview_replacements = dict(template_variables)
+        preview_replacements["preview_text"] = ""
+        rendered_preview_text = render_sendwise_template_string(
+            preview_text,
+            preview_replacements,
+            field_name="preview_text",
+        )
+
+        subject_replacements = dict(template_variables)
+        subject_replacements["preview_text"] = rendered_preview_text
+        subject_replacements["subject"] = ""
+        rendered_subject = render_sendwise_template_string(
+            subject,
+            subject_replacements,
+            field_name="subject",
+        )
+        return rendered_preview_text, rendered_subject
 
     def _get_campaign(
         self,

@@ -265,6 +265,35 @@ def test_prepare_campaign_creates_list_subscribers_campaign_and_mappings() -> No
     assert ("contact", "contact_2", "subscriber") in mapping_types
 
 
+def test_prepare_campaign_renders_subject_preview_and_bodies_before_listmonk_payload() -> None:
+    service, fake_listmonk, _repository = build_preparation_service(
+        campaign=build_campaign(
+            subject="Aggiornamento {{campaign_name}}",
+            preview_text="Preview {{campaign_name}}",
+            body_html=(
+                "<html><body><p>{{subject}}</p><p>{{preview_text}}</p>"
+                "<p>{{campaign_name}}</p></body></html>"
+            ),
+            body_text="{{subject}} | {{preview_text}} | {{campaign_name}}",
+        ),
+    )
+
+    result = service.prepare_campaign("campaign_123")
+
+    assert result["status"] == "synced"
+    assert result["content"]["subject"] == "Aggiornamento Launch campaign"
+    assert result["content"]["preview_text"] == "Preview Launch campaign"
+    assert "Aggiornamento Launch campaign" in result["content"]["body"]
+    assert "Preview Launch campaign" in result["content"]["body"]
+    assert result["content"]["body_text"] == (
+        "Aggiornamento Launch campaign | Preview Launch campaign | Launch campaign"
+    )
+    assert fake_listmonk.created_campaign_payloads[0]["subject"] == (
+        "Aggiornamento Launch campaign"
+    )
+    assert "{{campaign_name}}" not in fake_listmonk.created_campaign_payloads[0]["subject"]
+
+
 def test_prepare_campaign_is_idempotent_and_updates_existing_campaign() -> None:
     repository = InMemoryListmonkMappingRepository()
     mapping_service = ListmonkMappingService(repository)
@@ -421,28 +450,74 @@ def test_prepare_campaign_renders_campaign_and_brand_variables() -> None:
     assert result["content"]["unsubscribe_url"] in fake_listmonk.created_campaign_payloads[0]["body"]
 
 
-def test_prepare_campaign_cleans_unknown_placeholders_and_empty_brand_blocks() -> None:
+def test_prepare_campaign_preserves_listmonk_native_placeholders() -> None:
+    service, fake_listmonk, _repository = build_preparation_service(
+        campaign=build_campaign(
+            subject="Launch {{MessageURL}}",
+            body_html=(
+                "<html><body><p>{{MessageURL}}</p><p>{{UnsubscribeURL}}</p>"
+                "<a href='{{unsubscribe_url}}'>unsubscribe</a></body></html>"
+            ),
+            body_text="{{MessageURL}} {{UnsubscribeURL}}",
+        ),
+    )
+
+    result = service.prepare_campaign("campaign_123")
+
+    assert result["status"] == "synced"
+    assert "{{MessageURL}}" in result["content"]["subject"]
+    assert "{{MessageURL}}" in result["content"]["body"]
+    assert "{{UnsubscribeURL}}" in result["content"]["body"]
+    assert "{{MessageURL}}" in result["content"]["body_text"]
+    assert "{{UnsubscribeURL}}" in fake_listmonk.created_campaign_payloads[0]["body"]
+
+
+def test_prepare_campaign_cleans_empty_brand_blocks() -> None:
     service, _fake_listmonk, _repository = build_preparation_service(
         campaign=build_campaign(
-            preview_text="Preview {{unknown}}",
+            preview_text="Preview {{campaign_name}}",
             body_html=(
                 "<html><body><p>{{nome}}</p><p>{{logo}}</p><p>{{social_icons}}</p>"
-                "<p>{{unknown}}</p></body></html>"
+                "<p>{{campaign_name}}</p></body></html>"
             ),
-            body_text="Hello {{unknown}}",
+            body_text="Hello {{campaign_name}}",
         ),
         client_metadata={"email_brand": {}},
     )
 
     result = service.prepare_campaign("campaign_123")
 
-    assert "{{unknown}}" not in result["content"]["preview_text"]
-    assert "{{unknown}}" not in result["content"]["body"]
     assert "{{logo}}" not in result["content"]["body"]
     assert "{{social_icons}}" not in result["content"]["body"]
     assert "img src=" not in result["content"]["body"]
     assert "linkedin.com/company/acme" not in result["content"]["body"]
     assert result["content"]["unsubscribe_url"] in result["content"]["body"]
+
+
+def test_prepare_campaign_blocks_unknown_sendwise_placeholders_before_listmonk() -> None:
+    service, fake_listmonk, _repository = build_preparation_service(
+        campaign=build_campaign(
+            subject="Secret {{campaign_name}} {{mystery_token}}",
+            preview_text="Preview {{preview_text}}",
+            body_html="<html><body><p>{{unknown_brand}}</p></body></html>",
+            body_text="Body {{unknown_text}}",
+        ),
+    )
+
+    result = service.prepare_campaign("campaign_123")
+
+    assert result["status"] == "blocked"
+    assert result["listmonk_synced"] is False
+    assert result["content_ready"] is False
+    assert "Unsupported Sendwise placeholders remain in subject" in result["reason"]
+    assert "{{mystery_token}}" in result["reason"]
+    assert "Secret" not in result["reason"]
+    assert "first@example.test" not in result["reason"]
+    assert "sender@example.test" not in result["reason"]
+    assert "sendwise_unsubscribe_token" not in result["reason"]
+    assert result["content"]["body"] == ""
+    assert result["content"]["body_text"] == ""
+    assert fake_listmonk.created_campaign_payloads == []
 
 
 def test_prepare_campaign_renders_only_configured_instagram_social_link() -> None:

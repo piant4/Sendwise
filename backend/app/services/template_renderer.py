@@ -34,6 +34,12 @@ KNOWN_TEMPLATE_VARIABLES = frozenset(
         "social_icons",
     }
 )
+LISTMONK_NATIVE_SIMPLE_PLACEHOLDERS = frozenset(
+    {
+        "messageurl",
+        "unsubscribeurl",
+    }
+)
 
 
 class TemplateRenderError(RuntimeError):
@@ -42,6 +48,19 @@ class TemplateRenderError(RuntimeError):
 
 class CompiledTemplateNotFoundError(TemplateRenderError):
     pass
+
+
+class UnresolvedSendwisePlaceholderError(TemplateRenderError):
+    def __init__(self, *, field_name: str, placeholders: set[str]) -> None:
+        formatted = ", ".join(
+            sorted(f"{{{{{placeholder}}}}}" for placeholder in placeholders)
+        )
+        super().__init__(
+            "Unsupported Sendwise placeholders remain in "
+            f"{field_name}: {formatted}. Remove them or replace them with supported placeholders before dispatch."
+        )
+        self.field_name = field_name
+        self.placeholders = frozenset(placeholders)
 
 
 @dataclass(frozen=True)
@@ -189,6 +208,40 @@ def render_template_string(
         return ""
 
     return TEMPLATE_VARIABLE_PATTERN.sub(replacer, value)
+
+
+def render_sendwise_template_string(
+    value: str,
+    replacements: Mapping[str, str],
+    *,
+    field_name: str,
+    preserve_placeholders: set[str] | None = None,
+) -> str:
+    preserved_keys = {
+        key.strip().lower()
+        for key in (
+            set(preserve_placeholders or set()) | LISTMONK_NATIVE_SIMPLE_PLACEHOLDERS
+        )
+    }
+    unknown_placeholders: set[str] = set()
+
+    def replacer(match: re.Match[str]) -> str:
+        key = match.group(1).strip()
+        normalized_key = key.lower()
+        if normalized_key in replacements:
+            return replacements[normalized_key]
+        if normalized_key in preserved_keys:
+            return match.group(0)
+        unknown_placeholders.add(key)
+        return match.group(0)
+
+    rendered = TEMPLATE_VARIABLE_PATTERN.sub(replacer, value)
+    if unknown_placeholders:
+        raise UnresolvedSendwisePlaceholderError(
+            field_name=field_name,
+            placeholders=unknown_placeholders,
+        )
+    return rendered
 
 
 def build_brand_template_variables(

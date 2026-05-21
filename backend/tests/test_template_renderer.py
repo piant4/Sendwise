@@ -7,6 +7,7 @@ from app.services.template_renderer import (
     TemplateRenderer,
     build_brand_template_variables,
     build_social_icons_html,
+    render_sendwise_template_string,
     render_template_string,
     ensure_unsubscribe_link,
 )
@@ -186,6 +187,20 @@ def test_render_template_string_cleans_unknown_placeholders() -> None:
     assert "{{unsupported}}" not in rendered
     assert "{{ .Subscriber.Attribs.nome }}" in rendered
     assert "https://example.test/unsubscribe/token" in rendered
+
+
+def test_render_sendwise_template_string_preserves_listmonk_native_placeholders() -> None:
+    rendered = render_sendwise_template_string(
+        "<p>{{campaign_name}} {{MessageURL}} {{UnsubscribeURL}}</p>",
+        {
+            "campaign_name": "Launch campaign",
+        },
+        field_name="body_html",
+    )
+
+    assert "Launch campaign" in rendered
+    assert "{{MessageURL}}" in rendered
+    assert "{{UnsubscribeURL}}" in rendered
 
 
 def test_render_replaces_missing_brand_blocks_with_empty_strings(tmp_path: Path) -> None:

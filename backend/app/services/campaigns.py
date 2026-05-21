@@ -1984,11 +1984,11 @@ class CampaignDispatchService:
                     current_user,
                 )
             except ListmonkError as error:
-                return self._failed_response(
+                return self._failed_response_from_listmonk_error(
                     campaign_id=campaign_id,
                     client_id=campaign.client_id,
                     guard_result=guard_result,
-                    reason=str(error),
+                    error=error,
                     provider=runtime_provider,
                     stage="preparation",
                     dispatch_attempted=False,
@@ -2069,11 +2069,11 @@ class CampaignDispatchService:
                 try:
                     listmonk_campaign = self.listmonk_client.create_campaign(create_payload)
                 except ListmonkError as error:
-                    return self._failed_response(
+                    return self._failed_response_from_listmonk_error(
                         campaign_id=campaign_id,
                         client_id=campaign.client_id,
                         guard_result=guard_result,
-                        reason=str(error),
+                        error=error,
                         provider=runtime_provider,
                         stage="campaign_create",
                         dispatch_attempted=False,
@@ -2116,17 +2116,16 @@ class CampaignDispatchService:
                     campaign_limit_repository=campaign_limit_repository,
                     email_log_repository=email_log_repository,
                 )
-                return self._failed_response(
+                return self._failed_response_from_listmonk_error(
                     campaign_id=campaign_id,
                     client_id=campaign.client_id,
                     guard_result=guard_result,
-                    reason=str(error),
+                    error=error,
                     provider=runtime_provider,
                     stage="dispatch",
                     dispatch_attempted=True,
                     preparation=preparation,
                     content_ready=True,
-                    provider_status="dispatch_failed",
                     queued_count=0,
                     sent_or_accepted_count=0,
                     failed_count=len(failed_logs),
@@ -3003,6 +3002,52 @@ class CampaignDispatchService:
         }
         if preparation is not None:
             response["preparation"] = preparation
+        return response
+
+    def _failed_response_from_listmonk_error(
+        self,
+        *,
+        campaign_id: str,
+        client_id: str,
+        guard_result: Any,
+        error: ListmonkError,
+        provider: str,
+        stage: str,
+        dispatch_attempted: bool,
+        preparation: dict[str, Any] | None = None,
+        content_ready: bool = False,
+        queued_count: int = 0,
+        sent_or_accepted_count: int = 0,
+        failed_count: int = 0,
+        email_logs_created: int = 0,
+        email_logs_updated: int = 0,
+        limit_usage: CampaignLimitUsage | None = None,
+    ) -> dict[str, Any]:
+        response = self._failed_response(
+            campaign_id=campaign_id,
+            client_id=client_id,
+            guard_result=guard_result,
+            reason=str(error),
+            provider=provider,
+            stage=stage,
+            dispatch_attempted=dispatch_attempted,
+            preparation=preparation,
+            content_ready=content_ready,
+            provider_status="forbidden" if error.status_code == 403 else "dispatch_failed",
+            queued_count=queued_count,
+            sent_or_accepted_count=sent_or_accepted_count,
+            failed_count=failed_count,
+            email_logs_created=email_logs_created,
+            email_logs_updated=email_logs_updated,
+            limit_usage=limit_usage,
+        )
+        if error.status_code == 403:
+            response["code"] = f"listmonk_{stage}_forbidden"
+            response["provider_status"] = "forbidden"
+        if error.method:
+            response["provider_method"] = error.method
+        if error.path:
+            response["provider_endpoint"] = error.path
         return response
 
 

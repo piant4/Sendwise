@@ -1664,6 +1664,30 @@ def test_enabled_campaign_send_reuses_existing_mapping() -> None:
     assert [log.status for log in logs] == ["sent"]
 
 
+def test_listmonk_provider_uses_listmonk_dispatch_even_with_mailgun_smtp_host() -> None:
+    fake_listmonk = FakeListmonkClient()
+    service = build_dispatch_service(
+        fake_listmonk=fake_listmonk,
+        settings=Settings(
+            email_sending_enabled_raw="true",
+            environment="staging",
+            email_provider="listmonk",
+            smtp_host="smtp.eu.mailgun.org",
+            smtp_port=587,
+            smtp_username="configured",
+            smtp_password="configured",
+            smtp_from_email="noreply@example.test",
+        ),
+        preparation_service=FakePreparationService(content_ready=True),
+    )
+
+    result = service.send_campaign("campaign_123")
+
+    assert result["status"] == "accepted"
+    assert result["provider"] == "listmonk"
+    assert fake_listmonk.sent_campaign_ids == ["lm_1"]
+
+
 def test_dispatch_failure_creates_failed_logs_for_attempted_contacts() -> None:
     class FailingListmonkClient(FakeListmonkClient):
         def trigger_campaign_send(self, campaign_id: str) -> dict[str, str]:
@@ -1689,6 +1713,36 @@ def test_dispatch_failure_creates_failed_logs_for_attempted_contacts() -> None:
     assert result["failed_count"] == 1
     logs = email_log_repository.list_by_campaign("campaign_123")
     assert [log.status for log in logs] == ["failed"]
+
+
+def test_dispatch_403_surfaces_safe_campaign_send_permission_error() -> None:
+    class ForbiddenListmonkClient(FakeListmonkClient):
+        def trigger_campaign_send(self, campaign_id: str) -> dict[str, str]:
+            self.sent_campaign_ids.append(campaign_id)
+            raise ListmonkError(
+                "Listmonk rejected campaign start. Verify API credentials and the "
+                "campaigns:send permission for PUT /api/campaigns/{campaign_id}/status.",
+                status_code=403,
+                method="PUT",
+                path="/api/campaigns/{campaign_id}/status",
+            )
+
+    fake_listmonk = ForbiddenListmonkClient()
+    service = build_dispatch_service(
+        fake_listmonk=fake_listmonk,
+        email_log_repository=InMemoryEmailLogRepository(),
+        preparation_service=FakePreparationService(content_ready=True),
+    )
+
+    result = service.send_campaign("campaign_123")
+
+    assert result["status"] == "dispatch_failed"
+    assert result["code"] == "listmonk_dispatch_forbidden"
+    assert result["provider_status"] == "forbidden"
+    assert result["provider_method"] == "PUT"
+    assert result["provider_endpoint"] == "/api/campaigns/{campaign_id}/status"
+    assert "campaigns:send" in result["reason"]
+    assert "change_me" not in result["reason"]
 
 
 def test_failed_listmonk_payload_marks_logs_failed_without_fake_sent_state() -> None:
@@ -1770,52 +1824,20 @@ def test_listmonk_client_health_returns_json(monkeypatch: Any) -> None:
     assert client.health() == {"status": "ok"}
 
 
-def test_listmonk_client_falls_back_to_session_login_after_403(monkeypatch: Any) -> None:
-    def fake_request(*_args: object, **_kwargs: object) -> httpx.Response:
-        request = httpx.Request("GET", "http://listmonk.test/api/health")
-        return httpx.Response(403, request=request, json={"message": "forbidden"})
+def test_listmonk_client_trigger_campaign_send_uses_basic_auth_and_status_endpoint(
+    monkeypatch: Any,
+) -> None:
+    captured: dict[str, Any] = {}
 
-    class FakeSessionClient:
-        def __init__(self, *args: object, **kwargs: object) -> None:
-            self.logged_in = False
-
-        def __enter__(self) -> "FakeSessionClient":
-            return self
-
-        def __exit__(self, *_args: object) -> None:
-            return None
-
-        def get(self, path: str) -> httpx.Response:
-            request = httpx.Request("GET", f"http://listmonk.test{path}")
-            return httpx.Response(
-                200,
-                request=request,
-                text='<input type="hidden" name="nonce" value="nonce123" />',
-            )
-
-        def post(self, path: str, data: dict[str, str]) -> httpx.Response:
-            assert path == "/admin/login"
-            assert data["username"] == "admin"
-            assert data["password"] == "change_me"
-            assert data["nonce"] == "nonce123"
-            self.logged_in = True
-            request = httpx.Request("POST", f"http://listmonk.test{path}")
-            return httpx.Response(200, request=request, text="ok")
-
-        def request(
-            self,
-            method: str,
-            path: str,
-            *,
-            json: dict[str, Any] | None = None,
-            params: dict[str, Any] | None = None,
-        ) -> httpx.Response:
-            assert self.logged_in is True
-            request = httpx.Request(method, f"http://listmonk.test{path}")
-            return httpx.Response(200, request=request, json={"status": "ok"})
+    def fake_request(method: str, url: str, **kwargs: object) -> httpx.Response:
+        captured["method"] = method
+        captured["url"] = url
+        captured["auth"] = kwargs.get("auth")
+        captured["json"] = kwargs.get("json")
+        request = httpx.Request(method, url)
+        return httpx.Response(200, request=request, json={"status": "running"})
 
     monkeypatch.setattr(httpx, "request", fake_request)
-    monkeypatch.setattr(httpx, "Client", FakeSessionClient)
     client = ListmonkClient(
         base_url="http://listmonk.test",
         username="admin",
@@ -1823,4 +1845,39 @@ def test_listmonk_client_falls_back_to_session_login_after_403(monkeypatch: Any)
         timeout_seconds=1,
     )
 
-    assert client.health() == {"status": "ok"}
+    assert client.trigger_campaign_send("lm_123") == {"status": "running"}
+    assert captured["method"] == "PUT"
+    assert captured["url"] == "http://listmonk.test/api/campaigns/lm_123/status"
+    assert captured["auth"] == ("admin", "change_me")
+    assert captured["json"] == {"status": "running"}
+
+
+def test_listmonk_client_403_maps_to_safe_permission_error_without_leaking_credentials(
+    monkeypatch: Any,
+) -> None:
+    def fake_request(*_args: object, **_kwargs: object) -> httpx.Response:
+        request = httpx.Request(
+            "PUT",
+            "http://listmonk.test/api/campaigns/lm_123/status",
+        )
+        return httpx.Response(403, request=request, json={"message": "forbidden"})
+
+    monkeypatch.setattr(httpx, "request", fake_request)
+    client = ListmonkClient(
+        base_url="http://listmonk.test",
+        username="admin",
+        password="change_me",
+        timeout_seconds=1,
+    )
+
+    try:
+        client.trigger_campaign_send("lm_123")
+    except ListmonkError as error:
+        assert error.status_code == 403
+        assert error.method == "PUT"
+        assert error.path == "/api/campaigns/{campaign_id}/status"
+        assert "campaigns:send" in str(error)
+        assert "change_me" not in str(error)
+        assert "admin" not in str(error)
+    else:
+        raise AssertionError("Expected ListmonkError")

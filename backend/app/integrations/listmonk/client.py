@@ -1,5 +1,4 @@
 from dataclasses import dataclass
-import re
 from typing import Any, Optional
 
 import httpx
@@ -8,9 +7,18 @@ import httpx
 class ListmonkError(RuntimeError):
     """Controlled error for failed listmonk API calls."""
 
-    def __init__(self, message: str, *, status_code: int | None = None) -> None:
+    def __init__(
+        self,
+        message: str,
+        *,
+        status_code: int | None = None,
+        method: str | None = None,
+        path: str | None = None,
+    ) -> None:
         super().__init__(message)
         self.status_code = status_code
+        self.method = method
+        self.path = path
 
 
 def extract_listmonk_id(payload: dict[str, Any]) -> str:
@@ -136,9 +144,13 @@ class ListmonkClient:
             raise ListmonkError("listmonk request timed out") from error
         except httpx.HTTPStatusError as error:
             status_code = error.response.status_code
+            if status_code == 403:
+                raise self._build_forbidden_error(method=method, path=path) from error
             raise ListmonkError(
                 f"listmonk returned HTTP {status_code}",
                 status_code=status_code,
+                method=method,
+                path=self._redact_path(path),
             ) from error
         except httpx.RequestError as error:
             raise ListmonkError("listmonk request failed") from error
@@ -166,59 +178,94 @@ class ListmonkClient:
         json: Optional[dict[str, Any]],
         params: Optional[dict[str, Any]],
     ) -> httpx.Response:
-        try:
-            response = httpx.request(
-                method,
-                url,
-                auth=auth,
-                json=json,
-                params=params,
-                timeout=self.timeout_seconds,
-            )
-            response.raise_for_status()
-            return response
-        except httpx.HTTPStatusError as error:
-            if error.response.status_code != 403 or auth is None:
-                raise
-            return self._perform_session_request(
-                method=method,
-                path=path,
-                json=json,
-                params=params,
-            )
-
-    def _perform_session_request(
-        self,
-        *,
-        method: str,
-        path: str,
-        json: Optional[dict[str, Any]],
-        params: Optional[dict[str, Any]],
-    ) -> httpx.Response:
-        if not self.username or self.password is None:
-            raise ListmonkError("listmonk session login requires configured credentials")
-
-        with httpx.Client(
-            base_url=self.base_url.rstrip("/"),
-            follow_redirects=True,
+        response = httpx.request(
+            method,
+            url,
+            auth=auth,
+            json=json,
+            params=params,
             timeout=self.timeout_seconds,
-        ) as client:
-            login_page = client.get("/admin/login?next=%2Fadmin")
-            login_page.raise_for_status()
-            nonce_match = re.search(r'name="nonce" value="([^"]+)"', login_page.text)
-            login_payload = {
-                "username": self.username,
-                "password": self.password,
-                "next": "/admin",
-                "nonce": nonce_match.group(1) if nonce_match else "",
+        )
+        response.raise_for_status()
+        return response
+
+    def _build_forbidden_error(self, *, method: str, path: str) -> ListmonkError:
+        redacted_path = self._redact_path(path)
+        permission_hint = self._permission_hint(method=method, path=path)
+        message = (
+            f"Listmonk rejected {permission_hint['action']}. "
+            f"Verify API credentials and the {permission_hint['permission']} permission "
+            f"for {method.upper()} {redacted_path}."
+        )
+        return ListmonkError(
+            message,
+            status_code=403,
+            method=method.upper(),
+            path=redacted_path,
+        )
+
+    def _permission_hint(self, *, method: str, path: str) -> dict[str, str]:
+        normalized_method = method.upper()
+        redacted_path = self._redact_path(path)
+        if redacted_path == "/api/campaigns/{campaign_id}/status" and normalized_method == "PUT":
+            return {
+                "action": "campaign start",
+                "permission": "campaigns:send",
             }
-            login_response = client.post("/admin/login", data=login_payload)
-            login_response.raise_for_status()
-            response = client.request(
-                method,
-                f"/{path.lstrip('/')}",
-                json=json,
-                params=params,
-            )
-            response.raise_for_status()
-            return response
+        if redacted_path == "/api/campaigns" and normalized_method == "POST":
+            return {
+                "action": "campaign creation",
+                "permission": "campaigns:create",
+            }
+        if redacted_path == "/api/campaigns/{campaign_id}" and normalized_method == "PUT":
+            return {
+                "action": "campaign update",
+                "permission": "campaigns:update",
+            }
+        if redacted_path == "/api/subscribers" and normalized_method == "GET":
+            return {
+                "action": "subscriber lookup",
+                "permission": "subscribers:get",
+            }
+        if redacted_path == "/api/subscribers" and normalized_method == "POST":
+            return {
+                "action": "subscriber creation",
+                "permission": "subscribers:create",
+            }
+        if redacted_path == "/api/subscribers/{subscriber_id}" and normalized_method == "PATCH":
+            return {
+                "action": "subscriber update",
+                "permission": "subscribers:update",
+            }
+        if redacted_path == "/api/subscribers/lists" and normalized_method == "PUT":
+            return {
+                "action": "subscriber list assignment",
+                "permission": "subscribers:update",
+            }
+        if redacted_path == "/api/lists" and normalized_method == "POST":
+            return {
+                "action": "list creation",
+                "permission": "lists:create",
+            }
+        return {
+            "action": "API access",
+            "permission": "required Listmonk API",
+        }
+
+    def _redact_path(self, path: str) -> str:
+        normalized = f"/{path.lstrip('/')}"
+        segments = normalized.split("/")
+        redacted_segments: list[str] = []
+        for index, segment in enumerate(segments):
+            if not segment:
+                redacted_segments.append(segment)
+                continue
+            previous = redacted_segments[index - 1] if index > 0 else ""
+            if previous == "campaigns" and segment not in {"status"}:
+                redacted_segments.append("{campaign_id}")
+                continue
+            if previous == "subscribers" and segment not in {"lists"}:
+                redacted_segments.append("{subscriber_id}")
+                continue
+            redacted_segments.append(segment)
+        return "/".join(redacted_segments)

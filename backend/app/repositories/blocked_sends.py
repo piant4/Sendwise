@@ -15,6 +15,7 @@ class BlockedSendRecord(BaseModel):
     client_id: str
     campaign_id: Optional[str] = None
     contact_id: Optional[str] = None
+    sending_domain: Optional[str] = None
     reason: str
     decision: str
     created_at: datetime
@@ -29,6 +30,7 @@ class BlockedSendRepository:
         reason: str,
         decision: str,
         contact_id: Optional[str] = None,
+        sending_domain: Optional[str] = None,
     ) -> BlockedSendRecord:
         raise NotImplementedError
 
@@ -77,21 +79,24 @@ class PostgresBlockedSendRepository(BlockedSendRepository):
         reason: str,
         decision: str,
         contact_id: Optional[str] = None,
+        sending_domain: Optional[str] = None,
     ) -> BlockedSendRecord:
         query = """
             INSERT INTO blocked_sends (
                 client_id,
                 campaign_id,
                 contact_id,
+                sending_domain,
                 reason,
                 decision
             )
-            VALUES (%s, %s, %s, %s, %s)
+            VALUES (%s, %s, %s, %s, %s, %s)
             RETURNING
                 id::text AS id,
                 client_id::text AS client_id,
                 campaign_id::text AS campaign_id,
                 contact_id::text AS contact_id,
+                sending_domain,
                 reason,
                 decision,
                 created_at
@@ -101,7 +106,14 @@ class PostgresBlockedSendRepository(BlockedSendRepository):
             with connection.cursor() as cursor:
                 cursor.execute(
                     query,
-                    (client_id, campaign_id, contact_id, reason, decision),
+                    (
+                        client_id,
+                        campaign_id,
+                        contact_id,
+                        sending_domain,
+                        reason,
+                        decision,
+                    ),
                 )
                 row = cursor.fetchone()
             connection.commit()
@@ -115,6 +127,7 @@ class PostgresBlockedSendRepository(BlockedSendRepository):
                 client_id::text AS client_id,
                 campaign_id::text AS campaign_id,
                 contact_id::text AS contact_id,
+                sending_domain,
                 reason,
                 decision,
                 created_at
@@ -137,6 +150,7 @@ class PostgresBlockedSendRepository(BlockedSendRepository):
                 client_id::text AS client_id,
                 campaign_id::text AS campaign_id,
                 contact_id::text AS contact_id,
+                sending_domain,
                 reason,
                 decision,
                 created_at
@@ -185,6 +199,7 @@ class PostgresBlockedSendRepository(BlockedSendRepository):
                 client_id::text AS client_id,
                 campaign_id::text AS campaign_id,
                 contact_id::text AS contact_id,
+                sending_domain,
                 reason,
                 decision,
                 created_at
@@ -246,12 +261,14 @@ class InMemoryBlockedSendRepository(BlockedSendRepository):
         reason: str,
         decision: str,
         contact_id: Optional[str] = None,
+        sending_domain: Optional[str] = None,
     ) -> BlockedSendRecord:
         record = BlockedSendRecord(
             id=str(uuid4()),
             client_id=client_id,
             campaign_id=campaign_id,
             contact_id=contact_id,
+            sending_domain=sending_domain,
             reason=reason,
             decision=decision,
             created_at=datetime.now(timezone.utc),

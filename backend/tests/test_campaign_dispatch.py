@@ -1730,6 +1730,7 @@ def test_domain_warmup_guard_allows_send_under_daily_limit() -> None:
             campaign_id=f"campaign_existing_{index}",
             contact_id=f"contact_existing_{index}",
             status="sent",
+            sending_domain="send.mailerpro.it",
         )
     service = build_dispatch_service(
         fake_listmonk=fake_listmonk,
@@ -1756,6 +1757,7 @@ def test_domain_warmup_guard_blocks_send_over_daily_limit_before_listmonk() -> N
             campaign_id=f"campaign_existing_{index}",
             contact_id=f"contact_existing_{index}",
             status="sent",
+            sending_domain="send.mailerpro.it",
         )
     service = build_dispatch_service(
         fake_listmonk=fake_listmonk,
@@ -1781,6 +1783,7 @@ def test_domain_warmup_guard_blocks_send_over_daily_limit_before_listmonk() -> N
     assert preparation_service.prepared_campaign_ids == []
     blocked_sends = blocked_send_repository.list_by_campaign("campaign_123")
     assert len(blocked_sends) == 1
+    assert blocked_sends[0].sending_domain == "send.mailerpro.it"
     assert "one@example.test" not in result["reason"]
     assert "Body" not in result["reason"]
     assert "unsubscribe" not in result["reason"]
@@ -1816,6 +1819,7 @@ def test_domain_warmup_guard_counts_only_accepted_email_logs() -> None:
             campaign_id=f"campaign_existing_{index}",
             contact_id=f"contact_existing_{index}",
             status=log_status,
+            sending_domain="send.mailerpro.it",
         )
     for index, log_status in enumerate(["failed", "queued", "simulated"], start=100):
         email_log_repository.create_email_log(
@@ -1823,6 +1827,58 @@ def test_domain_warmup_guard_counts_only_accepted_email_logs() -> None:
             campaign_id=f"campaign_existing_{index}",
             contact_id=f"contact_existing_{index}",
             status=log_status,
+            sending_domain="send.mailerpro.it",
+        )
+    service = build_dispatch_service(
+        fake_listmonk=fake_listmonk,
+        email_log_repository=email_log_repository,
+        settings=build_ready_listmonk_settings(),
+        preparation_service=FakePreparationService(content_ready=True),
+    )
+
+    result = service.send_campaign("campaign_123")
+
+    assert result["status"] == "accepted"
+    assert fake_listmonk.sent_campaign_ids == ["lm_1"]
+    logs = email_log_repository.list_by_campaign("campaign_123")
+    assert len(logs) == 1
+    assert logs[0].sending_domain == "send.mailerpro.it"
+
+
+def test_domain_warmup_guard_ignores_other_domains() -> None:
+    fake_listmonk = FakeListmonkClient()
+    email_log_repository = InMemoryEmailLogRepository()
+    for index in range(20):
+        email_log_repository.create_email_log(
+            client_id="client_existing",
+            campaign_id=f"campaign_existing_{index}",
+            contact_id=f"contact_existing_{index}",
+            status="sent",
+            sending_domain="other-domain.test",
+        )
+    service = build_dispatch_service(
+        fake_listmonk=fake_listmonk,
+        email_log_repository=email_log_repository,
+        settings=build_ready_listmonk_settings(),
+        preparation_service=FakePreparationService(content_ready=True),
+    )
+
+    result = service.send_campaign("campaign_123")
+
+    assert result["status"] == "accepted"
+    assert fake_listmonk.sent_campaign_ids == ["lm_1"]
+
+
+def test_domain_warmup_guard_ignores_legacy_null_domains() -> None:
+    fake_listmonk = FakeListmonkClient()
+    email_log_repository = InMemoryEmailLogRepository()
+    for index in range(20):
+        email_log_repository.create_email_log(
+            client_id="client_existing",
+            campaign_id=f"campaign_existing_{index}",
+            contact_id=f"contact_existing_{index}",
+            status="sent",
+            sending_domain=None,
         )
     service = build_dispatch_service(
         fake_listmonk=fake_listmonk,
@@ -1852,6 +1908,7 @@ def test_domain_warmup_guard_uses_rome_day_boundary(monkeypatch: Any) -> None:
             campaign_id=f"campaign_previous_{index}",
             contact_id=f"contact_previous_{index}",
             status="sent",
+            sending_domain="send.mailerpro.it",
             created_at=datetime(2026, 5, 9, 21, 30, tzinfo=timezone.utc),
         )
     monkeypatch.setattr(campaigns_module, "datetime", FixedDateTime)
@@ -1876,6 +1933,7 @@ def test_domain_warmup_guard_does_not_override_duplicate_guard() -> None:
         campaign_id="campaign_123",
         contact_id="contact_123",
         status="sent",
+        sending_domain="send.mailerpro.it",
     )
     for index in range(20):
         email_log_repository.create_email_log(
@@ -1883,6 +1941,7 @@ def test_domain_warmup_guard_does_not_override_duplicate_guard() -> None:
             campaign_id=f"campaign_existing_{index}",
             contact_id=f"contact_existing_{index}",
             status="sent",
+            sending_domain="send.mailerpro.it",
         )
     service = build_dispatch_service(
         fake_listmonk=fake_listmonk,

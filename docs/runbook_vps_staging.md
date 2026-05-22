@@ -229,7 +229,9 @@ Domain warmup guard V1 for approved Listmonk and Mailgun relay sends:
 - The guard uses the domain derived from `SMTP_FROM_EMAIL` and counts only Business DB `email_logs` rows already accepted or later processed by the Listmonk flow: `sent`, `dispatched`, `delivered`, `opened`, `clicked`, `bounced`, `complained`, `spam`, and `unsubscribed`.
 - `simulated`, `queued`, and `failed` rows do not consume warmup volume.
 - If current Rome-day accepted volume plus the eligible recipient batch would exceed the cap, Sendwise must block before Listmonk and persist the blocked attempt in `blocked_sends` when campaign context exists.
-- This V1 behavior is safe only for the currently verified single-domain runtime. If Sendwise later rotates across multiple active sending domains in the same Business DB, approval is required before changing schema or warmup attribution logic.
+- Warmup attribution is now persisted on `email_logs.sending_domain` and evaluated per domain.
+- Legacy `email_logs` rows with `NULL` `sending_domain` do not contribute to domain-specific warmup counts.
+- Warmup-related `blocked_sends` rows now persist `sending_domain` for audit clarity.
 
 ## Standard Staging Deploy
 

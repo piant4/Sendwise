@@ -20,6 +20,7 @@ class EmailLogRecord(BaseModel):
     contact_id: Optional[str] = None
     status: str
     provider_message_id: Optional[str] = None
+    sending_domain: Optional[str] = None
     body: Optional[str] = None
     created_at: datetime
 
@@ -44,6 +45,7 @@ class EmailLogRepository:
         contact_id: str,
         status: str,
         provider_message_id: Optional[str] = None,
+        sending_domain: Optional[str] = None,
         body: Optional[str] = None,
         created_at: Optional[datetime] = None,
     ) -> EmailLogRecord:
@@ -57,6 +59,7 @@ class EmailLogRepository:
         contact_ids: list[str],
         status: str,
         provider_message_id: Optional[str] = None,
+        sending_domain: Optional[str] = None,
         body: Optional[str] = None,
         created_at: Optional[datetime] = None,
     ) -> list[EmailLogRecord]:
@@ -67,6 +70,7 @@ class EmailLogRepository:
                 contact_id=contact_id,
                 status=status,
                 provider_message_id=provider_message_id,
+                sending_domain=sending_domain,
                 body=body,
                 created_at=created_at,
             )
@@ -96,6 +100,7 @@ class EmailLogRepository:
         client_id: str,
         campaign_id: str,
         contact_ids: list[str],
+        sending_domain: Optional[str] = None,
         body: Optional[str] = None,
     ) -> list[EmailLogRecord]:
         return self.create_campaign_logs(
@@ -104,6 +109,7 @@ class EmailLogRepository:
             contact_ids=contact_ids,
             status="queued",
             provider_message_id=None,
+            sending_domain=sending_domain,
             body=body,
         )
 
@@ -148,6 +154,7 @@ class EmailLogRepository:
         *,
         statuses: tuple[str, ...],
         started_at: datetime,
+        sending_domain: Optional[str] = None,
         ended_at: Optional[datetime] = None,
     ) -> int:
         raise NotImplementedError
@@ -218,6 +225,7 @@ class PostgresEmailLogRepository(EmailLogRepository):
                 contact_id::text AS contact_id,
                 status,
                 provider_message_id,
+                sending_domain,
                 body,
                 created_at
             FROM email_logs
@@ -239,6 +247,7 @@ class PostgresEmailLogRepository(EmailLogRepository):
         contact_id: str,
         status: str,
         provider_message_id: Optional[str] = None,
+        sending_domain: Optional[str] = None,
         body: Optional[str] = None,
         created_at: Optional[datetime] = None,
     ) -> EmailLogRecord:
@@ -248,6 +257,7 @@ class PostgresEmailLogRepository(EmailLogRepository):
             "contact_id",
             "status",
             "provider_message_id",
+            "sending_domain",
             "body",
         ]
         parameters: list[object] = [
@@ -256,6 +266,7 @@ class PostgresEmailLogRepository(EmailLogRepository):
             contact_id,
             status,
             provider_message_id,
+            sending_domain,
             body,
         ]
         if created_at is not None:
@@ -274,6 +285,7 @@ class PostgresEmailLogRepository(EmailLogRepository):
                 contact_id::text AS contact_id,
                 status,
                 provider_message_id,
+                sending_domain,
                 body,
                 created_at
         """
@@ -404,6 +416,7 @@ class PostgresEmailLogRepository(EmailLogRepository):
         *,
         statuses: tuple[str, ...],
         started_at: datetime,
+        sending_domain: Optional[str] = None,
         ended_at: Optional[datetime] = None,
     ) -> int:
         query = """
@@ -413,6 +426,9 @@ class PostgresEmailLogRepository(EmailLogRepository):
                 AND created_at >= %s
         """
         parameters: list[object] = [list(statuses), started_at]
+        if sending_domain is not None:
+            query = f"{query}\n                AND sending_domain = %s"
+            parameters.append(sending_domain)
         if ended_at is not None:
             query = f"{query}\n                AND created_at < %s"
             parameters.append(ended_at)
@@ -439,6 +455,7 @@ class PostgresEmailLogRepository(EmailLogRepository):
                 contact_id::text AS contact_id,
                 status,
                 provider_message_id,
+                sending_domain,
                 body,
                 created_at
             FROM email_logs
@@ -469,6 +486,7 @@ class PostgresEmailLogRepository(EmailLogRepository):
                 contact_id::text AS contact_id,
                 status,
                 provider_message_id,
+                sending_domain,
                 body,
                 created_at
             FROM email_logs
@@ -500,6 +518,7 @@ class PostgresEmailLogRepository(EmailLogRepository):
                 contact_id::text AS contact_id,
                 status,
                 provider_message_id,
+                sending_domain,
                 body,
                 created_at
             FROM email_logs
@@ -534,6 +553,7 @@ class PostgresEmailLogRepository(EmailLogRepository):
                 contact_id::text AS contact_id,
                 status,
                 provider_message_id,
+                sending_domain,
                 body,
                 created_at
         """
@@ -579,6 +599,7 @@ class InMemoryEmailLogRepository(EmailLogRepository):
         contact_id: str,
         status: str,
         provider_message_id: Optional[str] = None,
+        sending_domain: Optional[str] = None,
         body: Optional[str] = None,
         created_at: Optional[datetime] = None,
     ) -> EmailLogRecord:
@@ -589,6 +610,7 @@ class InMemoryEmailLogRepository(EmailLogRepository):
             contact_id=contact_id,
             status=status,
             provider_message_id=provider_message_id,
+            sending_domain=sending_domain,
             body=body,
             created_at=created_at or datetime.now(timezone.utc),
         )
@@ -679,11 +701,14 @@ class InMemoryEmailLogRepository(EmailLogRepository):
         *,
         statuses: tuple[str, ...],
         started_at: datetime,
+        sending_domain: Optional[str] = None,
         ended_at: Optional[datetime] = None,
     ) -> int:
         total = 0
         for record in self._records:
             if record.status not in statuses:
+                continue
+            if sending_domain is not None and record.sending_domain != sending_domain:
                 continue
             if record.created_at < started_at:
                 continue

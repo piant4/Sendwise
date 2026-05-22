@@ -1837,6 +1837,7 @@ class CampaignDispatchService:
         campaign_id: str,
         contacts: list[ContactRecord],
         status: str,
+        sending_domain: str | None,
         body: str,
         retryable_log_ids_by_contact: dict[str, str] | None,
     ) -> tuple[list[Any], int, int]:
@@ -1860,6 +1861,7 @@ class CampaignDispatchService:
                 campaign_id=campaign_id,
                 contact_id=contact.id,
                 status=status,
+                sending_domain=sending_domain,
                 body=body,
             )
             logs.append(created)
@@ -2004,6 +2006,11 @@ class CampaignDispatchService:
                     code="controlled_runtime_required",
                 )
 
+            sending_domain = (
+                get_configured_sending_domain(self.settings)
+                if runtime_provider == "listmonk"
+                else None
+            )
             domain_warmup_result = self._evaluate_domain_warmup_guard(
                 provider=runtime_provider,
                 campaign=campaign,
@@ -2015,6 +2022,7 @@ class CampaignDispatchService:
                     campaign_id=campaign_id,
                     guard_result=domain_warmup_result,
                     blocked_send_repository=blocked_send_repository,
+                    sending_domain=sending_domain,
                 )
 
             safety_result = self._evaluate_real_send_safety(
@@ -2210,6 +2218,7 @@ class CampaignDispatchService:
                 campaign_id=campaign.id,
                 contacts=contacts,
                 status=log_status,
+                sending_domain=sending_domain,
                 body=str(content.get("body") or ""),
                 retryable_log_ids_by_contact=duplicate_guard.retryable_log_ids_by_contact,
             )
@@ -2546,6 +2555,7 @@ class CampaignDispatchService:
         today_accepted = email_log_repository.count_logs_by_status_since(
             statuses=DOMAIN_WARMUP_COUNTED_LOG_STATUSES,
             started_at=today_started_at,
+            sending_domain=sending_domain,
         )
         projected_total = today_accepted + guard_result.eligible_contact_count
         if projected_total <= DEFAULT_DOMAIN_WARMUP_DAILY_LIMIT:
@@ -2875,6 +2885,7 @@ class CampaignDispatchService:
         campaign_id: str,
         guard_result: Any,
         blocked_send_repository: BlockedSendRepository | None,
+        sending_domain: str | None = None,
     ) -> dict[str, Any]:
         blocked_send_id: str | None = None
         if (
@@ -2882,11 +2893,17 @@ class CampaignDispatchService:
             and guard_result.campaign_id is not None
             and blocked_send_repository is not None
         ):
+            blocked_send_domain = (
+                sending_domain
+                if guard_result.limit_source == "sending_domain_warmup"
+                else None
+            )
             blocked_send = blocked_send_repository.create_blocked_send(
                 client_id=guard_result.client_id,
                 campaign_id=guard_result.campaign_id,
                 reason=f"{guard_result.code}: {guard_result.reason}",
                 decision=guard_result.decision,
+                sending_domain=blocked_send_domain,
             )
             blocked_send_id = blocked_send.id
 

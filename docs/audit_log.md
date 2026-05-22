@@ -1,5 +1,40 @@
 # Audit Log
 
+## Milestone 18.9A - Runtime Schema Fix And Sending Domain Attribution
+
+Date: 2026-05-22
+Branch: develop
+
+Runtime schema and warmup attribution summary:
+- Audited only the approved backend, migration, runtime, and docs surfaces without reading `.env`, printing secrets, resetting the database, deleting volumes, changing provider APIs, or expanding provider-event ingestion.
+- Added migration-runner scoping support in `scripts/apply_migrations.sh --only ...` so approved runtime fixes can be applied without forcing unrelated pending migrations.
+- Applied the approved existing migration `20260520_clients_metadata_email_brand.sql`, which restored the missing `clients.metadata` column required by the current backend client repository reads.
+- Added additive migration `20260522_email_logs_sending_domain_boundary.sql` with nullable `sending_domain` columns on `email_logs` and `blocked_sends`, plus transactional indexes on `(sending_domain, created_at)`.
+- Kept historical backfill conservative: legacy rows remain `NULL`, so past sends are not retroactively attributed to a domain without explicit approval.
+- Controlled Listmonk dispatch now persists the configured sending domain derived from `SMTP_FROM_EMAIL` into newly created `email_logs` rows, and warmup-related `blocked_sends` rows now persist the same domain for auditability.
+- The Listmonk warmup count path now filters by `sending_domain`, so cross-domain rows and legacy `NULL` rows do not consume quota for the active domain. If the domain cannot be derived, the existing guard still fails closed before Listmonk.
+- Provider-event behavior remains unchanged in this milestone; `provider_message_id` semantics and future webhook correlation are still deferred.
+
+Checks executed:
+- `bash scripts/apply_migrations.sh --dry-run`
+- `bash scripts/apply_migrations.sh --only 20260520_clients_metadata_email_brand.sql,20260522_email_logs_sending_domain_boundary.sql`
+- runtime `information_schema` inspection for `clients.metadata`, `email_logs.sending_domain`, and `blocked_sends.sending_domain`
+- runtime controlled send verification against the existing Mailpit-backed Listmonk path
+- `docker run --rm -v "$PWD/backend:/src" -w /src -e PYTHONPATH=/src sendwise-backend python -m py_compile app/services/campaigns.py app/services/provider_runtime.py app/repositories/email_logs.py app/repositories/blocked_sends.py tests/test_campaign_dispatch.py`
+- `docker run --rm -v "$PWD/backend:/src" -w /src -e PYTHONPATH=/src sendwise-backend pytest -q tests/test_campaign_dispatch.py -k "domain_warmup_guard_allows_send_under_daily_limit or domain_warmup_guard_blocks_send_over_daily_limit_before_listmonk or domain_warmup_guard_counts_only_accepted_email_logs or domain_warmup_guard_ignores_other_domains or domain_warmup_guard_ignores_legacy_null_domains or domain_warmup_guard_uses_rome_day_boundary or domain_warmup_guard_does_not_override_duplicate_guard"`
+- `docker run --rm -v "$PWD/backend:/src" -w /src -e PYTHONPATH=/src sendwise-backend pytest -q tests/test_provider_events.py -k "listmonk_event_endpoint_accepts_supported_unsubscribe_payload or provider_event_insert_is_idempotent or duplicate_event_does_not_duplicate_side_effects or deterministic_event_key_deduplicates_provider_events_without_event_id"`
+- `git diff --check`
+- `bash scripts/audit.sh`
+- `bash scripts/smoke_test.sh`
+- `docker compose config`
+- changed-file scan for direct Mailgun/SES send paths
+- changed-file scan for frontend direct Listmonk calls
+- changed-file scan for credential/body/recipient/token logging
+
+Scope confirmation:
+- No DB reset, Docker volume deletion, env change, credential repair, direct Mailgun send, direct SES send, frontend Listmonk call, webhook expansion, follow-up, reply detection, inbound Mailgun, auto-reply, or domain rotation work was introduced.
+- No secrets, message bodies, recipient addresses, unsubscribe tokens, or provider credentials were emitted in diagnostics.
+
 ## Milestone 18.7R - Runtime Postgres Auth Repair
 
 Date: 2026-05-22

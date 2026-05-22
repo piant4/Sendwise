@@ -3,7 +3,7 @@ set -euo pipefail
 
 usage() {
   cat <<'EOF'
-Usage: ./scripts/apply_migrations.sh [--dry-run]
+Usage: ./scripts/apply_migrations.sh [--dry-run] [--only filename[,filename...]]
 
 Applies pending SQL migrations from db/migrations to the docker compose
 Postgres service and records applied filenames in schema_migrations.
@@ -11,14 +11,36 @@ EOF
 }
 
 dry_run=0
-if [ "${1:-}" = "--dry-run" ]; then
-  dry_run=1
-  shift
-fi
+only_csv=""
+while [ "$#" -gt 0 ]; do
+  case "${1:-}" in
+    --dry-run)
+      dry_run=1
+      shift
+      ;;
+    --only)
+      if [ "$#" -lt 2 ]; then
+        usage
+        exit 2
+      fi
+      only_csv="$2"
+      shift 2
+      ;;
+    *)
+      usage
+      exit 2
+      ;;
+  esac
+done
 
-if [ "$#" -ne 0 ]; then
-  usage
-  exit 2
+only_list=""
+if [ -n "$only_csv" ]; then
+  IFS=',' read -r -a only_items <<<"$only_csv"
+  for only_item in "${only_items[@]}"; do
+    if [ -n "$only_item" ]; then
+      only_list="${only_list},${only_item},"
+    fi
+  done
 fi
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -119,6 +141,13 @@ fi
 for migration in "${migrations[@]}"; do
   filename="$(basename "$migration")"
   checksum="$(checksum_file "$migration")"
+
+  if [ -n "$only_list" ]; then
+    case "$only_list" in
+      *",$filename,"*) ;;
+      *) continue ;;
+    esac
+  fi
 
   if [ "$tracking_exists" -eq 1 ] && is_applied "$filename"; then
     if [ "$dry_run" -eq 1 ]; then

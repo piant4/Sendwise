@@ -243,6 +243,8 @@ const BRAND_VARIABLE_TOKENS = new Set([
 ]);
 
 const EDITOR_ONLY_TEMPLATE_VARIABLES = ["preview_text"] as const;
+const MARKUP_EDITOR_HEIGHT_DESKTOP = "clamp(520px, 62vh, 640px)";
+const MARKUP_EDITOR_HEIGHT_COMPACT = "clamp(360px, 54vh, 460px)";
 
 const ALLOWED_EDITOR_PLACEHOLDERS = new Set(
   SUPPORTED_TEMPLATE_VARIABLES.map((variable) =>
@@ -892,7 +894,10 @@ export function AdminCampaignContentStep({
               />
             </label>
 
-            <section className="campaign-field" style={{ gridColumn: "1 / -1" }}>
+            <section
+              className="campaign-field campaign-editor-workspace"
+              style={{ gridColumn: "1 / -1", minHeight: 0 }}
+            >
               <div className="campaign-field__header">
                 <span className="campaign-field__label">HTML email</span>
               </div>
@@ -1049,7 +1054,7 @@ export function AdminCampaignContentStep({
               <div
                 className="campaign-editor-shell"
                 data-mode={editorMode}
-                style={{ alignItems: "start" }}
+                style={{ alignItems: "start", minHeight: 0 }}
               >
                 {editorMode !== "preview" ? (
                   <div
@@ -1060,25 +1065,27 @@ export function AdminCampaignContentStep({
                       <strong>Markup</strong>
                       <span>Editor HTML a altezza fissa, scrollabile e focalizzato sulla scrittura.</span>
                     </div>
-                    <CampaignCodeEditor
-                      ref={htmlRef}
-                      disabled={isSubmitting}
-                      onChange={setBodyHtml}
-                      onFocus={() => setActiveField("html")}
-                      placeholder="<html>...</html>"
-                      rows={24}
-                      style={{
-                        fontFamily:
-                          'ui-monospace, SFMono-Regular, "SF Mono", Consolas, "Liberation Mono", Menlo, monospace',
-                        height: "clamp(360px, 62vh, 640px)",
-                        lineHeight: 1.55,
-                        minHeight: 0,
-                        overflowY: "auto",
-                        paddingBottom: 24,
-                        resize: "none",
-                      }}
-                      value={bodyHtml}
-                    />
+                    <div className="campaign-editor-pane__body">
+                      <CampaignCodeEditor
+                        ref={htmlRef}
+                        disabled={isSubmitting}
+                        onChange={setBodyHtml}
+                        onFocus={() => setActiveField("html")}
+                        placeholder="<html>...</html>"
+                        rows={24}
+                        style={{
+                          fontFamily:
+                            'ui-monospace, SFMono-Regular, "SF Mono", Consolas, "Liberation Mono", Menlo, monospace',
+                          height: "100%",
+                          lineHeight: 1.55,
+                          minHeight: 0,
+                          overflowY: "auto",
+                          paddingBottom: 24,
+                          resize: "none",
+                        }}
+                        value={bodyHtml}
+                      />
+                    </div>
                   </div>
                 ) : null}
 
@@ -1094,11 +1101,7 @@ export function AdminCampaignContentStep({
                     <div
                       className="campaign-preview-viewport"
                       data-device={previewDevice}
-                      style={{
-                        height: "clamp(360px, 62vh, 640px)",
-                        minHeight: 0,
-                        overflow: "auto",
-                      }}
+                      style={{ minHeight: 0 }}
                     >
                       <iframe
                         className="campaign-email-preview-frame campaign-email-preview-frame--editor"
@@ -1113,6 +1116,75 @@ export function AdminCampaignContentStep({
               </div>
             </section>
           </div>
+
+          <style jsx global>{`
+            .campaign-editor-workspace {
+              --campaign-editor-viewport-height: ${MARKUP_EDITOR_HEIGHT_DESKTOP};
+            }
+
+            .campaign-editor-workspace .campaign-editor-shell,
+            .campaign-editor-workspace .campaign-editor-pane,
+            .campaign-editor-workspace .campaign-editor-pane__body,
+            .campaign-editor-workspace .campaign-preview-viewport {
+              min-height: 0;
+            }
+
+            .campaign-editor-workspace .campaign-editor-pane__body {
+              height: var(--campaign-editor-viewport-height);
+              min-height: var(--campaign-editor-viewport-height);
+            }
+
+            .campaign-editor-workspace .campaign-code-editor {
+              height: 100%;
+              min-height: 0;
+              overflow: hidden;
+            }
+
+            .campaign-editor-workspace .campaign-code-editor__gutter,
+            .campaign-editor-workspace .campaign-code-editor__stage,
+            .campaign-editor-workspace .campaign-code-editor__highlight,
+            .campaign-editor-workspace .campaign-code-editor__textarea {
+              height: 100%;
+              min-height: 0;
+            }
+
+            .campaign-editor-workspace .campaign-code-editor__gutter {
+              display: block;
+              overflow: hidden;
+              padding-bottom: 24px;
+            }
+
+            .campaign-editor-workspace .campaign-code-editor__stage,
+            .campaign-editor-workspace .campaign-code-editor__highlight {
+              overflow: hidden;
+            }
+
+            .campaign-editor-workspace .campaign-code-editor__textarea {
+              overflow-x: auto;
+              overflow-y: auto;
+              resize: none;
+            }
+
+            .campaign-editor-workspace .campaign-preview-viewport {
+              height: var(--campaign-editor-viewport-height);
+              min-height: var(--campaign-editor-viewport-height);
+              overflow: hidden;
+            }
+
+            .campaign-editor-workspace .campaign-email-preview-frame--editor,
+            .campaign-editor-workspace
+              .campaign-preview-viewport[data-device="mobile"]
+              .campaign-email-preview-frame--editor {
+              height: 100%;
+              min-height: 0;
+            }
+
+            @media (max-width: 1024px) {
+              .campaign-editor-workspace {
+                --campaign-editor-viewport-height: ${MARKUP_EDITOR_HEIGHT_COMPACT};
+              }
+            }
+          `}</style>
 
           <div className="campaign-action-row">
             <Button

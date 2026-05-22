@@ -49,7 +49,7 @@ def build_listmonk_campaign_payload(
     list_id: int,
     content: dict[str, Any],
 ) -> tuple[dict[str, Any], bool]:
-    subject = str(content.get("subject") or "").strip() or (campaign.subject or "").strip()
+    subject = str(content.get("subject") or "").strip()
     content_ready = bool(content["content_ready"])
     body = str(content.get("body") or "")
     altbody = str(content.get("body_text") or "")

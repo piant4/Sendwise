@@ -10,7 +10,10 @@ from app.main import app
 from app.repositories.clients import ClientCampaignRecord
 from app.repositories.contacts import ContactRecord, InMemoryContactRepository
 from app.repositories.listmonk_mappings import InMemoryListmonkMappingRepository
-from app.services.campaign_preparation import CampaignPreparationService
+from app.services.campaign_preparation import (
+    CampaignPreparationService,
+    build_listmonk_campaign_payload,
+)
 from app.services.contact_subscriber_sync import ContactSubscriberSyncService
 from app.services.listmonk_mappings import ListmonkMappingService
 from app.services.template_renderer import get_default_template_renderer
@@ -292,6 +295,67 @@ def test_prepare_campaign_renders_subject_preview_and_bodies_before_listmonk_pay
         "Aggiornamento Launch campaign"
     )
     assert "{{campaign_name}}" not in fake_listmonk.created_campaign_payloads[0]["subject"]
+    assert fake_listmonk.created_campaign_payloads[0]["body"] == result["content"]["body"]
+    assert (
+        fake_listmonk.created_campaign_payloads[0]["altbody"]
+        == result["content"]["body_text"]
+    )
+
+
+def test_build_listmonk_campaign_payload_never_uses_raw_campaign_subject() -> None:
+    campaign = build_campaign(
+        subject="Aggiornamento {{campaign_name}}",
+        body_html="<html><body><p>Raw business body</p></body></html>",
+        body_text="Raw business text",
+    )
+
+    payload, content_ready = build_listmonk_campaign_payload(
+        settings=Settings(
+            environment="test",
+            smtp_from_email="sender@example.test",
+        ),
+        campaign=campaign,
+        list_id=7,
+        content={
+            "subject": "Aggiornamento Launch campaign",
+            "content_ready": True,
+            "body": "<html><body><p>Rendered body</p></body></html>",
+            "body_text": "Rendered body text",
+        },
+    )
+
+    assert content_ready is True
+    assert payload["subject"] == "Aggiornamento Launch campaign"
+    assert payload["subject"] != campaign.subject
+    assert "{{campaign_name}}" not in payload["subject"]
+    assert payload["body"] == "<html><body><p>Rendered body</p></body></html>"
+    assert payload["altbody"] == "Rendered body text"
+
+
+def test_build_listmonk_campaign_payload_falls_back_to_technical_subject_when_rendered_subject_empty() -> None:
+    campaign = build_campaign(subject="Aggiornamento {{campaign_name}}")
+
+    payload, content_ready = build_listmonk_campaign_payload(
+        settings=Settings(
+            environment="test",
+            smtp_from_email="sender@example.test",
+        ),
+        campaign=campaign,
+        list_id=7,
+        content={
+            "subject": "   ",
+            "content_ready": False,
+            "body": "<html><body><p>Rendered fallback body</p></body></html>",
+            "body_text": "",
+        },
+    )
+
+    assert content_ready is False
+    assert payload["subject"] == f"Sendwise technical draft {campaign.id}"
+    assert payload["subject"] != campaign.subject
+    assert "{{campaign_name}}" not in payload["subject"]
+    assert payload["body"] == "<html><body><p>Rendered fallback body</p></body></html>"
+    assert "altbody" not in payload
 
 
 def test_prepare_campaign_is_idempotent_and_updates_existing_campaign() -> None:

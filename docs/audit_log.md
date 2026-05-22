@@ -1,5 +1,20 @@
 # Audit Log
 
+## Milestone 18.7R - Runtime Postgres Auth Repair
+
+Date: 2026-05-22
+Branch: develop
+
+Runtime auth repair summary:
+- Audited only the allowed Compose/runtime surfaces and staging docs without reading `.env`, printing secret values, deleting volumes, resetting Postgres, changing schema, or touching application code.
+- Verified the backend runtime uses `DATABASE_URL` only when set, otherwise it derives the business DB DSN from `POSTGRES_HOST`, `POSTGRES_PORT`, `POSTGRES_DB`, `POSTGRES_USER`, and `POSTGRES_PASSWORD`.
+- Verified listmonk uses `LISTMONK_db__host`, `LISTMONK_db__port`, `LISTMONK_db__database`, `LISTMONK_db__user`, and `LISTMONK_db__password`, and the committed Compose mapping points listmonk at the separate `listmonk` database owned by the same business DB role.
+- Confirmed the Postgres volume was reused (`Database directory appears to contain a database; Skipping initialization`) and that TCP auth with the current runtime password failed before repair, which proved the persisted role password no longer matched the current `.env`.
+- Applied the non-destructive repair by updating the existing Postgres role password in place with authenticated local-socket access inside the `postgres` container, then restarted the affected runtime services.
+- Post-repair checks confirmed Postgres remained healthy, backend runtime DB access succeeded with the container env, listmonk started successfully, and listmonk logs no longer showed `password authentication failed`.
+- Host-side `curl http://127.0.0.1:8000/health` remained unverified in the current sandbox because the local port was not reachable from this execution context even while the backend container stayed `Up`.
+- Added runbook guidance documenting the persistent-volume password-drift failure mode and the safe `ALTER ROLE` remediation path.
+
 ## Milestone 18.7 - Domain Warmup Guard V1
 
 Date: 2026-05-22

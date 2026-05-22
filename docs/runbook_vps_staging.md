@@ -52,6 +52,21 @@ Required public URLs:
 Configure real values only on the VPS environment. Do not place secrets in versioned files.
 The VPS `.env` is the source of truth for Docker Compose runtime builds and container runtime environment. Always pass `--env-file .env` to staging runtime commands. `--env-file` controls Docker Compose interpolation, while service-level `env_file` controls container environment injection. Listmonk SMTP runtime config is also sourced from `.env` through the provider-neutral `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_TLS`, and `SMTP_FROM_EMAIL` values. For safe validation against `.env.example`, set `SENDWISE_ENV_FILE=.env.example` so service-level `env_file` does not read the real `.env`. After editing `.env`, recreate the affected containers; old containers keep their old environment. After SMTP env changes, recreate at least `listmonk` and `backend`. Never commit `.env`.
 
+Postgres password drift warning:
+
+- `POSTGRES_PASSWORD` is only applied automatically when the Postgres volume is initialized the first time.
+- If the persistent `postgres_data` volume already exists, changing `POSTGRES_PASSWORD` in `.env` does not rotate the database role password inside Postgres.
+- In that drift state, `postgres` can still become healthy while `backend` and `listmonk` fail with `password authentication failed for user "<business user>"`.
+- Safe diagnosis is:
+  - confirm `backend` and `listmonk` are targeting the expected host, database, and user and only record password presence and length;
+  - confirm the persistent volume is being reused from Postgres logs (`Database directory appears to contain a database; Skipping initialization`);
+  - confirm TCP auth with the current runtime password fails before changing anything.
+- Safe repair for the approved persistent-business-DB path is:
+  - do not delete volumes and do not reset Postgres;
+  - use authenticated local-socket access inside the `postgres` container to run `ALTER ROLE` for the existing business DB user so the stored role password matches the current `.env`;
+  - recreate `listmonk` and `backend` after the password is aligned.
+- Treat the current VPS `.env` as the runtime source of truth unless an operator intentionally decides to restore the older stored password instead.
+
 Required non-secret staging values:
 
 ```env

@@ -45,6 +45,7 @@ class EmailLogRepository:
         status: str,
         provider_message_id: Optional[str] = None,
         body: Optional[str] = None,
+        created_at: Optional[datetime] = None,
     ) -> EmailLogRecord:
         raise NotImplementedError
 
@@ -57,6 +58,7 @@ class EmailLogRepository:
         status: str,
         provider_message_id: Optional[str] = None,
         body: Optional[str] = None,
+        created_at: Optional[datetime] = None,
     ) -> list[EmailLogRecord]:
         return [
             self.create_email_log(
@@ -66,6 +68,7 @@ class EmailLogRepository:
                 status=status,
                 provider_message_id=provider_message_id,
                 body=body,
+                created_at=created_at,
             )
             for contact_id in contact_ids
         ]
@@ -137,6 +140,15 @@ class EmailLogRepository:
         started_at: Optional[datetime] = None,
         ended_at: Optional[datetime] = None,
         statuses: Optional[tuple[str, ...]] = None,
+    ) -> int:
+        raise NotImplementedError
+
+    def count_logs_by_status_since(
+        self,
+        *,
+        statuses: tuple[str, ...],
+        started_at: datetime,
+        ended_at: Optional[datetime] = None,
     ) -> int:
         raise NotImplementedError
 
@@ -228,17 +240,33 @@ class PostgresEmailLogRepository(EmailLogRepository):
         status: str,
         provider_message_id: Optional[str] = None,
         body: Optional[str] = None,
+        created_at: Optional[datetime] = None,
     ) -> EmailLogRecord:
-        query = """
+        columns = [
+            "client_id",
+            "campaign_id",
+            "contact_id",
+            "status",
+            "provider_message_id",
+            "body",
+        ]
+        parameters: list[object] = [
+            client_id,
+            campaign_id,
+            contact_id,
+            status,
+            provider_message_id,
+            body,
+        ]
+        if created_at is not None:
+            columns.append("created_at")
+            parameters.append(created_at)
+        placeholders = ", ".join(["%s"] * len(columns))
+        query = f"""
             INSERT INTO email_logs (
-                client_id,
-                campaign_id,
-                contact_id,
-                status,
-                provider_message_id,
-                body
+                {", ".join(columns)}
             )
-            VALUES (%s, %s, %s, %s, %s, %s)
+            VALUES ({placeholders})
             RETURNING
                 id::text AS id,
                 client_id::text AS client_id,
@@ -252,17 +280,7 @@ class PostgresEmailLogRepository(EmailLogRepository):
 
         with postgres_connection(self._settings) as connection:
             with connection.cursor() as cursor:
-                cursor.execute(
-                    query,
-                    (
-                        client_id,
-                        campaign_id,
-                        contact_id,
-                        status,
-                        provider_message_id,
-                        body,
-                    ),
-                )
+                cursor.execute(query, tuple(parameters))
                 row = cursor.fetchone()
             connection.commit()
 
@@ -368,6 +386,33 @@ class PostgresEmailLogRepository(EmailLogRepository):
             query = f"{query}\n                AND created_at >= %s"
             parameters.append(started_at)
 
+        if ended_at is not None:
+            query = f"{query}\n                AND created_at < %s"
+            parameters.append(ended_at)
+
+        with postgres_connection(self._settings) as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(query, tuple(parameters))
+                row = cursor.fetchone()
+
+        if row is None:
+            return 0
+        return int(row["total"])
+
+    def count_logs_by_status_since(
+        self,
+        *,
+        statuses: tuple[str, ...],
+        started_at: datetime,
+        ended_at: Optional[datetime] = None,
+    ) -> int:
+        query = """
+            SELECT COUNT(*)::int AS total
+            FROM email_logs
+            WHERE status = ANY(%s)
+                AND created_at >= %s
+        """
+        parameters: list[object] = [list(statuses), started_at]
         if ended_at is not None:
             query = f"{query}\n                AND created_at < %s"
             parameters.append(ended_at)
@@ -535,6 +580,7 @@ class InMemoryEmailLogRepository(EmailLogRepository):
         status: str,
         provider_message_id: Optional[str] = None,
         body: Optional[str] = None,
+        created_at: Optional[datetime] = None,
     ) -> EmailLogRecord:
         record = EmailLogRecord(
             id=str(uuid4()),
@@ -544,7 +590,7 @@ class InMemoryEmailLogRepository(EmailLogRepository):
             status=status,
             provider_message_id=provider_message_id,
             body=body,
-            created_at=datetime.now(timezone.utc),
+            created_at=created_at or datetime.now(timezone.utc),
         )
         self._records.append(record)
         return record
@@ -622,6 +668,24 @@ class InMemoryEmailLogRepository(EmailLogRepository):
             if statuses and record.status not in statuses:
                 continue
             if started_at is not None and record.created_at < started_at:
+                continue
+            if ended_at is not None and record.created_at >= ended_at:
+                continue
+            total += 1
+        return total
+
+    def count_logs_by_status_since(
+        self,
+        *,
+        statuses: tuple[str, ...],
+        started_at: datetime,
+        ended_at: Optional[datetime] = None,
+    ) -> int:
+        total = 0
+        for record in self._records:
+            if record.status not in statuses:
+                continue
+            if record.created_at < started_at:
                 continue
             if ended_at is not None and record.created_at >= ended_at:
                 continue

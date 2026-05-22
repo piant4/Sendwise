@@ -84,6 +84,7 @@ from app.schemas.common import CampaignStatus
 from app.services.provider_runtime import (
     build_listmonk_client,
     build_provider_runtime_summary,
+    get_configured_sending_domain,
 )
 from app.services.clients import build_client_email_brand
 from app.services.template_renderer import KNOWN_TEMPLATE_VARIABLES
@@ -118,6 +119,7 @@ SUPPORTED_TEMPLATE_PLACEHOLDERS = set(KNOWN_TEMPLATE_VARIABLES) - {
 TEMPLATE_PLACEHOLDER_PATTERN = re.compile(r"{{\s*([A-Za-z0-9_]+)\s*}}")
 DEFAULT_CAMPAIGN_PERIOD_EMAIL_LIMIT = 1000
 DEFAULT_CAMPAIGN_DAILY_EMAIL_LIMIT = 50
+DEFAULT_DOMAIN_WARMUP_DAILY_LIMIT = 20
 CAMPAIGN_PERIOD_WINDOW = timedelta(days=30)
 
 
@@ -140,6 +142,7 @@ ACCEPTED_OR_COMPLETED_LOG_STATUSES = {
     "spam",
     "unsubscribed",
 }
+DOMAIN_WARMUP_COUNTED_LOG_STATUSES = tuple(sorted(ACCEPTED_OR_COMPLETED_LOG_STATUSES))
 RETRYABLE_FAILED_LOG_STATUSES = {"failed"}
 PREPARATION_CONTENT_REDACTED_KEYS = {
     "subject",
@@ -244,6 +247,40 @@ class CampaignEvaluation:
     guard_result: GuardResult
     limit_record: CampaignSendingLimitRecord
     limit_usage: CampaignLimitUsage
+
+
+def _build_domain_warmup_guard_result(
+    *,
+    client_id: str,
+    campaign_id: str,
+    eligible_contact_count: int,
+    daily_limit: int,
+    daily_used: int,
+    sending_domain: str,
+) -> GuardResult:
+    return GuardResult(
+        decision=SendDecision.BLOCKED,
+        reason=(
+            "Configured sending domain reached today's warmup limit. "
+            "Reduce eligible recipients or retry on the next Rome business day."
+        ),
+        code="sending_domain_warmup_limit_reached",
+        severity="error",
+        client_id=client_id,
+        campaign_id=campaign_id,
+        eligible_contact_count=eligible_contact_count,
+        blocked_contact_count=0,
+        blocked_reasons={},
+        diagnostic=(
+            "Domain warmup guard blocked dispatch before listmonk because "
+            f"{sending_domain} would exceed {daily_limit} accepted sends in the current Rome day."
+        ),
+        limit_source="sending_domain_warmup",
+        limit_value=daily_limit,
+        daily_limit=daily_limit,
+        daily_used=daily_used,
+        daily_remaining=max(daily_limit - daily_used, 0),
+    )
 
 
 @dataclass(frozen=True)
@@ -1967,6 +2004,19 @@ class CampaignDispatchService:
                     code="controlled_runtime_required",
                 )
 
+            domain_warmup_result = self._evaluate_domain_warmup_guard(
+                provider=runtime_provider,
+                campaign=campaign,
+                guard_result=guard_result,
+                email_log_repository=email_log_repository,
+            )
+            if domain_warmup_result is not None:
+                return self._blocked_response(
+                    campaign_id=campaign_id,
+                    guard_result=domain_warmup_result,
+                    blocked_send_repository=blocked_send_repository,
+                )
+
             safety_result = self._evaluate_real_send_safety(
                 provider=runtime_provider,
                 campaign=campaign,
@@ -2455,6 +2505,59 @@ class CampaignDispatchService:
             period_used=period_used,
             period_started_at=period_started_at,
             period_ends_at=period_ends_at,
+        )
+
+    def _evaluate_domain_warmup_guard(
+        self,
+        *,
+        provider: str,
+        campaign: ClientCampaignRecord,
+        guard_result: GuardResult,
+        email_log_repository: EmailLogRepository,
+    ) -> GuardResult | None:
+        if provider != "listmonk":
+            return None
+
+        sending_domain = get_configured_sending_domain(self.settings)
+        if sending_domain is None:
+            return GuardResult(
+                decision=SendDecision.BLOCKED,
+                reason=(
+                    "Configured sending domain is unavailable for the active Listmonk runtime."
+                ),
+                code="sending_domain_not_configured",
+                severity="critical",
+                client_id=campaign.client_id,
+                campaign_id=campaign.id,
+                eligible_contact_count=guard_result.eligible_contact_count,
+                blocked_contact_count=guard_result.blocked_contact_count,
+                blocked_reasons=dict(guard_result.blocked_reasons or {}),
+                diagnostic=(
+                    "Domain warmup guard failed closed because SMTP_FROM_EMAIL does not "
+                    "contain a usable sending domain."
+                ),
+                limit_source="sending_domain_warmup",
+            )
+
+        today_started_at = _get_business_day_start(
+            datetime.now(timezone.utc),
+            self.settings,
+        )
+        today_accepted = email_log_repository.count_logs_by_status_since(
+            statuses=DOMAIN_WARMUP_COUNTED_LOG_STATUSES,
+            started_at=today_started_at,
+        )
+        projected_total = today_accepted + guard_result.eligible_contact_count
+        if projected_total <= DEFAULT_DOMAIN_WARMUP_DAILY_LIMIT:
+            return None
+
+        return _build_domain_warmup_guard_result(
+            client_id=campaign.client_id,
+            campaign_id=campaign.id,
+            eligible_contact_count=guard_result.eligible_contact_count,
+            daily_limit=DEFAULT_DOMAIN_WARMUP_DAILY_LIMIT,
+            daily_used=today_accepted,
+            sending_domain=sending_domain,
         )
 
     def _mark_campaign_running(

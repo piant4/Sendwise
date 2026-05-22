@@ -288,6 +288,22 @@ def build_ready_ses_settings(**overrides: Any) -> Settings:
     return Settings(**values)
 
 
+def build_ready_listmonk_settings(**overrides: Any) -> Settings:
+    values: dict[str, Any] = {
+        "email_sending_enabled_raw": "true",
+        "email_provider": "listmonk",
+        "environment": "staging",
+        "smtp_host": "smtp.mailgun.org",
+        "smtp_port": 587,
+        "smtp_username": "configured",
+        "smtp_password": "configured",
+        "smtp_tls_raw": "true",
+        "smtp_from_email": "sendwise@send.mailerpro.it",
+    }
+    values.update(overrides)
+    return Settings(**values)
+
+
 def test_upsert_mapping_creates_new_mapping() -> None:
     service = ListmonkMappingService(InMemoryListmonkMappingRepository())
 
@@ -1691,14 +1707,8 @@ def test_listmonk_provider_uses_listmonk_dispatch_even_with_mailgun_smtp_host() 
     fake_listmonk = FakeListmonkClient()
     service = build_dispatch_service(
         fake_listmonk=fake_listmonk,
-        settings=Settings(
-            email_sending_enabled_raw="true",
-            environment="staging",
-            email_provider="listmonk",
+        settings=build_ready_listmonk_settings(
             smtp_host="smtp.eu.mailgun.org",
-            smtp_port=587,
-            smtp_username="configured",
-            smtp_password="configured",
             smtp_from_email="noreply@example.test",
         ),
         preparation_service=FakePreparationService(content_ready=True),
@@ -1709,6 +1719,183 @@ def test_listmonk_provider_uses_listmonk_dispatch_even_with_mailgun_smtp_host() 
     assert result["status"] == "accepted"
     assert result["provider"] == "listmonk"
     assert fake_listmonk.sent_campaign_ids == ["lm_1"]
+
+
+def test_domain_warmup_guard_allows_send_under_daily_limit() -> None:
+    fake_listmonk = FakeListmonkClient()
+    email_log_repository = InMemoryEmailLogRepository()
+    for index in range(19):
+        email_log_repository.create_email_log(
+            client_id="client_existing",
+            campaign_id=f"campaign_existing_{index}",
+            contact_id=f"contact_existing_{index}",
+            status="sent",
+        )
+    service = build_dispatch_service(
+        fake_listmonk=fake_listmonk,
+        email_log_repository=email_log_repository,
+        settings=build_ready_listmonk_settings(),
+        preparation_service=FakePreparationService(content_ready=True),
+    )
+
+    result = service.send_campaign("campaign_123")
+
+    assert result["status"] == "accepted"
+    assert result["provider"] == "listmonk"
+    assert fake_listmonk.sent_campaign_ids == ["lm_1"]
+
+
+def test_domain_warmup_guard_blocks_send_over_daily_limit_before_listmonk() -> None:
+    fake_listmonk = FakeListmonkClient()
+    email_log_repository = InMemoryEmailLogRepository()
+    blocked_send_repository = InMemoryBlockedSendRepository()
+    preparation_service = FakePreparationService(content_ready=True)
+    for index in range(20):
+        email_log_repository.create_email_log(
+            client_id="client_existing",
+            campaign_id=f"campaign_existing_{index}",
+            contact_id=f"contact_existing_{index}",
+            status="sent",
+        )
+    service = build_dispatch_service(
+        fake_listmonk=fake_listmonk,
+        email_log_repository=email_log_repository,
+        blocked_send_repository=blocked_send_repository,
+        settings=build_ready_listmonk_settings(),
+        preparation_service=preparation_service,
+    )
+
+    result = service.send_campaign("campaign_123")
+
+    assert result["status"] == "blocked"
+    assert result["code"] == "sending_domain_warmup_limit_reached"
+    assert result["limit_source"] == "sending_domain_warmup"
+    assert result["daily_limit"] == 20
+    assert result["daily_used"] == 20
+    assert result["daily_remaining"] == 0
+    assert result["dispatch_attempted"] is False
+    assert result["listmonk_prepared"] is False
+    assert result["listmonk_dispatched"] is False
+    assert fake_listmonk.created_campaign_payloads == []
+    assert fake_listmonk.sent_campaign_ids == []
+    assert preparation_service.prepared_campaign_ids == []
+    blocked_sends = blocked_send_repository.list_by_campaign("campaign_123")
+    assert len(blocked_sends) == 1
+    assert "one@example.test" not in result["reason"]
+    assert "Body" not in result["reason"]
+    assert "unsubscribe" not in result["reason"]
+
+
+def test_domain_warmup_guard_counts_only_accepted_email_logs() -> None:
+    fake_listmonk = FakeListmonkClient()
+    email_log_repository = InMemoryEmailLogRepository()
+    counted_statuses = [
+        "sent",
+        "dispatched",
+        "delivered",
+        "opened",
+        "clicked",
+        "bounced",
+        "complained",
+        "spam",
+        "unsubscribed",
+        "sent",
+        "dispatched",
+        "delivered",
+        "opened",
+        "clicked",
+        "bounced",
+        "complained",
+        "spam",
+        "unsubscribed",
+        "sent",
+    ]
+    for index, log_status in enumerate(counted_statuses):
+        email_log_repository.create_email_log(
+            client_id="client_existing",
+            campaign_id=f"campaign_existing_{index}",
+            contact_id=f"contact_existing_{index}",
+            status=log_status,
+        )
+    for index, log_status in enumerate(["failed", "queued", "simulated"], start=100):
+        email_log_repository.create_email_log(
+            client_id="client_existing",
+            campaign_id=f"campaign_existing_{index}",
+            contact_id=f"contact_existing_{index}",
+            status=log_status,
+        )
+    service = build_dispatch_service(
+        fake_listmonk=fake_listmonk,
+        email_log_repository=email_log_repository,
+        settings=build_ready_listmonk_settings(),
+        preparation_service=FakePreparationService(content_ready=True),
+    )
+
+    result = service.send_campaign("campaign_123")
+
+    assert result["status"] == "accepted"
+    assert fake_listmonk.sent_campaign_ids == ["lm_1"]
+
+
+def test_domain_warmup_guard_uses_rome_day_boundary(monkeypatch: Any) -> None:
+    class FixedDateTime(datetime):
+        @classmethod
+        def now(cls, tz: timezone | None = None) -> datetime:
+            current_time = cls(2026, 5, 9, 22, 30, tzinfo=timezone.utc)
+            return current_time.astimezone(tz) if tz is not None else current_time
+
+    fake_listmonk = FakeListmonkClient()
+    email_log_repository = InMemoryEmailLogRepository()
+    for index in range(20):
+        email_log_repository.create_email_log(
+            client_id="client_existing",
+            campaign_id=f"campaign_previous_{index}",
+            contact_id=f"contact_previous_{index}",
+            status="sent",
+            created_at=datetime(2026, 5, 9, 21, 30, tzinfo=timezone.utc),
+        )
+    monkeypatch.setattr(campaigns_module, "datetime", FixedDateTime)
+    service = build_dispatch_service(
+        fake_listmonk=fake_listmonk,
+        email_log_repository=email_log_repository,
+        settings=build_ready_listmonk_settings(),
+        preparation_service=FakePreparationService(content_ready=True),
+    )
+
+    result = service.send_campaign("campaign_123")
+
+    assert result["status"] == "accepted"
+    assert fake_listmonk.sent_campaign_ids == ["lm_1"]
+
+
+def test_domain_warmup_guard_does_not_override_duplicate_guard() -> None:
+    fake_listmonk = FakeListmonkClient()
+    email_log_repository = InMemoryEmailLogRepository()
+    email_log_repository.create_email_log(
+        client_id="client_123",
+        campaign_id="campaign_123",
+        contact_id="contact_123",
+        status="sent",
+    )
+    for index in range(20):
+        email_log_repository.create_email_log(
+            client_id="client_existing",
+            campaign_id=f"campaign_existing_{index}",
+            contact_id=f"contact_existing_{index}",
+            status="sent",
+        )
+    service = build_dispatch_service(
+        fake_listmonk=fake_listmonk,
+        email_log_repository=email_log_repository,
+        settings=build_ready_listmonk_settings(),
+        preparation_service=FakePreparationService(content_ready=True),
+    )
+
+    result = service.send_campaign("campaign_123")
+
+    assert result["status"] == "dispatch_blocked"
+    assert result["code"] == "campaign_send_already_accepted"
+    assert fake_listmonk.sent_campaign_ids == []
 
 
 def test_dispatch_failure_creates_failed_logs_for_attempted_contacts() -> None:

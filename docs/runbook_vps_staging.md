@@ -207,6 +207,15 @@ Controlled send persistence checks after an approved send:
 9. Keep Deliverability Guard active before every controlled send. Never bypass campaign status, recipient eligibility, suppression, unsubscribe readiness, or configured campaign limits.
 10. Do not paste rendered HTML, recipient addresses, subjects, unsubscribe tokens, or provider credentials into audit notes or shared diagnostics.
 
+Domain warmup guard V1 for approved Listmonk and Mailgun relay sends:
+
+- The backend now enforces a fail-closed sending-domain warmup guard before any Listmonk preparation or campaign-start call.
+- The current V1 default is `20` accepted sends per Rome business day for the configured Listmonk SMTP sending domain.
+- The guard uses the domain derived from `SMTP_FROM_EMAIL` and counts only Business DB `email_logs` rows already accepted or later processed by the Listmonk flow: `sent`, `dispatched`, `delivered`, `opened`, `clicked`, `bounced`, `complained`, `spam`, and `unsubscribed`.
+- `simulated`, `queued`, and `failed` rows do not consume warmup volume.
+- If current Rome-day accepted volume plus the eligible recipient batch would exceed the cap, Sendwise must block before Listmonk and persist the blocked attempt in `blocked_sends` when campaign context exists.
+- This V1 behavior is safe only for the currently verified single-domain runtime. If Sendwise later rotates across multiple active sending domains in the same Business DB, approval is required before changing schema or warmup attribution logic.
+
 ## Standard Staging Deploy
 
 1. Confirm the current branch and target revision.

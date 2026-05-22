@@ -3,6 +3,15 @@ from app.integrations.listmonk.client import ListmonkClient
 from app.schemas.campaigns import ProviderRuntimeSummary
 
 
+def get_configured_sending_domain(settings: Settings) -> str | None:
+    sender = settings.smtp_from_email.strip().lower()
+    if not sender or "@" not in sender:
+        return None
+    _local, _separator, domain = sender.rpartition("@")
+    normalized_domain = domain.strip(". ")
+    return normalized_domain or None
+
+
 def build_listmonk_client(settings: Settings) -> ListmonkClient:
     return ListmonkClient(
         base_url=settings.listmonk_url,

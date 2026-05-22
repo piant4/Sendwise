@@ -1,5 +1,18 @@
 # Audit Log
 
+## Milestone 18.7 - Domain Warmup Guard V1
+
+Date: 2026-05-22
+Branch: develop
+
+Domain warmup guard audit summary:
+- Audited only the allowed campaign dispatch/runtime/repository paths, dispatch tests, and staging docs without reading `.env`, printing secrets, dispatching live campaigns, or touching direct Mailgun or SES API send paths.
+- Confirmed the existing Business DB data is sufficient for a V1 guard only because the active controlled runtime currently uses a single configured sending domain at the Listmonk SMTP boundary. `email_logs` remains the source for accepted-send volume, and `blocked_sends` remains the source for persisted guard blocks.
+- Added a fail-closed warmup gate in `CampaignDispatchService` before any Listmonk preparation or campaign-start call. The gate applies only to the Listmonk-controlled runtime and blocks if `SMTP_FROM_EMAIL` does not expose a usable sending domain.
+- The guard counts only Rome-day `email_logs` rows already accepted or later processed by the Listmonk path: `sent`, `dispatched`, `delivered`, `opened`, `clicked`, `bounced`, `complained`, `spam`, and `unsubscribed`. It does not count `simulated`, `queued`, or `failed`.
+- Default warmup behavior is conservative and code-local in this milestone: projected accepted sends for the configured sending domain must stay at or below `20` per Rome business day. If current accepted volume plus the eligible recipient batch would exceed that cap, Sendwise blocks before Listmonk, persists a `blocked_sends` row when campaign context exists, and returns safe actionable copy without recipient addresses, subjects, HTML bodies, unsubscribe tokens, or SMTP secrets.
+- Duplicate-dispatch protection, suppression and eligibility checks, client and campaign readiness checks, existing campaign period and daily limits, and `email_logs.status="sent"` semantics remain unchanged.
+
 ## Milestone 18.6U-VERIFY2 - Audit Controlled Send Persistence And Provider Correlation
 
 Date: 2026-05-22

@@ -15,11 +15,11 @@ function sanitizeAccessErrorDetail(error: ApiError): string {
   if (
     error.detail.includes("Authenticated Clerk user is not mapped to a Sendwise user.")
   ) {
-    return "L'account autenticato non e ancora associato a un accesso Sendwise valido.";
+    return "L'account autenticato non è ancora associato a un accesso Sendwise valido.";
   }
 
   if (error.detail.includes("Client access is not available for this Sendwise account.")) {
-    return "L'accesso cliente Sendwise e stato revocato, sospeso o archiviato.";
+    return "L'accesso cliente Sendwise è stato revocato, sospeso o archiviato.";
   }
 
   if (error.detail.includes("Missing Clerk session token")) {
@@ -35,7 +35,7 @@ function buildAccessErrorContent(error: unknown) {
       return {
         title: "Verifica accesso non disponibile",
         message:
-          "Non e stato possibile raggiungere il backend Sendwise per completare la verifica dell'accesso.",
+          "Non è stato possibile raggiungere il backend Sendwise per completare la verifica dell'accesso.",
         detail: sanitizeAccessErrorDetail(error),
       };
     }
@@ -44,7 +44,7 @@ function buildAccessErrorContent(error: unknown) {
       return {
         title: "Accesso non disponibile",
         message:
-          "L'account potrebbe non essere ancora stato associato a Sendwise oppure l'accesso cliente non e disponibile.",
+          "L'account potrebbe non essere ancora stato associato a Sendwise oppure l'accesso cliente non è disponibile.",
         detail: sanitizeAccessErrorDetail(error),
       };
     }
@@ -52,7 +52,7 @@ function buildAccessErrorContent(error: unknown) {
     return {
       title: "Verifica accesso non disponibile",
       message:
-        "Non e stato possibile completare la verifica dell'accesso. Riprova tra poco o contatta il team Sendwise.",
+        "Non è stato possibile completare la verifica dell'accesso. Riprova tra poco o contatta il team Sendwise.",
       detail: sanitizeAccessErrorDetail(error),
     };
   }
@@ -60,7 +60,7 @@ function buildAccessErrorContent(error: unknown) {
   return {
     title: "Verifica accesso non disponibile",
     message:
-      "Non e stato possibile completare la verifica dell'accesso. Riprova tra poco o contatta il team Sendwise.",
+      "Non è stato possibile completare la verifica dell'accesso. Riprova tra poco o contatta il team Sendwise.",
     detail: error instanceof Error ? error.message : null,
   };
 }

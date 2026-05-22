@@ -194,6 +194,19 @@ First controlled live-send checklist for a later approved milestone:
 5. Confirm the operator runbook for bounce/complaint monitoring before any first real send.
 6. Execute only after explicit approval; this milestone does not perform the send.
 
+Controlled send persistence checks after an approved send:
+
+1. Confirm the Business DB remains the source of truth: exactly one `email_logs` row per intended recipient and no duplicate rows for the same campaign/contact set.
+2. Confirm those rows are created by the backend dispatch path only after Listmonk campaign start is attempted.
+3. Treat `email_logs.status="sent"` as "accepted by Listmonk / dispatch started", not inbox delivery.
+4. Treat `provider_status` as the Listmonk start response status only. For the current Listmonk SMTP relay flow, `running` means Listmonk accepted the campaign start call.
+5. Expect `provider_message_id` to remain empty for Listmonk campaign sends until per-recipient provider-event correlation exists.
+6. Do not infer delivered/opened/clicked/bounced/complained results from `email_logs.status="sent"` or from recipient counts.
+7. If Listmonk start fails after dispatch is attempted, confirm the backend persists `email_logs.status="failed"` for the attempted recipient set and does not create extra rows on retry.
+8. Keep duplicate-dispatch protection active: a second send attempt for the same campaign must return a blocked response once queued, started, or accepted logs exist.
+9. Keep Deliverability Guard active before every controlled send. Never bypass campaign status, recipient eligibility, suppression, unsubscribe readiness, or configured campaign limits.
+10. Do not paste rendered HTML, recipient addresses, subjects, unsubscribe tokens, or provider credentials into audit notes or shared diagnostics.
+
 ## Standard Staging Deploy
 
 1. Confirm the current branch and target revision.
@@ -368,7 +381,8 @@ Secret rotation before official trials:
 
 Provider-event semantics:
 - `queued` means prepared and not yet accepted.
-- `sent` means accepted by Listmonk/provider, not inbox delivery.
+- `sent` means the backend successfully started the Listmonk campaign or received an equivalent provider acceptance signal; it does not mean inbox delivery.
+- For the current Listmonk SMTP relay path, `provider_message_id` is expected to stay empty because the Listmonk campaign-start response does not expose stable per-recipient Mailgun message IDs.
 - `delivered`, `opened`, `clicked`, `bounced`, `complained`, and `unsubscribed` must come only from processed provider or unsubscribe events.
 - If provider events are missing, those metrics must stay unavailable rather than being inferred from recipient totals or send attempts.
 

@@ -223,7 +223,7 @@ function getUnsupportedFlowMessage(step: FlowStep) {
 
 function getStatusMessage(status: string | null) {
   if (status === "needs_new_password") {
-    return "Per questo account e richiesto un aggiornamento credenziali gestito dal sistema di identita.";
+    return "Per questo account è richiesto un aggiornamento credenziali gestito dal sistema di identita.";
   }
 
   if (status === "needs_client_trust") {
@@ -474,7 +474,7 @@ export function LoginContent() {
 
     if (fetchStatus === "fetching") {
       setErrorMessage(
-        "Il servizio di accesso non e ancora pronto. Riprova tra qualche secondo.",
+        "Il servizio di accesso non è ancora pronto. Riprova tra qualche secondo.",
       );
       return;
     }
@@ -612,7 +612,7 @@ export function LoginContent() {
 
     if (fetchStatus === "fetching") {
       setErrorMessage(
-        "Il servizio di accesso non e ancora pronto. Riprova tra qualche secondo.",
+        "Il servizio di accesso non è ancora pronto. Riprova tra qualche secondo.",
       );
       return;
     }
@@ -991,7 +991,7 @@ export function LoginContent() {
                 onClick={handleResetFlow}
                 type="button"
               >
-                {isResetMode ? "Torna al login" : "Usa un&apos;altra email"}
+                {isResetMode ? "Torna al login" : "Usa un'altra email"}
               </button>
             ) : null}
           </form>

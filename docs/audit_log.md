@@ -1,5 +1,18 @@
 # Audit Log
 
+## Milestone 18.6U-VERIFY2 - Audit Controlled Send Persistence And Provider Correlation
+
+Date: 2026-05-22
+Branch: develop
+
+Controlled send persistence audit summary:
+- Audited only the allowed campaign dispatch/preparation/runtime, listmonk integration, repositories, tests, and staging docs without reading `.env`, printing secrets, dispatching campaigns, or touching direct Mailgun/SES API paths.
+- Confirmed `email_logs` rows for Listmonk dispatch are created inside `CampaignDispatchService._persist_dispatch_logs()` after `trigger_campaign_send()` is attempted; successful Listmonk start writes `status="sent"`, and post-start failures write `status="failed"` for the attempted contacts.
+- Confirmed `email_logs.status="sent"` currently means "Listmonk accepted campaign start / dispatch was started by the backend path", not inbox delivery and not per-recipient provider delivery.
+- Confirmed the Listmonk campaign-start flow only exposes the stable technical campaign id used in Sendwise mappings plus the start response status such as `running`; no stable per-recipient Mailgun message id is available in this path, so `provider_message_id` should remain empty until provider-event correlation exists.
+- Hardened dispatch diagnostics so API responses no longer echo rendered subject/body content, unsubscribe URLs, or similar campaign-content details from the preparation snapshot.
+- Reconfirmed duplicate-dispatch protection, Deliverability Guard ordering, Listmonk campaign/list mapping reuse, and the absence of any direct Mailgun/SES send shortcut.
+
 ## Milestone 18.6U-FIX1 - Align Audit Scripts With Listmonk Provider Default
 
 Date: 2026-05-21

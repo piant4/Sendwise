@@ -321,6 +321,9 @@ def test_dispatch_does_not_trigger_real_send_when_content_is_not_ready() -> None
     assert result["listmonk_dispatched"] is False
     assert result["dispatch_attempted"] is False
     assert result["email_logs_created"] == 0
+    assert result["preparation"]["content"]["content_redacted"] is True
+    assert "body" not in result["preparation"]["content"]
+    assert "subject" not in result["preparation"]["content"]
     assert email_log_repository.list_by_campaign("campaign_123") == []
     assert fake_listmonk.sent_campaign_ids == []
 
@@ -1625,6 +1628,9 @@ def test_enabled_campaign_send_creates_mapping_after_guard_authorizes() -> None:
     assert result["queued_count"] == 0
     assert result["sent_or_accepted_count"] == 1
     assert result["failed_count"] == 0
+    assert result["preparation"]["content"]["content_redacted"] is True
+    assert "body" not in result["preparation"]["content"]
+    assert "subject" not in result["preparation"]["content"]
 
 
 def test_successful_dispatch_marks_campaign_running_and_starts_period() -> None:
@@ -1728,6 +1734,8 @@ def test_dispatch_failure_creates_failed_logs_for_attempted_contacts() -> None:
     assert result["queued_count"] == 0
     assert result["sent_or_accepted_count"] == 0
     assert result["failed_count"] == 1
+    assert result["preparation"]["content"]["content_redacted"] is True
+    assert "body" not in result["preparation"]["content"]
     logs = email_log_repository.list_by_campaign("campaign_123")
     assert [log.status for log in logs] == ["failed"]
 

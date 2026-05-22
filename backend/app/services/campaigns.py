@@ -141,6 +141,14 @@ ACCEPTED_OR_COMPLETED_LOG_STATUSES = {
     "unsubscribed",
 }
 RETRYABLE_FAILED_LOG_STATUSES = {"failed"}
+PREPARATION_CONTENT_REDACTED_KEYS = {
+    "subject",
+    "preview_text",
+    "body",
+    "body_text",
+    "unsubscribe_url",
+    "client_name",
+}
 
 
 def _prefer_provider_metric(
@@ -1614,7 +1622,7 @@ class AdminCampaignService:
             return CampaignDispatchDuplicateGuard(
                 blocked=True,
                 code="campaign_send_already_accepted",
-                reason="Campaign was already accepted by the provider.",
+                reason="Campaign was already started by Listmonk or accepted for dispatch.",
             )
 
         status_counts = email_log_repository.get_campaign_status_counts(
@@ -1645,7 +1653,7 @@ class AdminCampaignService:
             return CampaignDispatchDuplicateGuard(
                 blocked=True,
                 code="campaign_send_already_accepted",
-                reason="Campaign already has accepted or processed email logs.",
+                reason="Campaign already has Listmonk-accepted or processed email logs.",
             )
 
         latest_logs = email_log_repository.list_latest_for_campaign(
@@ -1716,7 +1724,7 @@ class CampaignDispatchService:
             return CampaignDispatchDuplicateGuard(
                 blocked=True,
                 code="campaign_send_already_accepted",
-                reason="Campaign was already accepted by the provider.",
+                reason="Campaign was already started by Listmonk or accepted for dispatch.",
             )
 
         status_counts = email_log_repository.get_campaign_status_counts(
@@ -1747,7 +1755,7 @@ class CampaignDispatchService:
             return CampaignDispatchDuplicateGuard(
                 blocked=True,
                 code="campaign_send_already_accepted",
-                reason="Campaign already has accepted or processed email logs.",
+                reason="Campaign already has Listmonk-accepted or processed email logs.",
             )
 
         latest_logs = email_log_repository.list_latest_for_campaign(
@@ -2245,7 +2253,7 @@ class CampaignDispatchService:
                 },
                 "listmonk": listmonk_result,
             }
-            response["preparation"] = preparation
+            response["preparation"] = self._sanitize_preparation_snapshot(preparation)
             return response
 
     def _classify_listmonk_dispatch_result(
@@ -2947,7 +2955,7 @@ class CampaignDispatchService:
             "failed_count": 0,
         }
         if preparation is not None:
-            response["preparation"] = preparation
+            response["preparation"] = self._sanitize_preparation_snapshot(preparation)
         return response
 
     def _failed_response(
@@ -3033,7 +3041,7 @@ class CampaignDispatchService:
             "failed_count": failed_count,
         }
         if preparation is not None:
-            response["preparation"] = preparation
+            response["preparation"] = self._sanitize_preparation_snapshot(preparation)
         return response
 
     def _failed_response_from_listmonk_error(
@@ -3081,6 +3089,24 @@ class CampaignDispatchService:
         if error.path:
             response["provider_endpoint"] = error.path
         return response
+
+    def _sanitize_preparation_snapshot(
+        self,
+        preparation: dict[str, Any],
+    ) -> dict[str, Any]:
+        sanitized = dict(preparation)
+        content = sanitized.get("content")
+        if isinstance(content, dict):
+            sanitized_content = {
+                key: value
+                for key, value in content.items()
+                if key not in PREPARATION_CONTENT_REDACTED_KEYS
+            }
+            sanitized_content["content_redacted"] = True
+            sanitized["content"] = sanitized_content
+        return sanitized
+
+
 def get_campaign_state_service() -> CampaignStateService:
     return CampaignStateService(repository=get_campaign_repository())
 

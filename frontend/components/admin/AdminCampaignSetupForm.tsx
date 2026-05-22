@@ -19,14 +19,6 @@ interface AdminCampaignSetupFormProps {
 
 const TECHNICAL_NAME_PATTERN = /^[A-Za-z0-9-]+$/;
 
-function getValue(value?: string | null): string {
-  return value ?? "";
-}
-
-function normalizeText(value?: string | null): string {
-  return (value ?? "").trim();
-}
-
 function getSafeUpdateErrorMessage(error: unknown): string {
   if (isApiError(error)) {
     if (error.isNetworkError) {
@@ -46,7 +38,7 @@ function getSafeUpdateErrorMessage(error: unknown): string {
     }
 
     if (error.status === 422) {
-      return "Verifica nome campagna e oggetto email prima di salvare.";
+      return "Verifica nome campagna e limiti invio prima di salvare.";
     }
 
     if (error.detail.trim()) {
@@ -65,7 +57,6 @@ export function AdminCampaignSetupForm({
   const router = useRouter();
   const { getToken } = useAuth();
   const [name, setName] = useState(campaign.name);
-  const [subject, setSubject] = useState(getValue(campaign.subject));
   const [periodEmailLimit, setPeriodEmailLimit] = useState(
     String(campaign.periodEmailLimit),
   );
@@ -97,8 +88,6 @@ export function AdminCampaignSetupForm({
     }
 
     const nameChanged = name.trim() !== campaign.name;
-    const subjectValue = normalizeText(subject);
-    const subjectChanged = subjectValue !== normalizeText(campaign.subject);
     const periodLimitValue = Number(periodEmailLimit);
     const dailyLimitValue = Number(dailyEmailLimit);
     if (
@@ -113,7 +102,7 @@ export function AdminCampaignSetupForm({
     const periodLimitChanged = periodLimitValue !== campaign.periodEmailLimit;
     const dailyLimitChanged = dailyLimitValue !== campaign.dailyEmailLimit;
 
-    if (!nameChanged && !subjectChanged && !periodLimitChanged && !dailyLimitChanged) {
+    if (!nameChanged && !periodLimitChanged && !dailyLimitChanged) {
       setSuccessMessage("Dati base invariati.");
       setErrorMessage(null);
       onContinue?.();
@@ -131,7 +120,6 @@ export function AdminCampaignSetupForm({
         campaign.campaignId,
         {
           ...(nameChanged ? { name: name.trim() } : {}),
-          ...(subjectChanged ? { subject: subjectValue } : {}),
           ...(periodLimitChanged ? { periodEmailLimit: periodLimitValue } : {}),
           ...(dailyLimitChanged ? { dailyEmailLimit: dailyLimitValue } : {}),
         },
@@ -158,7 +146,7 @@ export function AdminCampaignSetupForm({
             Setup base
           </h2>
           <p className="admin-clients-card__description">
-            Verifica i dati principali prima di passare al contenuto. Nome e oggetto restano compatti finche non scegli di editarli.
+            Definisci cliente, nome tecnico e limiti di invio. L&apos;oggetto si completa nello step Editor.
           </p>
         </div>
       </div>
@@ -185,7 +173,6 @@ export function AdminCampaignSetupForm({
           {[
             ["Cliente", campaign.clientName],
             ["Nome tecnico campagna", campaign.name],
-            ["Oggetto email", campaign.subject?.trim() || "Da completare"],
             ["Limite invii 30 giorni", campaign.periodEmailLimit.toLocaleString("it-IT")],
             ["Limite invii giornaliero", campaign.dailyEmailLimit.toLocaleString("it-IT")],
           ].map(([label, value]) => (
@@ -212,17 +199,9 @@ export function AdminCampaignSetupForm({
               value={name}
             />
             <span className="campaign-field__helper">
-              Usa lettere, numeri e trattini. Esempio: prova-mailgun-01
+              Nome tecnico esplicito della campagna. Usa lettere, numeri e trattini. Esempio:
+              {" "}prova-mailgun-01
             </span>
-          </label>
-          <label className="campaign-field">
-            <span className="campaign-field__label">Oggetto email</span>
-            <input
-              className="campaign-input"
-              disabled={isSubmitting}
-              onChange={(event) => setSubject(event.target.value)}
-              value={subject}
-            />
           </label>
           <div
             style={{

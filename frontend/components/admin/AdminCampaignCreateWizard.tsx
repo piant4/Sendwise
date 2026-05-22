@@ -10,6 +10,7 @@ import {
   isApiError,
 } from "../../lib/api";
 import type { Client } from "../../types";
+import { INTERNAL_CAMPAIGN_DRAFT_SUBJECT } from "../shared/campaignUi";
 import { Button } from "../ui/button";
 
 interface AdminCampaignCreateWizardProps {
@@ -41,7 +42,7 @@ function getSafeCreateErrorMessage(error: unknown): string {
     }
 
     if (error.status === 422) {
-      return "Compila cliente, nome campagna e oggetto prima di creare la bozza.";
+      return "Compila cliente e nome campagna prima di creare la bozza.";
     }
 
     if (error.detail.trim()) {
@@ -59,7 +60,6 @@ export function AdminCampaignCreateWizard({
   const { getToken } = useAuth();
   const [clientId, setClientId] = useState(clients[0]?.id ?? "");
   const [name, setName] = useState("");
-  const [subject, setSubject] = useState("");
   const [periodEmailLimit, setPeriodEmailLimit] = useState("1000");
   const [dailyEmailLimit, setDailyEmailLimit] = useState("50");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -77,8 +77,8 @@ export function AdminCampaignCreateWizard({
       return;
     }
 
-    if (!clientId || !name.trim() || !subject.trim()) {
-      setErrorMessage("Cliente, nome campagna e oggetto sono obbligatori.");
+    if (!clientId || !name.trim()) {
+      setErrorMessage("Cliente e nome campagna sono obbligatori.");
       return;
     }
 
@@ -110,7 +110,7 @@ export function AdminCampaignCreateWizard({
         {
           clientId,
           name: name.trim(),
-          subject: subject.trim(),
+          subject: INTERNAL_CAMPAIGN_DRAFT_SUBJECT,
           periodEmailLimit: periodLimitValue,
           dailyEmailLimit: dailyLimitValue,
         },
@@ -258,18 +258,9 @@ export function AdminCampaignCreateWizard({
             value={name}
           />
           <span className="campaign-field__helper">
-            Usa lettere, numeri e trattini. Esempio: prova-mailgun-01
+            Identificatore tecnico della campagna. Usa lettere, numeri e trattini. Esempio:
+            {" "}prova-mailgun-01
           </span>
-        </label>
-        <label className="campaign-field">
-          <span className="campaign-field__label">Oggetto email</span>
-          <input
-            className="campaign-input"
-            disabled={isSubmitting}
-            onChange={(event) => setSubject(event.target.value)}
-            required
-            value={subject}
-          />
         </label>
         <div
           style={{

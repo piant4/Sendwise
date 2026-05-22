@@ -5,6 +5,8 @@ import type {
   AdminCampaignReadinessSummary,
 } from "../../types";
 import {
+  getReadableBackendReason,
+  isInternalCampaignDraftSubject,
   normalizeCampaignWizardStep,
   type CampaignWizardStep,
 } from "../shared/campaignUi";
@@ -23,17 +25,7 @@ interface WizardStep {
   id: CampaignWizardStep;
   label: string;
   state: StepState;
-}
-
-function getStepStateLabel(state: StepState): string {
-  switch (state) {
-    case "ready":
-      return "Pronto";
-    case "needs-attention":
-      return "Richiede attenzione";
-    default:
-      return "Non pronto";
-  }
+  reason: string;
 }
 
 function getStepIcon(state: StepState) {
@@ -48,6 +40,18 @@ function getStepIcon(state: StepState) {
   return CircleDashed;
 }
 
+function getStepReasonTone(state: StepState, isCurrent: boolean): string {
+  if (isCurrent) {
+    return "Step attuale";
+  }
+
+  if (state === "ready") {
+    return "Completo";
+  }
+
+  return "Da completare";
+}
+
 function buildSteps(
   campaign: AdminCampaignDetail,
   contacts: AdminCampaignContactsSummary | null,
@@ -57,23 +61,51 @@ function buildSteps(
   const recipientEligible = contacts?.eligible ?? summary?.recipients.eligible ?? 0;
   const providerAccepted = summary?.logs.sent ?? 0;
   const prepared = summary?.logs.queued ?? 0;
+  const subjectReady =
+    Boolean(campaign.subject?.trim()) && !isInternalCampaignDraftSubject(campaign.subject);
+  const htmlReady = Boolean(campaign.bodyHtml?.trim());
+  const previewReady = Boolean(campaign.previewText?.trim());
+  const topBlockingReason = summary?.blockingErrors[0]
+    ? getReadableBackendReason(summary.blockingErrors[0]).label
+    : null;
+  const topWarningReason = summary?.warnings[0]
+    ? getReadableBackendReason(summary.warnings[0]).label
+    : null;
 
   return [
     {
       id: "setup",
       label: "Setup",
-      state: campaign.currentStep === "setup" ? "needs-attention" : "ready",
+      state:
+        Boolean(campaign.clientId) &&
+        Boolean(campaign.name.trim()) &&
+        campaign.periodEmailLimit > 0 &&
+        campaign.dailyEmailLimit > 0
+          ? "ready"
+          : "needs-attention",
+      reason: !campaign.name.trim()
+        ? "Manca il nome campagna"
+        : campaign.periodEmailLimit <= 0 || campaign.dailyEmailLimit <= 0
+          ? "Verifica i limiti di invio"
+          : "Cliente, nome e limiti impostati",
     },
     {
       id: "template",
       label: "Template",
-      state:
-        campaign.contentReady || campaign.currentStep !== "setup" ? "ready" : "needs-attention",
+      state: campaign.contentReady || htmlReady ? "ready" : "needs-attention",
+      reason:
+        campaign.contentReady || htmlReady
+          ? "Template o base contenuto presenti"
+          : "Scegli un template",
     },
     {
       id: "editor",
       label: "Editor",
       state: campaign.contentReady ? "ready" : "not-ready",
+      reason:
+        campaign.contentReady || (subjectReady && htmlReady && previewReady)
+          ? "Oggetto e contenuto pronti"
+          : "Completa oggetto e contenuto",
     },
     {
       id: "recipients",
@@ -83,10 +115,15 @@ function buildSteps(
         : recipientTotal > 0 && recipientEligible === 0
           ? "needs-attention"
           : "not-ready",
+      reason: campaign.contactsReady
+        ? `${recipientEligible.toLocaleString("it-IT")} destinatari idonei`
+        : recipientTotal > 0 && recipientEligible === 0
+          ? "Nessun destinatario idoneo"
+          : "Aggiungi almeno un destinatario idoneo",
     },
     {
       id: "review",
-      label: "Verifica",
+      label: "Review",
       state: campaign.reviewReady
         ? "ready"
         : campaign.currentStep === "review" ||
@@ -94,6 +131,9 @@ function buildSteps(
             (campaign.contentReady && campaign.contactsReady)
           ? "needs-attention"
           : "not-ready",
+      reason: campaign.reviewReady
+        ? "Review completata"
+        : topBlockingReason ?? topWarningReason ?? "Esegui la review finale",
     },
     {
       id: "send",
@@ -104,6 +144,13 @@ function buildSteps(
           : prepared > 0 || campaign.reviewReady || campaign.currentStep === "send"
             ? "needs-attention"
             : "not-ready",
+      reason: providerAccepted > 0
+        ? "Invio gia avviato"
+        : summary?.canSend
+          ? "Pronta all'invio"
+          : summary?.canSendWhenEnabled
+            ? "Invio reale disattivato"
+            : topBlockingReason ?? "Risolvi invio reale",
     },
   ];
 }
@@ -192,7 +239,31 @@ export function AdminCampaignSetupProgress({
                   <span className="campaign-step-button__state">Attuale</span>
                 ) : null}
               </span>
-              <span className="admin-record-chip">{getStepStateLabel(step.state)}</span>
+              <span
+                className="admin-record-row__note"
+                style={{
+                  color: isCurrent
+                    ? "#1d4ed8"
+                    : step.state === "ready"
+                      ? "#0f766e"
+                      : step.state === "needs-attention"
+                        ? "#b45309"
+                        : "#64748b",
+                }}
+              >
+                {getStepReasonTone(step.state, isCurrent)}
+              </span>
+              <span
+                style={{
+                  color: "#0f172a",
+                  display: "block",
+                  fontSize: "0.92rem",
+                  lineHeight: 1.35,
+                  marginTop: 6,
+                }}
+              >
+                {step.reason}
+              </span>
             </button>
           );
         })}

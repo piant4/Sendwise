@@ -26,6 +26,8 @@ export interface ReadableBackendReason {
   isKnown: boolean;
 }
 
+export const INTERNAL_CAMPAIGN_DRAFT_SUBJECT = "[draft] Oggetto da definire";
+
 const BACKEND_REASON_LABELS: Array<[RegExp, string]> = [
   [/^Campaign has no associated contacts\.$/i, "Aggiungi almeno un destinatario valido."],
   [/^Campaign has no eligible contacts to send\.$/i, "Nessun destinatario idoneo disponibile."],
@@ -141,6 +143,22 @@ export interface CampaignOperationalSendState {
 
 export function formatCampaignCount(value: number): string {
   return value.toLocaleString("it-IT");
+}
+
+export function isInternalCampaignDraftSubject(value?: string | null): boolean {
+  return value?.trim() === INTERNAL_CAMPAIGN_DRAFT_SUBJECT;
+}
+
+export function getCampaignSubjectDisplay(
+  value?: string | null,
+  fallback = "Oggetto email da completare",
+): string {
+  const normalizedValue = value?.trim() ?? "";
+  if (!normalizedValue || isInternalCampaignDraftSubject(normalizedValue)) {
+    return fallback;
+  }
+
+  return normalizedValue;
 }
 
 export function getProviderEventsAvailabilityLabel(

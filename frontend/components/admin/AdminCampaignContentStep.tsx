@@ -23,6 +23,7 @@ import {
   type CampaignTemplate,
 } from "../../lib/campaignTemplates";
 import type { AdminCampaignDetail, AdminEmailTemplate } from "../../types";
+import { isInternalCampaignDraftSubject } from "../shared/campaignUi";
 import { Button } from "../ui/button";
 import { CampaignCodeEditor } from "./CampaignCodeEditor";
 import { AdminCampaignTemplatePicker } from "./AdminCampaignTemplatePicker";
@@ -48,6 +49,22 @@ function getValue(value?: string | null): string {
 
 function normalizeText(value?: string | null): string {
   return (value ?? "").trim();
+}
+
+function normalizeSubjectText(value?: string | null): string {
+  const normalizedValue = normalizeText(value);
+  return isInternalCampaignDraftSubject(normalizedValue) ? "" : normalizedValue;
+}
+
+function getActiveFieldLabel(field: ActiveField): string {
+  switch (field) {
+    case "subject":
+      return "Oggetto";
+    case "preview":
+      return "Preview text";
+    default:
+      return "HTML";
+  }
 }
 
 function stripScripts(value: string): string {
@@ -333,8 +350,8 @@ export function AdminCampaignContentStep({
   );
 
   const [subject, setSubject] = useState(
-    normalizeText(campaign.subject).length > 0
-      ? getValue(campaign.subject)
+    normalizeSubjectText(campaign.subject).length > 0
+      ? normalizeSubjectText(campaign.subject)
       : isInitialContentEmpty
         ? initialBoilerplateTemplate.subject
         : "",
@@ -591,7 +608,7 @@ export function AdminCampaignContentStep({
       return;
     }
 
-    const subjectValue = normalizeText(subject);
+    const subjectValue = normalizeSubjectText(subject);
     const previewValue = normalizeText(previewText);
     const bodyHtmlValue = normalizeText(bodyHtml);
     const bodyTextValue = derivePlainTextFromHtml(bodyHtmlValue);
@@ -602,7 +619,7 @@ export function AdminCampaignContentStep({
       ...collectUnsupportedPlaceholders(bodyTextValue, ALLOWED_EDITOR_PLACEHOLDERS),
     ];
     const contentChanged =
-      subjectValue !== normalizeText(campaign.subject) ||
+      subjectValue !== normalizeSubjectText(campaign.subject) ||
       previewValue !== normalizeText(campaign.previewText) ||
       bodyHtmlValue !== normalizeText(campaign.bodyHtml) ||
       bodyTextValue !== normalizeText(campaign.bodyText);
@@ -660,7 +677,7 @@ export function AdminCampaignContentStep({
     }
 
     const normalizedTemplateName = normalizeText(templateName);
-    const subjectValue = normalizeText(subject);
+    const subjectValue = normalizeSubjectText(subject);
     const previewValue = normalizeText(previewText);
     const bodyHtmlValue = normalizeText(bodyHtml);
     const bodyTextValue = derivePlainTextFromHtml(bodyHtmlValue);
@@ -716,7 +733,7 @@ export function AdminCampaignContentStep({
   }
 
   const hasUnsavedChanges =
-    normalizeText(subject) !== normalizeText(campaign.subject) ||
+    normalizeSubjectText(subject) !== normalizeSubjectText(campaign.subject) ||
     normalizeText(previewText) !== normalizeText(campaign.previewText) ||
     normalizeText(bodyHtml) !== normalizeText(campaign.bodyHtml);
 
@@ -728,11 +745,11 @@ export function AdminCampaignContentStep({
           <h2 className="admin-clients-card__title" style={{ color: "#0f172a" }}>
             {mode === "template" ? "Selezione template" : "Editor email"}
           </h2>
-          <p className="admin-clients-card__description" style={{ marginTop: 8 }}>
-            {mode === "template"
-              ? "Scegli un template prima di entrare nell'editor. I modelli salvati restano limitati al cliente selezionato."
-              : "Scrivi HTML e preview in uno spazio piu compatto, con placeholder a portata di mano e anteprima formattata."}
-          </p>
+          {mode === "editor" ? (
+            <p className="admin-clients-card__description" style={{ marginTop: 8 }}>
+              Oggetto, preview e markup restano nello stesso workspace con helper placeholder compatto.
+            </p>
+          ) : null}
         </div>
       </div>
 
@@ -883,13 +900,10 @@ export function AdminCampaignContentStep({
                 style={{
                   background: "rgba(248, 250, 252, 0.96)",
                   border: "1px solid rgba(148, 163, 184, 0.2)",
-                  borderRadius: 24,
+                  borderRadius: 20,
                   display: "grid",
-                  gap: 16,
-                  padding: 18,
-                  position: "sticky",
-                  top: 12,
-                  zIndex: 2,
+                  gap: 14,
+                  padding: 16,
                 }}
               >
                 <div
@@ -902,9 +916,9 @@ export function AdminCampaignContentStep({
                   }}
                 >
                   <div className="campaign-editor-toolbar__meta">
+                    <span className="campaign-editor-toolbar__chip">HTML</span>
                     <span className="campaign-editor-toolbar__chip">Monospace</span>
                     <span className="campaign-editor-toolbar__chip">Tab per indentare</span>
-                    <span className="campaign-editor-toolbar__chip">Linee attive</span>
                     <span className="campaign-editor-toolbar__chip">
                       {isSubmitting
                         ? "Salvataggio..."
@@ -963,32 +977,57 @@ export function AdminCampaignContentStep({
                         ))}
                       </div>
                     ) : null}
+
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="admin-topbar-action campaign-action campaign-action--secondary campaign-variable-helper__toggle"
+                      aria-expanded={isVariableHelperOpen}
+                      disabled={isSubmitting}
+                      onClick={() => setIsVariableHelperOpen((current) => !current)}
+                    >
+                      {isVariableHelperOpen ? "Chiudi placeholder" : "Placeholder"}
+                    </Button>
                   </div>
                 </div>
 
-                <section className="campaign-variable-helper" aria-label="Variabili supportate">
-                  <div className="campaign-variable-helper__header">
-                    <div>
-                      <p className="admin-surface__eyebrow">Placeholder</p>
-                      <h3 className="campaign-variable-helper__title">Inserimento rapido</h3>
+                <div
+                  style={{
+                    alignItems: "center",
+                    display: "flex",
+                    flexWrap: "wrap",
+                    gap: 10,
+                    justifyContent: "space-between",
+                  }}
+                >
+                  <p className="campaign-variable-helper__note" style={{ margin: 0 }}>
+                    Campo attivo: <strong>{getActiveFieldLabel(activeField)}</strong>
+                  </p>
+                  <p className="campaign-variable-helper__availability" style={{ margin: 0 }}>
+                    Brand disponibile:{" "}
+                    {availableBrandVariables.length > 0
+                      ? availableBrandVariables.map((variable) => variable.token).join(", ")
+                      : "nessuna variabile brand valorizzata."}
+                  </p>
+                </div>
+
+                {isVariableHelperOpen ? (
+                  <section
+                    className="campaign-variable-helper"
+                    aria-label="Variabili supportate"
+                    style={{
+                      background: "rgba(255, 255, 255, 0.88)",
+                      border: "1px solid rgba(148, 163, 184, 0.18)",
+                      borderRadius: 16,
+                      padding: 14,
+                    }}
+                  >
+                    <div className="campaign-variable-helper__header" style={{ marginBottom: 10 }}>
+                      <div>
+                        <p className="admin-surface__eyebrow">Placeholder</p>
+                        <h3 className="campaign-variable-helper__title">Inserimento rapido</h3>
+                      </div>
                     </div>
-                    <div className="campaign-variable-helper__actions">
-                      <p className="campaign-variable-helper__note">
-                        Campo attivo: <strong>{activeField}</strong>
-                      </p>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        className="admin-topbar-action campaign-action campaign-action--secondary campaign-variable-helper__toggle"
-                        aria-expanded={isVariableHelperOpen}
-                        disabled={isSubmitting}
-                        onClick={() => setIsVariableHelperOpen((current) => !current)}
-                      >
-                        {isVariableHelperOpen ? "Nascondi menu" : "Apri menu placeholder"}
-                      </Button>
-                    </div>
-                  </div>
-                  {isVariableHelperOpen ? (
                     <div className="campaign-variable-helper__list">
                       {SUPPORTED_TEMPLATE_VARIABLES.map((variable) => (
                         <button
@@ -1003,19 +1042,20 @@ export function AdminCampaignContentStep({
                         </button>
                       ))}
                     </div>
-                  ) : null}
-                  <p className="campaign-variable-helper__availability">
-                    Brand cliente disponibile ora:{" "}
-                    {availableBrandVariables.length > 0
-                      ? availableBrandVariables.map((variable) => variable.token).join(", ")
-                      : "nessuna variabile brand valorizzata."}
-                  </p>
-                </section>
+                  </section>
+                ) : null}
               </div>
 
-              <div className="campaign-editor-shell" data-mode={editorMode}>
+              <div
+                className="campaign-editor-shell"
+                data-mode={editorMode}
+                style={{ alignItems: "start" }}
+              >
                 {editorMode !== "preview" ? (
-                  <div className="campaign-editor-pane">
+                  <div
+                    className="campaign-editor-pane"
+                    style={{ alignSelf: "start", minHeight: 0 }}
+                  >
                     <div className="campaign-editor-pane__header">
                       <strong>Markup</strong>
                       <span>Editor HTML a altezza fissa, scrollabile e focalizzato sulla scrittura.</span>
@@ -1027,24 +1067,44 @@ export function AdminCampaignContentStep({
                       onFocus={() => setActiveField("html")}
                       placeholder="<html>...</html>"
                       rows={24}
-                      style={{ minHeight: 720 }}
+                      style={{
+                        fontFamily:
+                          'ui-monospace, SFMono-Regular, "SF Mono", Consolas, "Liberation Mono", Menlo, monospace',
+                        height: "clamp(360px, 62vh, 640px)",
+                        lineHeight: 1.55,
+                        minHeight: 0,
+                        overflowY: "auto",
+                        paddingBottom: 24,
+                        resize: "none",
+                      }}
                       value={bodyHtml}
                     />
                   </div>
                 ) : null}
 
                 {editorMode !== "html" ? (
-                  <div className="campaign-editor-pane campaign-editor-pane--preview">
+                  <div
+                    className="campaign-editor-pane campaign-editor-pane--preview"
+                    style={{ alignSelf: "start", minHeight: 0 }}
+                  >
                     <div className="campaign-editor-pane__header">
                       <strong>Preview</strong>
-                      <span>Anteprima formattata con un solo viewport di scorrimento.</span>
+                      <span>Anteprima allineata in alto con viewport unico e stabile.</span>
                     </div>
-                    <div className="campaign-preview-viewport" data-device={previewDevice}>
+                    <div
+                      className="campaign-preview-viewport"
+                      data-device={previewDevice}
+                      style={{
+                        height: "clamp(360px, 62vh, 640px)",
+                        minHeight: 0,
+                        overflow: "auto",
+                      }}
+                    >
                       <iframe
                         className="campaign-email-preview-frame campaign-email-preview-frame--editor"
                         sandbox=""
                         srcDoc={buildPreviewDocument(previewHtml)}
-                        style={{ height: 840 }}
+                        style={{ height: "100%", minHeight: "100%" }}
                         title="Anteprima email"
                       />
                     </div>
@@ -1248,7 +1308,7 @@ export function AdminCampaignContentStep({
               <div className="campaign-template-save-grid">
                 <article>
                   <span>Oggetto</span>
-                  <strong>{normalizeText(subject) || "Non impostato"}</strong>
+                  <strong>{normalizeSubjectText(subject) || "Non impostato"}</strong>
                 </article>
                 <article>
                   <span>Preview</span>

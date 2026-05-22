@@ -263,6 +263,40 @@ function buildSendRecap(
   ];
 }
 
+function getSendStepStatusMeta(
+  dispatchEnabled: boolean,
+  blockingReasonsCount: number,
+  warningReasonsCount: number,
+) {
+  if (dispatchEnabled) {
+    return {
+      badge: "Pronta all'invio",
+      border: "1px solid rgba(16, 185, 129, 0.24)",
+      background: "linear-gradient(135deg, rgba(236, 253, 245, 0.98), rgba(239, 246, 255, 0.98))",
+      accent: "#047857",
+      title: "Campagna pronta per l'avvio",
+    };
+  }
+
+  if (blockingReasonsCount > 0) {
+    return {
+      badge: "Invio bloccato",
+      border: "1px solid rgba(248, 113, 113, 0.24)",
+      background: "linear-gradient(135deg, rgba(254, 242, 242, 0.98), rgba(255, 247, 237, 0.98))",
+      accent: "#b91c1c",
+      title: "Blocchi da risolvere prima dell'invio",
+    };
+  }
+
+  return {
+    badge: warningReasonsCount > 0 ? "Verifica finale richiesta" : "Invio in preparazione",
+    border: "1px solid rgba(251, 191, 36, 0.24)",
+    background: "linear-gradient(135deg, rgba(255, 251, 235, 0.98), rgba(239, 246, 255, 0.98))",
+    accent: "#b45309",
+    title: "Verifica operativa ancora aperta",
+  };
+}
+
 export function AdminCampaignReviewPanel({
   campaign,
   summary,
@@ -314,6 +348,11 @@ export function AdminCampaignReviewPanel({
   const primaryProblem =
     blockingReasons[0]?.label ??
     (warningReasons.length > 0 ? warningReasons[0]?.label : "Nessun blocco principale rilevato.");
+  const sendStatusMeta = getSendStepStatusMeta(
+    dispatchEnabled,
+    blockingReasons.length,
+    warningReasons.length,
+  );
 
   const runReview = useCallback(async () => {
     if (isSubmitting) {
@@ -382,8 +421,8 @@ export function AdminCampaignReviewPanel({
             </p>
           </div>
           <StatusBadge
-            label={dispatchEnabled ? "Pronta all'invio" : "Invio bloccato"}
-            variant={dispatchEnabled ? "success" : "warning"}
+            label={sendStatusMeta.badge}
+            variant={dispatchEnabled ? "success" : blockingReasons.length > 0 ? "danger" : "warning"}
           />
         </div>
 
@@ -395,24 +434,52 @@ export function AdminCampaignReviewPanel({
 
         <div
           style={{
-            background: blockingReasons.length > 0 ? "rgba(254, 242, 242, 0.96)" : "rgba(239, 246, 255, 0.96)",
-            border: blockingReasons.length > 0
-              ? "1px solid rgba(248, 113, 113, 0.24)"
-              : "1px solid rgba(96, 165, 250, 0.22)",
-            borderRadius: 24,
+            background: sendStatusMeta.background,
+            border: sendStatusMeta.border,
+            borderRadius: 28,
             display: "grid",
-            gap: 12,
-            padding: 20,
+            gap: 14,
+            padding: 24,
           }}
         >
-          <strong style={{ color: "#0f172a" }}>
-            {dispatchEnabled ? "Controlli finali superati" : "Invio non pronto"}
+          <span
+            className="admin-record-row__note"
+            style={{ color: sendStatusMeta.accent, letterSpacing: "0.08em", textTransform: "uppercase" }}
+          >
+            Readiness finale
+          </span>
+          <strong style={{ color: "#0f172a", fontSize: "1.35rem", lineHeight: 1.2 }}>
+            {sendStatusMeta.title}
           </strong>
-          <p className="campaign-field__helper" style={{ margin: 0 }}>
+          <p className="campaign-field__helper" style={{ color: "#0f172a", margin: 0 }}>
             {dispatchEnabled
               ? "Sent significa accettata o avviata dal sistema Listmonk, non consegnata."
               : primaryProblem}
           </p>
+          <div
+            style={{
+              display: "grid",
+              gap: 12,
+              gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+            }}
+          >
+            <article className="campaign-callout" style={{ minHeight: 0 }}>
+              <span className="admin-record-row__note">Campagna</span>
+              <strong style={{ color: "#0f172a" }}>{campaign.name}</strong>
+            </article>
+            <article className="campaign-callout" style={{ minHeight: 0 }}>
+              <span className="admin-record-row__note">Destinatari idonei</span>
+              <strong style={{ color: "#0f172a" }}>
+                {state.eligibleContactCount.toLocaleString("it-IT")}
+              </strong>
+            </article>
+            <article className="campaign-callout" style={{ minHeight: 0 }}>
+              <span className="admin-record-row__note">Stato runtime</span>
+              <strong style={{ color: "#0f172a" }}>
+                {summary?.runtime.providerModeLabel ?? "Non disponibile"}
+              </strong>
+            </article>
+          </div>
         </div>
 
         <div
@@ -423,17 +490,37 @@ export function AdminCampaignReviewPanel({
             marginTop: 20,
           }}
         >
-          {sendRecap.map((item) => (
+          {sendRecap
+            .filter((item) =>
+              !["Campagna", "Cliente", "Destinatari idonei", "Provider runtime"].includes(
+                item.label,
+              ),
+            )
+            .map((item) => (
             <article
               key={item.label}
               className="campaign-callout"
-              style={{ minHeight: 108 }}
+              style={{ minHeight: 96 }}
             >
               <span className="admin-record-row__note">{item.label}</span>
               <strong style={{ color: "#0f172a" }}>{item.value}</strong>
             </article>
-          ))}
+            ))}
         </div>
+
+        <section
+          className="campaign-panel campaign-panel--subtle"
+          style={{ display: "grid", gap: 10, marginTop: 20, padding: 18 }}
+        >
+          <span className="admin-record-row__note">Nota provider / runtime</span>
+          <strong style={{ color: "#0f172a" }}>
+            {summary?.runtime.providerModeLabel ?? "Runtime non disponibile"}
+          </strong>
+          <p className="campaign-field__helper" style={{ margin: 0 }}>
+            L&apos;invio parte sempre dal backend Sendwise. &quot;Sent&quot; indica che
+            Listmonk ha accettato o avviato il dispatch, non la consegna finale.
+          </p>
+        </section>
 
         {dispatchResult && dispatchUiMeta ? (
           <div className="campaign-dispatch-result" style={{ marginTop: 20 }}>
@@ -450,34 +537,52 @@ export function AdminCampaignReviewPanel({
           </div>
         ) : null}
 
-        <div className="campaign-action-row" style={{ marginTop: 24 }}>
-          <Button
-            type="button"
-            variant="outline"
-            className="admin-topbar-action campaign-action campaign-action--secondary"
-            onClick={onBack}
-            style={{ minWidth: 148 }}
-          >
-            Indietro
-          </Button>
-          <Button
-            type="button"
-            className="admin-topbar-action campaign-action campaign-action--primary"
-            disabled={!dispatchEnabled}
-            onClick={() => {
-              setDispatchError(null);
-              setIsConfirmModalOpen(true);
-            }}
-            style={{ minWidth: 210 }}
-          >
-            {isDispatching ? (
-              <Loader2 aria-hidden="true" className="admin-topbar-action__icon" />
-            ) : (
-              <SendHorizonal aria-hidden="true" className="admin-topbar-action__icon" />
-            )}
-            {isDispatching ? "Invio..." : "Invia campagna"}
-          </Button>
-        </div>
+        <section
+          style={{
+            border: "1px solid rgba(148, 163, 184, 0.18)",
+            borderRadius: 24,
+            display: "grid",
+            gap: 14,
+            marginTop: 24,
+            padding: 20,
+          }}
+        >
+          <div style={{ display: "grid", gap: 6 }}>
+            <span className="admin-record-row__note">Azione finale</span>
+            <strong style={{ color: "#0f172a" }}>Avvia il dispatch controllato</strong>
+            <p className="campaign-field__helper" style={{ margin: 0 }}>
+              Il backend riesegue i controlli di sicurezza prima di inviare la campagna.
+            </p>
+          </div>
+          <div className="campaign-action-row" style={{ marginTop: 0 }}>
+            <Button
+              type="button"
+              variant="outline"
+              className="admin-topbar-action campaign-action campaign-action--secondary"
+              onClick={onBack}
+              style={{ minWidth: 148 }}
+            >
+              Indietro
+            </Button>
+            <Button
+              type="button"
+              className="admin-topbar-action campaign-action campaign-action--primary"
+              disabled={!dispatchEnabled}
+              onClick={() => {
+                setDispatchError(null);
+                setIsConfirmModalOpen(true);
+              }}
+              style={{ minWidth: 210 }}
+            >
+              {isDispatching ? (
+                <Loader2 aria-hidden="true" className="admin-topbar-action__icon" />
+              ) : (
+                <SendHorizonal aria-hidden="true" className="admin-topbar-action__icon" />
+              )}
+              {isDispatching ? "Invio..." : "Invia campagna"}
+            </Button>
+          </div>
+        </section>
 
         {isConfirmModalOpen ? (
           <div

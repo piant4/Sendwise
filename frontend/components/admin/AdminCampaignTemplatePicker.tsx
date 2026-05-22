@@ -89,6 +89,13 @@ function buildPreviewDocument(value: string): string {
 </html>`;
 }
 
+const clampTwoLinesStyle = {
+  WebkitBoxOrient: "vertical" as const,
+  WebkitLineClamp: 2,
+  display: "-webkit-box",
+  overflow: "hidden",
+};
+
 export function AdminCampaignTemplatePicker({
   templates,
   selectedTemplateId,
@@ -104,16 +111,13 @@ export function AdminCampaignTemplatePicker({
 
   return (
     <>
-      <section className="campaign-panel campaign-panel--subtle" style={{ padding: 20 }}>
+      <section style={{ display: "grid", gap: 18 }}>
         <div className="admin-clients-card__intro">
           <div>
             <p className="admin-surface__eyebrow">Template</p>
             <h3 className="admin-clients-card__title" style={{ color: "#0f172a", fontSize: "1.1rem" }}>
               Libreria template
             </h3>
-            <p className="admin-clients-card__description" style={{ marginTop: 8 }}>
-              Preset built-in e template cliente selezionabili prima della scrittura.
-            </p>
           </div>
         </div>
 
@@ -135,6 +139,10 @@ export function AdminCampaignTemplatePicker({
               <article
                 key={template.id}
                 className={`campaign-template-card${isSelected ? " campaign-template-card--selected" : ""}`}
+                style={{
+                  minHeight: 280,
+                  padding: 18,
+                }}
               >
                 <div className="campaign-template-card__meta">
                   <span className="campaign-template-badge">{template.category}</span>
@@ -150,25 +158,43 @@ export function AdminCampaignTemplatePicker({
                 </div>
 
                 <div className="campaign-template-card__copy">
-                  <h4 className="campaign-template-card__title">{template.name}</h4>
-                  <p className="campaign-template-card__description">{template.description}</p>
-                  <p className="campaign-template-card__subject">{template.subject}</p>
-                  <p className="campaign-template-card__excerpt">{getStructureHint(template)}</p>
-                  <p className="campaign-template-card__excerpt">{getPreviewExcerpt(template.previewText)}</p>
+                  <h4 className="campaign-template-card__title" style={clampTwoLinesStyle}>
+                    {template.name}
+                  </h4>
+                  <p className="campaign-template-card__description" style={clampTwoLinesStyle}>
+                    {template.description}
+                  </p>
+                  <p
+                    className="campaign-template-card__excerpt"
+                    style={{ color: "#0f172a", fontWeight: 600, marginTop: 2 }}
+                  >
+                    {getStructureHint(template)}
+                  </p>
+                  <p className="campaign-template-card__excerpt" style={clampTwoLinesStyle}>
+                    {template.recommendedUseCase}
+                  </p>
+                  <p className="campaign-template-card__subject" style={clampTwoLinesStyle}>
+                    {template.subject}
+                  </p>
+                  <p className="campaign-template-card__excerpt" style={clampTwoLinesStyle}>
+                    {getPreviewExcerpt(template.previewText)}
+                  </p>
                 </div>
 
-                <div className="campaign-template-actions" style={{ alignItems: "stretch" }}>
+                <div
+                  className="campaign-template-actions"
+                  style={{ alignItems: "stretch", gap: 10, marginTop: "auto" }}
+                >
                   <Button
                     aria-label="Anteprima email"
                     type="button"
                     variant="outline"
-                    size="icon-sm"
-                    title="Anteprima email"
                     className="admin-topbar-action campaign-action campaign-action--secondary campaign-template-preview-button"
                     disabled={disabled}
                     onClick={() => setPreviewTemplateId(template.id)}
                   >
                     <Eye aria-hidden="true" className="admin-topbar-action__icon" />
+                    Anteprima
                   </Button>
                   <Button
                     type="button"
@@ -176,7 +202,7 @@ export function AdminCampaignTemplatePicker({
                     disabled={disabled}
                     onClick={() => onApply(template)}
                   >
-                    Usa template
+                    {isSelected ? "Template scelto" : "Usa template"}
                   </Button>
                 </div>
               </article>

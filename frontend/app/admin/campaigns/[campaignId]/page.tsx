@@ -3,6 +3,7 @@ import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { AdminCampaignDetailView } from "../../../../components/admin/AdminCampaignDetailView";
+import { getCampaignSubjectDisplay } from "../../../../components/shared/campaignUi";
 import { buildPageMetadata } from "../../../../components/shared/metadata";
 import { AdminCampaignWizardShell } from "../../../../components/admin/AdminCampaignWizardShell";
 import {
@@ -100,7 +101,7 @@ export default async function AdminCampaignDetailPage({
             </h1>
             <p className="admin-page-description">
               {"campaign" in result
-                ? `${result.campaign.clientName} · ${result.campaign.subject?.trim() || "Oggetto email da completare"}`
+                ? `${result.campaign.clientName} · ${getCampaignSubjectDisplay(result.campaign.subject)}`
                 : isEditMode
                   ? "Configurazione campagna non disponibile."
                   : "Dettaglio campagna non disponibile."}

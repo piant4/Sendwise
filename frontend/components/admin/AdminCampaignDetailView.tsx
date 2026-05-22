@@ -10,6 +10,7 @@ import {
   dedupeReviewReasons,
   formatCampaignCount,
   getCampaignReadinessShortLabel,
+  getCampaignSubjectDisplay,
   getCampaignStatusLabel,
   getCampaignStatusVariant,
   getCampaignStepLabel,
@@ -245,7 +246,7 @@ export function AdminCampaignDetailView({
                 {campaign.clientName}
               </p>
               <p className="admin-record-row__note" style={{ marginTop: 6 }}>
-                {campaign.subject?.trim() || "Oggetto email da completare"}
+                {getCampaignSubjectDisplay(campaign.subject)}
               </p>
             </div>
             <div className="campaign-hero-actions">
@@ -474,7 +475,9 @@ export function AdminCampaignDetailView({
         >
           <article className="campaign-callout">
             <span className="admin-record-row__note">Oggetto</span>
-            <strong style={{ color: "#0f172a" }}>{campaign.subject?.trim() || "Non disponibile"}</strong>
+            <strong style={{ color: "#0f172a" }}>
+              {getCampaignSubjectDisplay(campaign.subject, "Non disponibile")}
+            </strong>
           </article>
           <article className="campaign-callout">
             <span className="admin-record-row__note">Preview text</span>

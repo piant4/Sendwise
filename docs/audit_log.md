@@ -3827,3 +3827,31 @@ Checks executed:
 Scope confirmation:
 - No auth, onboarding, provisioning, Clerk, schema, migration, send/dispatch execution, SES action, or direct new listmonk action was added.
 - No secrets or env files were read or modified.
+
+## Milestone 18.8 - Campaign Wizard UX Restructure And Post-Send UI Cleanup
+
+Date: 2026-05-22
+Branch: develop
+
+Verified state:
+- The admin campaign wizard is now split into six explicit steps: setup, template, editor, recipients, review, and send. Existing `step=content` links remain backward compatible and resolve to the editor step.
+- The create/setup surfaces now expose a visible six-step progress indicator, clearer technical-name copy, desktop-friendly limit pairing, and a more compact selected-client summary.
+- Template selection now lives in a dedicated step before the editor, with more compact cards, clearer selected state, explicit preview hints, and no template grid duplication inside the editor step.
+- The editor step now keeps the HTML area fixed-height and scrollable, surfaces placeholders near the sticky toolbar, exposes a visible saved/unsaved state, and renders a taller formatted preview iframe instead of the earlier cramped layout.
+- Relative client brand logo URLs are now normalized through the existing public backend base URL helper for preview/rendered frontend brand data, instead of leaving preview rendering tied to raw `/static/...` paths.
+- The recipients step now auto-imports immediately after CSV drop/selection, removes the extra import CTA, reports parsing/import/failure states, and avoids echoing raw CSV emails in diagnostics.
+- Review and send are now separate steps: review prioritizes blocking problems and collapsible readiness checks, while send owns the final operational recap and the only dispatch CTA. Successful send transitions back to the campaign detail page.
+- The campaign detail page now pushes the formatted email preview lower on the page, highlights post-send problems earlier, and keeps reporting semantics honest by separating accepted/started, queued, failed, provider-events availability, and engagement-only-if-provider-data-exists.
+
+Checks executed:
+- `git diff --check`
+- `cd frontend && npm run lint`
+- `cd frontend && npm run build`
+- `bash scripts/audit.sh`
+- `bash scripts/smoke_test.sh`
+- changed frontend file scan for direct Listmonk references
+- changed frontend file scan for secret/body/token logging patterns
+
+Scope confirmation:
+- No backend send logic, DB schema, migration, Docker compose, auth model, direct Mailgun/SES API path, webhook, follow-up, inbound, reply detection, or domain rotation work was changed.
+- Frontend API calls remain backend-only; no new direct Listmonk browser call path was introduced.

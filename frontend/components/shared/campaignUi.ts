@@ -7,7 +7,13 @@ import type {
 } from "../../types";
 
 type StatusBadgeVariant = "neutral" | "success" | "warning" | "danger";
-export type CampaignWizardStep = "setup" | "content" | "recipients" | "review";
+export type CampaignWizardStep =
+  | "setup"
+  | "template"
+  | "editor"
+  | "recipients"
+  | "review"
+  | "send";
 
 export interface LabelValueItem {
   label: string;
@@ -396,8 +402,11 @@ export function getCampaignStepLabel(step: string): string {
   switch (step) {
     case "setup":
       return "Setup";
+    case "template":
+      return "Template";
     case "content":
-      return "Contenuto";
+    case "editor":
+      return "Editor";
     case "recipients":
       return "Destinatari";
     case "review":
@@ -410,8 +419,18 @@ export function getCampaignStepLabel(step: string): string {
 }
 
 export function normalizeCampaignWizardStep(step?: string | null): CampaignWizardStep {
-  if (step === "content" || step === "recipients" || step === "review") {
+  if (
+    step === "template" ||
+    step === "editor" ||
+    step === "recipients" ||
+    step === "review" ||
+    step === "send"
+  ) {
     return step;
+  }
+
+  if (step === "content") {
+    return "editor";
   }
 
   return "setup";

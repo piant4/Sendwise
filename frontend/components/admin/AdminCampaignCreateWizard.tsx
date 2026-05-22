@@ -16,6 +16,8 @@ interface AdminCampaignCreateWizardProps {
   clients: Client[];
 }
 
+const TECHNICAL_NAME_PATTERN = /^[A-Za-z0-9-]+$/;
+
 function getClientDisplayName(client: Client): string {
   return client.personal_name || client.name || client.email;
 }
@@ -80,6 +82,13 @@ export function AdminCampaignCreateWizard({
       return;
     }
 
+    if (!TECHNICAL_NAME_PATTERN.test(name.trim())) {
+      setErrorMessage(
+        "Il nome tecnico campagna puo contenere solo lettere, numeri e trattini.",
+      );
+      return;
+    }
+
     const periodLimitValue = Number(periodEmailLimit);
     const dailyLimitValue = Number(dailyEmailLimit);
     if (
@@ -107,7 +116,7 @@ export function AdminCampaignCreateWizard({
         },
         token,
       );
-      router.push(`/admin/campaigns/${createdCampaign.campaignId}?mode=edit&step=content`);
+      router.push(`/admin/campaigns/${createdCampaign.campaignId}?mode=edit&step=template`);
       router.refresh();
     } catch (error) {
       setErrorMessage(getSafeCreateErrorMessage(error));
@@ -142,6 +151,66 @@ export function AdminCampaignCreateWizard({
 
   return (
     <form className="admin-clients-card campaign-panel" onSubmit={handleSubmit}>
+      <div
+        aria-label="Avanzamento wizard campagna"
+        style={{
+          display: "grid",
+          gap: 12,
+          marginBottom: 24,
+        }}
+      >
+        <div
+          style={{
+            alignItems: "center",
+            display: "flex",
+            justifyContent: "space-between",
+            gap: 12,
+          }}
+        >
+          <strong style={{ color: "#0f172a" }}>Step 1 di 6</strong>
+          <span className="admin-record-row__note">Setup</span>
+        </div>
+        <div
+          style={{
+            background: "rgba(148, 163, 184, 0.18)",
+            borderRadius: 999,
+            height: 10,
+            overflow: "hidden",
+          }}
+        >
+          <div
+            style={{
+              background: "linear-gradient(90deg, #1d4ed8 0%, #60a5fa 100%)",
+              borderRadius: 999,
+              height: "100%",
+              width: "16.67%",
+            }}
+          />
+        </div>
+        <div
+          style={{
+            display: "grid",
+            gap: 10,
+            gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))",
+          }}
+        >
+          {["Setup", "Template", "Editor", "Destinatari", "Review", "Send"].map((label, index) => (
+            <div
+              key={label}
+              style={{
+                border: index === 0 ? "1px solid rgba(37, 99, 235, 0.3)" : "1px solid rgba(148, 163, 184, 0.18)",
+                borderRadius: 16,
+                color: index === 0 ? "#0f172a" : "#64748b",
+                padding: "10px 12px",
+              }}
+            >
+              <span className="admin-record-row__note">0{index + 1}</span>
+              <strong style={{ display: "block", marginTop: 4 }}>{label}</strong>
+            </div>
+          ))}
+        </div>
+      </div>
+
       <div className="admin-clients-card__intro">
         <div>
           <p className="admin-surface__eyebrow">Creazione campagna</p>
@@ -178,14 +247,19 @@ export function AdminCampaignCreateWizard({
           </select>
         </label>
         <label className="campaign-field">
-          <span className="campaign-field__label">Nome campagna</span>
+          <span className="campaign-field__label">Nome tecnico campagna</span>
           <input
             className="campaign-input"
             disabled={isSubmitting}
             onChange={(event) => setName(event.target.value)}
+            pattern="[A-Za-z0-9-]+"
+            placeholder="prova-mailgun-01"
             required
             value={name}
           />
+          <span className="campaign-field__helper">
+            Usa lettere, numeri e trattini. Esempio: prova-mailgun-01
+          </span>
         </label>
         <label className="campaign-field">
           <span className="campaign-field__label">Oggetto email</span>
@@ -197,35 +271,57 @@ export function AdminCampaignCreateWizard({
             value={subject}
           />
         </label>
-        <label className="campaign-field">
-          <span className="campaign-field__label">Limite invii 30 giorni</span>
-          <input
-            className="campaign-input"
-            disabled={isSubmitting}
-            min={1}
-            onChange={(event) => setPeriodEmailLimit(event.target.value)}
-            required
-            type="number"
-            value={periodEmailLimit}
-          />
-        </label>
-        <label className="campaign-field">
-          <span className="campaign-field__label">Limite invii giornaliero</span>
-          <input
-            className="campaign-input"
-            disabled={isSubmitting}
-            min={1}
-            onChange={(event) => setDailyEmailLimit(event.target.value)}
-            required
-            type="number"
-            value={dailyEmailLimit}
-          />
-        </label>
-        <div className="campaign-callout">
-          <span className="admin-record-row__note">Cliente selezionato</span>
-          <strong style={{ color: "#0f172a" }}>
-            {selectedClient ? getClientDisplayName(selectedClient) : "-"}
-          </strong>
+        <div
+          style={{
+            display: "grid",
+            gap: 14,
+            gridColumn: "1 / -1",
+            gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+          }}
+        >
+          <label className="campaign-field" style={{ marginBottom: 0 }}>
+            <span className="campaign-field__label">Limite invii 30 giorni</span>
+            <input
+              className="campaign-input"
+              disabled={isSubmitting}
+              min={1}
+              onChange={(event) => setPeriodEmailLimit(event.target.value)}
+              required
+              type="number"
+              value={periodEmailLimit}
+            />
+          </label>
+          <label className="campaign-field" style={{ marginBottom: 0 }}>
+            <span className="campaign-field__label">Limite invii giornaliero</span>
+            <input
+              className="campaign-input"
+              disabled={isSubmitting}
+              min={1}
+              onChange={(event) => setDailyEmailLimit(event.target.value)}
+              required
+              type="number"
+              value={dailyEmailLimit}
+            />
+          </label>
+        </div>
+        <div
+          className="campaign-callout"
+          style={{
+            alignItems: "center",
+            display: "flex",
+            gap: 12,
+            justifyContent: "space-between",
+          }}
+        >
+          <div>
+            <span className="admin-record-row__note">Cliente selezionato</span>
+            <strong style={{ color: "#0f172a", display: "block", marginTop: 4 }}>
+              {selectedClient ? getClientDisplayName(selectedClient) : "-"}
+            </strong>
+          </div>
+          {selectedClient ? (
+            <span className="admin-record-chip">{selectedClient.email}</span>
+          ) : null}
         </div>
       </div>
 

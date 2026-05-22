@@ -1,4 +1,4 @@
-import { ChevronRight, FileText, PenSquare, ShieldAlert } from "lucide-react";
+import { ChevronRight, PenSquare, ShieldAlert } from "lucide-react";
 import Link from "next/link";
 import type {
   AdminCampaignContactsSummary,
@@ -32,22 +32,123 @@ function formatDateLabel(value: string): string {
   return formatDateTimeInRome(value);
 }
 
-function getExcerpt(value?: string | null): string {
-  const normalized = value?.replace(/\s+/g, " ").trim() ?? "";
+function stripScripts(value: string): string {
+  return value.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, "");
+}
 
-  if (!normalized) {
-    return "Non disponibile";
+function normalizePlaceholderValue(value?: string | null): string {
+  return (value ?? "").trim();
+}
+
+function buildPreviewLogoHtml(logoUrl?: string | null): string {
+  const safeLogoUrl = normalizePlaceholderValue(logoUrl);
+  if (!safeLogoUrl) {
+    return "";
   }
 
-  return normalized.length > 180 ? `${normalized.slice(0, 177)}...` : normalized;
+  return `<img src="${safeLogoUrl.replaceAll("\"", "&quot;")}" alt="" width="120" style="display:block;max-width:120px;height:auto;border:0;outline:none;text-decoration:none;" />`;
+}
+
+function buildPreviewSocialIconsHtml(brand?: AdminCampaignDetail["emailBrand"] | null): string {
+  const socialItems = [
+    ["website_url", "WEB", "#2563eb"],
+    ["linkedin_url", "in", "#0a66c2"],
+    ["instagram_url", "ig", "#d946ef"],
+    ["facebook_url", "f", "#1877f2"],
+    ["x_url", "x", "#111827"],
+  ] as const;
+
+  const iconCells = socialItems
+    .map(([key, label, backgroundColor]) => {
+      const socialUrl = normalizePlaceholderValue(brand?.[key]);
+      if (!socialUrl) {
+        return "";
+      }
+
+      return `<td style="padding-right:8px;"><a href="${socialUrl.replaceAll("\"", "&quot;")}" style="display:inline-block;text-decoration:none;"><span style="display:inline-block;min-width:32px;padding:8px 10px;border-radius:999px;background:${backgroundColor};color:#ffffff;font-size:12px;line-height:1;font-weight:700;text-align:center;text-transform:uppercase;">${label}</span></a></td>`;
+    })
+    .filter(Boolean)
+    .join("");
+
+  if (!iconCells) {
+    return "";
+  }
+
+  return `<table role="presentation" cellspacing="0" cellpadding="0" border="0"><tr>${iconCells}</tr></table>`;
+}
+
+function renderLocalPreviewTemplate(campaign: AdminCampaignDetail): string {
+  const replacements: Record<string, string> = {
+    nome: "Nome",
+    cognome: "Cognome",
+    email: "contatto@example.test",
+    campaign_name: campaign.name,
+    unsubscribe_url: "#unsubscribe",
+    current_year: String(new Date().getUTCFullYear()),
+    company_name: normalizePlaceholderValue(campaign.emailBrand?.company_name),
+    sender_name:
+      normalizePlaceholderValue(campaign.emailBrand?.sender_name) ||
+      normalizePlaceholderValue(campaign.emailBrand?.company_name) ||
+      "Sendwise",
+    logo: buildPreviewLogoHtml(campaign.emailBrand?.logo_url),
+    social_icons: buildPreviewSocialIconsHtml(campaign.emailBrand),
+    website_url: normalizePlaceholderValue(campaign.emailBrand?.website_url),
+    linkedin_url: normalizePlaceholderValue(campaign.emailBrand?.linkedin_url),
+    instagram_url: normalizePlaceholderValue(campaign.emailBrand?.instagram_url),
+    facebook_url: normalizePlaceholderValue(campaign.emailBrand?.facebook_url),
+    x_url: normalizePlaceholderValue(campaign.emailBrand?.x_url),
+    preview_text: normalizePlaceholderValue(campaign.previewText),
+  };
+
+  return stripScripts(campaign.bodyHtml ?? "").replace(/{{\s*([A-Za-z0-9_]+)\s*}}/g, (match, key) => {
+    const normalizedKey = key.trim().toLowerCase();
+    return normalizedKey in replacements ? replacements[normalizedKey] ?? "" : match;
+  });
+}
+
+function buildPreviewDocument(value: string): string {
+  const cleanedValue = stripScripts(value).trim();
+  const content =
+    cleanedValue.length > 0
+      ? cleanedValue
+      : '<div class="sw-preview-empty">Nessun contenuto HTML da mostrare.</div>';
+
+  return `<!doctype html>
+<html lang="it">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; img-src https: http: data: blob:; style-src 'unsafe-inline'; font-src data:; form-action 'none'; frame-ancestors 'none'; base-uri 'none'"
+    />
+    <style>
+      :root {
+        color-scheme: light;
+        font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        background: #ffffff;
+        color: #0f172a;
+        padding: 24px;
+      }
+      img { height: auto; max-width: 100%; }
+      .sw-preview-empty {
+        border: 1px dashed rgba(148, 163, 184, 0.4);
+        border-radius: 16px;
+        color: #64748b;
+        padding: 20px;
+      }
+    </style>
+  </head>
+  <body>${content}</body>
+</html>`;
 }
 
 function getProviderMetricValue(value: number, available: boolean): string {
-  if (!available) {
-    return "Non disponibili";
-  }
-
-  return value.toLocaleString("it-IT");
+  return available ? value.toLocaleString("it-IT") : "Non disponibili";
 }
 
 function getProviderMetricNote(available: boolean): string {
@@ -57,25 +158,20 @@ function getProviderMetricNote(available: boolean): string {
 function getOperationalSummary(
   summary: AdminCampaignReadinessSummary | null,
   campaign: AdminCampaignDetail,
-): {
-  badgeLabel: string;
-  badgeVariant: "neutral" | "success" | "warning" | "danger";
-  title: string;
-  detail: string;
-} {
+) {
   if (!summary) {
     return {
       badgeLabel: getCampaignStatusLabel(campaign.status),
       badgeVariant: getCampaignStatusVariant(campaign.status),
       title: "Read model non disponibile",
-      detail: "La campagna resta leggibile, ma il report post-invio non e disponibile.",
+      detail: "La campagna resta leggibile, ma il report post-send non e disponibile.",
     };
   }
 
   if (summary.logs.failed > 0) {
     return {
       badgeLabel: "Invio con errori",
-      badgeVariant: "danger",
+      badgeVariant: "danger" as const,
       title: "Sono presenti errori operativi",
       detail: `${formatCampaignCount(summary.logs.failed)} invii non sono stati accettati dal sistema di invio.`,
     };
@@ -83,57 +179,28 @@ function getOperationalSummary(
 
   if (summary.logs.sent > 0) {
     return {
-      badgeLabel: "Accettata dal provider",
-      badgeVariant: "success",
+      badgeLabel: "Accettata / avviata",
+      badgeVariant: "success" as const,
       title: "La campagna e stata presa in carico",
-      detail: "Sent indica accettata dal sistema di invio, non consegnata in inbox.",
+      detail: "Sent significa accettata o avviata dal sistema Listmonk, non consegnata in inbox.",
     };
   }
 
   if (summary.logs.queued > 0) {
     return {
       badgeLabel: "Preparata / in coda",
-      badgeVariant: "warning",
-      title: "La campagna e pronta ma non ancora accettata",
-      detail: "I log risultano preparati o in coda e attendono il passaggio successivo.",
-    };
-  }
-
-  if (summary.campaign.reviewReady) {
-    return {
-      badgeLabel: "Pronta",
-      badgeVariant: "success",
-      title: "Pronta per un invio controllato",
-      detail: "La review e completa, ma non esiste ancora un'accettazione provider.",
+      badgeVariant: "warning" as const,
+      title: "La campagna e preparata ma non ancora accettata",
+      detail: "Queued descrive una preparazione operativa, non un recapito inbox.",
     };
   }
 
   return {
     badgeLabel: "Da completare",
-    badgeVariant: "warning",
+    badgeVariant: "warning" as const,
     title: "La campagna non e pronta per il post-send reporting",
     detail: "Completa contenuto, destinatari e review prima di aspettarti metriche operative.",
   };
-}
-
-function buildOperationalMetrics(summary: AdminCampaignReadinessSummary) {
-  return [
-    {
-      label: "Accettate / sent",
-      value: formatCampaignCount(summary.logs.sent),
-      note: "Accettate dal sistema di invio. Non indica consegna.",
-    },
-    {
-      label: "Preparate / queued",
-      value: formatCampaignCount(summary.logs.queued),
-      note: "Preparate ma non ancora accettate dal sistema di invio.",
-    },
-    {
-      label: "Fallite",
-      value: formatCampaignCount(summary.logs.failed),
-      note: "Tentativi terminati con errore operativo o di dispatch.",
-    },
-  ];
 }
 
 function buildProviderMetrics(logs: CampaignLogsSummary) {
@@ -141,9 +208,6 @@ function buildProviderMetrics(logs: CampaignLogsSummary) {
     { label: "Delivered", value: logs.delivered },
     { label: "Opened", value: logs.opened },
     { label: "Clicked", value: logs.clicked },
-    { label: "Bounced", value: logs.bounced },
-    { label: "Complained", value: logs.complained },
-    { label: "Unsubscribed", value: logs.unsubscribed },
   ];
 }
 
@@ -160,13 +224,13 @@ export function AdminCampaignDetailView({
     ? dedupeReviewReasons(summary.warnings.map(getReadableBackendReason))
     : [];
   const operationalSummary = getOperationalSummary(summary, campaign);
-  const providerMetrics = summary ? buildProviderMetrics(summary.logs) : [];
-  const operationalMetrics = summary ? buildOperationalMetrics(summary) : [];
   const recipientSummary = summary
     ? `${formatCampaignCount(summary.recipients.total)} totali · ${formatCampaignCount(summary.recipients.eligible)} idonei · ${formatCampaignCount(summary.recipients.blocked)} bloccati`
     : contacts
       ? `${formatCampaignCount(contacts.total)} totali · ${formatCampaignCount(contacts.eligible)} idonei · ${formatCampaignCount(contacts.blocked)} bloccati`
       : "Non disponibili";
+  const providerMetrics = summary ? buildProviderMetrics(summary.logs) : [];
+  const previewHtml = renderLocalPreviewTemplate(campaign);
 
   return (
     <div style={{ display: "grid", gap: 20 }}>
@@ -222,7 +286,7 @@ export function AdminCampaignDetailView({
               size="default"
               className="admin-topbar-action campaign-action campaign-action--primary"
             >
-              <Link href={`/admin/campaigns/${campaign.campaignId}?mode=edit`}>
+              <Link href={`/admin/campaigns/${campaign.campaignId}?mode=edit&step=editor`}>
                 <PenSquare aria-hidden="true" className="admin-topbar-action__icon" />
                 Modifica
               </Link>
@@ -245,18 +309,9 @@ export function AdminCampaignDetailView({
                   ? getCampaignReadinessShortLabel(summary.campaign)
                   : getCampaignReadinessShortLabel(campaign),
               },
-              {
-                label: "Step operativo",
-                value: getCampaignStepLabel(campaign.currentStep),
-              },
-              {
-                label: "Destinatari",
-                value: recipientSummary,
-              },
-              {
-                label: "Aggiornata",
-                value: formatDateLabel(campaign.updatedAt),
-              },
+              { label: "Step operativo", value: getCampaignStepLabel(campaign.currentStep) },
+              { label: "Destinatari", value: recipientSummary },
+              { label: "Aggiornata", value: formatDateLabel(campaign.updatedAt) },
               {
                 label: "Limite invii 30 giorni",
                 value: campaign.periodEmailLimit.toLocaleString("it-IT"),
@@ -275,47 +330,29 @@ export function AdminCampaignDetailView({
         </div>
       </section>
 
-      <section className="admin-clients-card">
-        <div className="admin-clients-card__intro">
-          <div>
-            <p className="admin-surface__eyebrow">Contenuto</p>
-            <h2 className="admin-clients-card__title" style={{ color: "#0f172a" }}>
-              Anteprima email
-            </h2>
+      {blockingReasons.length > 0 ? (
+        <section
+          className="admin-clients-card"
+          style={{
+            background: "rgba(254, 242, 242, 0.96)",
+            border: "1px solid rgba(248, 113, 113, 0.2)",
+          }}
+        >
+          <div className="admin-clients-card__intro">
+            <div>
+              <p className="admin-surface__eyebrow">Problemi</p>
+              <h2 className="admin-clients-card__title" style={{ color: "#0f172a" }}>
+                Problemi da risolvere
+              </h2>
+            </div>
           </div>
-          <FileText aria-hidden="true" color="#2563eb" size={18} />
-        </div>
-        <div className="campaign-content-grid">
-          {[
-            {
-              label: "Oggetto email",
-              title: campaign.subject?.trim() || "Non disponibile",
-              detail: null,
-            },
-            {
-              label: "Anteprima email",
-              title: getExcerpt(campaign.previewText),
-              detail: null,
-            },
-            {
-              label: "HTML email",
-              title: campaign.bodyHtml?.trim() ? "Contenuto presente" : "Da completare",
-              detail: getExcerpt(campaign.bodyHtml),
-            },
-            {
-              label: "Testo semplice",
-              title: campaign.bodyText?.trim() ? "Contenuto presente" : "Da completare",
-              detail: getExcerpt(campaign.bodyText),
-            },
-          ].map((item) => (
-            <article key={item.label} className="campaign-content-grid__item">
-              <span className="admin-record-row__note">{item.label}</span>
-              <strong style={{ color: "#0f172a" }}>{item.title}</strong>
-              {item.detail ? <span>{item.detail}</span> : null}
-            </article>
-          ))}
-        </div>
-      </section>
+          <ul className="admin-record-row__note" style={{ margin: 0, paddingLeft: 18 }}>
+            {blockingReasons.map((reason) => (
+              <li key={`${reason.raw}-${reason.label}`}>{reason.label}</li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
 
       {summary ? (
         <section className="admin-clients-card">
@@ -332,117 +369,52 @@ export function AdminCampaignDetailView({
             />
           </div>
 
-          <div className="campaign-reporting-section">
-            <div className="campaign-reporting-section__header">
-              <div>
-                <strong style={{ color: "#0f172a" }}>Stato operativo</strong>
-                <p className="admin-record-row__note">
-                  Queued, sent e failed descrivono il dispatch. Non misurano l&apos;engagement.
-                </p>
-              </div>
-            </div>
-            <div className="campaign-detail-metrics">
-              {operationalMetrics.map((item) => (
-                <article key={item.label} className="campaign-detail-metrics__item">
-                  <span className="campaign-review-overview__label">{item.label}</span>
-                  <strong>{item.value}</strong>
-                  <p>{item.note}</p>
-                </article>
-              ))}
-            </div>
+          <div
+            style={{
+              display: "grid",
+              gap: 14,
+              gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+            }}
+          >
+            <article className="campaign-callout">
+              <span className="admin-record-row__note">Accepted / started by system</span>
+              <strong style={{ color: "#0f172a" }}>{formatCampaignCount(summary.logs.sent)}</strong>
+              <span>Accettate o avviate da Listmonk. Non indica delivered.</span>
+            </article>
+            <article className="campaign-callout">
+              <span className="admin-record-row__note">Prepared / queued</span>
+              <strong style={{ color: "#0f172a" }}>{formatCampaignCount(summary.logs.queued)}</strong>
+              <span>Preparate ma non ancora accettate dal sistema di invio.</span>
+            </article>
+            <article className="campaign-callout">
+              <span className="admin-record-row__note">Failed</span>
+              <strong style={{ color: "#0f172a" }}>{formatCampaignCount(summary.logs.failed)}</strong>
+              <span>Errori operativi o di dispatch registrati dal backend.</span>
+            </article>
+            <article className="campaign-callout">
+              <span className="admin-record-row__note">Provider events</span>
+              <strong style={{ color: "#0f172a" }}>
+                {summary.logs.providerEventsAvailable ? "Disponibili" : "Non disponibili"}
+              </strong>
+              <span>{getProviderEventsDetail(summary.logs)}</span>
+            </article>
           </div>
 
-          <div className="campaign-reporting-section">
-            <div className="campaign-reporting-section__header">
-              <div>
-                <strong style={{ color: "#0f172a" }}>Eventi provider</strong>
-                <p className="admin-record-row__note">
-                  Delivered, opened, clicked, bounced, complained e unsubscribed arrivano solo da eventi provider.
-                </p>
-              </div>
-              <StatusBadge
-                label={summary.logs.providerEventsAvailable ? "Disponibili" : "Non disponibili"}
-                variant={summary.logs.providerEventsAvailable ? "success" : "neutral"}
-              />
-            </div>
-            <div className="campaign-provider-metrics">
+          {summary.logs.providerEventsAvailable ? (
+            <div className="campaign-provider-metrics" style={{ marginTop: 18 }}>
               {providerMetrics.map((item) => (
-                <article
-                  key={item.label}
-                  className="campaign-provider-metrics__item"
-                  data-unavailable={!summary.logs.providerEventsAvailable}
-                >
+                <article key={item.label} className="campaign-provider-metrics__item">
                   <span className="campaign-review-overview__label">{item.label}</span>
-                  <strong>{getProviderMetricValue(item.value, summary.logs.providerEventsAvailable)}</strong>
-                  <p>{getProviderMetricNote(summary.logs.providerEventsAvailable)}</p>
+                  <strong>{getProviderMetricValue(item.value, true)}</strong>
+                  <p>{getProviderMetricNote(true)}</p>
                 </article>
               ))}
             </div>
-            <p className="admin-record-row__note">
-              {getProviderEventsLabel(summary.logs)}. {getProviderEventsDetail(summary.logs)}
-            </p>
-          </div>
+          ) : null}
 
-          <dl className="admin-record-grid" style={{ marginTop: 16 }}>
-            <div>
-              <dt>Invio reale disponibile</dt>
-              <dd>{summary.canSend ? "Si" : "No"}</dd>
-            </div>
-            <div>
-              <dt>Contenuto</dt>
-              <dd>{summary.campaign.contentReady ? "Pronto" : "Non pronto"}</dd>
-            </div>
-            <div>
-              <dt>Destinatari</dt>
-              <dd>{summary.campaign.contactsReady ? "Pronti" : "Non pronti"}</dd>
-            </div>
-            <div>
-              <dt>Verifica</dt>
-              <dd>{summary.campaign.reviewReady ? "Pronta" : "Non pronta"}</dd>
-            </div>
-            <div>
-              <dt>Idonei</dt>
-              <dd>{formatCampaignCount(summary.recipients.eligible)}</dd>
-            </div>
-            <div>
-              <dt>Bloccati</dt>
-              <dd>{formatCampaignCount(summary.recipients.blocked)}</dd>
-            </div>
-            <div>
-              <dt>Invii oggi</dt>
-              <dd>
-                {summary.dailyUsed.toLocaleString("it-IT")} /{" "}
-                {(summary.dailyLimit ?? campaign.dailyEmailLimit).toLocaleString("it-IT")}
-              </dd>
-            </div>
-            <div>
-              <dt>Invii periodo</dt>
-              <dd>
-                {summary.periodUsed.toLocaleString("it-IT")} /{" "}
-                {(summary.periodLimit ?? campaign.periodEmailLimit).toLocaleString("it-IT")}
-              </dd>
-            </div>
-            <div>
-              <dt>Periodo</dt>
-              <dd>
-                {summary.periodStartedAt
-                  ? `Avviato ${formatDateLabel(summary.periodStartedAt)}`
-                  : "Periodo non ancora avviato"}
-              </dd>
-            </div>
-            <div>
-              <dt>Residuo oggi</dt>
-              <dd>{(summary.dailyRemaining ?? 0).toLocaleString("it-IT")}</dd>
-            </div>
-            <div>
-              <dt>Residuo periodo</dt>
-              <dd>{(summary.periodRemaining ?? 0).toLocaleString("it-IT")}</dd>
-            </div>
-            <div>
-              <dt>Runtime provider</dt>
-              <dd>{summary.runtime.providerModeLabel}</dd>
-            </div>
-          </dl>
+          <p className="admin-record-row__note" style={{ marginTop: 16 }}>
+            {getProviderEventsLabel(summary.logs)}. `provider_message_id` puo restare vuoto negli invii campagna attuali.
+          </p>
 
           {summary.blockedSends.latest.length > 0 ? (
             <div className="campaign-event-feed">
@@ -470,23 +442,8 @@ export function AdminCampaignDetailView({
             </div>
           ) : null}
 
-          {blockingReasons.length > 0 ? (
-            <div className="campaign-detail-notes">
-              <strong style={{ color: "#0f172a" }}>Problemi da risolvere</strong>
-              <ul className="admin-record-row__note" style={{ margin: 0 }}>
-                {blockingReasons.map((reason) => (
-                  <li key={`${reason.raw}-${reason.label}`}>{reason.label}</li>
-                ))}
-              </ul>
-            </div>
-          ) : (
-            <p className="admin-record-row__note" style={{ marginTop: 16 }}>
-              Nessun problema bloccante rilevato nello stato attuale della campagna.
-            </p>
-          )}
-
           {warningReasons.length > 0 ? (
-            <div className="campaign-detail-notes">
+            <div className="campaign-detail-notes" style={{ marginTop: 16 }}>
               <strong style={{ color: "#0f172a" }}>Controlli utili</strong>
               <ul className="admin-record-row__note" style={{ margin: 0 }}>
                 {warningReasons.map((reason) => (
@@ -497,6 +454,43 @@ export function AdminCampaignDetailView({
           ) : null}
         </section>
       ) : null}
+
+      <section className="admin-clients-card">
+        <div className="admin-clients-card__intro">
+          <div>
+            <p className="admin-surface__eyebrow">Anteprima</p>
+            <h2 className="admin-clients-card__title" style={{ color: "#0f172a" }}>
+              Email formattata
+            </h2>
+          </div>
+        </div>
+        <div
+          style={{
+            display: "grid",
+            gap: 14,
+            gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+            marginBottom: 18,
+          }}
+        >
+          <article className="campaign-callout">
+            <span className="admin-record-row__note">Oggetto</span>
+            <strong style={{ color: "#0f172a" }}>{campaign.subject?.trim() || "Non disponibile"}</strong>
+          </article>
+          <article className="campaign-callout">
+            <span className="admin-record-row__note">Preview text</span>
+            <strong style={{ color: "#0f172a" }}>
+              {normalizePlaceholderValue(campaign.previewText) || "Non disponibile"}
+            </strong>
+          </article>
+        </div>
+        <iframe
+          className="campaign-email-preview-frame campaign-email-preview-frame--editor"
+          sandbox=""
+          srcDoc={buildPreviewDocument(previewHtml)}
+          style={{ height: 900 }}
+          title="Anteprima formattata email"
+        />
+      </section>
 
       <details className="admin-clients-card">
         <summary

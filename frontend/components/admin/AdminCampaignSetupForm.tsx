@@ -17,6 +17,8 @@ interface AdminCampaignSetupFormProps {
   onContinue?: () => void;
 }
 
+const TECHNICAL_NAME_PATTERN = /^[A-Za-z0-9-]+$/;
+
 function getValue(value?: string | null): string {
   return value ?? "";
 }
@@ -84,6 +86,13 @@ export function AdminCampaignSetupForm({
 
     if (!name.trim()) {
       setErrorMessage("Il nome campagna e obbligatorio.");
+      return;
+    }
+
+    if (!TECHNICAL_NAME_PATTERN.test(name.trim())) {
+      setErrorMessage(
+        "Il nome tecnico campagna puo contenere solo lettere, numeri e trattini.",
+      );
       return;
     }
 
@@ -175,7 +184,7 @@ export function AdminCampaignSetupForm({
         >
           {[
             ["Cliente", campaign.clientName],
-            ["Nome campagna", campaign.name],
+            ["Nome tecnico campagna", campaign.name],
             ["Oggetto email", campaign.subject?.trim() || "Da completare"],
             ["Limite invii 30 giorni", campaign.periodEmailLimit.toLocaleString("it-IT")],
             ["Limite invii giornaliero", campaign.dailyEmailLimit.toLocaleString("it-IT")],
@@ -192,14 +201,19 @@ export function AdminCampaignSetupForm({
       ) : (
         <div className="campaign-form-grid">
           <label className="campaign-field">
-            <span className="campaign-field__label">Nome campagna</span>
+            <span className="campaign-field__label">Nome tecnico campagna</span>
             <input
               className="campaign-input"
               disabled={isSubmitting}
               onChange={(event) => setName(event.target.value)}
+              pattern="[A-Za-z0-9-]+"
+              placeholder="prova-mailgun-01"
               required
               value={name}
             />
+            <span className="campaign-field__helper">
+              Usa lettere, numeri e trattini. Esempio: prova-mailgun-01
+            </span>
           </label>
           <label className="campaign-field">
             <span className="campaign-field__label">Oggetto email</span>
@@ -210,30 +224,39 @@ export function AdminCampaignSetupForm({
               value={subject}
             />
           </label>
-          <label className="campaign-field">
-            <span className="campaign-field__label">Limite invii 30 giorni</span>
-            <input
-              className="campaign-input"
-              disabled={isSubmitting}
-              min={1}
-              onChange={(event) => setPeriodEmailLimit(event.target.value)}
-              required
-              type="number"
-              value={periodEmailLimit}
-            />
-          </label>
-          <label className="campaign-field">
-            <span className="campaign-field__label">Limite invii giornaliero</span>
-            <input
-              className="campaign-input"
-              disabled={isSubmitting}
-              min={1}
-              onChange={(event) => setDailyEmailLimit(event.target.value)}
-              required
-              type="number"
-              value={dailyEmailLimit}
-            />
-          </label>
+          <div
+            style={{
+              display: "grid",
+              gap: 14,
+              gridColumn: "1 / -1",
+              gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+            }}
+          >
+            <label className="campaign-field" style={{ marginBottom: 0 }}>
+              <span className="campaign-field__label">Limite invii 30 giorni</span>
+              <input
+                className="campaign-input"
+                disabled={isSubmitting}
+                min={1}
+                onChange={(event) => setPeriodEmailLimit(event.target.value)}
+                required
+                type="number"
+                value={periodEmailLimit}
+              />
+            </label>
+            <label className="campaign-field" style={{ marginBottom: 0 }}>
+              <span className="campaign-field__label">Limite invii giornaliero</span>
+              <input
+                className="campaign-input"
+                disabled={isSubmitting}
+                min={1}
+                onChange={(event) => setDailyEmailLimit(event.target.value)}
+                required
+                type="number"
+                value={dailyEmailLimit}
+              />
+            </label>
+          </div>
         </div>
       )}
 

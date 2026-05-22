@@ -20,7 +20,7 @@ interface AdminCampaignSetupProgressProps {
 }
 
 interface WizardStep {
-  id: string;
+  id: CampaignWizardStep;
   label: string;
   state: StepState;
 }
@@ -55,6 +55,8 @@ function buildSteps(
 ): WizardStep[] {
   const recipientTotal = contacts?.total ?? summary?.recipients.total ?? 0;
   const recipientEligible = contacts?.eligible ?? summary?.recipients.eligible ?? 0;
+  const providerAccepted = summary?.logs.sent ?? 0;
+  const prepared = summary?.logs.queued ?? 0;
 
   return [
     {
@@ -63,8 +65,14 @@ function buildSteps(
       state: campaign.currentStep === "setup" ? "needs-attention" : "ready",
     },
     {
-      id: "content",
-      label: "Contenuto",
+      id: "template",
+      label: "Template",
+      state:
+        campaign.contentReady || campaign.currentStep !== "setup" ? "ready" : "needs-attention",
+    },
+    {
+      id: "editor",
+      label: "Editor",
       state: campaign.contentReady ? "ready" : "not-ready",
     },
     {
@@ -82,9 +90,20 @@ function buildSteps(
       state: campaign.reviewReady
         ? "ready"
         : campaign.currentStep === "review" ||
+            campaign.currentStep === "send" ||
             (campaign.contentReady && campaign.contactsReady)
           ? "needs-attention"
           : "not-ready",
+    },
+    {
+      id: "send",
+      label: "Invio",
+      state:
+        providerAccepted > 0
+          ? "ready"
+          : prepared > 0 || campaign.reviewReady || campaign.currentStep === "send"
+            ? "needs-attention"
+            : "not-ready",
     },
   ];
 }
@@ -98,6 +117,11 @@ export function AdminCampaignSetupProgress({
 }: AdminCampaignSetupProgressProps) {
   const steps = buildSteps(campaign, contacts, summary);
   const activeStep = currentStep ?? normalizeCampaignWizardStep(campaign.currentStep);
+  const activeIndex = Math.max(
+    steps.findIndex((step) => step.id === activeStep),
+    0,
+  );
+  const completion = `${((activeIndex + 1) / steps.length) * 100}%`;
 
   return (
     <nav
@@ -118,9 +142,32 @@ export function AdminCampaignSetupProgress({
           <p className="admin-surface__eyebrow">Progressione</p>
           <h2 className="admin-clients-card__title">Step campagna</h2>
         </div>
-        <span className="admin-record-row__note">
-          Aggiornato con lo stato attuale della campagna
-        </span>
+        <div style={{ display: "grid", gap: 6, textAlign: "right" }}>
+          <strong style={{ color: "#0f172a" }}>
+            Step {activeIndex + 1} di {steps.length}
+          </strong>
+          <span className="admin-record-row__note">
+            Aggiornato con lo stato attuale della campagna
+          </span>
+        </div>
+      </div>
+      <div
+        style={{
+          background: "rgba(148, 163, 184, 0.18)",
+          borderRadius: 999,
+          height: 10,
+          overflow: "hidden",
+        }}
+      >
+        <div
+          style={{
+            background: "linear-gradient(90deg, #1d4ed8 0%, #60a5fa 100%)",
+            borderRadius: 999,
+            height: "100%",
+            transition: "width 180ms ease",
+            width: completion,
+          }}
+        />
       </div>
       <div className="campaign-stepper">
         {steps.map((step) => {

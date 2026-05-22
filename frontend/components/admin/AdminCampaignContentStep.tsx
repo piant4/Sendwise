@@ -13,6 +13,7 @@ import {
 import {
   createAdminEmailTemplate,
   getAdminEmailTemplates,
+  getBackendAssetUrl,
   isApiError,
   updateAdminCampaignContent,
 } from "../../lib/api";
@@ -28,8 +29,12 @@ import { AdminCampaignTemplatePicker } from "./AdminCampaignTemplatePicker";
 
 interface AdminCampaignContentStepProps {
   campaign: AdminCampaignDetail;
+  mode?: "template" | "editor";
+  initialTemplateId?: string | null;
+  forceTemplateApply?: boolean;
   onBack?: () => void;
   onContinue?: () => void;
+  onTemplateSelect?: (templateId: string, force?: boolean) => void;
 }
 
 type ContentEditorMode = "split" | "html" | "preview";
@@ -123,7 +128,7 @@ function normalizePlaceholderValue(value?: string | null): string {
 }
 
 function buildPreviewLogoHtml(logoUrl?: string | null): string {
-  const safeLogoUrl = normalizePlaceholderValue(logoUrl);
+  const safeLogoUrl = normalizePlaceholderValue(getBackendAssetUrl(logoUrl));
   if (!safeLogoUrl) {
     return "";
   }
@@ -307,14 +312,19 @@ function mapSavedTemplate(template: AdminEmailTemplate): CampaignTemplate {
 
 export function AdminCampaignContentStep({
   campaign,
+  mode = "editor",
+  initialTemplateId,
+  forceTemplateApply = false,
   onBack,
   onContinue,
+  onTemplateSelect,
 }: AdminCampaignContentStepProps) {
   const router = useRouter();
   const { getToken } = useAuth();
   const subjectRef = useRef<HTMLInputElement | null>(null);
   const previewRef = useRef<HTMLInputElement | null>(null);
   const htmlRef = useRef<HTMLTextAreaElement | null>(null);
+  const appliedTemplatePreferenceRef = useRef<string | null>(null);
   const initialBoilerplateTemplate =
     CAMPAIGN_TEMPLATES.find((template) => template.id === DEFAULT_CAMPAIGN_TEMPLATE_ID) ??
     CAMPAIGN_TEMPLATES[0];
@@ -360,6 +370,7 @@ export function AdminCampaignContentStep({
   const [templateName, setTemplateName] = useState("");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [templateToConfirm, setTemplateToConfirm] = useState<CampaignTemplate | null>(null);
 
   const availableBrandVariables = SUPPORTED_TEMPLATE_VARIABLES.filter((variable) =>
     BRAND_VARIABLE_TOKENS.has(variable.token),
@@ -415,6 +426,41 @@ export function AdminCampaignContentStep({
       buildLocalPreviewReplacements(campaign, normalizeText(previewText)),
     );
   }, [bodyHtml, campaign, defaultTemplate.htmlBody, previewText]);
+
+  useEffect(() => {
+    if (mode !== "editor" || !initialTemplateId || templateCatalog.length === 0) {
+      return;
+    }
+
+    const requestedTemplate =
+      templateCatalog.find((template) => template.id === initialTemplateId) ?? null;
+    if (!requestedTemplate) {
+      return;
+    }
+
+    const preferenceKey = `${requestedTemplate.id}:${forceTemplateApply ? "force" : "keep"}`;
+    if (appliedTemplatePreferenceRef.current === preferenceKey) {
+      return;
+    }
+    appliedTemplatePreferenceRef.current = preferenceKey;
+
+    const contentIsEmpty = [campaign.previewText, campaign.bodyHtml, campaign.bodyText].every(
+      (value) => normalizeText(value).length === 0,
+    );
+
+    setSelectedTemplateId(requestedTemplate.id);
+    if (forceTemplateApply || contentIsEmpty) {
+      commitTemplate(requestedTemplate);
+    }
+  }, [
+    campaign.bodyHtml,
+    campaign.bodyText,
+    campaign.previewText,
+    forceTemplateApply,
+    initialTemplateId,
+    mode,
+    templateCatalog,
+  ]);
 
   useEffect(() => {
     let isCancelled = false;
@@ -474,6 +520,20 @@ export function AdminCampaignContentStep({
     }
 
     commitTemplate(template);
+  }
+
+  function requestTemplateSelection(template: CampaignTemplate) {
+    if (mode === "template") {
+      if (hasCurrentContent()) {
+        setTemplateToConfirm(template);
+        return;
+      }
+
+      onTemplateSelect?.(template.id, false);
+      return;
+    }
+
+    applyTemplate(template);
   }
 
   function updateFieldValue(field: ActiveField, nextValue: string) {
@@ -655,14 +715,24 @@ export function AdminCampaignContentStep({
     }
   }
 
+  const hasUnsavedChanges =
+    normalizeText(subject) !== normalizeText(campaign.subject) ||
+    normalizeText(previewText) !== normalizeText(campaign.previewText) ||
+    normalizeText(bodyHtml) !== normalizeText(campaign.bodyHtml);
+
   return (
     <form className="admin-clients-card campaign-panel" onSubmit={handleSubmit}>
       <div className="admin-clients-card__intro">
         <div>
-          <p className="admin-surface__eyebrow">Step 2</p>
+          <p className="admin-surface__eyebrow">{mode === "template" ? "Step 2" : "Step 3"}</p>
           <h2 className="admin-clients-card__title" style={{ color: "#0f172a" }}>
-            Contenuto email
+            {mode === "template" ? "Selezione template" : "Editor email"}
           </h2>
+          <p className="admin-clients-card__description" style={{ marginTop: 8 }}>
+            {mode === "template"
+              ? "Scegli un template prima di entrare nell'editor. I modelli salvati restano limitati al cliente selezionato."
+              : "Scrivi HTML e preview in uno spazio piu compatto, con placeholder a portata di mano e anteprima formattata."}
+          </p>
         </div>
       </div>
 
@@ -677,239 +747,341 @@ export function AdminCampaignContentStep({
         </p>
       ) : null}
 
-      <div className="campaign-form-grid">
-        <AdminCampaignTemplatePicker
-          disabled={isSubmitting || isLoadingTemplates || isSavingTemplate}
-          isLoading={isLoadingTemplates}
-          onApply={applyTemplate}
-          selectedTemplateId={selectedTemplateId}
-          templates={templateCatalog}
-        />
+      {mode === "template" ? (
+        <>
+          <AdminCampaignTemplatePicker
+            disabled={isSubmitting || isLoadingTemplates || isSavingTemplate}
+            isLoading={isLoadingTemplates}
+            onApply={requestTemplateSelection}
+            selectedTemplateId={selectedTemplateId}
+            templates={templateCatalog}
+          />
 
-        <section className="campaign-panel campaign-panel--subtle campaign-template-toolbar">
-          <div>
-            <p className="admin-surface__eyebrow">Libreria</p>
-            <h3 className="campaign-variable-helper__title">Template riutilizzabili</h3>
-            <p className="campaign-variable-helper__note">
-              I template salvati qui restano limitati al cliente {campaign.clientName}.
-            </p>
-          </div>
-          <div className="campaign-template-toolbar__actions">
+          <div className="campaign-action-row" style={{ marginTop: 24 }}>
             <Button
               type="button"
               variant="outline"
               className="admin-topbar-action campaign-action campaign-action--secondary"
-              disabled={isSubmitting || isSavingTemplate}
-              onClick={() => commitTemplate(defaultTemplate)}
+              onClick={onBack}
+              style={{ minWidth: 148 }}
             >
-              <RotateCcw aria-hidden="true" className="admin-topbar-action__icon" />
-              Ripristina default
+              Indietro
             </Button>
             <Button
               type="button"
               className="admin-topbar-action campaign-action campaign-action--primary"
-              disabled={isSubmitting || isSavingTemplate}
-              onClick={() => setIsTemplateDialogOpen(true)}
+              onClick={() => onTemplateSelect?.(selectedTemplateId ?? defaultTemplate.id, false)}
+              style={{ minWidth: 190 }}
             >
-              <WandSparkles aria-hidden="true" className="admin-topbar-action__icon" />
-              Salva come template
+              Continua all&apos;editor
             </Button>
           </div>
-        </section>
-
-        <label className="campaign-field">
-          <span className="campaign-field__label">Oggetto email</span>
-          <input
-            ref={subjectRef}
-            className="campaign-input"
-            disabled={isSubmitting}
-            onChange={(event) => setSubject(event.target.value)}
-            onFocus={() => setActiveField("subject")}
-            placeholder="Oggetto della campagna"
-            value={subject}
-          />
-        </label>
-
-        <label className="campaign-field">
-          <span className="campaign-field__label">Preview text</span>
-          <input
-            ref={previewRef}
-            className="campaign-input"
-            disabled={isSubmitting}
-            onChange={(event) => setPreviewText(event.target.value)}
-            onFocus={() => setActiveField("preview")}
-            placeholder="Un riepilogo sintetico del contenuto dell'email"
-            value={previewText}
-          />
-        </label>
-
-        <section className="campaign-variable-helper" aria-label="Variabili supportate">
-          <div className="campaign-variable-helper__header">
-            <div>
-              <p className="admin-surface__eyebrow">Variabili</p>
-              <h3 className="campaign-variable-helper__title">Placeholder supportati</h3>
-            </div>
-            <div className="campaign-variable-helper__actions">
-              <p className="campaign-variable-helper__note">
-                Inserimento rapido nel campo attivo: <strong>{activeField}</strong>.
-              </p>
-              <Button
-                type="button"
-                variant="outline"
-                className="admin-topbar-action campaign-action campaign-action--secondary campaign-variable-helper__toggle"
-                aria-expanded={isVariableHelperOpen}
-                disabled={isSubmitting}
-                onClick={() => setIsVariableHelperOpen((current) => !current)}
+        </>
+      ) : (
+        <>
+          <div className="campaign-form-grid">
+            <section
+              className="campaign-panel campaign-panel--subtle campaign-template-toolbar"
+              style={{
+                alignItems: "start",
+                display: "grid",
+                gap: 16,
+                gridColumn: "1 / -1",
+              }}
+            >
+              <div
+                style={{
+                  alignItems: "start",
+                  display: "flex",
+                  flexWrap: "wrap",
+                  gap: 16,
+                  justifyContent: "space-between",
+                }}
               >
-                {isVariableHelperOpen ? "Nascondi variabili" : "Mostra variabili"}
-              </Button>
-            </div>
-          </div>
-          {isVariableHelperOpen ? (
-            <div className="campaign-variable-helper__list">
-              {SUPPORTED_TEMPLATE_VARIABLES.map((variable) => (
-                <button
-                  key={variable.token}
-                  type="button"
-                  className="campaign-variable-chip campaign-variable-chip--button"
-                  disabled={isSubmitting}
-                  onClick={() => insertVariable(variable.token)}
-                >
-                  <code>{variable.token}</code>
-                  <span>{variable.description}</span>
-                </button>
-              ))}
-            </div>
-          ) : null}
-          <p className="campaign-variable-helper__availability">
-            Brand cliente disponibile ora:{" "}
-            {availableBrandVariables.length > 0
-              ? availableBrandVariables.map((variable) => variable.token).join(", ")
-              : "nessuna variabile brand valorizzata."}
-          </p>
-        </section>
-
-        <section className="campaign-field">
-          <div className="campaign-field__header">
-            <span className="campaign-field__label">HTML email</span>
-            <div className="campaign-editor-toolbar">
-              <div className="campaign-editor-toolbar__meta">
-                <span className="campaign-editor-toolbar__chip">Tab per indentare</span>
-                <span className="campaign-editor-toolbar__chip">Spellcheck disattivato</span>
-                <span className="campaign-editor-toolbar__chip">Preview isolata</span>
+                <div style={{ display: "grid", gap: 6 }}>
+                  <p className="admin-surface__eyebrow">Template attivo</p>
+                  <h3 className="campaign-variable-helper__title" style={{ margin: 0 }}>
+                    {templateCatalog.find((template) => template.id === selectedTemplateId)?.name ??
+                      "Template custom"}
+                  </h3>
+                  <p className="campaign-variable-helper__note">
+                    {templateCatalog.find((template) => template.id === selectedTemplateId)?.description ??
+                      "Contenuto in modifica. I template completi restano nello step precedente."}
+                  </p>
+                </div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+                  <span className="campaign-template-badge">
+                    {selectedTemplateId?.startsWith("saved:")
+                      ? "Salvato cliente"
+                      : selectedTemplateId
+                        ? "Default / scelto"
+                        : "Editor libero"}
+                  </span>
+                  <span className="campaign-template-badge campaign-template-badge--muted">
+                    {hasUnsavedChanges
+                      ? "Modifiche non salvate"
+                      : isSubmitting
+                        ? "Salvataggio in corso"
+                        : "Allineato alla bozza"}
+                  </span>
+                </div>
               </div>
-              <div className="campaign-editor-toolbar__controls">
-                <div className="campaign-editor-toggle" role="tablist" aria-label="Modalita editor email">
-                  {(["split", "html", "preview"] as const).map((mode) => {
-                    const isActive = editorMode === mode;
+              <div className="campaign-template-toolbar__actions">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="admin-topbar-action campaign-action campaign-action--secondary"
+                  disabled={isSubmitting || isSavingTemplate}
+                  onClick={() => commitTemplate(defaultTemplate)}
+                >
+                  <RotateCcw aria-hidden="true" className="admin-topbar-action__icon" />
+                  Ripristina default
+                </Button>
+                <Button
+                  type="button"
+                  className="admin-topbar-action campaign-action campaign-action--primary"
+                  disabled={isSubmitting || isSavingTemplate}
+                  onClick={() => setIsTemplateDialogOpen(true)}
+                >
+                  <WandSparkles aria-hidden="true" className="admin-topbar-action__icon" />
+                  Salva come template
+                </Button>
+              </div>
+            </section>
 
-                    return (
-                      <button
-                        key={mode}
-                        type="button"
-                        role="tab"
-                        aria-selected={isActive}
-                        className="campaign-editor-toggle__button"
-                        data-active={isActive}
-                        disabled={isSubmitting}
-                        onClick={() => setEditorMode(mode)}
+            <label className="campaign-field">
+              <span className="campaign-field__label">Oggetto email</span>
+              <input
+                ref={subjectRef}
+                className="campaign-input"
+                disabled={isSubmitting}
+                onChange={(event) => setSubject(event.target.value)}
+                onFocus={() => setActiveField("subject")}
+                placeholder="Oggetto della campagna"
+                value={subject}
+              />
+            </label>
+
+            <label className="campaign-field">
+              <span className="campaign-field__label">Preview text</span>
+              <input
+                ref={previewRef}
+                className="campaign-input"
+                disabled={isSubmitting}
+                onChange={(event) => setPreviewText(event.target.value)}
+                onFocus={() => setActiveField("preview")}
+                placeholder="Un riepilogo sintetico del contenuto dell'email"
+                value={previewText}
+              />
+            </label>
+
+            <section className="campaign-field" style={{ gridColumn: "1 / -1" }}>
+              <div className="campaign-field__header">
+                <span className="campaign-field__label">HTML email</span>
+              </div>
+              <div
+                style={{
+                  background: "rgba(248, 250, 252, 0.96)",
+                  border: "1px solid rgba(148, 163, 184, 0.2)",
+                  borderRadius: 24,
+                  display: "grid",
+                  gap: 16,
+                  padding: 18,
+                  position: "sticky",
+                  top: 12,
+                  zIndex: 2,
+                }}
+              >
+                <div
+                  style={{
+                    alignItems: "center",
+                    display: "flex",
+                    flexWrap: "wrap",
+                    gap: 10,
+                    justifyContent: "space-between",
+                  }}
+                >
+                  <div className="campaign-editor-toolbar__meta">
+                    <span className="campaign-editor-toolbar__chip">Monospace</span>
+                    <span className="campaign-editor-toolbar__chip">Tab per indentare</span>
+                    <span className="campaign-editor-toolbar__chip">Linee attive</span>
+                    <span className="campaign-editor-toolbar__chip">
+                      {isSubmitting
+                        ? "Salvataggio..."
+                        : hasUnsavedChanges
+                          ? "Da salvare"
+                          : "Salvato"}
+                    </span>
+                  </div>
+                  <div className="campaign-editor-toolbar__controls">
+                    <div
+                      className="campaign-editor-toggle"
+                      role="tablist"
+                      aria-label="Modalita editor email"
+                    >
+                      {(["split", "html", "preview"] as const).map((editorView) => {
+                        const isActive = editorMode === editorView;
+
+                        return (
+                          <button
+                            key={editorView}
+                            type="button"
+                            role="tab"
+                            aria-selected={isActive}
+                            className="campaign-editor-toggle__button"
+                            data-active={isActive}
+                            disabled={isSubmitting}
+                            onClick={() => setEditorMode(editorView)}
+                          >
+                            {editorView === "split"
+                              ? "Split"
+                              : editorView === "html"
+                                ? "HTML"
+                                : "Preview"}
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    {editorMode !== "html" ? (
+                      <div
+                        className="campaign-editor-toggle"
+                        role="group"
+                        aria-label="Formato preview"
                       >
-                        {mode === "split" ? "Split" : mode === "html" ? "HTML" : "Preview"}
-                      </button>
-                    );
-                  })}
+                        {(["desktop", "mobile"] as const).map((device) => (
+                          <button
+                            key={device}
+                            type="button"
+                            className="campaign-editor-toggle__button"
+                            data-active={previewDevice === device}
+                            disabled={isSubmitting}
+                            onClick={() => setPreviewDevice(device)}
+                          >
+                            {device === "desktop" ? "Desktop" : "Mobile"}
+                          </button>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
                 </div>
 
-                {editorMode !== "html" ? (
-                  <div className="campaign-editor-toggle" role="group" aria-label="Formato preview">
-                    {(["desktop", "mobile"] as const).map((device) => (
-                      <button
-                        key={device}
+                <section className="campaign-variable-helper" aria-label="Variabili supportate">
+                  <div className="campaign-variable-helper__header">
+                    <div>
+                      <p className="admin-surface__eyebrow">Placeholder</p>
+                      <h3 className="campaign-variable-helper__title">Inserimento rapido</h3>
+                    </div>
+                    <div className="campaign-variable-helper__actions">
+                      <p className="campaign-variable-helper__note">
+                        Campo attivo: <strong>{activeField}</strong>
+                      </p>
+                      <Button
                         type="button"
-                        className="campaign-editor-toggle__button"
-                        data-active={previewDevice === device}
+                        variant="outline"
+                        className="admin-topbar-action campaign-action campaign-action--secondary campaign-variable-helper__toggle"
+                        aria-expanded={isVariableHelperOpen}
                         disabled={isSubmitting}
-                        onClick={() => setPreviewDevice(device)}
+                        onClick={() => setIsVariableHelperOpen((current) => !current)}
                       >
-                        {device === "desktop" ? "Desktop" : "Mobile"}
-                      </button>
-                    ))}
+                        {isVariableHelperOpen ? "Nascondi menu" : "Apri menu placeholder"}
+                      </Button>
+                    </div>
+                  </div>
+                  {isVariableHelperOpen ? (
+                    <div className="campaign-variable-helper__list">
+                      {SUPPORTED_TEMPLATE_VARIABLES.map((variable) => (
+                        <button
+                          key={variable.token}
+                          type="button"
+                          className="campaign-variable-chip campaign-variable-chip--button"
+                          disabled={isSubmitting}
+                          onClick={() => insertVariable(variable.token)}
+                        >
+                          <code>{variable.token}</code>
+                          <span>{variable.description}</span>
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
+                  <p className="campaign-variable-helper__availability">
+                    Brand cliente disponibile ora:{" "}
+                    {availableBrandVariables.length > 0
+                      ? availableBrandVariables.map((variable) => variable.token).join(", ")
+                      : "nessuna variabile brand valorizzata."}
+                  </p>
+                </section>
+              </div>
+
+              <div className="campaign-editor-shell" data-mode={editorMode}>
+                {editorMode !== "preview" ? (
+                  <div className="campaign-editor-pane">
+                    <div className="campaign-editor-pane__header">
+                      <strong>Markup</strong>
+                      <span>Editor HTML a altezza fissa, scrollabile e focalizzato sulla scrittura.</span>
+                    </div>
+                    <CampaignCodeEditor
+                      ref={htmlRef}
+                      disabled={isSubmitting}
+                      onChange={setBodyHtml}
+                      onFocus={() => setActiveField("html")}
+                      placeholder="<html>...</html>"
+                      rows={24}
+                      style={{ minHeight: 720 }}
+                      value={bodyHtml}
+                    />
+                  </div>
+                ) : null}
+
+                {editorMode !== "html" ? (
+                  <div className="campaign-editor-pane campaign-editor-pane--preview">
+                    <div className="campaign-editor-pane__header">
+                      <strong>Preview</strong>
+                      <span>Anteprima formattata con un solo viewport di scorrimento.</span>
+                    </div>
+                    <div className="campaign-preview-viewport" data-device={previewDevice}>
+                      <iframe
+                        className="campaign-email-preview-frame campaign-email-preview-frame--editor"
+                        sandbox=""
+                        srcDoc={buildPreviewDocument(previewHtml)}
+                        style={{ height: 840 }}
+                        title="Anteprima email"
+                      />
+                    </div>
                   </div>
                 ) : null}
               </div>
+            </section>
+          </div>
+
+          <div className="campaign-action-row">
+            <Button
+              type="button"
+              variant="outline"
+              className="admin-topbar-action campaign-action campaign-action--secondary"
+              onClick={onBack}
+              style={{ minWidth: 148 }}
+            >
+              Indietro
+            </Button>
+            <div className="campaign-action-row__group">
+              <Button
+                type="submit"
+                className="admin-topbar-action campaign-action campaign-action--primary"
+                disabled={isSubmitting}
+                style={{ minWidth: 170 }}
+              >
+                {isSubmitting ? (
+                  <Loader2 aria-hidden="true" className="admin-topbar-action__icon" />
+                ) : (
+                  <Save aria-hidden="true" className="admin-topbar-action__icon" />
+                )}
+                {isSubmitting ? "Salvataggio..." : "Salva contenuto"}
+              </Button>
             </div>
           </div>
-
-          <div className="campaign-editor-shell" data-mode={editorMode}>
-            {editorMode !== "preview" ? (
-              <div className="campaign-editor-pane">
-                <div className="campaign-editor-pane__header">
-                  <strong>Markup</strong>
-                  <span>Textarea migliorata con righe attive, evidenze visuali e indentazione.</span>
-                </div>
-                <CampaignCodeEditor
-                  ref={htmlRef}
-                  disabled={isSubmitting}
-                  onChange={setBodyHtml}
-                  onFocus={() => setActiveField("html")}
-                  placeholder="<html>...</html>"
-                  rows={22}
-                  value={bodyHtml}
-                />
-              </div>
-            ) : null}
-
-            {editorMode !== "html" ? (
-              <div className="campaign-editor-pane campaign-editor-pane--preview">
-                <div className="campaign-editor-pane__header">
-                  <strong>Preview</strong>
-                  <span>Viewport indipendente con scroll interno e fallback boilerplate.</span>
-                </div>
-                <div
-                  className="campaign-preview-viewport"
-                  data-device={previewDevice}
-                >
-                  <div className="campaign-preview-viewport__canvas">
-                    <iframe
-                      className="campaign-email-preview-frame campaign-email-preview-frame--editor"
-                      sandbox=""
-                      srcDoc={buildPreviewDocument(previewHtml)}
-                      title="Anteprima email"
-                    />
-                  </div>
-                </div>
-              </div>
-            ) : null}
-          </div>
-        </section>
-      </div>
-
-      <div className="campaign-action-row">
-        <Button
-          type="button"
-          variant="outline"
-          className="admin-topbar-action campaign-action campaign-action--secondary"
-          onClick={onBack}
-          style={{ minWidth: 148 }}
-        >
-          Indietro
-        </Button>
-        <div className="campaign-action-row__group">
-          <Button
-            type="submit"
-            className="admin-topbar-action campaign-action campaign-action--primary"
-            disabled={isSubmitting}
-            style={{ minWidth: 170 }}
-          >
-            {isSubmitting ? (
-              <Loader2 aria-hidden="true" className="admin-topbar-action__icon" />
-            ) : (
-              <Save aria-hidden="true" className="admin-topbar-action__icon" />
-            )}
-            {isSubmitting ? "Salvataggio..." : "Salva contenuto"}
-          </Button>
-        </div>
-      </div>
+        </>
+      )}
 
       {pendingTemplate ? (
         <div
@@ -961,7 +1133,64 @@ export function AdminCampaignContentStep({
                   setPendingTemplate(null);
                 }}
               >
-                Usa modello
+                Usa template
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {templateToConfirm ? (
+        <div
+          className="modal-backdrop"
+          role="presentation"
+          onClick={() => setTemplateToConfirm(null)}
+        >
+          <div
+            className="invite-modal campaign-confirm-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="campaign-template-step-confirm-title"
+            aria-describedby="campaign-template-step-confirm-body"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="invite-modal__header">
+              <div>
+                <p className="invite-modal__eyebrow">Template</p>
+                <h3 id="campaign-template-step-confirm-title" className="invite-modal__title">
+                  Sostituire il contenuto attuale?
+                </h3>
+                <p id="campaign-template-step-confirm-body" className="invite-modal__message">
+                  Il template selezionato diventera la base del prossimo step editor e sostituira oggetto, preview e markup correnti.
+                </p>
+              </div>
+              <button
+                type="button"
+                className="invite-modal__close"
+                aria-label="Chiudi"
+                onClick={() => setTemplateToConfirm(null)}
+              >
+                <X aria-hidden="true" />
+              </button>
+            </div>
+
+            <div className="invite-modal__actions campaign-confirm-modal__actions">
+              <button
+                type="button"
+                className="invite-modal__button invite-modal__button--secondary"
+                onClick={() => setTemplateToConfirm(null)}
+              >
+                Annulla
+              </button>
+              <button
+                type="button"
+                className="invite-modal__button invite-modal__button--primary"
+                onClick={() => {
+                  onTemplateSelect?.(templateToConfirm.id, true);
+                  setTemplateToConfirm(null);
+                }}
+              >
+                Usa template
               </button>
             </div>
           </div>

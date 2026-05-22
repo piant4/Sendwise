@@ -1640,7 +1640,12 @@ function mapAdminCampaignDetail(
     clientId: payload.client_id,
     clientName: payload.client_name,
     clientStatus: payload.client_status,
-    emailBrand: payload.email_brand ?? null,
+    emailBrand: payload.email_brand
+      ? {
+          ...payload.email_brand,
+          logo_url: getBackendAssetUrl(payload.email_brand.logo_url ?? null),
+        }
+      : null,
     name: payload.name,
     status: payload.status,
     subject: payload.subject ?? null,
@@ -2272,7 +2277,7 @@ export function buildClientEmailBrandPayload(
     instagram_url: value.instagram_url?.trim() || null,
     facebook_url: value.facebook_url?.trim() || null,
     x_url: value.x_url?.trim() || null,
-    logo_url: value.logo_url?.trim() || null,
+    logo_url: getBackendAssetUrl(value.logo_url?.trim() || null),
   };
 }
 

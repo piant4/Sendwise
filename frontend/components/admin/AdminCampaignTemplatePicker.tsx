@@ -23,6 +23,18 @@ function getPreviewExcerpt(value: string): string {
   return `${trimmed.slice(0, lastSpace > 48 ? lastSpace : trimmed.length).trim()}...`;
 }
 
+function getStructureHint(template: CampaignTemplate): string {
+  if (template.htmlBody.includes("<table")) {
+    return "Layout email strutturato";
+  }
+
+  if (template.htmlBody.includes("<section")) {
+    return "Sezioni editoriali";
+  }
+
+  return "Markup essenziale";
+}
+
 function stripScripts(value: string): string {
   return value.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, "");
 }
@@ -95,12 +107,12 @@ export function AdminCampaignTemplatePicker({
       <section className="campaign-panel campaign-panel--subtle" style={{ padding: 20 }}>
         <div className="admin-clients-card__intro">
           <div>
-            <p className="admin-surface__eyebrow">Modelli</p>
+            <p className="admin-surface__eyebrow">Template</p>
             <h3 className="admin-clients-card__title" style={{ color: "#0f172a", fontSize: "1.1rem" }}>
-              Template email
+              Libreria template
             </h3>
             <p className="admin-clients-card__description" style={{ marginTop: 8 }}>
-              Preset built-in e template salvati per precompilare il contenuto.
+              Preset built-in e template cliente selezionabili prima della scrittura.
             </p>
           </div>
         </div>
@@ -141,10 +153,11 @@ export function AdminCampaignTemplatePicker({
                   <h4 className="campaign-template-card__title">{template.name}</h4>
                   <p className="campaign-template-card__description">{template.description}</p>
                   <p className="campaign-template-card__subject">{template.subject}</p>
+                  <p className="campaign-template-card__excerpt">{getStructureHint(template)}</p>
                   <p className="campaign-template-card__excerpt">{getPreviewExcerpt(template.previewText)}</p>
                 </div>
 
-                <div className="campaign-template-actions">
+                <div className="campaign-template-actions" style={{ alignItems: "stretch" }}>
                   <Button
                     aria-label="Anteprima email"
                     type="button"
@@ -163,7 +176,7 @@ export function AdminCampaignTemplatePicker({
                     disabled={disabled}
                     onClick={() => onApply(template)}
                   >
-                    Usa modello
+                    Usa template
                   </Button>
                 </div>
               </article>

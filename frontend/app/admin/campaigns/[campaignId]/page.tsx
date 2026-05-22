@@ -27,6 +27,8 @@ interface AdminCampaignDetailPageProps {
   searchParams: Promise<{
     mode?: string;
     step?: string;
+    template?: string;
+    replace_template?: string;
   }>;
 }
 
@@ -35,7 +37,7 @@ export default async function AdminCampaignDetailPage({
   searchParams,
 }: AdminCampaignDetailPageProps) {
   const { campaignId } = await params;
-  const { mode, step } = await searchParams;
+  const { mode, step, template, replace_template } = await searchParams;
   const { getToken } = await auth();
   let result:
     | {
@@ -116,8 +118,10 @@ export default async function AdminCampaignDetailPage({
           <AdminCampaignWizardShell
             campaign={result.campaign}
             contacts={result.contacts instanceof Error ? null : result.contacts}
+            forceTemplateApply={replace_template === "1"}
             summary={result.summary instanceof Error ? null : result.summary}
             initialStep={step}
+            initialTemplateId={template}
           />
         ) : (
           <AdminCampaignDetailView

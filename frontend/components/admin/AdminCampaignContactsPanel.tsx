@@ -1,7 +1,7 @@
 "use client";
 
 import { useAuth } from "@clerk/nextjs";
-import { FileUp, Loader2, Plus, X } from "lucide-react";
+import { FileUp, Plus, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { type ChangeEvent, type DragEvent, type FormEvent, useRef, useState } from "react";
 import {
@@ -30,6 +30,8 @@ interface ParsedImportResult {
   invalidCount: number;
   errors: string[];
 }
+
+type ImportStatus = "idle" | "parsing" | "importing" | "imported" | "failed";
 
 interface ManualContactForm {
   nome: string;
@@ -129,13 +131,13 @@ function parseCsvContacts(value: string): ParsedImportResult {
 
     if (!isValidEmail(email)) {
       invalidCount += 1;
-      errors.push(`Riga ${lineNumber}: email non valida (${email}).`);
+      errors.push(`Riga ${lineNumber}: email non valida.`);
       continue;
     }
 
     if (seenEmails.has(email)) {
       invalidCount += 1;
-      errors.push(`Riga ${lineNumber}: email duplicata (${email}).`);
+      errors.push(`Riga ${lineNumber}: email duplicata.`);
       continue;
     }
 
@@ -328,7 +330,6 @@ export function AdminCampaignContactsPanel({
   const { getToken } = useAuth();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [isDropActive, setIsDropActive] = useState(false);
-  const [isImporting, setIsImporting] = useState(false);
   const [isManualSubmitting, setIsManualSubmitting] = useState(false);
   const [isManualModalOpen, setIsManualModalOpen] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
@@ -336,6 +337,7 @@ export function AdminCampaignContactsPanel({
   const [manualForm, setManualForm] = useState<ManualContactForm>(EMPTY_MANUAL_CONTACT);
   const [manualFormError, setManualFormError] = useState<string | null>(null);
   const [importDraft, setImportDraft] = useState<ParsedImportResult | null>(null);
+  const [importStatus, setImportStatus] = useState<ImportStatus>("idle");
   const [contactPendingRemoval, setContactPendingRemoval] = useState<CampaignContactRow | null>(null);
   const [removeError, setRemoveError] = useState<string | null>(null);
   const [isRemovingContact, setIsRemovingContact] = useState(false);
@@ -369,21 +371,28 @@ export function AdminCampaignContactsPanel({
   }
 
   async function appendFiles(files: FileList | File[]) {
-    const text = await readDroppedFiles(files);
-    const parsed = parseCsvContacts(text);
-
-    setImportDraft(parsed);
+    setImportStatus("parsing");
     setFormError(null);
     setSuccessMessage(null);
 
-    if (parsed.validContacts.length === 0) {
-      setFormError(parsed.errors[0] ?? "Nessun contatto valido trovato nel file selezionato.");
-      return;
-    }
+    try {
+      const text = await readDroppedFiles(files);
+      const parsed = parseCsvContacts(text);
+      setImportDraft(parsed);
 
-    setSuccessMessage(
-      `${parsed.validContacts.length.toLocaleString("it-IT")} contatti validi rilevati dal file.`,
-    );
+      if (parsed.validContacts.length === 0) {
+        setImportStatus("failed");
+        setFormError(parsed.errors[0] ?? "Nessun contatto valido trovato nel file selezionato.");
+        return;
+      }
+
+      setImportStatus("importing");
+      await submitContacts(parsed.validContacts);
+      setImportStatus("imported");
+    } catch (error) {
+      setImportStatus("failed");
+      setFormError(getSafeContactsErrorMessage(error));
+    }
   }
 
   async function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
@@ -404,33 +413,6 @@ export function AdminCampaignContactsPanel({
     }
 
     await appendFiles(event.dataTransfer.files);
-  }
-
-  async function handleImportSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-
-    if (isImporting) {
-      return;
-    }
-
-    if (!importDraft || importDraft.validContacts.length === 0) {
-      setFormError("Seleziona un CSV valido prima di importare.");
-      setSuccessMessage(null);
-      return;
-    }
-
-    setIsImporting(true);
-    setFormError(null);
-    setSuccessMessage(null);
-
-    try {
-      await submitContacts(importDraft.validContacts);
-      setImportDraft(null);
-    } catch (error) {
-      setFormError(getSafeContactsErrorMessage(error));
-    } finally {
-      setIsImporting(false);
-    }
   }
 
   async function handleManualSubmit(event: FormEvent<HTMLFormElement>) {
@@ -503,6 +485,16 @@ export function AdminCampaignContactsPanel({
 
   const importErrors = importDraft?.errors.slice(0, 5) ?? [];
   const extraImportErrors = Math.max((importDraft?.errors.length ?? 0) - importErrors.length, 0);
+  const importStatusLabel =
+    importStatus === "parsing"
+      ? "Parsing CSV..."
+      : importStatus === "importing"
+        ? "Importazione in corso..."
+        : importStatus === "imported"
+          ? "CSV importato"
+          : importStatus === "failed"
+            ? "Import fallito"
+            : null;
 
   return (
     <section className="admin-clients-card campaign-panel" id="destinatari">
@@ -516,10 +508,12 @@ export function AdminCampaignContactsPanel({
             Aggiungi singoli contatti o importa un CSV con email, nome e cognome.
           </p>
         </div>
-        <StatusBadge
-          label={contacts?.contactsReady ? "Pronti" : "Da completare"}
-          variant={contacts?.contactsReady ? "success" : "neutral"}
-        />
+        <div style={{ alignSelf: "flex-start" }}>
+          <StatusBadge
+            label={contacts?.contactsReady ? "Pronti" : "Da completare"}
+            variant={contacts?.contactsReady ? "success" : "neutral"}
+          />
+        </div>
       </div>
 
       {errorMessage ? (
@@ -558,7 +552,7 @@ export function AdminCampaignContactsPanel({
       ) : null}
 
       <div className="campaign-contacts-layout">
-        <div className="campaign-contact-manual-action">
+        <div className="campaign-contact-manual-action" style={{ alignItems: "center" }}>
           <div>
             <p className="campaign-contact-manual-action__eyebrow">Aggiunta manuale</p>
             <p className="campaign-contact-manual-action__title">Aggiungi un singolo destinatario.</p>
@@ -578,7 +572,7 @@ export function AdminCampaignContactsPanel({
           </Button>
         </div>
 
-        <form className="campaign-contact-section campaign-contact-section--full" onSubmit={handleImportSubmit}>
+        <section className="campaign-contact-section campaign-contact-section--full">
           <div className="campaign-contact-section__header">
             <div>
               <h3 className="campaign-contact-section__title">Import CSV</h3>
@@ -586,6 +580,18 @@ export function AdminCampaignContactsPanel({
                 Colonne supportate: email, nome, cognome.
               </p>
             </div>
+            {importStatusLabel ? (
+              <StatusBadge
+                label={importStatusLabel}
+                variant={
+                  importStatus === "imported"
+                    ? "success"
+                    : importStatus === "failed"
+                      ? "danger"
+                      : "neutral"
+                }
+              />
+            ) : null}
           </div>
 
           <label
@@ -611,7 +617,9 @@ export function AdminCampaignContactsPanel({
               type="file"
             />
             <span className="campaign-contact-upload__label">Oppure seleziona un file</span>
-            <span className="campaign-contact-upload__hint">Formati: `email,nome,cognome` oppure righe con intestazioni.</span>
+            <span className="campaign-contact-upload__hint">
+              Auto-import dopo drop o selezione. Formati: `email,nome,cognome` oppure righe con intestazioni.
+            </span>
           </label>
 
           {importDraft ? (
@@ -630,23 +638,7 @@ export function AdminCampaignContactsPanel({
               ) : null}
             </div>
           ) : null}
-
-          <div className="campaign-contact-import-actions">
-            <Button
-              type="submit"
-              className="admin-topbar-action campaign-action campaign-action--primary"
-              disabled={isImporting || !importDraft || importDraft.validContacts.length === 0}
-              style={{ minWidth: 190 }}
-            >
-              {isImporting ? (
-                <Loader2 aria-hidden="true" className="admin-topbar-action__icon" />
-              ) : (
-                <Plus aria-hidden="true" className="admin-topbar-action__icon" />
-              )}
-              {isImporting ? "Importazione..." : "Importa contatti"}
-            </Button>
-          </div>
-        </form>
+        </section>
       </div>
 
       {contacts && contacts.contacts.length > 0 ? (

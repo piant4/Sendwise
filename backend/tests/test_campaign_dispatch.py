@@ -1719,6 +1719,8 @@ def test_listmonk_provider_uses_listmonk_dispatch_even_with_mailgun_smtp_host() 
     assert result["status"] == "accepted"
     assert result["provider"] == "listmonk"
     assert fake_listmonk.sent_campaign_ids == ["lm_1"]
+    assert fake_listmonk.created_campaign_payloads
+    assert isinstance(fake_listmonk.created_campaign_payloads[0]["headers"], list)
 
 
 def test_domain_warmup_guard_allows_send_under_daily_limit() -> None:

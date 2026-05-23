@@ -378,13 +378,69 @@ def test_build_listmonk_campaign_payload_adds_mailgun_variables_header_when_mail
         },
     )
 
-    assert payload["headers"]["X-Mailgun-Variables"]
-    variables = json.loads(payload["headers"]["X-Mailgun-Variables"])
+    assert isinstance(payload["headers"], list)
+    assert len(payload["headers"]) == 1
+    assert payload["headers"][0]["X-Mailgun-Variables"]
+    variables = json.loads(payload["headers"][0]["X-Mailgun-Variables"])
     assert variables == {
         "sendwise_campaign_id": "campaign_123",
         "sendwise_client_id": "client_123",
         "sendwise_contact_id": "{{ .Subscriber.Attribs.sendwise_contact_id }}",
     }
+
+
+def test_build_listmonk_campaign_payload_omits_mailgun_headers_for_non_mailgun_smtp() -> None:
+    campaign = build_campaign()
+
+    payload, _content_ready = build_listmonk_campaign_payload(
+        settings=Settings(
+            environment="test",
+            smtp_host="smtp.example.test",
+            smtp_from_email="sender@example.test",
+        ),
+        campaign=campaign,
+        list_id=7,
+        content={
+            "subject": "Launch",
+            "content_ready": True,
+            "body": "<html><body><p>Rendered body</p></body></html>",
+            "body_text": "Rendered body text",
+        },
+    )
+
+    assert "headers" not in payload
+
+
+def test_build_listmonk_campaign_payload_preserves_base_fields_with_mailgun_headers() -> None:
+    campaign = build_campaign()
+
+    payload, content_ready = build_listmonk_campaign_payload(
+        settings=Settings(
+            environment="test",
+            smtp_host="smtp.eu.mailgun.org",
+            smtp_from_email="sender@example.test",
+        ),
+        campaign=campaign,
+        list_id=7,
+        content={
+            "subject": "Launch",
+            "content_ready": True,
+            "body": "<html><body><p>Rendered body</p></body></html>",
+            "body_text": "Rendered body text",
+        },
+    )
+
+    assert content_ready is True
+    assert payload["name"] == "Launch campaign"
+    assert payload["subject"] == "Launch"
+    assert payload["lists"] == [7]
+    assert payload["type"] == "regular"
+    assert payload["content_type"] == "html"
+    assert payload["body"] == "<html><body><p>Rendered body</p></body></html>"
+    assert payload["messenger"] == "email"
+    assert payload["tags"] == ["sendwise", "content_ready:true"]
+    assert payload["altbody"] == "Rendered body text"
+    assert payload["from_email"] == "sender@example.test"
 
 
 def test_prepare_campaign_is_idempotent_and_updates_existing_campaign() -> None:

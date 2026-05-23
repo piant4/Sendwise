@@ -3912,3 +3912,26 @@ Checks executed:
 - `bash scripts/smoke_test.sh`
 - Manual markdown readability check for `docs/deliverability_guard_rules_v1.md`
 - Changed-file scope check with `git status --short`
+
+## Milestone 19.0C-FIX1 - Listmonk Mailgun Headers Payload
+
+Date: 2026-05-23
+Branch: develop
+
+Verified state:
+- Fixed the Listmonk campaign payload shape for Mailgun correlation headers: `headers` now uses Listmonk's array form containing `X-Mailgun-Variables` instead of sending a plain object.
+- Preserved the existing Mailgun correlation variable names: `sendwise_client_id`, `sendwise_campaign_id`, and `sendwise_contact_id`.
+- Audited subscriber sync and confirmed `sendwise_contact_id` is already included in Listmonk subscriber `attribs`, so sync behavior was not widened.
+- No end-to-end Mailgun correlation claim is made until the VPS retry confirms correlated provider events.
+
+Scope confirmation:
+- No Mailgun webhook signing, endpoint, normalization, frontend, schema, migration, Docker compose, runtime env, direct Mailgun/SES send path, or Listmonk bypass was changed.
+
+Checks executed:
+- `python -m py_compile` on modified backend services/tests using the bundled Python runtime with an explicit pycache prefix.
+- `pytest backend/tests/test_campaign_preparation.py`
+- `pytest backend/tests/test_campaign_dispatch.py -k "listmonk_provider_uses_listmonk_dispatch_even_with_mailgun_smtp_host or enabled_campaign_send_creates_mapping_after_guard_authorizes or domain_warmup_guard_blocks_send_over_daily_limit_before_listmonk or domain_warmup_guard_does_not_override_duplicate_guard"`
+- `git diff --check`
+- `bash scripts/audit.sh`
+- `bash scripts/smoke_test.sh`
+- Changed-file diff scans for direct Mailgun/SES send paths and unsafe logging additions.

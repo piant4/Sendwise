@@ -88,6 +88,7 @@ Required secret-backed values must be configured only on the VPS:
 - Real Listmonk username and password.
 - Real PostgreSQL database, user, and password.
 - Real backend API key and unsubscribe/signing secrets required by the deployed backend.
+- Real `MAILGUN_WEBHOOK_SIGNING_KEY` for verified Mailgun webhook ingestion.
 - Real SMTP or AWS SES credentials only in the later SES readiness milestone. When approved, set them only in the VPS `.env`; do not hardcode them in Compose or docs.
 
 For first deploy, keep `EMAIL_PROVIDER=listmonk` and `EMAIL_SENDING_ENABLED=false` so the runtime contract matches the production fallback while real dispatch stays fail-closed. Keep `REAL_SEND_ALLOWED_RECIPIENTS=` empty until the controlled SES validation milestone.
@@ -147,6 +148,44 @@ Provider fallback options while SES is blocked:
 - Preferred production fallback: keep `EMAIL_PROVIDER=listmonk` and point the existing `SMTP_*` contract at Mailgun SMTP.
 - Evaluate whether the provider also exposes delivery/bounce/complaint webhooks that can be normalized into `POST /events/provider`.
 - Do not activate a new provider in production until runtime classification, env contract, and webhook needs are reviewed and explicitly approved.
+
+## Mailgun Webhook Analytics Boundary
+
+Sendwise now accepts Mailgun analytics only through the backend webhook boundary:
+
+- Route: `POST /events/provider/mailgun`
+- Signature model: Mailgun `timestamp`, `token`, `signature`
+- Verification: HMAC-SHA256 over `timestamp + token` using `MAILGUN_WEBHOOK_SIGNING_KEY`
+- Failure mode: unsigned or invalid Mailgun webhooks are rejected fail-closed
+- Logging rule: do not print webhook signatures, tokens, raw payloads, recipient emails, or Mailgun secrets
+
+Required Mailgun webhook event coverage:
+
+- `accepted`
+- `delivered`
+- `failed`
+- `opened`
+- `clicked`
+- `unsubscribed`
+- `complained`
+- `rejected`
+
+Required Mailgun webhook setup:
+
+1. Set `MAILGUN_WEBHOOK_SIGNING_KEY` only in the VPS `.env`.
+2. Point Mailgun webhooks to the public backend URL, for example `https://staging-api.mailerpro.it/events/provider/mailgun`.
+3. Keep `BACKEND_API_KEY` for existing internal provider routes. The Mailgun webhook route uses Mailgun signature verification instead of `X-API-Key`.
+4. Keep webhook payload delivery on the backend boundary only. The frontend must never call Mailgun directly.
+
+Correlation notes:
+
+- Sendwise adds `X-Mailgun-Variables` to Listmonk campaign payloads only when the configured SMTP host is Mailgun.
+- The current correlation contract is:
+  - `sendwise_client_id`
+  - `sendwise_campaign_id`
+  - `sendwise_contact_id`
+- Only verified and correlated Mailgun events are counted in campaign or client analytics.
+- Unmatched Mailgun events may be stored without tenant linkage, but they must not drive suppression or dashboard totals.
 
 Recommended next provider evaluation criteria:
 

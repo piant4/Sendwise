@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
+import json
 from typing import Any
 
 from app.core.auth import AuthenticatedUser
@@ -68,6 +69,18 @@ def build_listmonk_campaign_payload(
         payload["altbody"] = altbody
     if settings.smtp_from_email.strip():
         payload["from_email"] = settings.smtp_from_email.strip()
+    if settings.smtp_host_is_mailgun:
+        payload["headers"] = {
+            "X-Mailgun-Variables": json.dumps(
+                {
+                    "sendwise_client_id": campaign.client_id,
+                    "sendwise_campaign_id": campaign.id,
+                    "sendwise_contact_id": "{{ .Subscriber.Attribs.sendwise_contact_id }}",
+                },
+                sort_keys=True,
+                separators=(",", ":"),
+            )
+        }
 
     return payload, content_ready
 

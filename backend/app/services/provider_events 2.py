@@ -9,7 +9,6 @@ from typing import Any
 from fastapi import HTTPException, status
 
 from app.core.config import Settings, get_settings
-from app.integrations.mailgun.webhooks import coerce_mailgun_datetime
 from app.repositories.campaigns import CampaignRepository, get_campaign_repository
 from app.repositories.contacts import ContactRecord, ContactRepository, get_contact_repository
 from app.repositories.email_logs import EmailLogRecord, EmailLogRepository, get_email_log_repository
@@ -24,14 +23,7 @@ from app.repositories.suppression_list import (
 )
 from app.schemas.provider_events import ProviderEventIngestResponse
 
-PROVIDER_EVENT_TERMINAL = {
-    "hard_bounce",
-    "complaint",
-    "unsubscribe",
-    "ses_bounce",
-    "ses_complaint",
-    "sendwise_unsubscribe",
-}
+PROVIDER_EVENT_TERMINAL = {"ses_bounce", "ses_complaint", "sendwise_unsubscribe"}
 GENERIC_SES_EVENT_TYPE_ALIASES = {
     "send": "ses_send",
     "delivery": "ses_delivery",
@@ -46,22 +38,6 @@ GENERIC_UNSUBSCRIBE_EVENT_TYPE_ALIASES = {
     "unsubscribe": "sendwise_unsubscribe",
     "sendwise_unsubscribe": "sendwise_unsubscribe",
     "listmonk_unsubscribe": "sendwise_unsubscribe",
-}
-REDACTED_PAYLOAD_KEYS = {
-    "authorization",
-    "body",
-    "email",
-    "headers",
-    "html",
-    "message",
-    "mime",
-    "recipient",
-    "signature",
-    "signing_key",
-    "smtp_password",
-    "subject",
-    "text",
-    "token",
 }
 
 
@@ -109,11 +85,10 @@ class ProviderEventIngestionService:
     ) -> ProviderEventIngestResponse:
         correlation = self._correlate_event(event)
         event_key = self._build_event_key(event=event, correlation=correlation)
-        analytics_correlated = self._is_analytics_correlated(correlation)
         stored_event, created = self.provider_event_repository.create_or_get_event(
-            client_id=correlation.client_id if analytics_correlated else None,
-            campaign_id=correlation.campaign_id if analytics_correlated else None,
-            contact_id=correlation.contact_id if analytics_correlated else None,
+            client_id=correlation.client_id,
+            campaign_id=correlation.campaign_id,
+            contact_id=correlation.contact_id,
             email_log_id=correlation.email_log.id if correlation.email_log else event.email_log_id,
             provider=event.provider,
             source=event.source,
@@ -129,15 +104,15 @@ class ProviderEventIngestionService:
                 event=stored_event,
                 created=created,
                 processed=True,
-                correlated=analytics_correlated,
+                correlated=self._is_correlated(correlation),
                 suppressed=(
                     self._triggers_suppression(stored_event)
-                    and self._is_side_effect_correlated(correlation)
+                    and self._is_correlated(correlation)
                 ),
             )
 
         suppressed = False
-        if self._is_side_effect_correlated(correlation):
+        if self._is_correlated(correlation):
             suppressed = self._apply_side_effects(
                 event=stored_event,
                 correlation=correlation,
@@ -150,7 +125,7 @@ class ProviderEventIngestionService:
             event=processed_event,
             created=created,
             processed=True,
-            correlated=analytics_correlated,
+            correlated=self._is_correlated(correlation),
             suppressed=suppressed,
         )
 
@@ -185,16 +160,6 @@ class ProviderEventIngestionService:
 
     def _normalize_generic_payload(self, payload: dict[str, Any]) -> NormalizedProviderEvent:
         provider = str(payload.get("provider") or "").strip().lower()
-        source = str(payload.get("source") or "provider_webhook").strip() or "provider_webhook"
-        raw_payload = payload.get("payload")
-        if provider == "mailgun":
-            if not isinstance(raw_payload, dict):
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Mailgun event payload is required.",
-                )
-            return self._normalize_mailgun_payload(raw_payload, source=source)
-
         raw_event_type = str(payload.get("event_type") or "").strip()
         event_type = self._canonicalize_generic_event_type(
             provider=provider,
@@ -206,11 +171,12 @@ class ProviderEventIngestionService:
                 detail="provider and event_type are required.",
             )
         occurred_at = self._coerce_datetime(payload.get("occurred_at"))
+        raw_payload = payload.get("payload")
         if not isinstance(raw_payload, dict):
             raw_payload = payload
         return NormalizedProviderEvent(
             provider=provider,
-            source=source,
+            source=str(payload.get("source") or "provider_webhook").strip() or "provider_webhook",
             provider_event_id=self._coerce_optional_string(payload.get("provider_event_id")),
             event_type=event_type,
             occurred_at=occurred_at,
@@ -220,7 +186,7 @@ class ProviderEventIngestionService:
             email_log_id=self._coerce_optional_string(payload.get("email_log_id")),
             provider_message_id=self._coerce_optional_string(payload.get("provider_message_id")),
             email=self._coerce_optional_string(payload.get("email")),
-            payload=self._sanitize_payload(raw_payload),
+            payload=raw_payload,
         )
 
     def _canonicalize_generic_event_type(
@@ -256,10 +222,7 @@ class ProviderEventIngestionService:
             "Open": "ses_open",
             "Click": "ses_click",
         }
-        event_type = event_type_map.get(
-            event_label,
-            f"ses_{event_label.lower()}" if event_label else "ses_unknown",
-        )
+        event_type = event_type_map.get(event_label, f"ses_{event_label.lower()}" if event_label else "ses_unknown")
         mail = payload.get("mail") if isinstance(payload.get("mail"), dict) else {}
         occurred_at = self._coerce_datetime(mail.get("timestamp") or payload.get("timestamp"))
         destination = mail.get("destination")
@@ -285,148 +248,8 @@ class ProviderEventIngestionService:
             contact_id=contact_id,
             provider_message_id=provider_message_id,
             email=email,
-            payload={
-                "event_label": event_label or None,
-                "message_id": provider_message_id,
-                "tag_keys": sorted(tags.keys()),
-                "recipient_hash": self._hash_email(email),
-            },
+            payload=payload,
         )
-
-    def _normalize_mailgun_payload(
-        self,
-        payload: dict[str, Any],
-        *,
-        source: str,
-    ) -> NormalizedProviderEvent:
-        event_name = self._coerce_optional_string(payload.get("event")) or ""
-        event_type = self._map_mailgun_event_type(payload)
-        if not event_type:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Unsupported Mailgun event payload.",
-            )
-        custom_variables = self._extract_mailgun_custom_variables(payload)
-        message_payload = payload.get("message") if isinstance(payload.get("message"), dict) else {}
-        headers = message_payload.get("headers") if isinstance(message_payload.get("headers"), dict) else {}
-        provider_message_id = self._normalize_message_id(
-            payload.get("message-id")
-            or headers.get("message-id")
-            or headers.get("Message-Id")
-        )
-        recipient = self._coerce_optional_string(payload.get("recipient"))
-        provider_event_id = self._coerce_optional_string(payload.get("id"))
-        occurred_at = coerce_mailgun_datetime(
-            payload.get("timestamp") or payload.get("event-timestamp")
-        )
-        severity = self._mailgun_failed_severity(payload)
-        return NormalizedProviderEvent(
-            provider="mailgun",
-            source=source,
-            provider_event_id=provider_event_id,
-            event_type=event_type,
-            occurred_at=occurred_at,
-            client_id=self._coerce_optional_string(custom_variables.get("sendwise_client_id")),
-            campaign_id=self._coerce_optional_string(custom_variables.get("sendwise_campaign_id")),
-            contact_id=self._coerce_optional_string(custom_variables.get("sendwise_contact_id")),
-            email_log_id=self._coerce_optional_string(custom_variables.get("sendwise_email_log_id")),
-            provider_message_id=provider_message_id,
-            email=recipient,
-            payload={
-                "event": event_name,
-                "severity": severity,
-                "reason": self._coerce_optional_string(payload.get("reason")),
-                "recipient_hash": self._hash_email(recipient),
-                "message_id": provider_message_id,
-                "delivery_status": self._sanitize_payload(
-                    payload.get("delivery-status")
-                    if isinstance(payload.get("delivery-status"), dict)
-                    else {}
-                ),
-                "custom_variables": {
-                    key: self._coerce_optional_string(custom_variables.get(key))
-                    for key in (
-                        "sendwise_client_id",
-                        "sendwise_campaign_id",
-                        "sendwise_contact_id",
-                        "sendwise_email_log_id",
-                    )
-                    if self._coerce_optional_string(custom_variables.get(key)) is not None
-                },
-            },
-        )
-
-    def _map_mailgun_event_type(self, payload: dict[str, Any]) -> str:
-        event_name = (self._coerce_optional_string(payload.get("event")) or "").lower()
-        if event_name == "accepted":
-            return "accepted"
-        if event_name == "delivered":
-            return "delivered"
-        if event_name == "opened":
-            return "opened"
-        if event_name == "clicked":
-            return "clicked"
-        if event_name == "unsubscribed":
-            return "unsubscribe"
-        if event_name == "complained":
-            return "complaint"
-        if event_name == "rejected":
-            return "rejected"
-        if event_name == "failed":
-            severity = self._mailgun_failed_severity(payload)
-            if severity == "temporary":
-                return "soft_bounce"
-            if severity == "permanent":
-                return "hard_bounce"
-            return "delivery_failed"
-        return ""
-
-    def _mailgun_failed_severity(self, payload: dict[str, Any]) -> str | None:
-        delivery_status = (
-            payload.get("delivery-status")
-            if isinstance(payload.get("delivery-status"), dict)
-            else {}
-        )
-        severity = self._coerce_optional_string(delivery_status.get("severity"))
-        if severity is None:
-            return None
-        normalized = severity.lower()
-        if normalized in {"temporary", "temp"}:
-            return "temporary"
-        if normalized in {"permanent", "perm"}:
-            return "permanent"
-        return normalized
-
-    def _extract_mailgun_custom_variables(self, payload: dict[str, Any]) -> dict[str, Any]:
-        candidates: list[dict[str, Any]] = []
-        for key in ("user-variables", "user_variables"):
-            value = payload.get(key)
-            if isinstance(value, dict):
-                candidates.append(value)
-            elif isinstance(value, str) and value.strip():
-                try:
-                    parsed = json.loads(value)
-                except json.JSONDecodeError:
-                    parsed = None
-                if isinstance(parsed, dict):
-                    candidates.append(parsed)
-
-        message_payload = payload.get("message") if isinstance(payload.get("message"), dict) else {}
-        headers = message_payload.get("headers") if isinstance(message_payload.get("headers"), dict) else {}
-        header_value = headers.get("X-Mailgun-Variables") or headers.get("x-mailgun-variables")
-        if isinstance(header_value, str) and header_value.strip():
-            try:
-                parsed_header = json.loads(header_value)
-            except json.JSONDecodeError:
-                parsed_header = None
-            if isinstance(parsed_header, dict):
-                candidates.append(parsed_header)
-
-        merged: dict[str, Any] = {}
-        for candidate in candidates:
-            for key, value in candidate.items():
-                merged[str(key)] = value
-        return merged
 
     def _correlate_event(self, event: NormalizedProviderEvent) -> CorrelatedProviderEvent:
         email_log = None
@@ -530,21 +353,17 @@ class ProviderEventIngestionService:
         normalized = current_status.strip().lower()
         if normalized == "simulated":
             return None
-        if event_type in {"accepted", "ses_send"}:
+        if event_type == "ses_send":
             return "sent" if normalized in {"queued", "pending", "sent"} else None
-        if event_type in {"delivered", "ses_delivery"}:
+        if event_type == "ses_delivery":
             return "delivered" if normalized in {"queued", "pending", "sent", "delivered"} else None
-        if event_type in {"opened", "ses_open"}:
-            return "opened" if normalized in {"queued", "pending", "sent", "delivered", "opened"} else None
-        if event_type in {"clicked", "ses_click"}:
-            return "clicked" if normalized in {"queued", "pending", "sent", "delivered", "opened", "clicked"} else None
-        if event_type in {"rejected", "ses_reject", "delivery_failed", "soft_bounce"}:
-            return "failed"
-        if event_type in {"hard_bounce", "ses_bounce"}:
+        if event_type == "ses_reject":
+            return "rejected" if normalized in {"queued", "pending"} else None
+        if event_type == "ses_bounce":
             return "bounced"
-        if event_type in {"complaint", "ses_complaint"}:
+        if event_type == "ses_complaint":
             return "complained"
-        if event_type in {"unsubscribe", "sendwise_unsubscribe"}:
+        if event_type == "sendwise_unsubscribe":
             return "unsubscribed"
         return None
 
@@ -555,11 +374,11 @@ class ProviderEventIngestionService:
         event_type: str,
     ) -> str | None:
         normalized = current_status.strip().lower()
-        if event_type in {"unsubscribe", "sendwise_unsubscribe"}:
+        if event_type == "sendwise_unsubscribe":
             return None if normalized == "unsubscribed" else "unsubscribed"
-        if event_type in {"hard_bounce", "ses_bounce"}:
+        if event_type == "ses_bounce":
             return None if normalized in {"unsubscribed", "bounced"} else "bounced"
-        if event_type in {"complaint", "ses_complaint"}:
+        if event_type == "ses_complaint":
             return None if normalized in {"unsubscribed", "bounced", "suppressed"} else "suppressed"
         return None
 
@@ -580,7 +399,7 @@ class ProviderEventIngestionService:
             "contact_id": correlation.contact_id or event.contact_id,
             "email_log_id": correlation.email_log.id if correlation.email_log else event.email_log_id,
             "provider_message_id": event.provider_message_id,
-            "recipient_hash": self._hash_email(event.email),
+            "email": (event.email or "").strip().lower() or None,
         }
         digest = hashlib.sha256(
             json.dumps(raw, sort_keys=True, separators=(",", ":")).encode("utf-8")
@@ -597,8 +416,8 @@ class ProviderEventIngestionService:
             "contact_id": event.contact_id,
             "client_id": event.client_id,
             "email_log_id": event.email_log_id,
-            "recipient_hash": self._hash_email(event.email),
-            "payload": self._sanitize_payload(event.payload),
+            "email": event.email,
+            "payload": event.payload,
         }
 
     def _build_response(
@@ -652,70 +471,22 @@ class ProviderEventIngestionService:
         normalized = str(value).strip()
         return normalized or None
 
-    def _normalize_message_id(self, value: Any) -> str | None:
-        normalized = self._coerce_optional_string(value)
-        if normalized is None:
-            return None
-        if normalized.startswith("<") and normalized.endswith(">") and len(normalized) > 2:
-            return normalized[1:-1].strip() or None
-        return normalized
-
-    def _is_analytics_correlated(self, correlation: CorrelatedProviderEvent) -> bool:
-        return correlation.client_id is not None and correlation.campaign_id is not None
-
-    def _is_side_effect_correlated(self, correlation: CorrelatedProviderEvent) -> bool:
-        return correlation.contact is not None or correlation.email_log is not None
+    def _is_correlated(self, correlation: CorrelatedProviderEvent) -> bool:
+        return correlation.client_id is not None and (
+            correlation.contact is not None
+            or correlation.email_log is not None
+            or correlation.campaign_id is not None
+        )
 
     def _triggers_suppression(self, event: ProviderEventRecord) -> bool:
         return event.event_type in PROVIDER_EVENT_TERMINAL
 
     def _suppression_reason(self, event_type: str) -> str:
-        if event_type in {"unsubscribe", "sendwise_unsubscribe"}:
+        if event_type == "sendwise_unsubscribe":
             return "unsubscribe"
-        if event_type in {"complaint", "ses_complaint"}:
+        if event_type == "ses_complaint":
             return "complaint"
         return "bounce"
-
-    def _hash_email(self, email: str | None) -> str | None:
-        normalized = (email or "").strip().lower()
-        if not normalized:
-            return None
-        digest = hashlib.sha256(
-            f"{self.settings.unsubscribe_token_secret}:{normalized}".encode("utf-8")
-        ).hexdigest()
-        return digest[:24]
-
-    def _sanitize_payload(self, payload: Any) -> dict[str, Any]:
-        if not isinstance(payload, dict):
-            return {}
-        sanitized: dict[str, Any] = {}
-        for key, value in payload.items():
-            normalized_key = str(key)
-            if normalized_key.strip().lower() in REDACTED_PAYLOAD_KEYS:
-                continue
-            scalar = self._sanitize_payload_value(value)
-            if scalar is not None:
-                sanitized[normalized_key] = scalar
-        return sanitized
-
-    def _sanitize_payload_value(self, value: Any) -> Any:
-        if value is None:
-            return None
-        if isinstance(value, (str, int, float, bool)):
-            return value
-        if isinstance(value, datetime):
-            return value.isoformat()
-        if isinstance(value, dict):
-            nested = self._sanitize_payload(value)
-            return nested or None
-        if isinstance(value, list):
-            items = [
-                item
-                for item in (self._sanitize_payload_value(entry) for entry in value[:10])
-                if item is not None
-            ]
-            return items or None
-        return str(value)
 
 
 def get_provider_event_ingestion_service() -> ProviderEventIngestionService:

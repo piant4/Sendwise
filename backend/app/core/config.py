@@ -23,6 +23,9 @@ class Settings(BaseModel):
     )
     environment: str = Field(default_factory=lambda: getenv("ENVIRONMENT", "development"))
     backend_api_key: str = Field(default_factory=lambda: getenv("BACKEND_API_KEY", "change_me"))
+    mailgun_webhook_signing_key: str = Field(
+        default_factory=lambda: getenv("MAILGUN_WEBHOOK_SIGNING_KEY", "")
+    )
     clerk_jwks_url: str = Field(default_factory=lambda: getenv("CLERK_JWKS_URL", ""))
     clerk_issuer: str = Field(default_factory=lambda: getenv("CLERK_ISSUER", ""))
     clerk_audience_raw: str = Field(default_factory=lambda: getenv("CLERK_AUDIENCE", ""))

@@ -2736,13 +2736,20 @@ def test_platform_admin_can_read_and_update_client_email_brand(
     assert detail_response.status_code == 200
     assert detail_response.json()["email_brand"]["company_name"] == "Original Brand"
     assert update_response.status_code == 200
-    assert update_response.json()["email_brand"] == {
-        "company_name": "Updated Brand",
-        "sender_name": "Team Updated",
-        "website_url": "https://brand.example.test/",
-        "linkedin_url": "https://linkedin.com/company/brand-updated",
-        "logo_url": "/static/client-brand-logos/original.webp",
-    }
+    assert update_response.json()["email_brand"]["company_name"] == "Updated Brand"
+    assert update_response.json()["email_brand"]["sender_name"] == "Team Updated"
+    assert (
+        update_response.json()["email_brand"]["website_url"]
+        == "https://brand.example.test/"
+    )
+    assert (
+        update_response.json()["email_brand"]["linkedin_url"]
+        == "https://linkedin.com/company/brand-updated"
+    )
+    assert (
+        update_response.json()["email_brand"]["logo_url"]
+        == "/static/client-brand-logos/original.webp"
+    )
 
 
 def test_platform_admin_brand_update_rejects_invalid_url(
@@ -2774,6 +2781,96 @@ def test_platform_admin_brand_update_rejects_invalid_url(
     )
 
     assert response.status_code == 422
+
+
+def test_platform_admin_brand_update_allows_optional_empty_fields(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    signing_keypair: rsa.RSAPrivateKey,
+) -> None:
+    set_auth_mappings(
+        monkeypatch,
+        {
+            "user_admin": {
+                "email": "admin@sendwise.test",
+                "access_type": "platform_admin",
+                "status": "active",
+            }
+        },
+    )
+    client_record = build_client_record(
+        metadata={
+            "email_brand": {
+                "company_name": "Original Brand",
+                "sender_name": "Original Team",
+                "logo_url": "/static/client-brand-logos/original.webp",
+            }
+        }
+    )
+    install_test_dependencies(
+        client_records=[client_record],
+        access_records=[build_access_record(client_id=client_record.id)],
+    )
+    token = make_token(signing_keypair, clerk_user_id="user_admin")
+
+    response = client.patch(
+        f"/admin/clients/{client_record.id}",
+        headers=auth_header(token),
+        json={
+            "email_brand": {
+                "company_name": "Updated Brand",
+                "sender_name": "",
+                "website_url": "",
+                "logo_url": "/static/client-brand-logos/original.webp",
+            }
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["email_brand"]["company_name"] == "Updated Brand"
+    assert response.json()["email_brand"]["logo_url"] == "/static/client-brand-logos/original.webp"
+    assert response.json()["email_brand"]["sender_name"] is None
+    assert response.json()["email_brand"]["website_url"] is None
+
+
+def test_platform_admin_brand_update_rejects_absolute_logo_url_with_field_error(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    signing_keypair: rsa.RSAPrivateKey,
+) -> None:
+    set_auth_mappings(
+        monkeypatch,
+        {
+            "user_admin": {
+                "email": "admin@sendwise.test",
+                "access_type": "platform_admin",
+                "status": "active",
+            }
+        },
+    )
+    client_record = build_client_record()
+    install_test_dependencies(
+        client_records=[client_record],
+        access_records=[build_access_record(client_id=client_record.id)],
+    )
+    token = make_token(signing_keypair, clerk_user_id="user_admin")
+
+    response = client.patch(
+        f"/admin/clients/{client_record.id}",
+        headers=auth_header(token),
+        json={
+            "email_brand": {
+                "logo_url": "https://admin.sendwise.test/static/client-brand-logos/original.webp"
+            }
+        },
+    )
+
+    assert response.status_code == 422
+    assert response.json()["detail"][0]["loc"] == ["body", "email_brand", "logo_url"]
+    assert (
+        response.json()["detail"][0]["msg"]
+        == "Value error, logo_url must point to the managed client brand logo path."
+    )
 
 
 def test_platform_admin_can_upload_valid_client_brand_logo(

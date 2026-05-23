@@ -783,6 +783,45 @@ function parseApiErrorPayload(
     }
   }
 
+  if (Array.isArray(payload.detail)) {
+    const validationMessages = payload.detail
+      .map((item) => {
+        if (!item || typeof item !== "object") {
+          return null;
+        }
+
+        const validationItem = item as { loc?: unknown; msg?: unknown };
+        const location = Array.isArray(validationItem.loc)
+          ? validationItem.loc
+              .filter(
+                (segment): segment is string | number =>
+                  (typeof segment === "string" && segment !== "body") ||
+                  typeof segment === "number",
+              )
+              .map((segment) => String(segment))
+              .join(".")
+          : "";
+        const message = readStringValue(validationItem.msg)?.replace(
+          /^Value error,\s*/i,
+          "",
+        );
+
+        if (!message) {
+          return null;
+        }
+
+        return location ? `${location}: ${message}` : message;
+      })
+      .filter((message): message is string => Boolean(message));
+
+    if (validationMessages.length > 0) {
+      return {
+        code: topLevelCode ?? "validation_error",
+        detail: validationMessages.join("; "),
+      };
+    }
+  }
+
   if (payload.detail && typeof payload.detail === "object") {
     const nestedDetail = payload.detail as { code?: unknown; message?: unknown };
     const nestedCode = readStringValue(nestedDetail.code);
@@ -2277,7 +2316,7 @@ export function buildClientEmailBrandPayload(
     instagram_url: value.instagram_url?.trim() || null,
     facebook_url: value.facebook_url?.trim() || null,
     x_url: value.x_url?.trim() || null,
-    logo_url: getBackendAssetUrl(value.logo_url?.trim() || null),
+    logo_url: value.logo_url?.trim() || null,
   };
 }
 

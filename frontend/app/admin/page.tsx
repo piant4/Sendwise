@@ -71,12 +71,12 @@ function AdminDashboardContent({ summary }: { summary: AdminOverviewSummary }) {
   const providerEventsState = summary.system.providerEventsAvailable
     ? {
         label: "Disponibili",
-        detail: "Gli eventi provider processati possono confermare delivered, opened e clicked.",
+        detail: "Gli eventi Mailgun verificati possono confermare delivered, opened e clicked.",
         variant: "success" as const,
       }
     : {
         label: "Non disponibili",
-        detail: "Delivered, opened e clicked restano in attesa di eventi provider.",
+        detail: "Delivered, opened e clicked restano in attesa di dati Mailgun verificati.",
         variant: "neutral" as const,
       };
 
@@ -128,7 +128,7 @@ function AdminDashboardContent({ summary }: { summary: AdminOverviewSummary }) {
               <strong>{summary.system.realSendAvailable ? "Disponibile" : "Fail-closed"}</strong>
             </article>
             <article>
-              <span className="admin-record-row__note">Provider events</span>
+              <span className="admin-record-row__note">Eventi Mailgun</span>
               <strong>{providerEventsState.label}</strong>
             </article>
           </div>
@@ -168,7 +168,7 @@ function AdminDashboardContent({ summary }: { summary: AdminOverviewSummary }) {
           <article className="admin-overview__panel">
             <div className="admin-clients-card__intro">
               <div>
-                <p className="admin-surface__eyebrow">Provider events</p>
+                <p className="admin-surface__eyebrow">Eventi Mailgun</p>
                 <h2 className="admin-clients-card__title" style={{ color: "#0f172a", marginTop: 0 }}>
                   Disponibilita metriche
                 </h2>
@@ -186,8 +186,8 @@ function AdminDashboardContent({ summary }: { summary: AdminOverviewSummary }) {
                 <span className="admin-record-row__note">Delivered / opened / clicked</span>
                 <strong>
                   {summary.system.providerEventsAvailable
-                    ? "Confermabili via eventi provider"
-                    : "Non disponibili"}
+                    ? "Confermabili via eventi Mailgun"
+                    : "Dati Mailgun non ancora collegati"}
                 </strong>
               </div>
             </div>

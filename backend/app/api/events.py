@@ -1,7 +1,13 @@
-from fastapi import APIRouter, Depends, HTTPException, Query, Header, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
 from fastapi.responses import HTMLResponse, JSONResponse
+from urllib.parse import parse_qsl
 
 from app.core.config import Settings, get_settings
+from app.integrations.mailgun import (
+    InvalidMailgunWebhookError,
+    MailgunWebhookVerifier,
+    parse_mailgun_webhook_payload,
+)
 from app.schemas.provider_events import ProviderEventIngestResponse
 from app.services.provider_events import (
     ProviderEventIngestionService,
@@ -202,3 +208,77 @@ def receive_provider_event(
     ),
 ) -> ProviderEventIngestResponse:
     return provider_event_service.ingest_payload(dict(payload))
+
+
+@router.post(
+    "/events/provider/mailgun",
+    response_model=ProviderEventIngestResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def receive_mailgun_provider_event(
+    request: Request,
+    settings: Settings = Depends(get_settings),
+    provider_event_service: ProviderEventIngestionService = Depends(
+        get_provider_event_ingestion_service
+    ),
+) -> ProviderEventIngestResponse:
+    signing_key = settings.mailgun_webhook_signing_key.strip()
+    if not signing_key:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Mailgun webhook signing is not configured.",
+        )
+
+    payload = await _read_mailgun_request_payload(request)
+    try:
+        envelope = parse_mailgun_webhook_payload(payload)
+    except InvalidMailgunWebhookError as error:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(error),
+        ) from error
+
+    verifier = MailgunWebhookVerifier(signing_key=signing_key)
+    if not verifier.verify(
+        timestamp=envelope.timestamp,
+        token=envelope.token,
+        signature=envelope.signature,
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid Mailgun webhook signature.",
+        )
+
+    normalized_payload: dict[str, object] = {
+        "provider": "mailgun",
+        "source": "mailgun_webhook",
+        "payload": envelope.event_data,
+    }
+    return provider_event_service.ingest_payload(normalized_payload)
+
+
+async def _read_mailgun_request_payload(request: Request) -> dict[str, object]:
+    content_type = request.headers.get("content-type", "").lower()
+    if "application/json" in content_type:
+        payload = await request.json()
+        if isinstance(payload, dict):
+            return dict(payload)
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Mailgun webhook payload must be a JSON object.",
+        )
+
+    if "application/x-www-form-urlencoded" in content_type:
+        body = (await request.body()).decode("utf-8")
+        return {key: value for key, value in parse_qsl(body, keep_blank_values=True)}
+
+    if "multipart/form-data" in content_type:
+        raise HTTPException(
+            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            detail="Multipart Mailgun webhooks require python-multipart support.",
+        )
+
+    raise HTTPException(
+        status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+        detail="Unsupported Mailgun webhook content type.",
+    )

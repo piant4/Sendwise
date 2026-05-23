@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import hashlib
+import hmac
+import json
 from datetime import datetime, timezone
 
 from fastapi.testclient import TestClient
@@ -185,6 +188,43 @@ def build_runtime(
     }
 
 
+def build_mailgun_signature(*, timestamp: str, token: str, signing_key: str) -> str:
+    return hmac.new(
+        signing_key.encode("utf-8"),
+        f"{timestamp}{token}".encode("utf-8"),
+        hashlib.sha256,
+    ).hexdigest()
+
+
+def build_mailgun_event_data(
+    *,
+    event: str,
+    event_id: str,
+    recipient: str = "person@example.test",
+    message_id: str = "<msg-1>",
+    timestamp: float = 1_716_120_000.0,
+    custom_variables: dict[str, str] | None = None,
+    delivery_status: dict[str, object] | None = None,
+) -> dict[str, object]:
+    payload: dict[str, object] = {
+        "id": event_id,
+        "event": event,
+        "timestamp": timestamp,
+        "recipient": recipient,
+        "message": {
+            "headers": {
+                "message-id": message_id,
+                "X-Mailgun-Variables": json.dumps(custom_variables or {}),
+                "subject": "Should never be stored",
+            }
+        },
+        "user-variables": custom_variables or {},
+    }
+    if delivery_status is not None:
+        payload["delivery-status"] = delivery_status
+    return payload
+
+
 def test_unsubscribe_token_valid_creates_suppression() -> None:
     runtime = build_runtime()
     token_service: UnsubscribeTokenService = runtime["token_service"]  # type: ignore[assignment]
@@ -200,6 +240,12 @@ def test_unsubscribe_token_valid_creates_suppression() -> None:
         emails=["person@example.test"],
     ) == {"person@example.test"}
     assert contact_repository.get_by_id("contact_123").status == "unsubscribed"
+
+
+def test_settings_accept_mailgun_webhook_signing_key() -> None:
+    settings = Settings(mailgun_webhook_signing_key="mailgun-signing-key")
+
+    assert settings.mailgun_webhook_signing_key == "mailgun-signing-key"
 
 
 def test_unsubscribe_token_invalid_is_rejected() -> None:
@@ -364,6 +410,123 @@ def test_provider_event_endpoint_accepts_valid_api_key() -> None:
     assert response.status_code == 202
     assert response.json()["created"] is True
     assert response.json()["event_type"] == "ses_bounce"
+
+
+def test_mailgun_webhook_endpoint_rejects_missing_signature() -> None:
+    runtime = build_runtime()
+    provider_event_service: ProviderEventIngestionService = runtime["provider_event_service"]  # type: ignore[assignment]
+    settings = Settings(
+        environment="development",
+        backend_api_key="test-api-key",
+        backend_public_url="http://localhost:8000",
+        unsubscribe_token_secret="unsubscribe-secret",
+        mailgun_webhook_signing_key="mailgun-signing-key",
+    )
+    app.dependency_overrides[get_settings] = lambda: settings
+    app.dependency_overrides[get_provider_event_ingestion_service] = (
+        lambda: provider_event_service
+    )
+    try:
+        response = TestClient(app).post(
+            "/events/provider/mailgun",
+            data={"event-data": json.dumps(build_mailgun_event_data(event="accepted", event_id="mg-1"))},
+        )
+    finally:
+        app.dependency_overrides.pop(get_provider_event_ingestion_service, None)
+        app.dependency_overrides.pop(get_settings, None)
+
+    assert response.status_code == 400
+    assert "required" in response.json()["detail"].lower()
+
+
+def test_mailgun_webhook_endpoint_rejects_invalid_signature() -> None:
+    runtime = build_runtime()
+    provider_event_service: ProviderEventIngestionService = runtime["provider_event_service"]  # type: ignore[assignment]
+    settings = Settings(
+        environment="development",
+        backend_api_key="test-api-key",
+        backend_public_url="http://localhost:8000",
+        unsubscribe_token_secret="unsubscribe-secret",
+        mailgun_webhook_signing_key="mailgun-signing-key",
+    )
+    app.dependency_overrides[get_settings] = lambda: settings
+    app.dependency_overrides[get_provider_event_ingestion_service] = (
+        lambda: provider_event_service
+    )
+    try:
+        response = TestClient(app).post(
+            "/events/provider/mailgun",
+            data={
+                "signature": "not-valid",
+                "timestamp": "1716120000",
+                "token": "token-123",
+                "event-data": json.dumps(build_mailgun_event_data(event="accepted", event_id="mg-2")),
+            },
+        )
+    finally:
+        app.dependency_overrides.pop(get_provider_event_ingestion_service, None)
+        app.dependency_overrides.pop(get_settings, None)
+
+    assert response.status_code == 401
+    assert response.json()["detail"] == "Invalid Mailgun webhook signature."
+
+
+def test_mailgun_webhook_endpoint_accepts_valid_signature_and_sanitizes_payload() -> None:
+    runtime = build_runtime()
+    provider_event_service: ProviderEventIngestionService = runtime["provider_event_service"]  # type: ignore[assignment]
+    provider_event_repository: InMemoryProviderEventRepository = runtime["provider_event_repository"]  # type: ignore[assignment]
+    settings = Settings(
+        environment="development",
+        backend_api_key="test-api-key",
+        backend_public_url="http://localhost:8000",
+        unsubscribe_token_secret="unsubscribe-secret",
+        mailgun_webhook_signing_key="mailgun-signing-key",
+    )
+    app.dependency_overrides[get_settings] = lambda: settings
+    app.dependency_overrides[get_provider_event_ingestion_service] = (
+        lambda: provider_event_service
+    )
+    timestamp = "1716120000"
+    token = "token-123"
+    custom_variables = {
+        "sendwise_client_id": "client_123",
+        "sendwise_campaign_id": "campaign_123",
+        "sendwise_contact_id": "contact_123",
+    }
+    event_data = build_mailgun_event_data(
+        event="delivered",
+        event_id="mg-delivery-1",
+        custom_variables=custom_variables,
+    )
+    try:
+        response = TestClient(app).post(
+            "/events/provider/mailgun",
+            data={
+                "signature": build_mailgun_signature(
+                    timestamp=timestamp,
+                    token=token,
+                    signing_key="mailgun-signing-key",
+                ),
+                "timestamp": timestamp,
+                "token": token,
+                "event-data": json.dumps(event_data),
+            },
+        )
+    finally:
+        app.dependency_overrides.pop(get_provider_event_ingestion_service, None)
+        app.dependency_overrides.pop(get_settings, None)
+
+    assert response.status_code == 202
+    assert response.json()["event_type"] == "delivered"
+    stored_event = provider_event_repository.list_by_campaign(
+        client_id="client_123",
+        campaign_id="campaign_123",
+    )[0]
+    persisted_payload = stored_event.payload
+    assert "person@example.test" not in json.dumps(persisted_payload, sort_keys=True)
+    assert "token-123" not in json.dumps(persisted_payload, sort_keys=True)
+    assert "subject" not in json.dumps(persisted_payload, sort_keys=True)
+    assert persisted_payload["recipient_hash"] is not None
 
 
 def test_provider_event_endpoint_accepts_sns_delivery_notification() -> None:
@@ -659,7 +822,75 @@ def test_ses_open_and_click_update_provider_events_and_stats_without_suppression
         client_id="client_123",
         campaign_id="campaign_123",
         contact_id="contact_123",
-    ).status == "queued"
+    ).status == "clicked"
+
+
+def test_mailgun_event_normalization_maps_supported_events() -> None:
+    runtime = build_runtime()
+    provider_event_service: ProviderEventIngestionService = runtime["provider_event_service"]  # type: ignore[assignment]
+    expected_event_types = {
+        "accepted": "accepted",
+        "delivered": "delivered",
+        "opened": "opened",
+        "clicked": "clicked",
+        "unsubscribed": "unsubscribe",
+        "complained": "complaint",
+        "rejected": "rejected",
+    }
+
+    for index, (mailgun_event, expected_type) in enumerate(expected_event_types.items(), start=1):
+        response = provider_event_service.ingest_payload(
+            {
+                "provider": "mailgun",
+                "source": "mailgun_webhook",
+                "payload": build_mailgun_event_data(
+                    event=mailgun_event,
+                    event_id=f"mailgun-event-{index}",
+                    custom_variables={
+                        "sendwise_client_id": "client_123",
+                        "sendwise_campaign_id": "campaign_123",
+                        "sendwise_contact_id": "contact_123",
+                    },
+                ),
+            }
+        )
+        assert response.event_type == expected_type
+
+    hard_bounce = provider_event_service.ingest_payload(
+        {
+            "provider": "mailgun",
+            "source": "mailgun_webhook",
+            "payload": build_mailgun_event_data(
+                event="failed",
+                event_id="mailgun-failed-hard",
+                custom_variables={
+                    "sendwise_client_id": "client_123",
+                    "sendwise_campaign_id": "campaign_123",
+                    "sendwise_contact_id": "contact_123",
+                },
+                delivery_status={"severity": "permanent"},
+            ),
+        }
+    )
+    soft_bounce = provider_event_service.ingest_payload(
+        {
+            "provider": "mailgun",
+            "source": "mailgun_webhook",
+            "payload": build_mailgun_event_data(
+                event="failed",
+                event_id="mailgun-failed-soft",
+                custom_variables={
+                    "sendwise_client_id": "client_123",
+                    "sendwise_campaign_id": "campaign_123",
+                    "sendwise_contact_id": "contact_123",
+                },
+                delivery_status={"severity": "temporary"},
+            ),
+        }
+    )
+
+    assert hard_bounce.event_type == "hard_bounce"
+    assert soft_bounce.event_type == "soft_bounce"
 
 
 def test_duplicate_event_does_not_duplicate_side_effects() -> None:
@@ -681,6 +912,37 @@ def test_duplicate_event_does_not_duplicate_side_effects() -> None:
     provider_event_service.ingest_event(event)
 
     assert len(suppression_repository._records) == 1
+
+
+def test_duplicate_mailgun_event_id_is_idempotent() -> None:
+    runtime = build_runtime()
+    provider_event_service: ProviderEventIngestionService = runtime["provider_event_service"]  # type: ignore[assignment]
+    provider_event_repository: InMemoryProviderEventRepository = runtime["provider_event_repository"]  # type: ignore[assignment]
+
+    payload = {
+        "provider": "mailgun",
+        "source": "mailgun_webhook",
+        "payload": build_mailgun_event_data(
+            event="delivered",
+            event_id="mailgun-dedup-1",
+            custom_variables={
+                "sendwise_client_id": "client_123",
+                "sendwise_campaign_id": "campaign_123",
+                "sendwise_contact_id": "contact_123",
+            },
+        ),
+    }
+    first = provider_event_service.ingest_payload(payload)
+    second = provider_event_service.ingest_payload(payload)
+
+    assert first.created is True
+    assert second.created is False
+    assert len(
+        provider_event_repository.list_by_campaign(
+            client_id="client_123",
+            campaign_id="campaign_123",
+        )
+    ) == 1
 
 
 def test_deterministic_event_key_deduplicates_provider_events_without_event_id() -> None:
@@ -710,6 +972,121 @@ def test_deterministic_event_key_deduplicates_provider_events_without_event_id()
             campaign_id="campaign_123",
         )
     ) == 1
+
+
+def test_unmatched_mailgun_event_does_not_update_campaign_metrics_or_suppression() -> None:
+    runtime = build_runtime()
+    provider_event_service: ProviderEventIngestionService = runtime["provider_event_service"]  # type: ignore[assignment]
+    provider_event_repository: InMemoryProviderEventRepository = runtime["provider_event_repository"]  # type: ignore[assignment]
+    suppression_repository: InMemorySuppressionListRepository = runtime["suppression_repository"]  # type: ignore[assignment]
+    admin_service: AdminCampaignService = runtime["admin_service"]  # type: ignore[assignment]
+
+    response = provider_event_service.ingest_payload(
+        {
+            "provider": "mailgun",
+            "source": "mailgun_webhook",
+            "payload": build_mailgun_event_data(
+                event="complained",
+                event_id="mailgun-unmatched-1",
+                custom_variables={},
+                message_id="<mailgun-unmatched>",
+            ),
+        }
+    )
+
+    assert response.correlated is False
+    assert provider_event_repository.list_by_campaign(
+        client_id="client_123",
+        campaign_id="campaign_123",
+    ) == []
+    assert len(provider_event_repository._records) == 1
+    assert suppression_repository._records == []
+    assert admin_service.get_campaign_summary("campaign_123").logs.complained == 0
+
+
+def test_mailgun_hard_bounce_updates_suppression_only_when_correlation_is_safe() -> None:
+    runtime = build_runtime()
+    provider_event_service: ProviderEventIngestionService = runtime["provider_event_service"]  # type: ignore[assignment]
+    suppression_repository: InMemorySuppressionListRepository = runtime["suppression_repository"]  # type: ignore[assignment]
+    email_log_repository: InMemoryEmailLogRepository = runtime["email_log_repository"]  # type: ignore[assignment]
+    contact_repository: InMemoryContactRepository = runtime["contact_repository"]  # type: ignore[assignment]
+
+    provider_event_service.ingest_payload(
+        {
+            "provider": "mailgun",
+            "source": "mailgun_webhook",
+            "payload": build_mailgun_event_data(
+                event="failed",
+                event_id="mailgun-hard-bounce-1",
+                custom_variables={
+                    "sendwise_client_id": "client_123",
+                    "sendwise_campaign_id": "campaign_123",
+                    "sendwise_contact_id": "contact_123",
+                },
+                delivery_status={"severity": "permanent"},
+            ),
+        }
+    )
+
+    assert email_log_repository.find_latest_for_contact(
+        client_id="client_123",
+        campaign_id="campaign_123",
+        contact_id="contact_123",
+    ).status == "bounced"
+    assert contact_repository.get_by_id("contact_123").status == "bounced"
+    assert suppression_repository._records[0].reason == "bounce"
+
+
+def test_mailgun_unsubscribe_updates_suppression_only_when_correlation_is_safe() -> None:
+    runtime = build_runtime()
+    provider_event_service: ProviderEventIngestionService = runtime["provider_event_service"]  # type: ignore[assignment]
+    suppression_repository: InMemorySuppressionListRepository = runtime["suppression_repository"]  # type: ignore[assignment]
+    contact_repository: InMemoryContactRepository = runtime["contact_repository"]  # type: ignore[assignment]
+
+    provider_event_service.ingest_payload(
+        {
+            "provider": "mailgun",
+            "source": "mailgun_webhook",
+            "payload": build_mailgun_event_data(
+                event="unsubscribed",
+                event_id="mailgun-unsubscribe-1",
+                custom_variables={
+                    "sendwise_client_id": "client_123",
+                    "sendwise_campaign_id": "campaign_123",
+                    "sendwise_contact_id": "contact_123",
+                },
+            ),
+        }
+    )
+
+    assert contact_repository.get_by_id("contact_123").status == "unsubscribed"
+    assert suppression_repository._records[0].reason == "unsubscribe"
+
+
+def test_mailgun_complaint_updates_suppression_only_when_correlation_is_safe() -> None:
+    runtime = build_runtime()
+    provider_event_service: ProviderEventIngestionService = runtime["provider_event_service"]  # type: ignore[assignment]
+    suppression_repository: InMemorySuppressionListRepository = runtime["suppression_repository"]  # type: ignore[assignment]
+    contact_repository: InMemoryContactRepository = runtime["contact_repository"]  # type: ignore[assignment]
+
+    provider_event_service.ingest_payload(
+        {
+            "provider": "mailgun",
+            "source": "mailgun_webhook",
+            "payload": build_mailgun_event_data(
+                event="complained",
+                event_id="mailgun-complaint-1",
+                custom_variables={
+                    "sendwise_client_id": "client_123",
+                    "sendwise_campaign_id": "campaign_123",
+                    "sendwise_contact_id": "contact_123",
+                },
+            ),
+        }
+    )
+
+    assert contact_repository.get_by_id("contact_123").status == "suppressed"
+    assert suppression_repository._records[0].reason == "complaint"
 
 
 def test_guard_blocks_contact_after_suppression_event() -> None:

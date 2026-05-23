@@ -1,4 +1,5 @@
 import { auth } from "@clerk/nextjs/server";
+import Image from "next/image";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { AdminClientAccessActions } from "../../../../components/admin/AdminClientAccessActions";
@@ -80,6 +81,14 @@ function shouldExposePortalSlug(client: Client): boolean {
   );
 }
 
+function getActionErrorMessage(error: unknown, fallback: string): string {
+  if (isApiError(error)) {
+    return error.detail;
+  }
+
+  return error instanceof Error ? error.message : fallback;
+}
+
 async function updateClientLimitsAction(clientId: string, formData: FormData) {
   "use server";
 
@@ -89,8 +98,10 @@ async function updateClientLimitsAction(clientId: string, formData: FormData) {
       max_campaigns: getFieldNumber(formData.get("max_campaigns")),
     }, await getToken());
   } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "Aggiornamento capacita non riuscito.";
+    const message = getActionErrorMessage(
+      error,
+      "Aggiornamento capacita non riuscito.",
+    );
     redirect(
       `/admin/clients/${clientId}?error=${encodeURIComponent(message)}`,
     );
@@ -145,10 +156,10 @@ async function updateClientBrandAction(clientId: string, formData: FormData) {
       token,
     );
   } catch (error) {
-    const message =
-      error instanceof Error
-        ? error.message
-        : "Aggiornamento brand email non riuscito.";
+    const message = getActionErrorMessage(
+      error,
+      "Aggiornamento brand email non riuscito.",
+    );
     redirect(
       `/admin/clients/${clientId}?error=${encodeURIComponent(message)}`,
     );
@@ -360,10 +371,13 @@ export default async function AdminClientDetailPage({
 
               {logoPreviewUrl ? (
                 <div className="admin-client-brand-card__preview">
-                  <img
+                  <Image
                     src={logoPreviewUrl}
                     alt={`Logo brand email di ${client.name}`}
                     className="admin-client-brand-card__preview-image"
+                    width={160}
+                    height={160}
+                    unoptimized
                   />
                   <div className="admin-client-brand-card__preview-copy">
                     <span>Logo attuale</span>

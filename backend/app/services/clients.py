@@ -127,6 +127,15 @@ CLIENT_DASHBOARD_WINDOW_DELTAS: tuple[tuple[ClientDashboardWindowKey, timedelta 
     ("allTime", None),
 )
 PROVIDER_EVENT_METRIC_TYPES = (
+    "accepted",
+    "delivered",
+    "opened",
+    "clicked",
+    "hard_bounce",
+    "soft_bounce",
+    "delivery_failed",
+    "complaint",
+    "unsubscribe",
     "ses_delivery",
     "ses_bounce",
     "ses_complaint",
@@ -134,6 +143,13 @@ PROVIDER_EVENT_METRIC_TYPES = (
     "ses_click",
     "sendwise_unsubscribe",
 )
+PROVIDER_ACCEPTED_EVENT_TYPES = ("accepted", "ses_send")
+PROVIDER_DELIVERED_EVENT_TYPES = ("delivered", "ses_delivery")
+PROVIDER_OPENED_EVENT_TYPES = ("opened", "ses_open")
+PROVIDER_CLICKED_EVENT_TYPES = ("clicked", "ses_click")
+PROVIDER_BOUNCE_EVENT_TYPES = ("hard_bounce", "soft_bounce", "delivery_failed", "ses_bounce")
+PROVIDER_COMPLAINT_EVENT_TYPES = ("complaint", "ses_complaint")
+PROVIDER_UNSUBSCRIBE_EVENT_TYPES = ("unsubscribe", "sendwise_unsubscribe")
 ACCEPTED_EMAIL_LOG_STATUSES = (
     "sent",
     "dispatched",
@@ -1269,20 +1285,20 @@ class ClientsService:
                 if provider_events_available:
                     delivered_value = provider_event_repository.count_client_events(
                         client_id=client_id,
-                        event_types=("ses_delivery",),
+                        event_types=PROVIDER_DELIVERED_EVENT_TYPES,
                         started_at=started_at,
                         ended_at=now,
                     )
                     clicked_value = provider_event_repository.count_client_events(
                         client_id=client_id,
-                        event_types=("ses_click",),
+                        event_types=PROVIDER_CLICKED_EVENT_TYPES,
                         started_at=started_at,
                         ended_at=now,
                     )
                 if provider_events_available:
                     opened_value = provider_event_repository.count_client_events(
                         client_id=client_id,
-                        event_types=("ses_open",),
+                        event_types=PROVIDER_OPENED_EVENT_TYPES,
                         started_at=started_at,
                         ended_at=now,
                     )
@@ -1841,7 +1857,7 @@ class ClientsService:
                 event_counts=event_counts,
                 provider_events_available=provider_events_available,
                 status_keys=("sent", "dispatched", "delivered"),
-                event_types=("ses_send",),
+                event_types=PROVIDER_ACCEPTED_EVENT_TYPES,
             ),
             failed=status_counts.get("failed", 0),
             delivered=_prefer_provider_metric(
@@ -1849,7 +1865,7 @@ class ClientsService:
                 event_counts=event_counts,
                 provider_events_available=provider_events_available,
                 status_keys=("delivered",),
-                event_types=("ses_delivery",),
+                event_types=PROVIDER_DELIVERED_EVENT_TYPES,
                 fallback_to_statuses=False,
             ),
             opened=_prefer_provider_metric(
@@ -1857,7 +1873,7 @@ class ClientsService:
                 event_counts=event_counts,
                 provider_events_available=provider_events_available,
                 status_keys=("opened",),
-                event_types=("ses_open",),
+                event_types=PROVIDER_OPENED_EVENT_TYPES,
                 fallback_to_statuses=False,
             ),
             clicked=_prefer_provider_metric(
@@ -1865,7 +1881,7 @@ class ClientsService:
                 event_counts=event_counts,
                 provider_events_available=provider_events_available,
                 status_keys=("clicked",),
-                event_types=("ses_click",),
+                event_types=PROVIDER_CLICKED_EVENT_TYPES,
                 fallback_to_statuses=False,
             ),
             bounced=_prefer_provider_metric(
@@ -1873,7 +1889,7 @@ class ClientsService:
                 event_counts=event_counts,
                 provider_events_available=provider_events_available,
                 status_keys=("bounced",),
-                event_types=("ses_bounce",),
+                event_types=PROVIDER_BOUNCE_EVENT_TYPES,
                 fallback_to_statuses=False,
             ),
             complained=_prefer_provider_metric(
@@ -1881,7 +1897,7 @@ class ClientsService:
                 event_counts=event_counts,
                 provider_events_available=provider_events_available,
                 status_keys=("complained", "spam"),
-                event_types=("ses_complaint",),
+                event_types=PROVIDER_COMPLAINT_EVENT_TYPES,
                 fallback_to_statuses=False,
             ),
             unsubscribed=_prefer_provider_metric(
@@ -1889,7 +1905,7 @@ class ClientsService:
                 event_counts=event_counts,
                 provider_events_available=provider_events_available,
                 status_keys=("unsubscribed",),
-                event_types=("sendwise_unsubscribe",),
+                event_types=PROVIDER_UNSUBSCRIBE_EVENT_TYPES,
                 fallback_to_statuses=False,
             ),
             provider_events_available=provider_events_available,

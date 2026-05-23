@@ -103,7 +103,7 @@ function getMetricDisplayValue(
     }
 
     return (window.sent ?? 0) > 0
-      ? "In attesa di eventi provider"
+      ? "Dati Mailgun non ancora collegati"
       : "Non disponibili";
   }
 
@@ -157,7 +157,7 @@ export function ClientRecentCampaignsCard({
     <ClientSurface
       className="client-surface--performance"
       bodyClassName="client-surface__body--performance"
-      title="Trend invii e segnali provider"
+      title="Trend invii e segnali Mailgun"
       // description="Mail inviate = accettate dal sistema. Consegne, aperture e click arrivano solo da eventi provider."
       aside={
         <div className="client-period-selector" aria-label="Selettore periodo">

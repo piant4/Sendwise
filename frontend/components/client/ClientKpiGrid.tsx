@@ -25,7 +25,7 @@ function formatProviderMetric(
   }
 
   if (sentValue?.available && (sentValue.value ?? 0) > 0) {
-    return "In attesa di eventi provider";
+    return "Dati Mailgun non ancora collegati";
   }
 
   return "Non disponibili";

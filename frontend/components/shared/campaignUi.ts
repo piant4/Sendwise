@@ -165,11 +165,11 @@ export function getProviderEventsAvailabilityLabel(
   logs: CampaignLogsSummary,
 ): string {
   if (logs.providerEventsAvailable) {
-    return "Disponibili";
+    return "Eventi Mailgun disponibili";
   }
 
   if (logs.sent > 0) {
-    return "In attesa di eventi provider";
+    return "Dati Mailgun non ancora collegati";
   }
 
   return "Non disponibili";
@@ -183,7 +183,7 @@ export function formatProviderEventMetric(
     return formatCampaignCount(value);
   }
 
-  return logs.sent > 0 ? "In attesa di eventi provider" : "Non disponibili";
+  return logs.sent > 0 ? "Dati Mailgun non ancora collegati" : "Non disponibili";
 }
 
 export function getCampaignOperationalSendState(

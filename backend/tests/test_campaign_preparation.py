@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+import json
 from typing import Any
 
 from fastapi.testclient import TestClient
@@ -356,6 +357,34 @@ def test_build_listmonk_campaign_payload_falls_back_to_technical_subject_when_re
     assert "{{campaign_name}}" not in payload["subject"]
     assert payload["body"] == "<html><body><p>Rendered fallback body</p></body></html>"
     assert "altbody" not in payload
+
+
+def test_build_listmonk_campaign_payload_adds_mailgun_variables_header_when_mailgun_smtp_is_configured() -> None:
+    campaign = build_campaign()
+
+    payload, _content_ready = build_listmonk_campaign_payload(
+        settings=Settings(
+            environment="test",
+            smtp_host="smtp.mailgun.org",
+            smtp_from_email="sender@example.test",
+        ),
+        campaign=campaign,
+        list_id=7,
+        content={
+            "subject": "Launch",
+            "content_ready": True,
+            "body": "<html><body><p>Rendered body</p></body></html>",
+            "body_text": "Rendered body text",
+        },
+    )
+
+    assert payload["headers"]["X-Mailgun-Variables"]
+    variables = json.loads(payload["headers"]["X-Mailgun-Variables"])
+    assert variables == {
+        "sendwise_campaign_id": "campaign_123",
+        "sendwise_client_id": "client_123",
+        "sendwise_contact_id": "{{ .Subscriber.Attribs.sendwise_contact_id }}",
+    }
 
 
 def test_prepare_campaign_is_idempotent_and_updates_existing_campaign() -> None:

@@ -262,8 +262,8 @@ export function AdminCampaignDetailView({
                 <StatusBadge
                   label={
                     summary.logs.providerEventsAvailable
-                      ? "Eventi provider disponibili"
-                      : "Eventi provider in attesa"
+                      ? "Eventi Mailgun disponibili"
+                      : "Dati Mailgun non ancora collegati"
                   }
                   variant={summary.logs.providerEventsAvailable ? "success" : "neutral"}
                 />
@@ -393,7 +393,7 @@ export function AdminCampaignDetailView({
               <span>Errori operativi o di dispatch registrati dal backend.</span>
             </article>
             <article className="campaign-callout">
-              <span className="admin-record-row__note">Provider events</span>
+              <span className="admin-record-row__note">Eventi Mailgun</span>
               <strong style={{ color: "#0f172a" }}>
                 {summary.logs.providerEventsAvailable ? "Disponibili" : "Non disponibili"}
               </strong>

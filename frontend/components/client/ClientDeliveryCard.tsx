@@ -48,7 +48,7 @@ export function ClientDeliveryCard({ summary }: ClientDeliveryCardProps) {
       >
         <div className="client-delivery-state">
           <strong>{getProviderEventsAvailabilityLabel(logs)}</strong>
-          <span>Disponibilita eventi provider</span>
+          <span>Disponibilita eventi Mailgun</span>
         </div>
         <div className="client-metric-stack client-metric-stack--single-column">
           {facts.map((fact) => (

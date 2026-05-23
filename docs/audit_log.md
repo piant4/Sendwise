@@ -3890,3 +3890,25 @@ Checks executed:
 Scope confirmation:
 - No backend send logic, DB schema, migration, Docker compose, auth model, direct Mailgun/SES API path, webhook, follow-up, inbound, reply detection, or domain rotation work was changed.
 - Frontend API calls remain backend-only; no new direct Listmonk browser call path was introduced.
+
+## Milestone 18.9B - Deliverability Guard Rules Source Document
+
+Date: 2026-05-23
+Branch: develop
+
+Verified state:
+- Created `docs/deliverability_guard_rules_v1.md` as the source document for why emails go to spam, authentication requirements, reputation handling, list hygiene, content linting, warmup/throttling, provider events, dashboard deliverability metrics, and the Deliverability Guard V1/V2/V3 roadmap.
+- Separated official provider facts from Sendwise internal conservative policy, including complaint, hard-bounce, unsubscribe, Contact Quality Score, Domain Health Score, Campaign Risk Score, Content Spam Linter, warmup schedule, and suppression automation policies.
+- Added explicit source/confidence rules stating that official provider/RFC sources are authoritative, provider docs are authoritative for their provider, and third-party studies/tools/benchmarks are directional only.
+- Preserved the product promise as reputation and deliverability protection through blocking risky sends, without claiming guaranteed inbox placement.
+
+Scope confirmation:
+- Documentation-only change.
+- No backend, frontend, schema, migration, Docker compose, env, secret, config, provider API call, or runtime behavior was changed.
+
+Checks executed:
+- `git diff --check`
+- `bash scripts/audit.sh`
+- `bash scripts/smoke_test.sh`
+- Manual markdown readability check for `docs/deliverability_guard_rules_v1.md`
+- Changed-file scope check with `git status --short`

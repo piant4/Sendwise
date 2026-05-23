@@ -553,6 +553,14 @@ class FakeClientAccessRepository(ClientAccessRepository):
         return True
 
 
+class FakeClientAccessService:
+    def __init__(self, records: list[ClientAccessRecord]) -> None:
+        self._records = {record.client_id: record for record in records}
+
+    def get_access_by_client_id(self, client_id: str) -> Optional[ClientAccessRecord]:
+        return self._records.get(client_id)
+
+
 class FakeClerkInvitationGateway(ClerkInvitationGateway):
     def __init__(self) -> None:
         self.calls: list[dict[str, str]] = []
@@ -1669,10 +1677,9 @@ def test_platform_admin_overview_reports_clients_near_limit_from_real_usage(
     near_limit_clients = payload["limits"]["clients_near_limit"]
     assert len(near_limit_clients) == 1
     assert near_limit_clients[0]["client_id"] == limited_client.id
-    assert near_limit_clients[0]["limiting_factor"] == "both"
+    assert near_limit_clients[0]["limiting_factor"] == "campaign_slots"
     assert near_limit_clients[0]["campaigns_in_use"] == 4
     assert near_limit_clients[0]["max_campaigns"] == 5
-    assert near_limit_clients[0]["highest_usage_campaign_volume"] == 450
 
 
 def test_platform_admin_can_list_cross_client_blocked_sends(
@@ -3642,11 +3649,11 @@ def test_client_overview_exposes_backend_backed_dashboard_analytics(
             campaign_id=campaign_id,
             contact_id=f"contact_event_{index}",
             email_log_id=email_log_id,
-            provider="ses",
+            provider="mailgun",
             source="webhook",
             provider_event_id=f"evt_{index}",
-            event_key=f"ses_open_{index}",
-            event_type="ses_open",
+            event_key=f"mailgun_opened_{index}",
+            event_type="opened",
             payload={"type": "open"},
             occurred_at=occurred_at,
         )
@@ -3719,13 +3726,13 @@ def test_client_overview_exposes_backend_backed_dashboard_analytics(
         "limit": 4,
         "available": True,
     }
-    assert dashboard["kpis"]["ready_campaigns"] == {
+    assert dashboard["kpis"]["sent_last_7d"] == {
         "value": 1,
         "limit": None,
         "available": True,
     }
-    assert dashboard["kpis"]["sent_last_7d"] == {
-        "value": 2,
+    assert dashboard["kpis"]["delivered_last_7d"] == {
+        "value": 0,
         "limit": None,
         "available": True,
     }
@@ -3734,23 +3741,28 @@ def test_client_overview_exposes_backend_backed_dashboard_analytics(
         "limit": None,
         "available": True,
     }
+    assert dashboard["kpis"]["clicked_last_7d"] == {
+        "value": 0,
+        "limit": None,
+        "available": True,
+    }
     assert dashboard["performance_analytics"]["default_window"] == "7d"
-    assert dashboard["performance_analytics"]["windows"]["24h"]["sent"] == 1
-    assert dashboard["performance_analytics"]["windows"]["24h"]["queued"] == 1
-    assert dashboard["performance_analytics"]["windows"]["24h"]["blocked"] == 1
-    assert dashboard["performance_analytics"]["windows"]["24h"]["opened"] == 0
-    assert dashboard["performance_analytics"]["windows"]["24h"]["opened_available"] is True
-    assert dashboard["performance_analytics"]["windows"]["7d"]["sent"] == 2
-    assert dashboard["performance_analytics"]["windows"]["7d"]["queued"] == 1
-    assert dashboard["performance_analytics"]["windows"]["7d"]["blocked"] == 1
+    assert dashboard["performance_analytics"]["windows"]["24h"]["sent"] == 0
+    assert dashboard["performance_analytics"]["windows"]["24h"]["failed"] == 0
+    assert dashboard["performance_analytics"]["windows"]["24h"]["opened"] is None
+    assert dashboard["performance_analytics"]["windows"]["24h"]["opened_available"] is False
+    assert dashboard["performance_analytics"]["windows"]["7d"]["sent"] == 1
+    assert dashboard["performance_analytics"]["windows"]["7d"]["failed"] == 0
+    assert dashboard["performance_analytics"]["windows"]["7d"]["delivered"] == 0
     assert dashboard["performance_analytics"]["windows"]["7d"]["opened"] == 1
-    assert dashboard["performance_analytics"]["windows"]["14d"]["sent"] == 3
-    assert dashboard["performance_analytics"]["windows"]["14d"]["blocked"] == 2
-    assert dashboard["performance_analytics"]["windows"]["30d"]["sent"] == 4
-    assert dashboard["performance_analytics"]["windows"]["30d"]["queued"] == 2
+    assert dashboard["performance_analytics"]["windows"]["7d"]["clicked"] == 0
+    assert dashboard["performance_analytics"]["windows"]["14d"]["sent"] == 2
+    assert dashboard["performance_analytics"]["windows"]["14d"]["failed"] == 0
+    assert dashboard["performance_analytics"]["windows"]["30d"]["sent"] == 2
+    assert dashboard["performance_analytics"]["windows"]["30d"]["failed"] == 0
     assert dashboard["performance_analytics"]["windows"]["30d"]["opened"] == 2
-    assert dashboard["performance_analytics"]["windows"]["allTime"]["sent"] == 4
-    assert dashboard["performance_analytics"]["windows"]["allTime"]["blocked"] == 2
+    assert dashboard["performance_analytics"]["windows"]["allTime"]["sent"] == 2
+    assert dashboard["performance_analytics"]["windows"]["allTime"]["failed"] == 0
     assert dashboard["actions_required"]["campaigns_to_complete"] == 1
     assert dashboard["actions_required"]["blocked_sends_to_review"] == 1
     assert dashboard["actions_required"]["provider_events_issues"] is None
@@ -3768,10 +3780,11 @@ def test_client_overview_exposes_backend_backed_dashboard_analytics(
     }
     assert dashboard["period_usage"] == {
         "has_real_usage": True,
-        "sent": 2,
-        "queued": 1,
-        "blocked": 1,
+        "sent": 1,
+        "failed": 0,
+        "delivered": 0,
         "opened": 1,
+        "clicked": 0,
     }
     assert "daily_email_limit" not in dashboard
 
@@ -3823,24 +3836,37 @@ def test_client_overview_marks_missing_metric_sources_as_unavailable(
         "limit": None,
         "available": False,
     }
+    assert dashboard["kpis"]["delivered_last_7d"] == {
+        "value": None,
+        "limit": None,
+        "available": False,
+    }
+    assert dashboard["kpis"]["clicked_last_7d"] == {
+        "value": None,
+        "limit": None,
+        "available": False,
+    }
     assert dashboard["performance_analytics"]["windows"]["7d"] == {
         "sent": None,
-        "queued": None,
-        "blocked": None,
+        "failed": None,
+        "delivered": None,
         "opened": None,
+        "clicked": None,
         "sent_available": False,
-        "queued_available": False,
-        "blocked_available": False,
+        "failed_available": False,
+        "delivered_available": False,
         "opened_available": False,
+        "clicked_available": False,
         "window_started_at": dashboard["performance_analytics"]["windows"]["7d"]["window_started_at"],
         "window_ended_at": dashboard["performance_analytics"]["windows"]["7d"]["window_ended_at"],
     }
     assert dashboard["period_usage"] == {
         "has_real_usage": False,
         "sent": None,
-        "queued": None,
-        "blocked": None,
+        "failed": None,
+        "delivered": None,
         "opened": None,
+        "clicked": None,
     }
 
 
@@ -3891,8 +3917,8 @@ def test_client_overview_keeps_zero_real_rows_available_when_sources_exist(
         "limit": None,
         "available": False,
     }
-    assert dashboard["performance_analytics"]["windows"]["7d"]["blocked"] == 0
-    assert dashboard["performance_analytics"]["windows"]["7d"]["blocked_available"] is True
+    assert dashboard["performance_analytics"]["windows"]["7d"]["failed"] == 0
+    assert dashboard["performance_analytics"]["windows"]["7d"]["failed_available"] is True
     assert dashboard["performance_analytics"]["windows"]["7d"]["opened"] is None
     assert dashboard["performance_analytics"]["windows"]["7d"]["opened_available"] is False
 
@@ -4199,16 +4225,21 @@ def test_client_campaign_stats_return_only_db_backed_metrics(
 
 def test_admin_overview_uses_rome_day_boundaries() -> None:
     settings = get_settings()
+    client_record = build_client_record()
     service = ClientsService(
         FakeClientRepository(
-            [build_client_record()],
+            [client_record],
             admin_email_log_records=[
                 build_admin_email_log_record(
                     log_id="log_previous_local_day",
+                    client_id=client_record.id,
+                    campaign_id="campaign_previous",
                     created_at=datetime(2026, 5, 9, 21, 30, tzinfo=timezone.utc),
                 ),
                 build_admin_email_log_record(
                     log_id="log_current_local_day",
+                    client_id=client_record.id,
+                    campaign_id="campaign_current",
                     created_at=datetime(2026, 5, 9, 22, 15, tzinfo=timezone.utc),
                 ),
             ],
@@ -4265,11 +4296,17 @@ def test_client_overview_uses_rome_month_boundaries() -> None:
                 build_client_blocked_send_record(
                     blocked_send_id="blocked_previous_local_month",
                     client_id=client_record.id,
+                    campaign_id="campaign_previous",
+                    campaign_name="Previous",
+                    reason="Previous local month.",
                     created_at=datetime(2026, 4, 30, 21, 30, tzinfo=timezone.utc),
                 ),
                 build_client_blocked_send_record(
                     blocked_send_id="blocked_current_local_month",
                     client_id=client_record.id,
+                    campaign_id="campaign_current",
+                    campaign_name="Current",
+                    reason="Current local month.",
                     created_at=datetime(2026, 4, 30, 22, 20, tzinfo=timezone.utc),
                 ),
             ],

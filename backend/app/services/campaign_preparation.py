@@ -93,7 +93,7 @@ def _build_listmonk_campaign_headers(
     content: dict[str, Any],
 ) -> list[dict[str, str]]:
     headers: list[dict[str, str]] = []
-    unsubscribe_url = str(content.get("unsubscribe_url") or "").strip()
+    unsubscribe_url = _build_list_unsubscribe_header_url(settings=settings)
     if _is_safe_listmonk_unsubscribe_url(unsubscribe_url):
         headers.extend(
             [
@@ -116,6 +116,14 @@ def _build_listmonk_campaign_headers(
             }
         )
     return headers
+
+
+def _build_list_unsubscribe_header_url(*, settings: Settings) -> str:
+    base_url = settings.backend_public_origin or settings.backend_public_url.strip()
+    base_url = base_url.rstrip("/")
+    if not base_url:
+        return ""
+    return f"{base_url}/unsubscribe/{LISTMONK_UNSUBSCRIBE_TOKEN_PLACEHOLDER}"
 
 
 def _is_safe_listmonk_unsubscribe_url(unsubscribe_url: str) -> bool:

@@ -320,10 +320,35 @@ def test_unsubscribe_post_returns_success_json_response() -> None:
     }
 
 
+def test_unsubscribe_post_accepts_rfc8058_one_click_body() -> None:
+    runtime = build_runtime()
+    token_service: UnsubscribeTokenService = runtime["token_service"]  # type: ignore[assignment]
+    unsubscribe_service: UnsubscribeService = runtime["unsubscribe_service"]  # type: ignore[assignment]
+    suppression_repository: InMemorySuppressionListRepository = runtime[
+        "suppression_repository"
+    ]  # type: ignore[assignment]
+    token = token_service.generate_token(client_id="client_123", contact_id="contact_123")
+    app.dependency_overrides[get_unsubscribe_service] = lambda: unsubscribe_service
+    try:
+        response = TestClient(app).post(
+            f"/unsubscribe/{token}",
+            data={"List-Unsubscribe": "One-Click"},
+        )
+    finally:
+        app.dependency_overrides.pop(get_unsubscribe_service, None)
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "unsubscribed"
+    assert len(suppression_repository._records) == 1
+
+
 def test_unsubscribe_post_returns_idempotent_already_unsubscribed_json_response() -> None:
     runtime = build_runtime()
     token_service: UnsubscribeTokenService = runtime["token_service"]  # type: ignore[assignment]
     unsubscribe_service: UnsubscribeService = runtime["unsubscribe_service"]  # type: ignore[assignment]
+    suppression_repository: InMemorySuppressionListRepository = runtime[
+        "suppression_repository"
+    ]  # type: ignore[assignment]
     token = token_service.generate_token(client_id="client_123", contact_id="contact_123")
     app.dependency_overrides[get_unsubscribe_service] = lambda: unsubscribe_service
     try:
@@ -340,6 +365,7 @@ def test_unsubscribe_post_returns_idempotent_already_unsubscribed_json_response(
         "message": "La tua scelta era gia stata registrata.",
         "already_unsubscribed": True,
     }
+    assert len(suppression_repository._records) == 1
 
 
 def test_provider_event_endpoint_requires_api_key() -> None:

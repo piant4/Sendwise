@@ -4012,3 +4012,25 @@ Checks executed:
 - `python -m py_compile backend/app/services/campaign_preparation.py backend/app/services/campaigns.py backend/tests/test_campaign_preparation.py backend/tests/test_campaign_dispatch.py`
 - Docker targeted pytest subset for campaign preparation and Listmonk unsubscribe-header dispatch behavior.
 - Full Docker run for `tests/test_campaign_preparation.py tests/test_campaign_dispatch.py` was attempted; new unsubscribe coverage passed, while unrelated pre-existing dispatch/listmonk-client assertions still fail in that file.
+
+## Milestone 19.6-FIX1 - Authoritative One-Click Unsubscribe Path
+
+Date: 2026-05-24
+Branch: main
+
+Verified state:
+- Audited the existing public Sendwise unsubscribe route in `backend/app/api/events.py`: `GET /unsubscribe/{token}` returns a safe HTML result and `POST /unsubscribe/{token}` returns controlled JSON through the same backend-owned suppression service.
+- Confirmed the existing POST path has no CSRF or browser-only confirmation requirement and accepts the RFC 8058 one-click POST body while invoking the same idempotent `sendwise_unsubscribe` provider-event side effect.
+- Updated campaign preparation so the `List-Unsubscribe` header targets the public backend `/unsubscribe/{token}` endpoint for provider one-click POST, while the visible body unsubscribe link remains the existing public frontend unsubscribe URL.
+- Confirmed campaign preparation preserves `List-Unsubscribe-Post: List-Unsubscribe=One-Click`, plus the existing Mailgun correlation header composition.
+- Added route regression coverage for RFC 8058 one-click POST body handling and exact-once suppression persistence on repeated POST.
+- VPS runtime change could not be applied because `ssh sendwise@srv1442487` failed DNS resolution before any remote command executed.
+
+Runtime and follow-up state:
+- Listmonk native `privacy.unsubscribe_header=false` was not verified or applied in this run because the VPS host name did not resolve.
+- Listmonk `localhost:9000` footer, view-in-browser, and tracking-pixel sources remain a runtime/config follow-up unless disabling the native unsubscribe-header behavior removes them during the separate VPS pass.
+- The delivered unresolved `X-Mailgun-Variables.sendwise_contact_id` remains a separate provider/Listmonk rendering blocker to verify; this milestone did not change correlation behavior.
+
+Scope confirmation:
+- No real send, real unsubscribe, real suppression trigger, direct Mailgun/SES send path, webhook signing change, event-normalization change, schema/migration change, Docker/env edit, or Listmonk bypass was introduced.
+- No secrets, recipient addresses, full headers, raw message bodies, unsubscribe URLs/tokens, credentials, auth headers, signing keys, or SMTP secrets were printed.

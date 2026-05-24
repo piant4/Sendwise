@@ -24,6 +24,10 @@ LISTMONK_UNSUBSCRIBE_URL = (
     "https://app.sendwise.example.test/unsubscribe/"
     "{{ .Subscriber.Attribs.sendwise_unsubscribe_token }}"
 )
+LISTMONK_HEADER_UNSUBSCRIBE_URL = (
+    "https://api.sendwise.example.test/unsubscribe/"
+    "{{ .Subscriber.Attribs.sendwise_unsubscribe_token }}"
+)
 
 
 class FakeListmonkPreparationClient:
@@ -372,6 +376,7 @@ def test_build_listmonk_campaign_payload_adds_unsubscribe_and_mailgun_headers_wh
             environment="test",
             smtp_host="smtp.mailgun.org",
             smtp_from_email="sender@example.test",
+            backend_public_url="https://api.sendwise.example.test",
         ),
         campaign=campaign,
         list_id=7,
@@ -387,7 +392,7 @@ def test_build_listmonk_campaign_payload_adds_unsubscribe_and_mailgun_headers_wh
     assert isinstance(payload["headers"], list)
     assert len(payload["headers"]) == 3
     assert payload["headers"][0] == {
-        "List-Unsubscribe": f"<{LISTMONK_UNSUBSCRIBE_URL}>"
+        "List-Unsubscribe": f"<{LISTMONK_HEADER_UNSUBSCRIBE_URL}>"
     }
     assert payload["headers"][1] == {
         "List-Unsubscribe-Post": "List-Unsubscribe=One-Click"
@@ -409,6 +414,7 @@ def test_build_listmonk_campaign_payload_adds_unsubscribe_headers_for_non_mailgu
             environment="test",
             smtp_host="smtp.example.test",
             smtp_from_email="sender@example.test",
+            backend_public_url="https://api.sendwise.example.test",
         ),
         campaign=campaign,
         list_id=7,
@@ -422,12 +428,12 @@ def test_build_listmonk_campaign_payload_adds_unsubscribe_headers_for_non_mailgu
     )
 
     assert payload["headers"] == [
-        {"List-Unsubscribe": f"<{LISTMONK_UNSUBSCRIBE_URL}>"},
+        {"List-Unsubscribe": f"<{LISTMONK_HEADER_UNSUBSCRIBE_URL}>"},
         {"List-Unsubscribe-Post": "List-Unsubscribe=One-Click"},
     ]
 
 
-def test_build_listmonk_campaign_payload_omits_unsubscribe_headers_without_safe_listmonk_template_url() -> None:
+def test_build_listmonk_campaign_payload_omits_unsubscribe_headers_without_safe_public_backend_url() -> None:
     campaign = build_campaign()
 
     payload, _content_ready = build_listmonk_campaign_payload(
@@ -435,6 +441,7 @@ def test_build_listmonk_campaign_payload_omits_unsubscribe_headers_without_safe_
             environment="test",
             smtp_host="smtp.example.test",
             smtp_from_email="sender@example.test",
+            backend_public_url="http://localhost:8000",
         ),
         campaign=campaign,
         list_id=7,

@@ -464,6 +464,7 @@ export interface AdminCampaignDetail {
   name: string;
   status: CampaignStatus;
   subject?: string | null;
+  renderedSubject?: string | null;
   previewText?: string | null;
   bodyHtml?: string | null;
   bodyText?: string | null;
@@ -485,6 +486,7 @@ export interface CampaignSummaryItem {
   name: string;
   status: CampaignStatus;
   subject?: string | null;
+  renderedSubject?: string | null;
   previewText?: string | null;
   currentStep: string;
   contentReady: boolean;

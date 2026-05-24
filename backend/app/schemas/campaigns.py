@@ -97,6 +97,7 @@ class AdminCampaignDetail(BaseModel):
     name: str
     status: CampaignStatus
     subject: Optional[str] = None
+    rendered_subject: Optional[str] = None
     preview_text: Optional[str] = None
     body_html: Optional[str] = None
     body_text: Optional[str] = None
@@ -218,6 +219,7 @@ class CampaignSummaryItem(BaseModel):
     name: str
     status: CampaignStatus
     subject: Optional[str] = None
+    rendered_subject: Optional[str] = None
     preview_text: Optional[str] = None
     current_step: str
     content_ready: bool

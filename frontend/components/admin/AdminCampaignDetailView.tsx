@@ -9,8 +9,8 @@ import type {
 import {
   dedupeReviewReasons,
   formatCampaignCount,
+  getCampaignDisplaySubject,
   getCampaignReadinessShortLabel,
-  getCampaignSubjectDisplay,
   getCampaignStatusLabel,
   getCampaignStatusVariant,
   getCampaignStepLabel,
@@ -18,6 +18,9 @@ import {
   getProviderEventsLabel,
   getReadableBackendReason,
   getRuntimeSafetyItems,
+  hasSuccessfulPostSendState,
+  isDuplicateDispatchReason,
+  isPreSendReadinessReason,
 } from "../shared/campaignUi";
 import { formatDateTimeInRome } from "../shared/dateTime";
 import { Button } from "../ui/button";
@@ -171,6 +174,15 @@ function getOperationalSummary(
     };
   }
 
+  if (summary.logs.deliveredAvailable && (summary.logs.delivered ?? 0) > 0) {
+    return {
+      badgeLabel: "Consegnata",
+      badgeVariant: "success" as const,
+      title: "Campagna consegnata",
+      detail: "Delivered e' confermato dagli eventi provider processati.",
+    };
+  }
+
   if (summary.logs.failed > 0) {
     return {
       badgeLabel: "Invio con errori",
@@ -180,7 +192,19 @@ function getOperationalSummary(
     };
   }
 
-  if ((summary.logs.sent ?? 0) > 0) {
+  if (campaign.status === "failed" || campaign.status === "blocked") {
+    return {
+      badgeLabel: campaign.status === "failed" ? "Invio fallito" : "Campagna bloccata",
+      badgeVariant: "danger" as const,
+      title:
+        campaign.status === "failed"
+          ? "La campagna richiede intervento"
+          : "La campagna e bloccata",
+      detail: "Lo stato operativo richiede una verifica prima di un nuovo invio.",
+    };
+  }
+
+  if (summary.logs.sentAvailable && (summary.logs.sent ?? 0) > 0) {
     return {
       badgeLabel: "Accettata / avviata",
       badgeVariant: "success" as const,
@@ -220,12 +244,33 @@ export function AdminCampaignDetailView({
   contacts,
 }: AdminCampaignDetailViewProps) {
   const runtimeItems = summary ? getRuntimeSafetyItems(summary.runtime) : [];
+  const hasPostSendSuccess = summary ? hasSuccessfulPostSendState(summary.logs) : false;
   const blockingReasons = summary
-    ? dedupeReviewReasons(summary.blockingErrors.map(getReadableBackendReason))
+    ? dedupeReviewReasons(
+        summary.blockingErrors
+          .filter((reason) =>
+            hasPostSendSuccess
+              ? !isDuplicateDispatchReason(reason) && !isPreSendReadinessReason(reason)
+              : true,
+          )
+          .map(getReadableBackendReason),
+      )
     : [];
   const warningReasons = summary
-    ? dedupeReviewReasons(summary.warnings.map(getReadableBackendReason))
+    ? dedupeReviewReasons(
+        summary.warnings
+          .filter((reason) => (hasPostSendSuccess ? !isPreSendReadinessReason(reason) : true))
+          .map(getReadableBackendReason),
+      )
     : [];
+  const duplicateProtectionReasons =
+    summary && hasPostSendSuccess
+      ? dedupeReviewReasons(
+          summary.blockingErrors
+            .filter(isDuplicateDispatchReason)
+            .map(getReadableBackendReason),
+        )
+      : [];
   const operationalSummary = getOperationalSummary(summary, campaign);
   const recipientSummary = summary
     ? `${formatCampaignCount(summary.recipients.total)} totali · ${formatCampaignCount(summary.recipients.eligible)} idonei · ${formatCampaignCount(summary.recipients.blocked)} bloccati`
@@ -234,6 +279,10 @@ export function AdminCampaignDetailView({
       : "Non disponibili";
   const providerMetrics = summary ? buildProviderMetrics(summary.logs) : [];
   const previewHtml = renderLocalPreviewTemplate(campaign);
+  const subjectDisplay = getCampaignDisplaySubject(
+    summary?.campaign ?? campaign,
+    "Non disponibile",
+  );
 
   return (
     <div style={{ display: "grid", gap: 20 }}>
@@ -248,7 +297,7 @@ export function AdminCampaignDetailView({
                 {campaign.clientName}
               </p>
               <p className="admin-record-row__note" style={{ marginTop: 6 }}>
-                {getCampaignSubjectDisplay(campaign.subject)}
+                {subjectDisplay}
               </p>
             </div>
             <div className="campaign-hero-actions">
@@ -308,11 +357,18 @@ export function AdminCampaignDetailView({
             {[
               {
                 label: "Stato operativo",
-                value: summary
+                value: hasPostSendSuccess
+                  ? "Report post-send disponibile"
+                  : summary
                   ? getCampaignReadinessShortLabel(summary.campaign)
                   : getCampaignReadinessShortLabel(campaign),
               },
-              { label: "Step operativo", value: getCampaignStepLabel(campaign.currentStep) },
+              {
+                label: "Step operativo",
+                value: hasPostSendSuccess
+                  ? "Post-send"
+                  : getCampaignStepLabel(campaign.currentStep),
+              },
               { label: "Destinatari", value: recipientSummary },
               { label: "Aggiornata", value: formatDateLabel(campaign.updatedAt) },
               {
@@ -367,8 +423,16 @@ export function AdminCampaignDetailView({
               </h2>
             </div>
             <StatusBadge
-              label={summary.campaign.reviewReady ? "Review pronta" : "Review incompleta"}
-              variant={summary.campaign.reviewReady ? "success" : "warning"}
+              label={
+                hasPostSendSuccess
+                  ? "Report finale"
+                  : summary.campaign.reviewReady
+                    ? "Review pronta"
+                    : "Review incompleta"
+              }
+              variant={
+                hasPostSendSuccess || summary.campaign.reviewReady ? "success" : "warning"
+              }
             />
           </div>
 
@@ -445,6 +509,17 @@ export function AdminCampaignDetailView({
             </div>
           ) : null}
 
+          {duplicateProtectionReasons.length > 0 ? (
+            <div className="campaign-detail-notes" style={{ marginTop: 16 }}>
+              <strong style={{ color: "#0f172a" }}>Protezione duplicati</strong>
+              <ul className="admin-record-row__note" style={{ margin: 0 }}>
+                {duplicateProtectionReasons.map((reason) => (
+                  <li key={`${reason.raw}-${reason.label}`}>{reason.label}</li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+
           {warningReasons.length > 0 ? (
             <div className="campaign-detail-notes" style={{ marginTop: 16 }}>
               <strong style={{ color: "#0f172a" }}>Controlli utili</strong>
@@ -478,7 +553,7 @@ export function AdminCampaignDetailView({
           <article className="campaign-callout">
             <span className="admin-record-row__note">Oggetto</span>
             <strong style={{ color: "#0f172a" }}>
-              {getCampaignSubjectDisplay(campaign.subject, "Non disponibile")}
+              {subjectDisplay}
             </strong>
           </article>
           <article className="campaign-callout">

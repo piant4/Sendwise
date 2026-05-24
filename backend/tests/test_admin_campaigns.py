@@ -175,6 +175,32 @@ def build_contact(
     )
 
 
+def add_processed_provider_event(
+    repository: InMemoryProviderEventRepository,
+    *,
+    client_id: str,
+    campaign_id: str,
+    contact_id: str,
+    email_log_id: str,
+    event_type: str,
+) -> None:
+    now = datetime.now(timezone.utc)
+    record, _created = repository.create_or_get_event(
+        client_id=client_id,
+        campaign_id=campaign_id,
+        contact_id=contact_id,
+        email_log_id=email_log_id,
+        provider="mailgun",
+        source="test",
+        provider_event_id=f"{campaign_id}-{contact_id}-{event_type}",
+        event_key=f"{campaign_id}:{contact_id}:{event_type}",
+        event_type=event_type,
+        payload={},
+        occurred_at=now,
+    )
+    repository.mark_processed(event_id=record.id, processed_at=now)
+
+
 def to_client_campaign(campaign: CampaignRecord) -> ClientCampaignRecord:
     return ClientCampaignRecord(
         id=campaign.id,
@@ -206,6 +232,7 @@ def build_admin_service(
     suppression_records: list[SuppressionRecord] | None = None,
     blocked_send_repository: InMemoryBlockedSendRepository | None = None,
     email_log_repository: InMemoryEmailLogRepository | None = None,
+    provider_event_repository: InMemoryProviderEventRepository | None = None,
     campaign_limit_repository: InMemoryCampaignSendingLimitRepository | None = None,
     email_template_repository: InMemoryEmailTemplateRepository | None = None,
 ) -> AdminCampaignService:
@@ -233,7 +260,8 @@ def build_admin_service(
         ),
         blocked_send_repository=blocked_send_repository or InMemoryBlockedSendRepository(),
         email_log_repository=email_log_repository or InMemoryEmailLogRepository(),
-        provider_event_repository=InMemoryProviderEventRepository(),
+        provider_event_repository=provider_event_repository
+        or InMemoryProviderEventRepository(),
     )
 
 
@@ -859,6 +887,173 @@ def test_admin_summary_aggregates_email_logs_for_operational_reporting() -> None
     assert result.logs.delivery_rate is None
     assert result.logs.delivery_rate_available is False
     assert result.logs.provider_events_available is False
+
+
+def test_admin_summary_keeps_provider_delivered_metrics_and_rendered_subject() -> None:
+    repository = InMemoryCampaignRepository()
+    campaign = repository.add_campaign(
+        campaign_id="campaign_123",
+        client_id="client_123",
+        name="prova-3",
+        status="completed",
+        subject="Le novita essenziali di {{campaign_name}}",
+        body_html="<p>Hello</p>",
+        current_step="review",
+    )
+    contact = build_contact(contact_id="contact_1", email="one@example.test")
+    email_logs = InMemoryEmailLogRepository()
+    log = email_logs.create_email_log(
+        client_id="client_123",
+        campaign_id=campaign.id,
+        contact_id=contact.id,
+        status="delivered",
+    )
+    provider_events = InMemoryProviderEventRepository()
+    add_processed_provider_event(
+        provider_events,
+        client_id="client_123",
+        campaign_id=campaign.id,
+        contact_id=contact.id,
+        email_log_id=log.id,
+        event_type="accepted",
+    )
+    add_processed_provider_event(
+        provider_events,
+        client_id="client_123",
+        campaign_id=campaign.id,
+        contact_id=contact.id,
+        email_log_id=log.id,
+        event_type="delivered",
+    )
+    service = build_admin_service(
+        campaign_repository=repository,
+        contacts=[contact],
+        campaign_contacts={("client_123", campaign.id, contact.id)},
+        email_log_repository=email_logs,
+        provider_event_repository=provider_events,
+    )
+
+    result = service.get_campaign_summary(campaign.id)
+
+    assert result.campaign.subject == "Le novita essenziali di {{campaign_name}}"
+    assert result.campaign.rendered_subject == "Le novita essenziali di prova-3"
+    assert result.logs.sent == 1
+    assert result.logs.delivered == 1
+    assert result.logs.opened == 0
+    assert result.logs.clicked == 0
+    assert result.logs.provider_events_available is True
+    assert result.logs.delivered_available is True
+    assert result.logs.opened_available is True
+    assert result.logs.clicked_available is True
+
+
+def test_admin_summary_accepts_provider_accepted_without_delivered_metric() -> None:
+    repository = InMemoryCampaignRepository()
+    campaign = repository.add_campaign(
+        campaign_id="campaign_123",
+        client_id="client_123",
+        status="running",
+        subject="Launch",
+        body_html="<p>Hello</p>",
+    )
+    contact = build_contact(contact_id="contact_1", email="one@example.test")
+    email_logs = InMemoryEmailLogRepository()
+    log = email_logs.create_email_log(
+        client_id="client_123",
+        campaign_id=campaign.id,
+        contact_id=contact.id,
+        status="sent",
+    )
+    provider_events = InMemoryProviderEventRepository()
+    add_processed_provider_event(
+        provider_events,
+        client_id="client_123",
+        campaign_id=campaign.id,
+        contact_id=contact.id,
+        email_log_id=log.id,
+        event_type="accepted",
+    )
+    service = build_admin_service(
+        campaign_repository=repository,
+        contacts=[contact],
+        campaign_contacts={("client_123", campaign.id, contact.id)},
+        email_log_repository=email_logs,
+        provider_event_repository=provider_events,
+    )
+
+    result = service.get_campaign_summary(campaign.id)
+
+    assert result.logs.sent == 1
+    assert result.logs.delivered == 0
+    assert result.logs.provider_events_available is True
+    assert result.logs.delivered_available is True
+
+
+def test_admin_summary_failed_campaign_keeps_problem_state() -> None:
+    repository = InMemoryCampaignRepository()
+    campaign = repository.add_campaign(
+        campaign_id="campaign_123",
+        client_id="client_123",
+        status="failed",
+        subject="Launch",
+        body_html="<p>Hello</p>",
+    )
+    contact = build_contact(contact_id="contact_1", email="one@example.test")
+    email_logs = InMemoryEmailLogRepository()
+    email_logs.create_email_log(
+        client_id="client_123",
+        campaign_id=campaign.id,
+        contact_id=contact.id,
+        status="failed",
+    )
+    service = build_admin_service(
+        campaign_repository=repository,
+        contacts=[contact],
+        campaign_contacts={("client_123", campaign.id, contact.id)},
+        email_log_repository=email_logs,
+    )
+
+    result = service.get_campaign_summary(campaign.id)
+
+    assert result.campaign.status == "failed"
+    assert result.logs.failed == 1
+    assert result.can_send is False
+
+
+def test_admin_summary_successful_sent_campaign_keeps_duplicate_guard_distinct() -> None:
+    repository = InMemoryCampaignRepository()
+    campaign = repository.add_campaign(
+        campaign_id="campaign_123",
+        client_id="client_123",
+        status="completed",
+        subject="Launch",
+        body_html="<p>Hello</p>",
+    )
+    contact = build_contact(contact_id="contact_1", email="one@example.test")
+    email_logs = InMemoryEmailLogRepository()
+    email_logs.create_email_log(
+        client_id="client_123",
+        campaign_id=campaign.id,
+        contact_id=contact.id,
+        status="sent",
+    )
+    service = build_admin_service(
+        campaign_repository=repository,
+        contacts=[contact],
+        campaign_contacts={("client_123", campaign.id, contact.id)},
+        email_log_repository=email_logs,
+    )
+
+    result = service.get_campaign_summary(campaign.id)
+
+    assert result.logs.sent == 1
+    assert result.logs.delivered is None
+    assert result.logs.provider_events_available is False
+    assert "Campaign was already started by Listmonk or accepted for dispatch." in (
+        result.blocking_errors
+    )
+    assert result.policy_state is not None
+    assert result.policy_state.duplicate_guard.code == "campaign_send_already_accepted"
 
 
 def test_admin_summary_evaluates_duplicate_guard_without_crashing() -> None:

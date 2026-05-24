@@ -120,6 +120,7 @@ interface CampaignReadModelApiResponse {
     name: string;
     status: Campaign["status"];
     subject?: string | null;
+    rendered_subject?: string | null;
     preview_text?: string | null;
     current_step: string;
     content_ready: boolean;
@@ -254,6 +255,7 @@ interface AdminCampaignDetailApiResponse {
   name: string;
   status: Campaign["status"];
   subject?: string | null;
+  rendered_subject?: string | null;
   preview_text?: string | null;
   body_html?: string | null;
   body_text?: string | null;
@@ -1753,6 +1755,7 @@ function mapAdminCampaignDetail(
     name: payload.name,
     status: payload.status,
     subject: payload.subject ?? null,
+    renderedSubject: payload.rendered_subject ?? null,
     previewText: payload.preview_text ?? null,
     bodyHtml: payload.body_html ?? null,
     bodyText: payload.body_text ?? null,
@@ -1885,6 +1888,7 @@ function mapCampaignSummaryItem(
     name: payload.name,
     status: payload.status,
     subject: payload.subject ?? null,
+    renderedSubject: payload.rendered_subject ?? null,
     previewText: payload.preview_text ?? null,
     currentStep: payload.current_step,
     contentReady: payload.content_ready,

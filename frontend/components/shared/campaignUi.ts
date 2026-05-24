@@ -103,12 +103,20 @@ const BACKEND_REASON_LABELS: Array<[RegExp, string]> = [
   [/^Campaign send is already in progress\.$/i, "Campagna già inviata o in elaborazione."],
   [/^Campaign already has queued email logs\.$/i, "Campagna già inviata o in elaborazione."],
   [
+    /^Campaign was already started by Listmonk or accepted for dispatch\.$/i,
+    "Campagna gia inviata o in elaborazione.",
+  ],
+  [
     /^Campaign was already accepted by the provider\.$/i,
     "Campagna già inviata o in elaborazione.",
   ],
   [
     /^Campaign already has accepted or processed email logs\.$/i,
     "Campagna già inviata o in elaborazione.",
+  ],
+  [
+    /^Campaign already has Listmonk-accepted or processed email logs\.$/i,
+    "Campagna gia inviata o in elaborazione.",
   ],
   [
     /^Campaign already has existing email logs and cannot be retried safely\.$/i,
@@ -159,6 +167,23 @@ export function getCampaignSubjectDisplay(
   }
 
   return normalizedValue;
+}
+
+export function getCampaignDisplaySubject(
+  campaign: Pick<CampaignSummaryItem, "subject" | "renderedSubject">,
+  fallback = "Oggetto email da completare",
+): string {
+  return getCampaignSubjectDisplay(
+    campaign.renderedSubject ?? campaign.subject,
+    fallback,
+  );
+}
+
+export function hasSuccessfulPostSendState(logs: CampaignLogsSummary): boolean {
+  return (
+    (logs.deliveredAvailable && (logs.delivered ?? 0) > 0) ||
+    (logs.sentAvailable && (logs.sent ?? 0) > 0)
+  );
 }
 
 export function getProviderEventsAvailabilityLabel(
@@ -556,8 +581,14 @@ export function hasDuplicateDispatchBlock(reasons: string[]): boolean {
     return (
       /^Campaign send is already in progress\.$/i.test(normalizedReason) ||
       /^Campaign already has queued email logs\.$/i.test(normalizedReason) ||
+      /^Campaign was already started by Listmonk or accepted for dispatch\.$/i.test(
+        normalizedReason,
+      ) ||
       /^Campaign was already accepted by the provider\.$/i.test(normalizedReason) ||
       /^Campaign already has accepted or processed email logs\.$/i.test(normalizedReason) ||
+      /^Campaign already has Listmonk-accepted or processed email logs\.$/i.test(
+        normalizedReason,
+      ) ||
       /^Campaign already has existing email logs and cannot be retried safely\.$/i.test(
         normalizedReason,
       ) ||
@@ -566,6 +597,25 @@ export function hasDuplicateDispatchBlock(reasons: string[]): boolean {
       )
     );
   });
+}
+
+export function isDuplicateDispatchReason(reason: string): boolean {
+  return hasDuplicateDispatchBlock([reason]);
+}
+
+export function isPreSendReadinessReason(reason: string): boolean {
+  const normalizedReason = reason.trim();
+
+  return (
+    /^Campaign content is not ready\.$/i.test(normalizedReason) ||
+    /^Campaign has no associated contacts\.$/i.test(normalizedReason) ||
+    /^Campaign has no eligible contacts to send\.$/i.test(normalizedReason) ||
+    /^Only ready or running campaigns may dispatch\.$/i.test(normalizedReason) ||
+    /^Campaign status .+ is not sendable\.$/i.test(normalizedReason) ||
+    /^SES controlled send requires content_ready, contacts_ready, and review_ready\.$/i.test(
+      normalizedReason,
+    )
+  );
 }
 
 export function getCampaignDispatchUiMeta(args: {

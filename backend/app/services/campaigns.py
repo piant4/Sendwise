@@ -89,7 +89,11 @@ from app.services.provider_runtime import (
     get_configured_sending_domain,
 )
 from app.services.clients import build_client_email_brand
-from app.services.template_renderer import KNOWN_TEMPLATE_VARIABLES
+from app.services.template_renderer import (
+    KNOWN_TEMPLATE_VARIABLES,
+    build_template_variable_values,
+    render_template_string,
+)
 from app.services.campaign_slots import (
     CampaignSlotConflictError,
     CampaignSlotService,
@@ -389,6 +393,7 @@ class AdminCampaignService:
         return AdminCampaignSummaryResponse(
             campaign=self._build_campaign_summary_item(
                 campaign=campaign,
+                client=client,
                 evaluation=evaluation,
             ),
             client=CampaignClientSummary(
@@ -1156,6 +1161,10 @@ class AdminCampaignService:
             name=campaign.name,
             status=campaign.status,
             subject=campaign.subject,
+            rendered_subject=self._build_rendered_subject(
+                campaign=campaign,
+                client=client,
+            ),
             preview_text=campaign.preview_text,
             body_html=campaign.body_html,
             body_text=campaign.body_text,
@@ -1393,6 +1402,7 @@ class AdminCampaignService:
         self,
         *,
         campaign: CampaignRecord,
+        client: ClientRecord,
         evaluation: CampaignEvaluation,
     ) -> CampaignSummaryItem:
         return CampaignSummaryItem(
@@ -1401,6 +1411,10 @@ class AdminCampaignService:
             name=campaign.name,
             status=campaign.status,
             subject=campaign.subject,
+            rendered_subject=self._build_rendered_subject(
+                campaign=campaign,
+                client=client,
+            ),
             preview_text=campaign.preview_text,
             current_step=campaign.current_step,
             content_ready=evaluation.content_ready,
@@ -1432,6 +1446,28 @@ class AdminCampaignService:
             status=None,
             limit_source=evaluation.guard_result.limit_source,
         )
+
+    def _build_rendered_subject(
+        self,
+        *,
+        campaign: CampaignRecord,
+        client: ClientRecord,
+    ) -> str | None:
+        subject = (campaign.subject or "").strip()
+        if not subject:
+            return None
+
+        email_brand = build_client_email_brand(client.metadata)
+        replacements = build_template_variable_values(
+            subject=subject,
+            preview_text=(campaign.preview_text or "").strip(),
+            client_name=client.personal_name or client.email,
+            campaign_name=campaign.name,
+            current_year=datetime.now(timezone.utc).year,
+            email_brand=email_brand.model_dump(exclude_none=True) if email_brand else None,
+        )
+        rendered = render_template_string(subject, replacements).strip()
+        return rendered or subject
 
     def _build_campaign_recipients_summary(
         self,

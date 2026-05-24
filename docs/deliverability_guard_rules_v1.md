@@ -293,6 +293,7 @@ Do not show:
 
 - Backend-owned campaign preparation and send gating.
 - Controlled Listmonk to Mailgun sending path.
+- Listmonk campaign payload composition for one-click unsubscribe headers using the existing recipient-specific unsubscribe URL template.
 - Domain-scoped warmup attribution.
 - Mailgun webhook analytics boundary.
 - Suppression and unsubscribe handling boundaries.

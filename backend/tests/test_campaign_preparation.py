@@ -20,6 +20,11 @@ from app.services.listmonk_mappings import ListmonkMappingService
 from app.services.template_renderer import get_default_template_renderer
 from app.services.unsubscribe import UnsubscribeTokenService
 
+LISTMONK_UNSUBSCRIBE_URL = (
+    "https://app.sendwise.example.test/unsubscribe/"
+    "{{ .Subscriber.Attribs.sendwise_unsubscribe_token }}"
+)
+
 
 class FakeListmonkPreparationClient:
     def __init__(self) -> None:
@@ -359,7 +364,7 @@ def test_build_listmonk_campaign_payload_falls_back_to_technical_subject_when_re
     assert "altbody" not in payload
 
 
-def test_build_listmonk_campaign_payload_adds_mailgun_variables_header_when_mailgun_smtp_is_configured() -> None:
+def test_build_listmonk_campaign_payload_adds_unsubscribe_and_mailgun_headers_when_mailgun_smtp_is_configured() -> None:
     campaign = build_campaign()
 
     payload, _content_ready = build_listmonk_campaign_payload(
@@ -375,13 +380,20 @@ def test_build_listmonk_campaign_payload_adds_mailgun_variables_header_when_mail
             "content_ready": True,
             "body": "<html><body><p>Rendered body</p></body></html>",
             "body_text": "Rendered body text",
+            "unsubscribe_url": LISTMONK_UNSUBSCRIBE_URL,
         },
     )
 
     assert isinstance(payload["headers"], list)
-    assert len(payload["headers"]) == 1
-    assert payload["headers"][0]["X-Mailgun-Variables"]
-    variables = json.loads(payload["headers"][0]["X-Mailgun-Variables"])
+    assert len(payload["headers"]) == 3
+    assert payload["headers"][0] == {
+        "List-Unsubscribe": f"<{LISTMONK_UNSUBSCRIBE_URL}>"
+    }
+    assert payload["headers"][1] == {
+        "List-Unsubscribe-Post": "List-Unsubscribe=One-Click"
+    }
+    assert payload["headers"][2]["X-Mailgun-Variables"]
+    variables = json.loads(payload["headers"][2]["X-Mailgun-Variables"])
     assert variables == {
         "sendwise_campaign_id": "campaign_123",
         "sendwise_client_id": "client_123",
@@ -389,7 +401,7 @@ def test_build_listmonk_campaign_payload_adds_mailgun_variables_header_when_mail
     }
 
 
-def test_build_listmonk_campaign_payload_omits_mailgun_headers_for_non_mailgun_smtp() -> None:
+def test_build_listmonk_campaign_payload_adds_unsubscribe_headers_for_non_mailgun_smtp() -> None:
     campaign = build_campaign()
 
     payload, _content_ready = build_listmonk_campaign_payload(
@@ -405,6 +417,33 @@ def test_build_listmonk_campaign_payload_omits_mailgun_headers_for_non_mailgun_s
             "content_ready": True,
             "body": "<html><body><p>Rendered body</p></body></html>",
             "body_text": "Rendered body text",
+            "unsubscribe_url": LISTMONK_UNSUBSCRIBE_URL,
+        },
+    )
+
+    assert payload["headers"] == [
+        {"List-Unsubscribe": f"<{LISTMONK_UNSUBSCRIBE_URL}>"},
+        {"List-Unsubscribe-Post": "List-Unsubscribe=One-Click"},
+    ]
+
+
+def test_build_listmonk_campaign_payload_omits_unsubscribe_headers_without_safe_listmonk_template_url() -> None:
+    campaign = build_campaign()
+
+    payload, _content_ready = build_listmonk_campaign_payload(
+        settings=Settings(
+            environment="test",
+            smtp_host="smtp.example.test",
+            smtp_from_email="sender@example.test",
+        ),
+        campaign=campaign,
+        list_id=7,
+        content={
+            "subject": "Launch",
+            "content_ready": True,
+            "body": "<html><body><p>Rendered body</p></body></html>",
+            "body_text": "Rendered body text",
+            "unsubscribe_url": "https://app.sendwise.example.test/unsubscribe/static-token",
         },
     )
 

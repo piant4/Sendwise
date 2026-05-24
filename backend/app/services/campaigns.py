@@ -108,6 +108,7 @@ from app.services.listmonk_mappings import (
     ListmonkMappingService,
 )
 from app.services.campaign_preparation import build_listmonk_campaign_payload
+from app.services.unsubscribe import LISTMONK_UNSUBSCRIBE_TOKEN_PLACEHOLDER
 
 ALLOWED_CAMPAIGN_STEPS = {"setup", "content", "recipients", "review", "send"}
 EDITABLE_CAMPAIGN_STATUSES = {
@@ -3020,6 +3021,22 @@ class CampaignDispatchService:
         preparation: dict[str, Any] | None,
     ) -> dict[str, Any]:
         if provider == "listmonk":
+            if preparation is not None and not self._listmonk_unsubscribe_headers_ready(
+                preparation
+            ):
+                return self._safety_result(
+                    provider=provider,
+                    safety_passed=False,
+                    code="listmonk_unsubscribe_headers_not_ready",
+                    reason=(
+                        "Prepared listmonk campaign content does not include a "
+                        "recipient-specific HTTPS unsubscribe URL for one-click headers."
+                    ),
+                    eligible_contact_count=guard_result.eligible_contact_count,
+                    max_real_send_recipients=self.settings.effective_real_send_max_recipients,
+                    allowed_recipients_checked=False,
+                    unsubscribe_ready=False,
+                )
             return self._safety_result(
                 provider=provider,
                 safety_passed=True,
@@ -3200,6 +3217,21 @@ class CampaignDispatchService:
             parsed.scheme in {"http", "https"}
             and bool(parsed.netloc)
             and "/unsubscribe/" in parsed.path
+            and unsubscribe_url in body
+        )
+
+    def _listmonk_unsubscribe_headers_ready(self, preparation: dict[str, Any]) -> bool:
+        content = preparation.get("content")
+        if not isinstance(content, dict):
+            return False
+        unsubscribe_url = str(content.get("unsubscribe_url") or "").strip()
+        body = str(content.get("body") or "")
+        parsed = urlsplit(unsubscribe_url)
+        return (
+            parsed.scheme == "https"
+            and bool(parsed.netloc)
+            and "/unsubscribe/" in parsed.path
+            and LISTMONK_UNSUBSCRIBE_TOKEN_PLACEHOLDER in unsubscribe_url
             and unsubscribe_url in body
         )
 

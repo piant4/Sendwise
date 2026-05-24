@@ -3992,3 +3992,23 @@ Scope confirmation:
 - Documentation-only audit record.
 - No backend code, frontend code, schema, migration, Docker, env, provider configuration, DNS, runtime state, SQL mutation, webhook trigger, or send action was performed.
 - No secrets, tokens, signing keys, SMTP credentials, recipient emails, message bodies, raw provider payloads, unsubscribe tokens, or full sender addresses were printed in this audit log.
+
+## Milestone 19.6 - One-Click Unsubscribe Headers Through Listmonk
+
+Date: 2026-05-24
+Branch: main
+
+Verified state:
+- Campaign preparation now composes Listmonk campaign `headers` as an array containing the existing `X-Mailgun-Variables` entry when Mailgun SMTP is configured plus one-click unsubscribe headers when a safe Listmonk recipient-template unsubscribe URL is present.
+- Added `List-Unsubscribe` with the existing frontend public unsubscribe URL template and `List-Unsubscribe-Post: List-Unsubscribe=One-Click`.
+- Confirmed the visible body unsubscribe link still comes from the same campaign preparation path and uses the same Listmonk subscriber attribute token template.
+- Listmonk controlled dispatch now fails closed after preparation if the campaign does not expose a recipient-specific HTTPS unsubscribe URL suitable for the one-click headers.
+
+Scope confirmation:
+- No Mailgun webhook signing, provider-event normalization, correlation, suppression policy, analytics, frontend, schema, migration, Docker, env, DNS, direct Mailgun/SES send path, or Listmonk bypass was changed.
+- No real send, provider API call, webhook trigger, runtime header inspection, token exposure, recipient address exposure, message body logging, or secret access was performed.
+
+Checks executed:
+- `python -m py_compile backend/app/services/campaign_preparation.py backend/app/services/campaigns.py backend/tests/test_campaign_preparation.py backend/tests/test_campaign_dispatch.py`
+- Docker targeted pytest subset for campaign preparation and Listmonk unsubscribe-header dispatch behavior.
+- Full Docker run for `tests/test_campaign_preparation.py tests/test_campaign_dispatch.py` was attempted; new unsubscribe coverage passed, while unrelated pre-existing dispatch/listmonk-client assertions still fail in that file.

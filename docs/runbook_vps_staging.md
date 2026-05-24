@@ -180,6 +180,9 @@ Required Mailgun webhook setup:
 Correlation notes:
 
 - Sendwise adds `X-Mailgun-Variables` to Listmonk campaign payloads only when the configured SMTP host is Mailgun.
+- Sendwise adds one-click unsubscribe headers to prepared marketing campaign payloads only when the existing recipient-specific HTTPS unsubscribe URL template is available:
+  - `List-Unsubscribe`
+  - `List-Unsubscribe-Post: List-Unsubscribe=One-Click`
 - The current correlation contract is:
   - `sendwise_client_id`
   - `sendwise_campaign_id`

@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 import json
 from typing import Any
+from urllib.parse import urlsplit
 
 from app.core.auth import AuthenticatedUser
 from app.core.config import Settings, get_settings
@@ -34,7 +35,12 @@ from app.services.template_renderer import (
     get_default_template_renderer,
     render_sendwise_template_string,
 )
-from app.services.unsubscribe import UnsubscribeTokenService
+from app.services.unsubscribe import (
+    LISTMONK_UNSUBSCRIBE_TOKEN_PLACEHOLDER,
+    UnsubscribeTokenService,
+)
+
+LIST_UNSUBSCRIBE_POST_VALUE = "List-Unsubscribe=One-Click"
 
 RECIPIENT_TEMPLATE_VARIABLES = {
     "nome": "{{ .Subscriber.Attribs.nome }}",
@@ -69,8 +75,34 @@ def build_listmonk_campaign_payload(
         payload["altbody"] = altbody
     if settings.smtp_from_email.strip():
         payload["from_email"] = settings.smtp_from_email.strip()
+    headers = _build_listmonk_campaign_headers(
+        settings=settings,
+        campaign=campaign,
+        content=content,
+    )
+    if headers:
+        payload["headers"] = headers
+
+    return payload, content_ready
+
+
+def _build_listmonk_campaign_headers(
+    *,
+    settings: Settings,
+    campaign: ClientCampaignRecord,
+    content: dict[str, Any],
+) -> list[dict[str, str]]:
+    headers: list[dict[str, str]] = []
+    unsubscribe_url = str(content.get("unsubscribe_url") or "").strip()
+    if _is_safe_listmonk_unsubscribe_url(unsubscribe_url):
+        headers.extend(
+            [
+                {"List-Unsubscribe": f"<{unsubscribe_url}>"},
+                {"List-Unsubscribe-Post": LIST_UNSUBSCRIBE_POST_VALUE},
+            ]
+        )
     if settings.smtp_host_is_mailgun:
-        payload["headers"] = [
+        headers.append(
             {
                 "X-Mailgun-Variables": json.dumps(
                     {
@@ -82,9 +114,18 @@ def build_listmonk_campaign_payload(
                     separators=(",", ":"),
                 )
             }
-        ]
+        )
+    return headers
 
-    return payload, content_ready
+
+def _is_safe_listmonk_unsubscribe_url(unsubscribe_url: str) -> bool:
+    parsed = urlsplit(unsubscribe_url)
+    return (
+        parsed.scheme == "https"
+        and bool(parsed.netloc)
+        and "/unsubscribe/" in unsubscribe_url
+        and LISTMONK_UNSUBSCRIBE_TOKEN_PLACEHOLDER in unsubscribe_url
+    )
 
 
 @dataclass(frozen=True)

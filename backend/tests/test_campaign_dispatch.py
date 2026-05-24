@@ -27,6 +27,11 @@ from app.services.listmonk_mappings import (
     ListmonkMappingService,
 )
 
+LISTMONK_UNSUBSCRIBE_URL = (
+    "https://app.sendwise.example.test/unsubscribe/"
+    "{{ .Subscriber.Attribs.sendwise_unsubscribe_token }}"
+)
+
 
 class FakeListmonkClient:
     def __init__(self) -> None:
@@ -91,6 +96,22 @@ class SesReadyPreparationService(FakePreparationService):
         prepared["content"]["body"] = (
             "<html><body><p>Body</p>"
             f'<a href="{unsubscribe_url}">unsubscribe</a>'
+            "</body></html>"
+        )
+        return prepared
+
+
+class ListmonkReadyPreparationService(FakePreparationService):
+    def prepare_campaign(
+        self,
+        campaign_id: str,
+        _current_user: AuthenticatedUser | None = None,
+    ) -> dict[str, Any]:
+        prepared = super().prepare_campaign(campaign_id, _current_user)
+        prepared["content"]["unsubscribe_url"] = LISTMONK_UNSUBSCRIBE_URL
+        prepared["content"]["body"] = (
+            "<html><body><p>Body</p>"
+            f'<a href="{LISTMONK_UNSUBSCRIBE_URL}">unsubscribe</a>'
             "</body></html>"
         )
         return prepared
@@ -1802,7 +1823,7 @@ def test_listmonk_provider_uses_listmonk_dispatch_even_with_mailgun_smtp_host() 
             smtp_host="smtp.eu.mailgun.org",
             smtp_from_email="noreply@example.test",
         ),
-        preparation_service=FakePreparationService(content_ready=True),
+        preparation_service=ListmonkReadyPreparationService(content_ready=True),
     )
 
     result = service.send_campaign("campaign_123")
@@ -1811,7 +1832,56 @@ def test_listmonk_provider_uses_listmonk_dispatch_even_with_mailgun_smtp_host() 
     assert result["provider"] == "listmonk"
     assert fake_listmonk.sent_campaign_ids == ["lm_1"]
     assert fake_listmonk.created_campaign_payloads
-    assert isinstance(fake_listmonk.created_campaign_payloads[0]["headers"], list)
+    assert fake_listmonk.created_campaign_payloads[0]["headers"] == [
+        {"List-Unsubscribe": f"<{LISTMONK_UNSUBSCRIBE_URL}>"},
+        {"List-Unsubscribe-Post": "List-Unsubscribe=One-Click"},
+        {
+            "X-Mailgun-Variables": (
+                '{"sendwise_campaign_id":"campaign_123",'
+                '"sendwise_client_id":"client_123",'
+                '"sendwise_contact_id":"{{ .Subscriber.Attribs.sendwise_contact_id }}"}'
+            )
+        },
+    ]
+
+
+def test_listmonk_provider_blocks_when_recipient_specific_unsubscribe_header_url_is_missing() -> None:
+    fake_listmonk = FakeListmonkClient()
+    service = build_dispatch_service(
+        fake_listmonk=fake_listmonk,
+        settings=build_ready_listmonk_settings(),
+        preparation_service=FakePreparationService(content_ready=True),
+    )
+
+    result = service.send_campaign("campaign_123")
+
+    assert result["status"] == "dispatch_blocked"
+    assert result["code"] == "listmonk_unsubscribe_headers_not_ready"
+    assert result["unsubscribe_ready"] is False
+    assert result["listmonk_dispatched"] is False
+    assert fake_listmonk.created_campaign_payloads == []
+    assert fake_listmonk.sent_campaign_ids == []
+
+
+def test_listmonk_provider_adds_unsubscribe_headers_without_mailgun_smtp_host() -> None:
+    fake_listmonk = FakeListmonkClient()
+    service = build_dispatch_service(
+        fake_listmonk=fake_listmonk,
+        settings=build_ready_listmonk_settings(
+            smtp_host="smtp.example.test",
+            smtp_from_email="noreply@example.test",
+        ),
+        preparation_service=ListmonkReadyPreparationService(content_ready=True),
+    )
+
+    result = service.send_campaign("campaign_123")
+
+    assert result["status"] == "accepted"
+    assert fake_listmonk.created_campaign_payloads[0]["headers"] == [
+        {"List-Unsubscribe": f"<{LISTMONK_UNSUBSCRIBE_URL}>"},
+        {"List-Unsubscribe-Post": "List-Unsubscribe=One-Click"},
+    ]
+    assert fake_listmonk.sent_campaign_ids == ["lm_1"]
 
 
 def test_provider_history_complaint_stop_blocks_before_listmonk() -> None:
@@ -1874,7 +1944,7 @@ def test_provider_history_hard_bounce_stop_blocks_before_listmonk() -> None:
         email_log_repository=email_log_repository,
         provider_event_repository=provider_event_repository,
         settings=build_ready_listmonk_settings(),
-        preparation_service=FakePreparationService(content_ready=True),
+        preparation_service=ListmonkReadyPreparationService(content_ready=True),
     )
 
     result = service.send_campaign("campaign_123")
@@ -1903,7 +1973,7 @@ def test_provider_history_under_stop_threshold_allows_existing_flow() -> None:
         email_log_repository=email_log_repository,
         provider_event_repository=provider_event_repository,
         settings=build_ready_listmonk_settings(),
-        preparation_service=FakePreparationService(content_ready=True),
+        preparation_service=ListmonkReadyPreparationService(content_ready=True),
     )
 
     result = service.send_campaign("campaign_123")
@@ -1930,7 +2000,7 @@ def test_provider_history_unavailable_denominators_do_not_false_block() -> None:
         email_log_repository=email_log_repository,
         provider_event_repository=provider_event_repository,
         settings=build_ready_listmonk_settings(),
-        preparation_service=FakePreparationService(content_ready=True),
+        preparation_service=ListmonkReadyPreparationService(content_ready=True),
     )
 
     result = service.send_campaign("campaign_123")
@@ -1957,7 +2027,7 @@ def test_provider_history_unmatched_events_do_not_count() -> None:
         email_log_repository=email_log_repository,
         provider_event_repository=provider_event_repository,
         settings=build_ready_listmonk_settings(),
-        preparation_service=FakePreparationService(content_ready=True),
+        preparation_service=ListmonkReadyPreparationService(content_ready=True),
     )
 
     result = service.send_campaign("campaign_123")
@@ -1984,7 +2054,7 @@ def test_provider_history_other_domains_do_not_contaminate_domain_scope() -> Non
         email_log_repository=email_log_repository,
         provider_event_repository=provider_event_repository,
         settings=build_ready_listmonk_settings(),
-        preparation_service=FakePreparationService(content_ready=True),
+        preparation_service=ListmonkReadyPreparationService(content_ready=True),
     )
 
     result = service.send_campaign("campaign_123")
@@ -2008,7 +2078,7 @@ def test_domain_warmup_guard_allows_send_under_daily_limit() -> None:
         fake_listmonk=fake_listmonk,
         email_log_repository=email_log_repository,
         settings=build_ready_listmonk_settings(),
-        preparation_service=FakePreparationService(content_ready=True),
+        preparation_service=ListmonkReadyPreparationService(content_ready=True),
     )
 
     result = service.send_campaign("campaign_123")
@@ -2105,7 +2175,7 @@ def test_domain_warmup_guard_counts_only_accepted_email_logs() -> None:
         fake_listmonk=fake_listmonk,
         email_log_repository=email_log_repository,
         settings=build_ready_listmonk_settings(),
-        preparation_service=FakePreparationService(content_ready=True),
+        preparation_service=ListmonkReadyPreparationService(content_ready=True),
     )
 
     result = service.send_campaign("campaign_123")
@@ -2132,7 +2202,7 @@ def test_domain_warmup_guard_ignores_other_domains() -> None:
         fake_listmonk=fake_listmonk,
         email_log_repository=email_log_repository,
         settings=build_ready_listmonk_settings(),
-        preparation_service=FakePreparationService(content_ready=True),
+        preparation_service=ListmonkReadyPreparationService(content_ready=True),
     )
 
     result = service.send_campaign("campaign_123")
@@ -2156,7 +2226,7 @@ def test_domain_warmup_guard_ignores_legacy_null_domains() -> None:
         fake_listmonk=fake_listmonk,
         email_log_repository=email_log_repository,
         settings=build_ready_listmonk_settings(),
-        preparation_service=FakePreparationService(content_ready=True),
+        preparation_service=ListmonkReadyPreparationService(content_ready=True),
     )
 
     result = service.send_campaign("campaign_123")
@@ -2188,7 +2258,7 @@ def test_domain_warmup_guard_uses_rome_day_boundary(monkeypatch: Any) -> None:
         fake_listmonk=fake_listmonk,
         email_log_repository=email_log_repository,
         settings=build_ready_listmonk_settings(),
-        preparation_service=FakePreparationService(content_ready=True),
+        preparation_service=ListmonkReadyPreparationService(content_ready=True),
     )
 
     result = service.send_campaign("campaign_123")

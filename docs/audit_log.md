@@ -1,5 +1,20 @@
 # Audit Log
 
+## Milestone 19.6-FIX2B1 - Publish Listmonk Subscription Proxy On Loopback
+
+Date: 2026-05-24
+Branch: main
+
+Verified state:
+- Audited the base and staging Compose Listmonk service definitions. Base Compose already published `127.0.0.1:9000:9000`, but the staging override replaced Listmonk ports with an empty list, so the merged VPS staging config removed host loopback access and Caddy could not reach `127.0.0.1:9000`.
+- Updated the staging override to publish Listmonk only on `127.0.0.1:9000:9000`, preserving the container listener and all existing Listmonk business settings.
+- Documented that Caddy is the only public entry boundary for `subscription.mailerpro.it`, that only `/subscription/*` is routed publicly to Listmonk, and that `/` plus `/api/` must remain blocked.
+
+Scope confirmation:
+- No Caddy routing, `.env`, DNS, Mailgun, backend code, database schema, migration, Listmonk business setting, send path, template content, or provider configuration was changed.
+- No real send, real unsubscribe, direct Listmonk campaign action, provider API call, or runtime VPS mutation was performed in this local change.
+- No secrets, recipient addresses, message bodies, unsubscribe tokens, full headers, raw payloads, credentials, auth headers, signing keys, or SMTP secrets were printed.
+
 ## Milestone 18.9A - Runtime Schema Fix And Sending Domain Attribution
 
 Date: 2026-05-22

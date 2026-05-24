@@ -26,7 +26,7 @@ Reference:
 
 ## Staging Domains And Reverse Proxy
 
-Caddy is the only public HTTP/HTTPS entrypoint. Backend and frontend containers must bind to localhost on the VPS, with Caddy terminating HTTPS and proxying to those local ports.
+Caddy is the only public HTTP/HTTPS entrypoint. Backend, frontend, and the restricted Listmonk subscription proxy port must bind to localhost on the VPS, with Caddy terminating HTTPS and proxying only approved public routes to those local ports.
 
 Required Caddy config:
 
@@ -39,6 +39,14 @@ staging-api.mailerpro.it {
 	reverse_proxy 127.0.0.1:8000
 }
 ```
+
+Restricted Listmonk subscription proxy:
+
+- `subscription.mailerpro.it` must expose only the approved public `/subscription/*` route through Caddy.
+- Caddy proxies `/subscription/*` to `127.0.0.1:9000`.
+- `/` and `/api/` on `subscription.mailerpro.it` must remain blocked with 404 responses.
+- Listmonk must be published only on host loopback as `127.0.0.1:9000:9000`; never bind Listmonk to `0.0.0.0` or a public interface.
+- Caddy remains the only public entry boundary for this route. Listmonk admin and API surfaces must not be directly exposed publicly.
 
 Required public URLs:
 
@@ -314,11 +322,12 @@ The staging Compose stack must expose only:
 
 - `127.0.0.1:3000:3000` for frontend.
 - `127.0.0.1:8000:8000` for backend.
+- `127.0.0.1:9000:9000` for Listmonk, used only by the restricted Caddy `/subscription/*` proxy.
 
 The staging Compose stack must not publish public host ports for:
 
 - PostgreSQL.
-- Listmonk.
+- Listmonk on any non-loopback interface.
 - Mailpit.
 
 Use this command before every staging restart:
@@ -329,7 +338,7 @@ SENDWISE_ENV_FILE=.env.example docker compose --env-file .env.example -f docker-
 
 Never run public or shared config dumps against a real `.env`.
 Never paste `docker compose config` output rendered from a real `.env` into shared logs because it expands SMTP passwords, Listmonk credentials, and other secrets.
-Stop if the rendered config shows `0.0.0.0:3000`, `0.0.0.0:8000`, public `9000`, public `5432`, public `8025`, or public `1025`.
+Stop if the rendered config shows `0.0.0.0:3000`, `0.0.0.0:8000`, non-loopback `9000`, public `5432`, public `8025`, or public `1025`.
 
 ## First Deploy QA Checklist
 

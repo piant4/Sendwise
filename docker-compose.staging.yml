@@ -24,4 +24,5 @@ services:
       LISTMONK_smtp__username: ${SMTP_USERNAME:?required}
       LISTMONK_smtp__password: ${SMTP_PASSWORD:?required}
       LISTMONK_smtp__tls_enabled: ${SMTP_TLS:?required}
-    ports: !override []
+    ports: !override
+      - "127.0.0.1:9000:9000"

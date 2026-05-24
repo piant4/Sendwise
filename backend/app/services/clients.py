@@ -1668,7 +1668,17 @@ class ClientsService:
         auth_provider_configured = bool(
             self._settings.clerk_issuer.strip() and self._settings.clerk_jwks_url.strip()
         )
-        runtime = build_provider_runtime_summary(self._settings)
+        provider_events_available = (
+            self._provider_event_repository.has_correlated_admin_events(
+                event_types=PROVIDER_EVENT_METRIC_TYPES,
+            )
+            if self._provider_event_repository is not None
+            else False
+        )
+        runtime = build_provider_runtime_summary(
+            self._settings,
+            provider_events_available=provider_events_available,
+        )
         return AdminSystemStatus(
             api_status="ok",
             db_status="ok" if self._repository.is_database_available() else "degraded",

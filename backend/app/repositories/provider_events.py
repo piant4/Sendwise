@@ -87,6 +87,13 @@ class ProviderEventRepository:
     ) -> int:
         raise NotImplementedError
 
+    def has_correlated_admin_events(
+        self,
+        *,
+        event_types: tuple[str, ...],
+    ) -> bool:
+        raise NotImplementedError
+
 
 class PostgresProviderEventRepository(ProviderEventRepository):
     def __init__(self, settings: Settings) -> None:
@@ -394,6 +401,29 @@ class PostgresProviderEventRepository(ProviderEventRepository):
             return 0
         return int(row["total"])
 
+    def has_correlated_admin_events(
+        self,
+        *,
+        event_types: tuple[str, ...],
+    ) -> bool:
+        query = """
+            SELECT 1 AS exists
+            FROM provider_events
+            WHERE processed_at IS NOT NULL
+                AND campaign_id IS NOT NULL
+                AND client_id IS NOT NULL
+                AND email_log_id IS NOT NULL
+                AND event_type = ANY(%s)
+            LIMIT 1
+        """
+
+        with postgres_connection(self._settings) as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(query, (list(event_types),))
+                row = cursor.fetchone()
+
+        return row is not None
+
 
 class InMemoryProviderEventRepository(ProviderEventRepository):
     def __init__(self) -> None:
@@ -519,6 +549,20 @@ class InMemoryProviderEventRepository(ProviderEventRepository):
                 continue
             keys.add(record.contact_id or record.email_log_id or record.event_key)
         return len(keys)
+
+    def has_correlated_admin_events(
+        self,
+        *,
+        event_types: tuple[str, ...],
+    ) -> bool:
+        return any(
+            record.processed_at is not None
+            and record.campaign_id is not None
+            and record.client_id is not None
+            and record.email_log_id is not None
+            and record.event_type in event_types
+            for record in self._records.values()
+        )
 
 
 def _json_payload(payload: dict[str, Any]) -> str:

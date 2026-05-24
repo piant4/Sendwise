@@ -1588,6 +1588,118 @@ def test_platform_admin_receives_backend_owned_overview_payload(
     assert payload["system"]["frontend_origin_configured"] is True
     assert payload["system"]["delivery_engine_configured"] is True
     assert payload["system"]["clerk_management_api_configured"] is False
+    assert payload["system"]["provider_events_available"] is False
+
+
+def test_platform_admin_overview_reports_provider_events_available_for_correlated_mailgun_events(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    signing_keypair: rsa.RSAPrivateKey,
+) -> None:
+    set_auth_mappings(
+        monkeypatch,
+        {
+            "user_admin": {
+                "email": "admin@sendwise.test",
+                "access_type": "platform_admin",
+                "status": "active",
+            }
+        },
+    )
+    provider_event_repository = InMemoryProviderEventRepository()
+    event, _ = provider_event_repository.create_or_get_event(
+        client_id="client_alpha",
+        campaign_id="campaign_alpha",
+        contact_id="contact_alpha",
+        email_log_id="email_log_alpha",
+        provider="mailgun",
+        source="mailgun_webhook",
+        provider_event_id="mailgun-delivered-1",
+        event_key="mailgun-delivered-1",
+        event_type="delivered",
+        payload={"event": "delivered"},
+        occurred_at=datetime.now(timezone.utc),
+    )
+    provider_event_repository.mark_processed(event_id=event.id)
+    install_test_dependencies(
+        client_records=[build_client_record(client_id="client_alpha")],
+        provider_event_repository=provider_event_repository,
+    )
+    token = make_token(signing_keypair, clerk_user_id="user_admin")
+
+    response = client.get("/admin/overview", headers=auth_header(token))
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["system"]["provider_events_available"] is True
+    assert payload["system"]["runtime"]["provider_events_available"] is True
+
+
+def test_platform_admin_overview_excludes_unmatched_mailgun_test_events(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    signing_keypair: rsa.RSAPrivateKey,
+) -> None:
+    set_auth_mappings(
+        monkeypatch,
+        {
+            "user_admin": {
+                "email": "admin@sendwise.test",
+                "access_type": "platform_admin",
+                "status": "active",
+            }
+        },
+    )
+    provider_event_repository = InMemoryProviderEventRepository()
+    event, _ = provider_event_repository.create_or_get_event(
+        client_id=None,
+        campaign_id=None,
+        contact_id=None,
+        email_log_id=None,
+        provider="mailgun",
+        source="mailgun_webhook",
+        provider_event_id="mailgun-test-1",
+        event_key="mailgun-test-1",
+        event_type="delivered",
+        payload={"event": "delivered"},
+        occurred_at=datetime.now(timezone.utc),
+    )
+    provider_event_repository.mark_processed(event_id=event.id)
+    install_test_dependencies(provider_event_repository=provider_event_repository)
+    token = make_token(signing_keypair, clerk_user_id="user_admin")
+
+    response = client.get("/admin/overview", headers=auth_header(token))
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["system"]["provider_events_available"] is False
+    assert payload["system"]["runtime"]["provider_events_available"] is False
+
+
+def test_platform_admin_overview_keeps_provider_events_unavailable_without_events(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    signing_keypair: rsa.RSAPrivateKey,
+) -> None:
+    set_auth_mappings(
+        monkeypatch,
+        {
+            "user_admin": {
+                "email": "admin@sendwise.test",
+                "access_type": "platform_admin",
+                "status": "active",
+            }
+        },
+    )
+    install_test_dependencies(provider_event_repository=InMemoryProviderEventRepository())
+    token = make_token(signing_keypair, clerk_user_id="user_admin")
+
+    response = client.get("/admin/overview", headers=auth_header(token))
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["system"]["provider_events_available"] is False
+    assert payload["system"]["runtime"]["provider_events_available"] is False
 
 
 def test_platform_admin_overview_reports_clients_near_limit_from_real_usage(

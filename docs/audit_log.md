@@ -3961,3 +3961,34 @@ Verified state:
 
 Scope confirmation:
 - No live provider event, campaign send, Mailgun/SES API call, webhook signature verification change, DB schema/migration change, dashboard change, analytics read-model change, or Listmonk dispatch change was performed.
+
+## Milestone 19.5 - Deliverability Guard V1 Production Readiness Audit
+
+Date: 2026-05-24
+Branch: main
+
+Verdict:
+- Deliverability Guard V1 is production-ready only after external configuration verification and one scoped code milestone for unsubscribe headers.
+- It is not yet ready to claim controlled low-volume production compliance until SPF, DKIM, DMARC, From alignment, TLS, PTR/reverse DNS, tracking-domain alignment, Mailgun webhook configuration, and unsubscribe header propagation are verified with evidence.
+
+Implemented and verified by code/test evidence:
+- `EMAIL_SENDING_ENABLED` is fail-closed for campaign dispatch.
+- Real campaign dispatch is backend-authorized and reaches Mailgun only through the backend to Listmonk campaign boundary.
+- Campaign/client status, duplicate dispatch, campaign daily/period limits, domain warmup cap, blocked-send persistence, suppression list, unsubscribe, complaint, hard-bounce, blacklist status, Mailgun signing, event normalization, correlation, idempotency, unmatched-event non-destructive behavior, suppression side effects, provider-backed analytics, provider-history stop thresholds, and admin/client/campaign reporting surfaces are implemented.
+- The VPS reference campaign `0cba789b-3f79-4cf7-af1c-9c798b0008ff` is accepted as prior runtime evidence for correlated Mailgun `accepted` and `delivered` analytics on `send.mailerpro.it`; this audit did not re-query production runtime or inspect private data.
+
+Gaps:
+- Code gap blocking V1 compliance: Listmonk campaign payloads currently add `X-Mailgun-Variables` for Mailgun correlation but no repo evidence was found for `List-Unsubscribe` or `List-Unsubscribe-Post` headers.
+- Runtime verification gaps: no fresh VPS health, container, public endpoint, or read-only SQL checks were performed in this local Windows workspace; WSL/bash was unavailable and pytest was not installed in the active Python.
+- External configuration gaps: SPF, DKIM, DMARC, From alignment, TLS, PTR/reverse DNS, tracking-domain alignment, Mailgun webhook event coverage, Mailgun signature key deployment, Listmonk SMTP relay configuration, and unsubscribe header propagation remain evidence-required.
+- Deferred V2/V3 features: content spam linter, subject/body scoring, image-only and URL-shortener checks, disposable/MX/role-based enrichment, blacklist monitoring, stored Contact Quality Score, stored Domain Health Score, campaign risk scoring, DMARC aggregate ingestion, inbox placement diagnostics, and automated recovery playbooks.
+
+Checks attempted:
+- Repository scans for direct Mailgun/SES send paths, frontend direct provider calls, unsubscribe headers, and unsafe payload/logging patterns.
+- `bash scripts/audit.sh` and `bash scripts/smoke_test.sh` were attempted but not runnable because WSL has no installed distribution in this environment.
+- `python -m pytest backend\tests\test_campaign_dispatch.py backend\tests\test_provider_events.py backend\tests\test_campaign_preparation.py` was attempted but not runnable because the active Python lacks pytest.
+
+Scope confirmation:
+- Documentation-only audit record.
+- No backend code, frontend code, schema, migration, Docker, env, provider configuration, DNS, runtime state, SQL mutation, webhook trigger, or send action was performed.
+- No secrets, tokens, signing keys, SMTP credentials, recipient emails, message bodies, raw provider payloads, unsubscribe tokens, or full sender addresses were printed in this audit log.

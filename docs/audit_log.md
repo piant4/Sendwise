@@ -1,5 +1,20 @@
 # Audit Log
 
+## Milestone 19.6-FIX2C-VALIDATION - Safe Loopback Listmonk Audit Boundary
+
+Date: 2026-05-25
+Branch: main
+
+Verified state:
+- Audited the stale staging port publication rule in `scripts/audit.sh`. It treated every `:9000:9000` Listmonk host publication as public exposure, including the approved `127.0.0.1:9000:9000` loopback-only binding required for host-level Caddy.
+- Updated only the staging compose port audit rule so loopback-only Listmonk publication is accepted while `0.0.0.0:9000:9000`, unqualified `9000:9000`, and non-loopback Listmonk host bindings remain rejected.
+- Preserved the existing staging rejection for PostgreSQL and Mailpit host publications.
+- Documented that loopback-only Listmonk publication is solely for restricted Caddy proxying of subscription and public asset paths, and is not public Listmonk service exposure.
+
+Scope confirmation:
+- No Docker Compose, Caddy, DNS, `.env`, Listmonk settings, Mailgun configuration, backend dispatch behavior, schema, migration, campaign send, unsubscribe/provider event, or `privacy.unsubscribe_header` change was made.
+- No resolved service environments, secrets, recipient addresses, message bodies, unsubscribe tokens, raw payloads, credentials, auth headers, signing keys, SMTP secrets, or provider headers were printed.
+
 ## Milestone 19.6-FIX2B1 - Publish Listmonk Subscription Proxy On Loopback
 
 Date: 2026-05-24

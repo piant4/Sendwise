@@ -176,11 +176,17 @@ else
   echo "OK audit script does not run unsafe compose config"
 fi
 
-if grep -qE '"?0\.0\.0\.0:(5432|9000|1025|8025)|"?[0-9.]*:(5432|9000|1025|8025):(5432|9000|1025|8025)' docker-compose.staging.yml; then
+staging_public_listmonk_bindings="$(
+  grep -E '"?(([0-9]{1,3}\.){3}[0-9]{1,3}:)?9000:9000' docker-compose.staging.yml \
+    | grep -Ev '"?127\.0\.0\.1:9000:9000' || true
+)"
+
+if grep -qE '"?0\.0\.0\.0:(5432|1025|8025)|"?[0-9.]*:(5432|1025|8025):(5432|1025|8025)' docker-compose.staging.yml \
+  || [ -n "$staging_public_listmonk_bindings" ]; then
   echo "FAIL staging compose must not publicly expose postgres/listmonk/mailpit"
   failures=$((failures + 1))
 else
-  echo "OK staging compose does not publicly expose postgres/listmonk/mailpit"
+  echo "OK staging compose does not publicly expose postgres/listmonk/mailpit and allows loopback-only listmonk"
 fi
 
 if ! grep -q '"127.0.0.1:8000:8000"' docker-compose.staging.yml; then

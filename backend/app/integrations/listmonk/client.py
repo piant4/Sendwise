@@ -97,6 +97,9 @@ class ListmonkClient:
     def create_subscriber(self, payload: dict[str, Any]) -> dict[str, Any]:
         return self._request("POST", "/api/subscribers", json=payload)
 
+    def get_subscriber(self, subscriber_id: int | str) -> dict[str, Any]:
+        return self._request("GET", f"/api/subscribers/{subscriber_id}")
+
     def patch_subscriber(
         self,
         subscriber_id: int | str,
@@ -343,6 +346,14 @@ class ListmonkClient:
                 "permission": "campaigns:update",
             }
         if redacted_path == "/api/subscribers" and normalized_method == "GET":
+            return {
+                "action": "subscriber lookup",
+                "permission": "subscribers:get",
+            }
+        if (
+            redacted_path == "/api/subscribers/{subscriber_id}"
+            and normalized_method == "GET"
+        ):
             return {
                 "action": "subscriber lookup",
                 "permission": "subscribers:get",

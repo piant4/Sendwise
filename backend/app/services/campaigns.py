@@ -102,13 +102,19 @@ from app.services.campaign_slots import (
 )
 from app.services.listmonk_mappings import (
     ENTITY_TYPE_CAMPAIGN,
+    ENTITY_TYPE_CONTACT,
     LISTMONK_TYPE_CAMPAIGN,
     LISTMONK_TYPE_LIST,
+    LISTMONK_TYPE_SUBSCRIBER,
     ListmonkMappingConflictError,
     ListmonkMappingService,
 )
 from app.services.campaign_preparation import build_listmonk_campaign_payload
-from app.services.unsubscribe import LISTMONK_UNSUBSCRIBE_TOKEN_PLACEHOLDER
+from app.services.unsubscribe import (
+    LISTMONK_UNSUBSCRIBE_TOKEN_PLACEHOLDER,
+    UnsubscribeService,
+    get_unsubscribe_service,
+)
 
 ALLOWED_CAMPAIGN_STEPS = {"setup", "content", "recipients", "review", "send"}
 EDITABLE_CAMPAIGN_STATUSES = {
@@ -532,6 +538,14 @@ class CampaignDispatchDuplicateGuard:
     code: str | None = None
     reason: str | None = None
     retryable_log_ids_by_contact: dict[str, str] | None = None
+
+
+@dataclass(frozen=True)
+class ListmonkNativeUnsubscribeReconciliation:
+    failed: bool = False
+    reason: str | None = None
+    code: str | None = None
+    suppressed_count: int = 0
 
 
 @dataclass(frozen=True)
@@ -2105,6 +2119,7 @@ class CampaignDispatchService:
     email_log_repository: EmailLogRepository | None = None
     provider_event_repository: ProviderEventRepository | None = None
     campaign_preparation_service: Any | None = None
+    unsubscribe_service: UnsubscribeService | None = None
 
     def _evaluate_duplicate_dispatch_guard(
         self,
@@ -2244,6 +2259,7 @@ class CampaignDispatchService:
         email_log_repository = self.email_log_repository
         provider_event_repository = self.provider_event_repository
         campaign_limit_repository = self.campaign_limit_repository
+        unsubscribe_service = self.unsubscribe_service
 
         if (
             mapping_service is None
@@ -2252,6 +2268,7 @@ class CampaignDispatchService:
             or contact_repository is None
             or suppression_repository is None
             or email_log_repository is None
+            or unsubscribe_service is None
         ):
             guard_result = self.guard.authorize_campaign_send(
                 self.settings.email_sending_enabled
@@ -2283,6 +2300,21 @@ class CampaignDispatchService:
                     client_id=client.id,
                     campaign_id=campaign.id,
                 )
+                reconciliation = self._reconcile_native_listmonk_unsubscribes(
+                    campaign=campaign,
+                    contacts=contacts,
+                    mapping_service=mapping_service,
+                    unsubscribe_service=unsubscribe_service,
+                )
+                if reconciliation.failed:
+                    return self._native_unsubscribe_reconciliation_blocked_response(
+                        campaign=campaign,
+                        reason=reconciliation.reason
+                        or "Listmonk subscription state could not be checked safely.",
+                        code=reconciliation.code
+                        or "listmonk_unsubscribe_reconciliation_failed",
+                        blocked_send_repository=blocked_send_repository,
+                    )
                 suppressed_emails = suppression_repository.list_suppressed_emails_for_campaign(
                     client_id=client.id,
                     emails=[contact.email for contact in contacts],
@@ -2967,6 +2999,163 @@ class CampaignDispatchService:
             guard_result=guard_result,
             provider_event_repository=provider_event_repository,
             email_log_repository=email_log_repository,
+        )
+
+    def _reconcile_native_listmonk_unsubscribes(
+        self,
+        *,
+        campaign: ClientCampaignRecord,
+        contacts: list[ContactRecord],
+        mapping_service: ListmonkMappingService,
+        unsubscribe_service: UnsubscribeService,
+    ) -> ListmonkNativeUnsubscribeReconciliation:
+        if (
+            not self.settings.email_sending_enabled
+            or self._resolve_controlled_provider() != "listmonk"
+        ):
+            return ListmonkNativeUnsubscribeReconciliation()
+
+        suppressed_count = 0
+        for contact in contacts:
+            subscriber_mapping = mapping_service.get_mapping(
+                client_id=campaign.client_id,
+                entity_type=ENTITY_TYPE_CONTACT,
+                entity_id=contact.id,
+                listmonk_type=LISTMONK_TYPE_SUBSCRIBER,
+            )
+            if subscriber_mapping is None:
+                continue
+
+            try:
+                subscriber_payload = self.listmonk_client.get_subscriber(
+                    subscriber_mapping.listmonk_id
+                )
+            except ListmonkError:
+                return ListmonkNativeUnsubscribeReconciliation(
+                    failed=True,
+                    code="listmonk_unsubscribe_reconciliation_failed",
+                    reason=(
+                        "Listmonk subscription state could not be checked safely."
+                    ),
+                )
+
+            memberships = self._extract_listmonk_subscriber_memberships(
+                subscriber_payload
+            )
+            if memberships is None:
+                return ListmonkNativeUnsubscribeReconciliation(
+                    failed=True,
+                    code="listmonk_unsubscribe_reconciliation_malformed",
+                    reason=(
+                        "Listmonk subscription state response could not be validated safely."
+                    ),
+                )
+
+            actionable = self._resolve_validated_unsubscribed_membership(
+                client_id=campaign.client_id,
+                memberships=memberships,
+                mapping_service=mapping_service,
+            )
+            if actionable is None:
+                continue
+
+            unsubscribe_service.record_native_listmonk_unsubscribe(
+                client_id=campaign.client_id,
+                contact_id=contact.id,
+                campaign_id=actionable["campaign_id"],
+                listmonk_subscriber_id=subscriber_mapping.listmonk_id,
+                listmonk_list_id=actionable["list_id"],
+            )
+            suppressed_count += 1
+
+        return ListmonkNativeUnsubscribeReconciliation(
+            suppressed_count=suppressed_count
+        )
+
+    def _extract_listmonk_subscriber_memberships(
+        self,
+        payload: Any,
+    ) -> list[dict[str, str]] | None:
+        data = payload.get("data") if isinstance(payload, dict) else None
+        subscriber = data if isinstance(data, dict) else payload
+        if not isinstance(subscriber, dict):
+            return None
+        raw_lists = subscriber.get("lists")
+        if raw_lists is None:
+            raw_lists = subscriber.get("subscriptions")
+        if not isinstance(raw_lists, list):
+            return None
+
+        memberships: list[dict[str, str]] = []
+        for item in raw_lists:
+            if not isinstance(item, dict):
+                return None
+            raw_id = item.get("id")
+            if raw_id is None:
+                raw_id = item.get("list_id")
+            list_id = str(raw_id or "").strip()
+            status_value = (
+                item.get("subscription_status")
+                or item.get("status")
+                or item.get("subscriber_list_status")
+            )
+            status = str(status_value or "").strip().lower()
+            if not list_id or not status:
+                return None
+            memberships.append({"list_id": list_id, "status": status})
+        return memberships
+
+    def _resolve_validated_unsubscribed_membership(
+        self,
+        *,
+        client_id: str,
+        memberships: list[dict[str, str]],
+        mapping_service: ListmonkMappingService,
+    ) -> dict[str, str] | None:
+        for membership in memberships:
+            if membership["status"] != "unsubscribed":
+                continue
+            campaign_mappings = [
+                mapping
+                for mapping in mapping_service.list_by_listmonk_id(
+                    client_id=client_id,
+                    listmonk_type=LISTMONK_TYPE_LIST,
+                    listmonk_id=membership["list_id"],
+                )
+                if mapping.entity_type == ENTITY_TYPE_CAMPAIGN
+            ]
+            if len(campaign_mappings) != 1:
+                continue
+            return {
+                "campaign_id": campaign_mappings[0].entity_id,
+                "list_id": membership["list_id"],
+            }
+        return None
+
+    def _native_unsubscribe_reconciliation_blocked_response(
+        self,
+        *,
+        campaign: ClientCampaignRecord,
+        reason: str,
+        code: str,
+        blocked_send_repository: BlockedSendRepository | None,
+    ) -> dict[str, Any]:
+        guard_result = GuardResult(
+            decision=SendDecision.BLOCKED,
+            reason=reason,
+            code=code,
+            severity="critical",
+            client_id=campaign.client_id,
+            campaign_id=campaign.id,
+            diagnostic=(
+                "Dispatch authorization failed closed before listmonk because "
+                "native subscription state reconciliation was unavailable."
+            ),
+        )
+        return self._blocked_response(
+            campaign_id=campaign.id,
+            guard_result=guard_result,
+            blocked_send_repository=blocked_send_repository,
         )
 
     def _mark_campaign_running(
@@ -3685,4 +3874,5 @@ def get_campaign_dispatch_service() -> CampaignDispatchService:
         email_log_repository=get_email_log_repository(),
         provider_event_repository=get_provider_event_repository(),
         campaign_preparation_service=get_campaign_preparation_service(),
+        unsubscribe_service=get_unsubscribe_service(),
     )

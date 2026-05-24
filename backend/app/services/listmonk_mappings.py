@@ -39,6 +39,19 @@ class ListmonkMappingService:
             listmonk_type=listmonk_type,
         )
 
+    def list_by_listmonk_id(
+        self,
+        *,
+        client_id: str,
+        listmonk_type: str,
+        listmonk_id: str,
+    ) -> list[ListmonkMappingRecord]:
+        return self.repository.list_by_listmonk_id(
+            client_id=client_id,
+            listmonk_type=listmonk_type,
+            listmonk_id=listmonk_id,
+        )
+
     def upsert_mapping(
         self,
         *,

@@ -73,6 +73,15 @@ class ListmonkMappingRepository:
     def list_by_client(self, client_id: str) -> list[ListmonkMappingRecord]:
         raise NotImplementedError
 
+    def list_by_listmonk_id(
+        self,
+        *,
+        client_id: str,
+        listmonk_type: str,
+        listmonk_id: str,
+    ) -> list[ListmonkMappingRecord]:
+        raise NotImplementedError
+
 
 class PostgresListmonkMappingRepository(ListmonkMappingRepository):
     def __init__(self, settings: Settings) -> None:
@@ -239,6 +248,37 @@ class PostgresListmonkMappingRepository(ListmonkMappingRepository):
 
         return [ListmonkMappingRecord.model_validate(row) for row in rows]
 
+    def list_by_listmonk_id(
+        self,
+        *,
+        client_id: str,
+        listmonk_type: str,
+        listmonk_id: str,
+    ) -> list[ListmonkMappingRecord]:
+        query = """
+            SELECT
+                id::text AS id,
+                client_id::text AS client_id,
+                entity_type,
+                entity_id::text AS entity_id,
+                listmonk_type,
+                listmonk_id,
+                created_at,
+                updated_at
+            FROM listmonk_mappings
+            WHERE client_id::text = %s
+                AND listmonk_type = %s
+                AND listmonk_id = %s
+            ORDER BY updated_at DESC, id DESC
+        """
+
+        with postgres_connection(self._settings) as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(query, (client_id, listmonk_type, listmonk_id))
+                rows = cursor.fetchall()
+
+        return [ListmonkMappingRecord.model_validate(row) for row in rows]
+
 
 class InMemoryListmonkMappingRepository(ListmonkMappingRepository):
     def __init__(self) -> None:
@@ -327,6 +367,21 @@ class InMemoryListmonkMappingRepository(ListmonkMappingRepository):
             record
             for record in self._records.values()
             if record.client_id == client_id
+        ]
+
+    def list_by_listmonk_id(
+        self,
+        *,
+        client_id: str,
+        listmonk_type: str,
+        listmonk_id: str,
+    ) -> list[ListmonkMappingRecord]:
+        return [
+            record
+            for record in self._records.values()
+            if record.client_id == client_id
+            and record.listmonk_type == listmonk_type
+            and record.listmonk_id == listmonk_id
         ]
 
     def _build_record(

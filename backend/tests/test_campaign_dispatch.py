@@ -14,6 +14,7 @@ from app.repositories.blocked_sends import InMemoryBlockedSendRepository
 from app.main import app
 from app.repositories.campaign_slots import InMemoryCampaignSlotRepository
 from app.repositories.campaign_sending_limits import InMemoryCampaignSendingLimitRepository
+from app.repositories.campaigns import CampaignRecord, InMemoryCampaignRepository
 from app.repositories.clients import ClientCampaignRecord, ClientRecord
 from app.repositories.contacts import ContactRecord, InMemoryContactRepository
 from app.repositories.email_logs import InMemoryEmailLogRepository
@@ -22,10 +23,12 @@ from app.repositories.provider_events import InMemoryProviderEventRepository
 from app.repositories.suppression_list import InMemorySuppressionListRepository
 from app.services import campaigns as campaigns_module
 from app.services.campaigns import CampaignDispatchService
+from app.services.provider_events import ProviderEventIngestionService
 from app.services.listmonk_mappings import (
     ListmonkMappingConflictError,
     ListmonkMappingService,
 )
+from app.services.unsubscribe import UnsubscribeService, UnsubscribeTokenService
 
 LISTMONK_UNSUBSCRIBE_URL = (
     "https://app.sendwise.example.test/unsubscribe/"
@@ -38,6 +41,8 @@ class FakeListmonkClient:
         self.created_campaign_payloads: list[dict[str, Any]] = []
         self.sent_campaign_ids: list[str] = []
         self.trigger_campaign_payload: dict[str, str] = {"status": "running"}
+        self.subscribers: dict[str, dict[str, Any]] = {}
+        self.subscriber_lookup_error: ListmonkError | None = None
 
     def create_campaign(self, payload: dict[str, Any]) -> dict[str, Any]:
         self.created_campaign_payloads.append(payload)
@@ -46,6 +51,11 @@ class FakeListmonkClient:
     def trigger_campaign_send(self, campaign_id: str) -> dict[str, str]:
         self.sent_campaign_ids.append(campaign_id)
         return dict(self.trigger_campaign_payload)
+
+    def get_subscriber(self, subscriber_id: int | str) -> dict[str, Any]:
+        if self.subscriber_lookup_error is not None:
+            raise self.subscriber_lookup_error
+        return self.subscribers.get(str(subscriber_id), {"data": {"lists": []}})
 
 
 class FakePreparationService:
@@ -250,13 +260,40 @@ def build_dispatch_service(
         contacts=[build_contact()],
         campaign_contacts={("client_123", "campaign_123", "contact_123")},
     )
-    return CampaignDispatchService(
-        settings=settings
-        or Settings(
-            email_sending_enabled_raw=email_sending_enabled_raw,
-            environment=environment,
-            email_provider=email_provider,
+    selected_settings = settings or Settings(
+        email_sending_enabled_raw=email_sending_enabled_raw,
+        environment=environment,
+        email_provider=email_provider,
+    )
+    selected_suppression_repository = (
+        suppression_repository or InMemorySuppressionListRepository()
+    )
+    selected_email_log_repository = email_log_repository or InMemoryEmailLogRepository()
+    selected_provider_event_repository = (
+        provider_event_repository or InMemoryProviderEventRepository()
+    )
+    campaign_repository = InMemoryCampaignRepository(
+        campaigns=[
+            CampaignRecord(**campaign.model_dump())
+            for campaign in selected_campaigns
+        ],
+        campaign_contacts=set(selected_contact_repository._campaign_contacts),
+    )
+    unsubscribe_service = UnsubscribeService(
+        settings=selected_settings,
+        token_service=UnsubscribeTokenService(selected_settings),
+        contact_repository=selected_contact_repository,
+        provider_event_service=ProviderEventIngestionService(
+            settings=selected_settings,
+            provider_event_repository=selected_provider_event_repository,
+            campaign_repository=campaign_repository,
+            contact_repository=selected_contact_repository,
+            email_log_repository=selected_email_log_repository,
+            suppression_list_repository=selected_suppression_repository,
         ),
+    )
+    return CampaignDispatchService(
+        settings=selected_settings,
         guard=DeliverabilityGuard(),
         listmonk_client=fake_listmonk or FakeListmonkClient(),  # type: ignore[arg-type]
         mapping_service=resolved_mapping_service,
@@ -268,14 +305,13 @@ def build_dispatch_service(
         campaign_limit_repository=campaign_limit_repository
         or InMemoryCampaignSendingLimitRepository(),
         contact_repository=selected_contact_repository,
-        suppression_list_repository=suppression_repository
-        or InMemorySuppressionListRepository(),
+        suppression_list_repository=selected_suppression_repository,
         blocked_send_repository=blocked_send_repository
         or InMemoryBlockedSendRepository(),
-        email_log_repository=email_log_repository or InMemoryEmailLogRepository(),
-        provider_event_repository=provider_event_repository
-        or InMemoryProviderEventRepository(),
+        email_log_repository=selected_email_log_repository,
+        provider_event_repository=selected_provider_event_repository,
         campaign_preparation_service=preparation_service,
+        unsubscribe_service=unsubscribe_service,
     )
 
 
@@ -1876,6 +1912,211 @@ def test_listmonk_provider_omits_custom_unsubscribe_headers_without_mailgun_smtp
     assert result["status"] == "accepted"
     assert "headers" not in fake_listmonk.created_campaign_payloads[0]
     assert fake_listmonk.sent_campaign_ids == ["lm_1"]
+
+
+def test_native_listmonk_unsubscribe_reconciliation_suppresses_exactly_once() -> None:
+    fake_listmonk = FakeListmonkClient()
+    fake_listmonk.subscribers["sub_123"] = {
+        "data": {
+            "id": 123,
+            "lists": [
+                {"id": 1, "subscription_status": "unsubscribed"},
+            ],
+        }
+    }
+    mapping_service = ListmonkMappingService(InMemoryListmonkMappingRepository())
+    mapping_service.ensure_campaign_list_mapping(
+        client_id="client_123",
+        campaign_id="campaign_123",
+        listmonk_list_id="1",
+    )
+    mapping_service.ensure_contact_subscriber_mapping(
+        client_id="client_123",
+        contact_id="contact_123",
+        listmonk_subscriber_id="sub_123",
+    )
+    suppression_repository = InMemorySuppressionListRepository()
+    contact_repository = InMemoryContactRepository(
+        contacts=[build_contact()],
+        campaign_contacts={("client_123", "campaign_123", "contact_123")},
+    )
+    service = build_dispatch_service(
+        fake_listmonk=fake_listmonk,
+        mapping_service=mapping_service,
+        suppression_repository=suppression_repository,
+        contact_repository=contact_repository,
+        settings=build_ready_listmonk_settings(),
+        preparation_service=ListmonkReadyPreparationService(content_ready=True),
+    )
+
+    first = service.send_campaign("campaign_123")
+    second = service.send_campaign("campaign_123")
+
+    assert first["status"] == "blocked"
+    assert first["code"] == "no_eligible_contacts"
+    assert first["blocked_reasons"] == {"suppression_list": 1}
+    assert second["status"] == "blocked"
+    assert len(suppression_repository._records) == 1
+    assert suppression_repository._records[0].reason == "unsubscribe"
+    assert contact_repository.get_by_id("contact_123").status == "unsubscribed"
+    assert fake_listmonk.sent_campaign_ids == []
+
+
+def test_native_listmonk_confirmed_subscription_does_not_suppress() -> None:
+    fake_listmonk = FakeListmonkClient()
+    fake_listmonk.subscribers["sub_123"] = {
+        "data": {"lists": [{"id": 1, "subscription_status": "confirmed"}]}
+    }
+    mapping_service = ListmonkMappingService(InMemoryListmonkMappingRepository())
+    mapping_service.ensure_campaign_list_mapping(
+        client_id="client_123",
+        campaign_id="campaign_123",
+        listmonk_list_id="1",
+    )
+    mapping_service.ensure_contact_subscriber_mapping(
+        client_id="client_123",
+        contact_id="contact_123",
+        listmonk_subscriber_id="sub_123",
+    )
+    suppression_repository = InMemorySuppressionListRepository()
+    service = build_dispatch_service(
+        fake_listmonk=fake_listmonk,
+        mapping_service=mapping_service,
+        suppression_repository=suppression_repository,
+        settings=build_ready_listmonk_settings(),
+        preparation_service=ListmonkReadyPreparationService(content_ready=True),
+    )
+
+    result = service.send_campaign("campaign_123")
+
+    assert result["status"] == "accepted"
+    assert suppression_repository._records == []
+    assert fake_listmonk.sent_campaign_ids == ["lm_1"]
+
+
+def test_native_listmonk_unmapped_list_does_not_suppress() -> None:
+    fake_listmonk = FakeListmonkClient()
+    fake_listmonk.subscribers["sub_123"] = {
+        "data": {"lists": [{"id": 999, "subscription_status": "unsubscribed"}]}
+    }
+    mapping_service = ListmonkMappingService(InMemoryListmonkMappingRepository())
+    mapping_service.ensure_campaign_list_mapping(
+        client_id="client_123",
+        campaign_id="campaign_123",
+        listmonk_list_id="1",
+    )
+    mapping_service.ensure_contact_subscriber_mapping(
+        client_id="client_123",
+        contact_id="contact_123",
+        listmonk_subscriber_id="sub_123",
+    )
+    suppression_repository = InMemorySuppressionListRepository()
+    service = build_dispatch_service(
+        fake_listmonk=fake_listmonk,
+        mapping_service=mapping_service,
+        suppression_repository=suppression_repository,
+        settings=build_ready_listmonk_settings(),
+        preparation_service=ListmonkReadyPreparationService(content_ready=True),
+    )
+
+    result = service.send_campaign("campaign_123")
+
+    assert result["status"] == "accepted"
+    assert suppression_repository._records == []
+    assert fake_listmonk.sent_campaign_ids == ["lm_1"]
+
+
+def test_native_listmonk_cross_client_list_mapping_does_not_suppress() -> None:
+    fake_listmonk = FakeListmonkClient()
+    fake_listmonk.subscribers["sub_123"] = {
+        "data": {"lists": [{"id": 99, "subscription_status": "unsubscribed"}]}
+    }
+    mapping_service = ListmonkMappingService(InMemoryListmonkMappingRepository())
+    mapping_service.ensure_campaign_list_mapping(
+        client_id="client_123",
+        campaign_id="campaign_123",
+        listmonk_list_id="1",
+    )
+    mapping_service.ensure_campaign_list_mapping(
+        client_id="client_other",
+        campaign_id="campaign_other",
+        listmonk_list_id="99",
+    )
+    mapping_service.ensure_contact_subscriber_mapping(
+        client_id="client_123",
+        contact_id="contact_123",
+        listmonk_subscriber_id="sub_123",
+    )
+    suppression_repository = InMemorySuppressionListRepository()
+    service = build_dispatch_service(
+        fake_listmonk=fake_listmonk,
+        mapping_service=mapping_service,
+        suppression_repository=suppression_repository,
+        settings=build_ready_listmonk_settings(),
+        preparation_service=ListmonkReadyPreparationService(content_ready=True),
+    )
+
+    result = service.send_campaign("campaign_123")
+
+    assert result["status"] == "accepted"
+    assert suppression_repository._records == []
+    assert fake_listmonk.sent_campaign_ids == ["lm_1"]
+
+
+def test_native_listmonk_lookup_failure_blocks_real_dispatch_safely() -> None:
+    fake_listmonk = FakeListmonkClient()
+    fake_listmonk.subscriber_lookup_error = ListmonkError("listmonk request failed")
+    mapping_service = ListmonkMappingService(InMemoryListmonkMappingRepository())
+    mapping_service.ensure_campaign_list_mapping(
+        client_id="client_123",
+        campaign_id="campaign_123",
+        listmonk_list_id="1",
+    )
+    mapping_service.ensure_contact_subscriber_mapping(
+        client_id="client_123",
+        contact_id="contact_123",
+        listmonk_subscriber_id="sub_123",
+    )
+    service = build_dispatch_service(
+        fake_listmonk=fake_listmonk,
+        mapping_service=mapping_service,
+        settings=build_ready_listmonk_settings(),
+        preparation_service=ListmonkReadyPreparationService(content_ready=True),
+    )
+
+    result = service.send_campaign("campaign_123")
+
+    assert result["status"] == "blocked"
+    assert result["code"] == "listmonk_unsubscribe_reconciliation_failed"
+    assert result["reason"] == "Listmonk subscription state could not be checked safely."
+    assert result["dispatch_attempted"] is False
+    assert result["listmonk_prepared"] is False
+    assert result["listmonk_dispatched"] is False
+    assert fake_listmonk.sent_campaign_ids == []
+
+
+def test_already_suppressed_contact_remains_blocked_without_native_lookup() -> None:
+    fake_listmonk = FakeListmonkClient()
+    suppression_repository = InMemorySuppressionListRepository()
+    suppression_repository.add_suppression(
+        email="person@example.test",
+        client_id="client_123",
+        reason="unsubscribe",
+    )
+    service = build_dispatch_service(
+        fake_listmonk=fake_listmonk,
+        suppression_repository=suppression_repository,
+        settings=build_ready_listmonk_settings(),
+        preparation_service=ListmonkReadyPreparationService(content_ready=True),
+    )
+
+    result = service.send_campaign("campaign_123")
+
+    assert result["status"] == "blocked"
+    assert result["code"] == "no_eligible_contacts"
+    assert result["blocked_reasons"] == {"suppression_list": 1}
+    assert len(suppression_repository._records) == 1
+    assert fake_listmonk.sent_campaign_ids == []
 
 
 def test_provider_history_complaint_stop_blocks_before_listmonk() -> None:

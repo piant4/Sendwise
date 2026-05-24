@@ -40,12 +40,12 @@ staging-api.mailerpro.it {
 }
 ```
 
-Restricted Listmonk subscription proxy:
+Restricted Listmonk subscription and public asset proxy:
 
-- `subscription.mailerpro.it` must expose only the approved public `/subscription/*` route through Caddy.
-- Caddy proxies `/subscription/*` to `127.0.0.1:9000`.
+- `subscription.mailerpro.it` must expose only the approved public `/subscription/*` and `/public/*` routes through Caddy.
+- Caddy proxies only `/subscription/*` and `/public/*` to `127.0.0.1:9000`.
 - `/` and `/api/` on `subscription.mailerpro.it` must remain blocked with 404 responses.
-- Listmonk must be published only on host loopback as `127.0.0.1:9000:9000`; never bind Listmonk to `0.0.0.0` or a public interface.
+- Listmonk must be published only on host loopback as `127.0.0.1:9000:9000` for restricted Caddy proxying; this is not public Listmonk service exposure. Never bind Listmonk to `0.0.0.0` or a public interface.
 - Caddy remains the only public entry boundary for this route. Listmonk admin and API surfaces must not be directly exposed publicly.
 
 Required public URLs:
@@ -322,7 +322,7 @@ The staging Compose stack must expose only:
 
 - `127.0.0.1:3000:3000` for frontend.
 - `127.0.0.1:8000:8000` for backend.
-- `127.0.0.1:9000:9000` for Listmonk, used only by the restricted Caddy `/subscription/*` proxy.
+- `127.0.0.1:9000:9000` for Listmonk, used only by the restricted Caddy `/subscription/*` and `/public/*` proxy.
 
 The staging Compose stack must not publish public host ports for:
 

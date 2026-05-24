@@ -134,6 +134,51 @@ class UnsubscribeService:
             "already_unsubscribed": already_unsubscribed,
         }
 
+    def record_native_listmonk_unsubscribe(
+        self,
+        *,
+        client_id: str,
+        contact_id: str,
+        campaign_id: str,
+        listmonk_subscriber_id: str,
+        listmonk_list_id: str,
+    ) -> dict[str, Any]:
+        contact = self.contact_repository.get_by_id(contact_id)
+        if contact is None or contact.client_id != client_id:
+            raise InvalidUnsubscribeTokenError("Invalid unsubscribe token.")
+
+        response = self.provider_event_service.ingest_event(
+            NormalizedProviderEvent(
+                provider="listmonk",
+                source="native_unsubscribe_reconciliation",
+                provider_event_id=(
+                    "listmonk-native-unsubscribe:"
+                    f"{contact.id}:{campaign_id}:{listmonk_list_id}"
+                ),
+                event_type="sendwise_unsubscribe",
+                occurred_at=datetime.now(timezone.utc),
+                campaign_id=campaign_id,
+                contact_id=contact.id,
+                client_id=contact.client_id,
+                email=contact.email,
+                payload={
+                    "campaign_id": campaign_id,
+                    "contact_id": contact.id,
+                    "client_id": contact.client_id,
+                    "listmonk_subscriber_id": listmonk_subscriber_id,
+                    "listmonk_list_id": listmonk_list_id,
+                },
+            )
+        )
+
+        already_unsubscribed = not response.created
+        return {
+            "status": (
+                "already_unsubscribed" if already_unsubscribed else "unsubscribed"
+            ),
+            "already_unsubscribed": already_unsubscribed,
+        }
+
 
 def _urlsafe_b64encode(value: bytes) -> str:
     return base64.urlsafe_b64encode(value).decode("utf-8").rstrip("=")

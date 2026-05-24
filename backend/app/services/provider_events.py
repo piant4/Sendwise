@@ -320,16 +320,37 @@ class ProviderEventIngestionService:
             payload.get("timestamp") or payload.get("event-timestamp")
         )
         severity = self._mailgun_failed_severity(payload)
+        sanitized_custom_variables = {
+            key: coerced
+            for key in (
+                "sendwise_client_id",
+                "sendwise_campaign_id",
+                "sendwise_contact_id",
+                "sendwise_email_log_id",
+            )
+            if (
+                coerced := self._coerce_provider_identifier(custom_variables.get(key))
+            )
+            is not None
+        }
         return NormalizedProviderEvent(
             provider="mailgun",
             source=source,
             provider_event_id=provider_event_id,
             event_type=event_type,
             occurred_at=occurred_at,
-            client_id=self._coerce_optional_string(custom_variables.get("sendwise_client_id")),
-            campaign_id=self._coerce_optional_string(custom_variables.get("sendwise_campaign_id")),
-            contact_id=self._coerce_optional_string(custom_variables.get("sendwise_contact_id")),
-            email_log_id=self._coerce_optional_string(custom_variables.get("sendwise_email_log_id")),
+            client_id=self._coerce_provider_identifier(
+                custom_variables.get("sendwise_client_id")
+            ),
+            campaign_id=self._coerce_provider_identifier(
+                custom_variables.get("sendwise_campaign_id")
+            ),
+            contact_id=self._coerce_provider_identifier(
+                custom_variables.get("sendwise_contact_id")
+            ),
+            email_log_id=self._coerce_provider_identifier(
+                custom_variables.get("sendwise_email_log_id")
+            ),
             provider_message_id=provider_message_id,
             email=recipient,
             payload={
@@ -344,14 +365,8 @@ class ProviderEventIngestionService:
                     else {}
                 ),
                 "custom_variables": {
-                    key: self._coerce_optional_string(custom_variables.get(key))
-                    for key in (
-                        "sendwise_client_id",
-                        "sendwise_campaign_id",
-                        "sendwise_contact_id",
-                        "sendwise_email_log_id",
-                    )
-                    if self._coerce_optional_string(custom_variables.get(key)) is not None
+                    key: sanitized_custom_variables[key]
+                    for key in sanitized_custom_variables
                 },
             },
         )
@@ -429,6 +444,9 @@ class ProviderEventIngestionService:
         return merged
 
     def _correlate_event(self, event: NormalizedProviderEvent) -> CorrelatedProviderEvent:
+        if event.provider == "mailgun":
+            return self._correlate_mailgun_event(event)
+
         email_log = None
         if event.email_log_id:
             email_log = self.email_log_repository.get_by_id(event.email_log_id)
@@ -510,6 +528,74 @@ class ProviderEventIngestionService:
         return CorrelatedProviderEvent(
             client_id=client_id,
             campaign_id=campaign_id,
+            contact_id=contact_id,
+            email_log=email_log,
+            contact=contact,
+        )
+
+    def _correlate_mailgun_event(
+        self,
+        event: NormalizedProviderEvent,
+    ) -> CorrelatedProviderEvent:
+        if event.client_id is None or event.campaign_id is None:
+            return self._uncorrelated_event()
+
+        campaign = self.campaign_repository.get_by_id(campaign_id=event.campaign_id)
+        if campaign is None or campaign.client_id != event.client_id:
+            return self._uncorrelated_event()
+
+        contact = None
+        contact_id = event.contact_id
+        if contact_id is not None:
+            candidate = self.contact_repository.get_by_id(contact_id)
+            if candidate is None or candidate.client_id != event.client_id:
+                return self._uncorrelated_event()
+            contact = candidate
+
+        if contact is None and event.email:
+            candidate = self.contact_repository.get_by_client_email(
+                client_id=event.client_id,
+                email=event.email,
+            )
+            if candidate is not None:
+                contact = candidate
+                contact_id = candidate.id
+
+        if contact is None or contact_id is None:
+            return self._uncorrelated_event()
+
+        if not self.contact_repository.campaign_contact_exists(
+            client_id=event.client_id,
+            campaign_id=event.campaign_id,
+            contact_id=contact_id,
+        ):
+            return self._uncorrelated_event()
+
+        email_log = None
+        if event.email_log_id:
+            candidate_log = self.email_log_repository.get_by_id(event.email_log_id)
+            if candidate_log is None:
+                return self._uncorrelated_event()
+            email_log = candidate_log
+
+        if email_log is None:
+            email_log = self.email_log_repository.find_latest_for_contact(
+                client_id=event.client_id,
+                campaign_id=event.campaign_id,
+                contact_id=contact_id,
+            )
+
+        if email_log is None or not self._correlation_matches_email_log(
+            client_id=event.client_id,
+            campaign_id=event.campaign_id,
+            contact_id=contact_id,
+            email_log=email_log,
+        ):
+            return self._uncorrelated_event()
+
+        return CorrelatedProviderEvent(
+            client_id=event.client_id,
+            campaign_id=event.campaign_id,
             contact_id=contact_id,
             email_log=email_log,
             contact=contact,
@@ -742,6 +828,14 @@ class ProviderEventIngestionService:
             return None
         normalized = str(value).strip()
         return normalized or None
+
+    def _coerce_provider_identifier(self, value: Any) -> str | None:
+        normalized = self._coerce_optional_string(value)
+        if normalized is None:
+            return None
+        if "{{" in normalized or "}}" in normalized:
+            return None
+        return normalized
 
     def _normalize_message_id(self, value: Any) -> str | None:
         normalized = self._coerce_optional_string(value)

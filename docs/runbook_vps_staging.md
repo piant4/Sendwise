@@ -451,6 +451,8 @@ Provider-event semantics:
 - `queued` means prepared and not yet accepted.
 - `sent` means the backend successfully started the Listmonk campaign or received an equivalent provider acceptance signal; it does not mean inbox delivery.
 - For the current Listmonk SMTP relay path, `provider_message_id` is expected to stay empty because the Listmonk campaign-start response does not expose stable per-recipient Mailgun message IDs.
+- Listmonk SMTP campaign payloads must not rely on custom Sendwise `List-Unsubscribe` or templated `sendwise_contact_id` headers; Listmonk does not render recipient attributes inside custom header values.
+- Before the next controlled resend, deploy code that keeps only static Mailgun `sendwise_client_id` and `sendwise_campaign_id` variables, then configure a restricted public `/subscription/*` route, approved public `app.root_url`, and `privacy.unsubscribe_header=true` for native Listmonk one-click unsubscribe.
 - `delivered`, `opened`, `clicked`, `bounced`, `complained`, and `unsubscribed` must come only from processed provider or unsubscribe events.
 - If provider events are missing, those metrics must stay unavailable rather than being inferred from recipient totals or send attempts.
 - Mailgun suppression side effects are destructive and must be verified only with synthetic local/unit payloads or already-observed safe records. Do not create live complaint, unsubscribe, bounce, rejection, or failure events against the production Mailgun domain.

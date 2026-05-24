@@ -493,6 +493,7 @@ class PostgresEmailLogRepository(EmailLogRepository):
             WHERE client_id::text = %s
                 AND campaign_id::text = %s
                 AND contact_id::text = %s
+                AND status <> 'simulated'
             ORDER BY created_at DESC, id DESC
             LIMIT 1
         """
@@ -739,6 +740,7 @@ class InMemoryEmailLogRepository(EmailLogRepository):
                 record.client_id == client_id
                 and record.campaign_id == campaign_id
                 and record.contact_id == contact_id
+                and record.status != "simulated"
             ):
                 return record
         return None

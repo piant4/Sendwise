@@ -1034,6 +1034,108 @@ def test_unmatched_mailgun_event_does_not_update_campaign_metrics_or_suppression
     assert summary.logs.complained_available is False
 
 
+def test_template_looking_mailgun_contact_value_is_ignored_and_recipient_fallback_correlates() -> None:
+    runtime = build_runtime()
+    provider_event_service: ProviderEventIngestionService = runtime["provider_event_service"]  # type: ignore[assignment]
+    email_log_repository: InMemoryEmailLogRepository = runtime["email_log_repository"]  # type: ignore[assignment]
+    admin_service: AdminCampaignService = runtime["admin_service"]  # type: ignore[assignment]
+
+    response = provider_event_service.ingest_payload(
+        {
+            "provider": "mailgun",
+            "source": "mailgun_webhook",
+            "payload": build_mailgun_event_data(
+                event="delivered",
+                event_id="mailgun-template-contact-fallback",
+                custom_variables={
+                    "sendwise_client_id": "client_123",
+                    "sendwise_campaign_id": "campaign_123",
+                    "sendwise_contact_id": "{{ .Subscriber.Attribs.sendwise_contact_id }}",
+                },
+            ),
+        }
+    )
+
+    assert response.correlated is True
+    assert response.campaign_id == "campaign_123"
+    assert response.contact_id == "contact_123"
+    assert response.email_log_id is not None
+    assert email_log_repository.find_latest_for_contact(
+        client_id="client_123",
+        campaign_id="campaign_123",
+        contact_id="contact_123",
+    ).status == "delivered"
+    assert admin_service.get_campaign_summary("campaign_123").logs.delivered == 1
+
+
+def test_mailgun_static_campaign_and_signed_recipient_fallback_correlates_accepted_event() -> None:
+    runtime = build_runtime()
+    provider_event_service: ProviderEventIngestionService = runtime["provider_event_service"]  # type: ignore[assignment]
+    email_log_repository: InMemoryEmailLogRepository = runtime["email_log_repository"]  # type: ignore[assignment]
+
+    response = provider_event_service.ingest_payload(
+        {
+            "provider": "mailgun",
+            "source": "mailgun_webhook",
+            "payload": build_mailgun_event_data(
+                event="accepted",
+                event_id="mailgun-static-recipient-accepted",
+                custom_variables={
+                    "sendwise_client_id": "client_123",
+                    "sendwise_campaign_id": "campaign_123",
+                },
+            ),
+        }
+    )
+
+    assert response.correlated is True
+    assert response.campaign_id == "campaign_123"
+    assert response.contact_id == "contact_123"
+    assert response.email_log_id is not None
+    assert email_log_repository.find_latest_for_contact(
+        client_id="client_123",
+        campaign_id="campaign_123",
+        contact_id="contact_123",
+    ).status == "sent"
+
+
+def test_mailgun_mismatched_recipient_fallback_remains_unmatched_and_non_destructive() -> None:
+    contacts = [
+        build_contact(contact_id="contact_123", email="person@example.test"),
+        build_contact(contact_id="contact_other", email="other@example.test"),
+    ]
+    runtime = build_runtime(contacts=contacts)
+    provider_event_service: ProviderEventIngestionService = runtime["provider_event_service"]  # type: ignore[assignment]
+    provider_event_repository: InMemoryProviderEventRepository = runtime["provider_event_repository"]  # type: ignore[assignment]
+    suppression_repository: InMemorySuppressionListRepository = runtime["suppression_repository"]  # type: ignore[assignment]
+    contact_repository: InMemoryContactRepository = runtime["contact_repository"]  # type: ignore[assignment]
+
+    response = provider_event_service.ingest_payload(
+        {
+            "provider": "mailgun",
+            "source": "mailgun_webhook",
+            "payload": build_mailgun_event_data(
+                event="complained",
+                event_id="mailgun-recipient-not-in-campaign",
+                recipient="outside@example.test",
+                custom_variables={
+                    "sendwise_client_id": "client_123",
+                    "sendwise_campaign_id": "campaign_123",
+                },
+            ),
+        }
+    )
+
+    assert response.correlated is False
+    assert response.suppressed is False
+    assert provider_event_repository.list_by_campaign(
+        client_id="client_123",
+        campaign_id="campaign_123",
+    ) == []
+    assert suppression_repository._records == []
+    assert contact_repository.get_by_id("contact_123").status == "sendable"
+
+
 def test_mailgun_hard_bounce_updates_suppression_only_when_correlation_is_safe() -> None:
     runtime = build_runtime()
     provider_event_service: ProviderEventIngestionService = runtime["provider_event_service"]  # type: ignore[assignment]

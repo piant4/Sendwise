@@ -1833,13 +1833,10 @@ def test_listmonk_provider_uses_listmonk_dispatch_even_with_mailgun_smtp_host() 
     assert fake_listmonk.sent_campaign_ids == ["lm_1"]
     assert fake_listmonk.created_campaign_payloads
     assert fake_listmonk.created_campaign_payloads[0]["headers"] == [
-        {"List-Unsubscribe": f"<{LISTMONK_UNSUBSCRIBE_URL}>"},
-        {"List-Unsubscribe-Post": "List-Unsubscribe=One-Click"},
         {
             "X-Mailgun-Variables": (
                 '{"sendwise_campaign_id":"campaign_123",'
-                '"sendwise_client_id":"client_123",'
-                '"sendwise_contact_id":"{{ .Subscriber.Attribs.sendwise_contact_id }}"}'
+                '"sendwise_client_id":"client_123"}'
             )
         },
     ]
@@ -1863,7 +1860,7 @@ def test_listmonk_provider_blocks_when_recipient_specific_unsubscribe_header_url
     assert fake_listmonk.sent_campaign_ids == []
 
 
-def test_listmonk_provider_adds_unsubscribe_headers_without_mailgun_smtp_host() -> None:
+def test_listmonk_provider_omits_custom_unsubscribe_headers_without_mailgun_smtp_host() -> None:
     fake_listmonk = FakeListmonkClient()
     service = build_dispatch_service(
         fake_listmonk=fake_listmonk,
@@ -1877,10 +1874,7 @@ def test_listmonk_provider_adds_unsubscribe_headers_without_mailgun_smtp_host() 
     result = service.send_campaign("campaign_123")
 
     assert result["status"] == "accepted"
-    assert fake_listmonk.created_campaign_payloads[0]["headers"] == [
-        {"List-Unsubscribe": f"<{LISTMONK_UNSUBSCRIBE_URL}>"},
-        {"List-Unsubscribe-Post": "List-Unsubscribe=One-Click"},
-    ]
+    assert "headers" not in fake_listmonk.created_campaign_payloads[0]
     assert fake_listmonk.sent_campaign_ids == ["lm_1"]
 
 

@@ -4,7 +4,6 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 import json
 from typing import Any
-from urllib.parse import urlsplit
 
 from app.core.auth import AuthenticatedUser
 from app.core.config import Settings, get_settings
@@ -36,11 +35,8 @@ from app.services.template_renderer import (
     render_sendwise_template_string,
 )
 from app.services.unsubscribe import (
-    LISTMONK_UNSUBSCRIBE_TOKEN_PLACEHOLDER,
     UnsubscribeTokenService,
 )
-
-LIST_UNSUBSCRIBE_POST_VALUE = "List-Unsubscribe=One-Click"
 
 RECIPIENT_TEMPLATE_VARIABLES = {
     "nome": "{{ .Subscriber.Attribs.nome }}",
@@ -93,14 +89,6 @@ def _build_listmonk_campaign_headers(
     content: dict[str, Any],
 ) -> list[dict[str, str]]:
     headers: list[dict[str, str]] = []
-    unsubscribe_url = _build_list_unsubscribe_header_url(settings=settings)
-    if _is_safe_listmonk_unsubscribe_url(unsubscribe_url):
-        headers.extend(
-            [
-                {"List-Unsubscribe": f"<{unsubscribe_url}>"},
-                {"List-Unsubscribe-Post": LIST_UNSUBSCRIBE_POST_VALUE},
-            ]
-        )
     if settings.smtp_host_is_mailgun:
         headers.append(
             {
@@ -108,7 +96,6 @@ def _build_listmonk_campaign_headers(
                     {
                         "sendwise_client_id": campaign.client_id,
                         "sendwise_campaign_id": campaign.id,
-                        "sendwise_contact_id": "{{ .Subscriber.Attribs.sendwise_contact_id }}",
                     },
                     sort_keys=True,
                     separators=(",", ":"),
@@ -116,24 +103,6 @@ def _build_listmonk_campaign_headers(
             }
         )
     return headers
-
-
-def _build_list_unsubscribe_header_url(*, settings: Settings) -> str:
-    base_url = settings.backend_public_origin or settings.backend_public_url.strip()
-    base_url = base_url.rstrip("/")
-    if not base_url:
-        return ""
-    return f"{base_url}/unsubscribe/{LISTMONK_UNSUBSCRIBE_TOKEN_PLACEHOLDER}"
-
-
-def _is_safe_listmonk_unsubscribe_url(unsubscribe_url: str) -> bool:
-    parsed = urlsplit(unsubscribe_url)
-    return (
-        parsed.scheme == "https"
-        and bool(parsed.netloc)
-        and "/unsubscribe/" in unsubscribe_url
-        and LISTMONK_UNSUBSCRIBE_TOKEN_PLACEHOLDER in unsubscribe_url
-    )
 
 
 @dataclass(frozen=True)

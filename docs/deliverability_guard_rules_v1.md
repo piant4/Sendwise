@@ -293,7 +293,8 @@ Do not show:
 
 - Backend-owned campaign preparation and send gating.
 - Controlled Listmonk to Mailgun sending path.
-- Listmonk campaign payload composition for one-click unsubscribe headers using the existing recipient-specific unsubscribe URL template.
+- Listmonk campaign payload composition no longer uses Sendwise custom one-click unsubscribe headers; native Listmonk one-click unsubscribe is the intended V1 path after public runtime routing is approved and verified.
+- Mailgun correlation for Listmonk SMTP sends uses static campaign/client variables plus tenant-validated recipient fallback, not templated recipient IDs in custom headers.
 - Domain-scoped warmup attribution.
 - Mailgun webhook analytics boundary.
 - Suppression and unsubscribe handling boundaries.

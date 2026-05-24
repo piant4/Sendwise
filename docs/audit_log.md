@@ -4034,3 +4034,29 @@ Runtime and follow-up state:
 Scope confirmation:
 - No real send, real unsubscribe, real suppression trigger, direct Mailgun/SES send path, webhook signing change, event-normalization change, schema/migration change, Docker/env edit, or Listmonk bypass was introduced.
 - No secrets, recipient addresses, full headers, raw message bodies, unsubscribe URLs/tokens, credentials, auth headers, signing keys, or SMTP secrets were printed.
+
+## Milestone 19.6-FIX2A - Replace Invalid Custom Header Strategy And Restore Safe Mailgun Correlation
+
+Date: 2026-05-24
+Branch: main
+
+Verified state:
+- Runtime evidence invalidated Sendwise custom recipient-specific headers for Listmonk sends: Listmonk transmitted custom headers but did not render `.Subscriber.Attribs.*` values inside them.
+- Campaign preparation now omits custom Sendwise `List-Unsubscribe` and `List-Unsubscribe-Post` headers for Listmonk sends.
+- Mailgun SMTP relay headers now retain only static `sendwise_client_id` and `sendwise_campaign_id`; templated `sendwise_contact_id` is not emitted.
+- Mailgun event normalization treats template-looking identifiers such as `{{ .Subscriber.Attribs.sendwise_contact_id }}` as absent.
+- Mailgun correlation now requires static client/campaign variables, campaign ownership by client, recipient resolution inside that client, campaign-contact membership, and the latest eligible email log for that campaign/contact.
+
+Native Listmonk unsubscribe audit:
+- Existing `/events/listmonk` accepts already-normalized unsubscribe payloads containing Sendwise business identifiers.
+- Existing `listmonk_mappings` stores business entity to Listmonk technical id mappings, but the repository does not provide a reverse lookup by raw Listmonk event identifiers.
+- No live Listmonk native unsubscribe payload contract was available in this local task, so native unsubscribe sync was not implemented.
+
+Required VPS/config evidence before native unsubscribe sync:
+- Redacted native Listmonk unsubscribe webhook payload shape showing event type, list id, campaign id, subscriber id, and whether email is included.
+- Read-only confirmation that those Listmonk ids map to existing `listmonk_mappings` rows for the intended client/campaign/contact without schema changes.
+- Confirmation the public route is restricted to `/subscription/*`, `app.root_url` is approved public HTTPS, and `privacy.unsubscribe_header=true`.
+
+Scope confirmation:
+- No real send, unsubscribe, complaint, bounce, webhook trigger, provider API call, Docker/env/DNS/Caddy/Listmonk runtime setting change, schema/migration change, direct Mailgun/SES send path, or Listmonk bypass was performed.
+- No recipient emails, full headers, message bodies, raw webhook payloads, unsubscribe tokens, credentials, signing keys, auth headers, or full sender addresses were printed.

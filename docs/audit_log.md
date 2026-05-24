@@ -3935,3 +3935,15 @@ Checks executed:
 - `bash scripts/audit.sh`
 - `bash scripts/smoke_test.sh`
 - Changed-file diff scans for direct Mailgun/SES send paths and unsafe logging additions.
+
+## Milestone 19.1-FIX3 - Campaign Detail Header Rendered Subject
+
+Date: 2026-05-24
+Branch: main
+
+Verified state:
+- Audited the admin campaign detail page header and confirmed it rendered `campaign.subject` through the raw-subject display helper, while the inner detail card already used the rendered-subject helper.
+- Updated the page header to use the existing `renderedSubject`-first display path, preserving fallback to raw subject only when no rendered subject is present.
+
+Scope confirmation:
+- Frontend-only display change. No backend, analytics counting, Mailgun events, webhook/correlation, sending logic, guards, suppression, schema, migration, Docker, or env behavior was changed.

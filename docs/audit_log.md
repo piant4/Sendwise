@@ -3947,3 +3947,17 @@ Verified state:
 
 Scope confirmation:
 - Frontend-only display change. No backend, analytics counting, Mailgun events, webhook/correlation, sending logic, guards, suppression, schema, migration, Docker, or env behavior was changed.
+
+## Milestone 19.2 - Mailgun Suppression Automation Hardening
+
+Date: 2026-05-24
+Branch: main
+
+Verified state:
+- Audited correlated provider-event side effects for Mailgun `complained`, `unsubscribed`, `failed` permanent/temporary/unknown severity, `rejected`, `accepted`, `delivered`, `opened`, and `clicked`.
+- Confirmed the intended destructive boundary: only correlated `complaint`, `unsubscribe`, and `hard_bounce` events suppress; unmatched events and non-terminal delivery/engagement events do not suppress.
+- Hardened correlation so custom-variable IDs must match the Business DB campaign/contact/client relationship and any resolved email log before side effects can run.
+- Added regression coverage for exact-once suppression, provider-event replay idempotency, unmatched negative events, non-suppressing Mailgun events, mismatched tenant/correlation data, and the existing guard path blocking suppressed contacts without sending.
+
+Scope confirmation:
+- No live provider event, campaign send, Mailgun/SES API call, webhook signature verification change, DB schema/migration change, dashboard change, analytics read-model change, or Listmonk dispatch change was performed.

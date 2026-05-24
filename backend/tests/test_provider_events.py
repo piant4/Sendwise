@@ -1093,6 +1093,186 @@ def test_mailgun_complaint_updates_suppression_only_when_correlation_is_safe() -
     assert suppression_repository._records[0].reason == "complaint"
 
 
+def test_correlated_mailgun_negative_events_suppress_exactly_once_on_replay() -> None:
+    cases = [
+        ("complained", "mailgun-complaint-idempotent", None, "complaint", "suppressed"),
+        ("unsubscribed", "mailgun-unsubscribe-idempotent", None, "unsubscribe", "unsubscribed"),
+        (
+            "failed",
+            "mailgun-hard-bounce-idempotent",
+            {"severity": "permanent"},
+            "bounce",
+            "bounced",
+        ),
+    ]
+
+    for mailgun_event, event_id, delivery_status, reason, contact_status in cases:
+        runtime = build_runtime()
+        provider_event_service: ProviderEventIngestionService = runtime["provider_event_service"]  # type: ignore[assignment]
+        provider_event_repository: InMemoryProviderEventRepository = runtime["provider_event_repository"]  # type: ignore[assignment]
+        suppression_repository: InMemorySuppressionListRepository = runtime["suppression_repository"]  # type: ignore[assignment]
+        contact_repository: InMemoryContactRepository = runtime["contact_repository"]  # type: ignore[assignment]
+        payload = {
+            "provider": "mailgun",
+            "source": "mailgun_webhook",
+            "payload": build_mailgun_event_data(
+                event=mailgun_event,
+                event_id=event_id,
+                custom_variables={
+                    "sendwise_client_id": "client_123",
+                    "sendwise_campaign_id": "campaign_123",
+                    "sendwise_contact_id": "contact_123",
+                },
+                delivery_status=delivery_status,
+            ),
+        }
+
+        first = provider_event_service.ingest_payload(payload)
+        second = provider_event_service.ingest_payload(payload)
+
+        assert first.suppressed is True
+        assert second.created is False
+        assert len(suppression_repository._records) == 1
+        assert suppression_repository._records[0].reason == reason
+        assert contact_repository.get_by_id("contact_123").status == contact_status
+        assert len(provider_event_repository._records) == 1
+
+
+def test_unmatched_mailgun_negative_events_do_not_suppress() -> None:
+    cases = [
+        ("complained", None),
+        ("unsubscribed", None),
+        ("failed", {"severity": "permanent"}),
+    ]
+
+    for index, (mailgun_event, delivery_status) in enumerate(cases, start=1):
+        runtime = build_runtime()
+        provider_event_service: ProviderEventIngestionService = runtime["provider_event_service"]  # type: ignore[assignment]
+        suppression_repository: InMemorySuppressionListRepository = runtime["suppression_repository"]  # type: ignore[assignment]
+        contact_repository: InMemoryContactRepository = runtime["contact_repository"]  # type: ignore[assignment]
+
+        response = provider_event_service.ingest_payload(
+            {
+                "provider": "mailgun",
+                "source": "mailgun_webhook",
+                "payload": build_mailgun_event_data(
+                    event=mailgun_event,
+                    event_id=f"mailgun-unmatched-negative-{index}",
+                    custom_variables={},
+                    message_id=f"<mailgun-unmatched-negative-{index}>",
+                    delivery_status=delivery_status,
+                ),
+            }
+        )
+
+        assert response.correlated is False
+        assert response.suppressed is False
+        assert suppression_repository._records == []
+        assert contact_repository.get_by_id("contact_123").status == "sendable"
+
+
+def test_mailgun_non_suppression_events_do_not_suppress() -> None:
+    cases = [
+        ("accepted", None),
+        ("delivered", None),
+        ("opened", None),
+        ("clicked", None),
+        ("rejected", None),
+        ("failed", {"severity": "temporary"}),
+        ("failed", {"severity": "unknown"}),
+    ]
+
+    for index, (mailgun_event, delivery_status) in enumerate(cases, start=1):
+        runtime = build_runtime()
+        provider_event_service: ProviderEventIngestionService = runtime["provider_event_service"]  # type: ignore[assignment]
+        suppression_repository: InMemorySuppressionListRepository = runtime["suppression_repository"]  # type: ignore[assignment]
+        contact_repository: InMemoryContactRepository = runtime["contact_repository"]  # type: ignore[assignment]
+
+        response = provider_event_service.ingest_payload(
+            {
+                "provider": "mailgun",
+                "source": "mailgun_webhook",
+                "payload": build_mailgun_event_data(
+                    event=mailgun_event,
+                    event_id=f"mailgun-nonsuppress-{index}",
+                    custom_variables={
+                        "sendwise_client_id": "client_123",
+                        "sendwise_campaign_id": "campaign_123",
+                        "sendwise_contact_id": "contact_123",
+                    },
+                    delivery_status=delivery_status,
+                ),
+            }
+        )
+
+        assert response.correlated is True
+        assert response.suppressed is False
+        assert suppression_repository._records == []
+        assert contact_repository.get_by_id("contact_123").status == "sendable"
+
+
+def test_mailgun_mismatched_correlation_does_not_suppress() -> None:
+    contacts = [
+        build_contact(contact_id="contact_123", email="person@example.test"),
+        build_contact(contact_id="contact_other", email="other@example.test"),
+        build_contact(
+            contact_id="contact_foreign",
+            client_id="client_other",
+            email="foreign@example.test",
+        ),
+    ]
+    cases = [
+        {
+            "sendwise_client_id": "client_other",
+            "sendwise_campaign_id": "campaign_123",
+            "sendwise_contact_id": "contact_123",
+        },
+        {
+            "sendwise_client_id": "client_123",
+            "sendwise_campaign_id": "campaign_123",
+            "sendwise_contact_id": "contact_foreign",
+        },
+        "email_log_contact_mismatch",
+    ]
+
+    for index, custom_variables in enumerate(cases, start=1):
+        runtime = build_runtime(contacts=contacts)
+        provider_event_service: ProviderEventIngestionService = runtime["provider_event_service"]  # type: ignore[assignment]
+        suppression_repository: InMemorySuppressionListRepository = runtime["suppression_repository"]  # type: ignore[assignment]
+        contact_repository: InMemoryContactRepository = runtime["contact_repository"]  # type: ignore[assignment]
+        if custom_variables == "email_log_contact_mismatch":
+            email_log_repository: InMemoryEmailLogRepository = runtime["email_log_repository"]  # type: ignore[assignment]
+            email_log = email_log_repository.find_latest_for_contact(
+                client_id="client_123",
+                campaign_id="campaign_123",
+                contact_id="contact_123",
+            )
+            custom_variables = {
+                "sendwise_client_id": "client_123",
+                "sendwise_campaign_id": "campaign_123",
+                "sendwise_contact_id": "contact_other",
+                "sendwise_email_log_id": email_log.id,
+            }
+
+        response = provider_event_service.ingest_payload(
+            {
+                "provider": "mailgun",
+                "source": "mailgun_webhook",
+                "payload": build_mailgun_event_data(
+                    event="complained",
+                    event_id=f"mailgun-mismatched-{index}",
+                    custom_variables=custom_variables,
+                    message_id=f"<mailgun-mismatched-{index}>",
+                ),
+            }
+        )
+
+        assert response.correlated is False
+        assert response.suppressed is False
+        assert suppression_repository._records == []
+        assert contact_repository.get_by_id("contact_123").status == "sendable"
+
+
 def test_guard_blocks_contact_after_suppression_event() -> None:
     runtime = build_runtime()
     provider_event_service: ProviderEventIngestionService = runtime["provider_event_service"]  # type: ignore[assignment]

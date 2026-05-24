@@ -450,6 +450,9 @@ Provider-event semantics:
 - For the current Listmonk SMTP relay path, `provider_message_id` is expected to stay empty because the Listmonk campaign-start response does not expose stable per-recipient Mailgun message IDs.
 - `delivered`, `opened`, `clicked`, `bounced`, `complained`, and `unsubscribed` must come only from processed provider or unsubscribe events.
 - If provider events are missing, those metrics must stay unavailable rather than being inferred from recipient totals or send attempts.
+- Mailgun suppression side effects are destructive and must be verified only with synthetic local/unit payloads or already-observed safe records. Do not create live complaint, unsubscribe, bounce, rejection, or failure events against the production Mailgun domain.
+- Only correlated Mailgun complaint, unsubscribe, and permanent-failure hard-bounce events may create suppression. Soft bounce, generic delivery failure, rejected, accepted, delivered, opened, clicked, and unmatched events must not suppress.
+- Safe VPS verification, if needed, is read-only: confirm provider-event rows are correlated and processed, confirm suppression rows exist only for already legitimate negative events, and do not insert suppression rows by hand to simulate success.
 
 ## Restore Safety
 

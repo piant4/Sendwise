@@ -437,6 +437,12 @@ class ProviderEventIngestionService:
                 provider_message_id=event.provider_message_id
             )
 
+        if email_log is not None and not self._event_matches_email_log(
+            event=event,
+            email_log=email_log,
+        ):
+            return self._uncorrelated_event()
+
         campaign_id = event.campaign_id or (email_log.campaign_id if email_log else None)
         contact_id = event.contact_id or (email_log.contact_id if email_log else None)
         client_id = event.client_id or (email_log.client_id if email_log else None)
@@ -444,14 +450,20 @@ class ProviderEventIngestionService:
 
         if campaign_id:
             campaign = self.campaign_repository.get_by_id(campaign_id=campaign_id)
-            if campaign is not None:
-                client_id = campaign.client_id
+            if campaign is None:
+                return self._uncorrelated_event()
+            if client_id is not None and campaign.client_id != client_id:
+                return self._uncorrelated_event()
+            client_id = campaign.client_id
 
         if contact_id:
             candidate = self.contact_repository.get_by_id(contact_id)
-            if candidate is not None and (client_id is None or candidate.client_id == client_id):
-                contact = candidate
-                client_id = candidate.client_id
+            if candidate is None:
+                return self._uncorrelated_event()
+            if client_id is not None and candidate.client_id != client_id:
+                return self._uncorrelated_event()
+            contact = candidate
+            client_id = candidate.client_id
 
         if contact is None and client_id and event.email:
             candidate = self.contact_repository.get_by_client_email(
@@ -467,6 +479,19 @@ class ProviderEventIngestionService:
                     contact = candidate
                     contact_id = candidate.id
 
+        if (
+            client_id is not None
+            and campaign_id is not None
+            and contact_id is not None
+            and not self._has_valid_campaign_contact_correlation(
+                client_id=client_id,
+                campaign_id=campaign_id,
+                contact_id=contact_id,
+                email_log=email_log,
+            )
+        ):
+            return self._uncorrelated_event()
+
         if email_log is None and client_id and campaign_id and contact_id:
             email_log = self.email_log_repository.find_latest_for_contact(
                 client_id=client_id,
@@ -474,12 +499,78 @@ class ProviderEventIngestionService:
                 contact_id=contact_id,
             )
 
+        if email_log is not None and not self._correlation_matches_email_log(
+            client_id=client_id,
+            campaign_id=campaign_id,
+            contact_id=contact_id,
+            email_log=email_log,
+        ):
+            return self._uncorrelated_event()
+
         return CorrelatedProviderEvent(
             client_id=client_id,
             campaign_id=campaign_id,
             contact_id=contact_id,
             email_log=email_log,
             contact=contact,
+        )
+
+    def _event_matches_email_log(
+        self,
+        *,
+        event: NormalizedProviderEvent,
+        email_log: EmailLogRecord,
+    ) -> bool:
+        if event.client_id is not None and event.client_id != email_log.client_id:
+            return False
+        if event.campaign_id is not None and event.campaign_id != email_log.campaign_id:
+            return False
+        if event.contact_id is not None and event.contact_id != email_log.contact_id:
+            return False
+        return True
+
+    def _correlation_matches_email_log(
+        self,
+        *,
+        client_id: str | None,
+        campaign_id: str | None,
+        contact_id: str | None,
+        email_log: EmailLogRecord,
+    ) -> bool:
+        return (
+            client_id == email_log.client_id
+            and campaign_id == email_log.campaign_id
+            and contact_id == email_log.contact_id
+        )
+
+    def _has_valid_campaign_contact_correlation(
+        self,
+        *,
+        client_id: str,
+        campaign_id: str,
+        contact_id: str,
+        email_log: EmailLogRecord | None,
+    ) -> bool:
+        if email_log is not None and self._correlation_matches_email_log(
+            client_id=client_id,
+            campaign_id=campaign_id,
+            contact_id=contact_id,
+            email_log=email_log,
+        ):
+            return True
+        return self.contact_repository.campaign_contact_exists(
+            client_id=client_id,
+            campaign_id=campaign_id,
+            contact_id=contact_id,
+        )
+
+    def _uncorrelated_event(self) -> CorrelatedProviderEvent:
+        return CorrelatedProviderEvent(
+            client_id=None,
+            campaign_id=None,
+            contact_id=None,
+            email_log=None,
+            contact=None,
         )
 
     def _apply_side_effects(

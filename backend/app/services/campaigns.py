@@ -163,8 +163,14 @@ PROVIDER_DELIVERED_EVENT_TYPES = ("delivered", "ses_delivery")
 PROVIDER_OPENED_EVENT_TYPES = ("opened", "ses_open")
 PROVIDER_CLICKED_EVENT_TYPES = ("clicked", "ses_click")
 PROVIDER_BOUNCE_EVENT_TYPES = ("hard_bounce", "soft_bounce", "delivery_failed", "ses_bounce")
+PROVIDER_HARD_BOUNCE_EVENT_TYPES = ("hard_bounce", "ses_bounce")
 PROVIDER_COMPLAINT_EVENT_TYPES = ("complaint", "ses_complaint")
 PROVIDER_UNSUBSCRIBE_EVENT_TYPES = ("unsubscribe", "sendwise_unsubscribe")
+COMPLAINT_REVIEW_RATE = 0.001
+COMPLAINT_STOP_RATE = 0.003
+HARD_BOUNCE_REVIEW_RATE = 0.03
+HARD_BOUNCE_STOP_RATE = 0.05
+UNSUBSCRIBE_REVIEW_RATE = 0.02
 
 
 def _prefer_provider_metric(
@@ -311,7 +317,46 @@ def _build_domain_warmup_guard_result(
         daily_limit=daily_limit,
         daily_used=daily_used,
         daily_remaining=max(daily_limit - daily_used, 0),
+        sending_domain=sending_domain,
     )
+
+
+def _format_rate_percent(rate: float) -> str:
+    return f"{rate * 100:.2f}%"
+
+
+def _provider_history_warning_messages(
+    *,
+    metrics: Any,
+) -> list[str]:
+    warnings: list[str] = []
+    complaint_rate = _rate(metrics.complaints, metrics.delivered)
+    if (
+        complaint_rate is not None
+        and COMPLAINT_REVIEW_RATE <= complaint_rate < COMPLAINT_STOP_RATE
+    ):
+        warnings.append(
+            "Provider history complaint rate is in review band "
+            f"({_format_rate_percent(complaint_rate)}). Require admin review or throttling."
+        )
+
+    hard_bounce_rate = _rate(metrics.hard_bounces, metrics.accepted_sends)
+    if (
+        hard_bounce_rate is not None
+        and HARD_BOUNCE_REVIEW_RATE <= hard_bounce_rate < HARD_BOUNCE_STOP_RATE
+    ):
+        warnings.append(
+            "Provider history hard bounce rate is in review band "
+            f"({_format_rate_percent(hard_bounce_rate)}). Require list-quality review or throttling."
+        )
+
+    unsubscribe_rate = _rate(metrics.unsubscribes, metrics.delivered)
+    if unsubscribe_rate is not None and unsubscribe_rate > UNSUBSCRIBE_REVIEW_RATE:
+        warnings.append(
+            "Provider history unsubscribe rate is in review band "
+            f"({_format_rate_percent(unsubscribe_rate)}). Review content and audience fit."
+        )
+    return warnings
 
 
 @dataclass(frozen=True)
@@ -1342,6 +1387,19 @@ class AdminCampaignService:
             active_campaign_count=active_campaign_count,
             campaign_limit_usage=limit_context.usage,
         )
+        provider_history_warnings: list[str] = []
+        if guard_result.allowed:
+            provider_history_result, provider_history_warnings = (
+                self._evaluate_provider_history_guard(
+                    provider=self._resolve_controlled_provider() or "",
+                    campaign=guard_campaign,
+                    guard_result=guard_result,
+                    provider_event_repository=self.provider_event_repository,
+                    email_log_repository=self.email_log_repository,
+                )
+            )
+            if provider_history_result is not None:
+                guard_result = provider_history_result
         blocking_errors: list[str] = []
         if not content_ready:
             blocking_errors.append("Campaign content is not ready.")
@@ -1361,6 +1419,7 @@ class AdminCampaignService:
             warnings.append(
                 'EMAIL_SENDING_ENABLED is not exactly "true"; real dispatch is disabled.'
             )
+        warnings.extend(provider_history_warnings)
 
         can_send_when_enabled = (
             content_ready
@@ -1874,6 +1933,7 @@ class CampaignDispatchService:
     suppression_list_repository: SuppressionListRepository | None = None
     blocked_send_repository: BlockedSendRepository | None = None
     email_log_repository: EmailLogRepository | None = None
+    provider_event_repository: ProviderEventRepository | None = None
     campaign_preparation_service: Any | None = None
 
     def _evaluate_duplicate_dispatch_guard(
@@ -2012,6 +2072,7 @@ class CampaignDispatchService:
         suppression_repository = self.suppression_list_repository
         blocked_send_repository = self.blocked_send_repository
         email_log_repository = self.email_log_repository
+        provider_event_repository = self.provider_event_repository
         campaign_limit_repository = self.campaign_limit_repository
 
         if (
@@ -2154,6 +2215,23 @@ class CampaignDispatchService:
                 return self._blocked_response(
                     campaign_id=campaign_id,
                     guard_result=domain_warmup_result,
+                    blocked_send_repository=blocked_send_repository,
+                    sending_domain=sending_domain,
+                )
+
+            provider_history_result, _provider_history_warnings = (
+                self._evaluate_provider_history_guard(
+                    provider=runtime_provider,
+                    campaign=campaign,
+                    guard_result=guard_result,
+                    provider_event_repository=provider_event_repository,
+                    email_log_repository=email_log_repository,
+                )
+            )
+            if provider_history_result is not None:
+                return self._blocked_response(
+                    campaign_id=campaign_id,
+                    guard_result=provider_history_result,
                     blocked_send_repository=blocked_send_repository,
                     sending_domain=sending_domain,
                 )
@@ -2703,6 +2781,93 @@ class CampaignDispatchService:
             sending_domain=sending_domain,
         )
 
+    def _evaluate_provider_history_guard(
+        self,
+        *,
+        provider: str,
+        campaign: ClientCampaignRecord,
+        guard_result: GuardResult,
+        provider_event_repository: ProviderEventRepository | None,
+        email_log_repository: EmailLogRepository,
+    ) -> tuple[GuardResult | None, list[str]]:
+        if provider != "listmonk" or provider_event_repository is None:
+            return None, []
+
+        sending_domain = get_configured_sending_domain(self.settings)
+        if sending_domain is None:
+            return None, []
+
+        if hasattr(provider_event_repository, "attach_email_log_records") and hasattr(
+            email_log_repository,
+            "_records",
+        ):
+            provider_event_repository.attach_email_log_records(email_log_repository._records)  # type: ignore[attr-defined]
+
+        metrics = provider_event_repository.get_domain_threshold_metrics(
+            sending_domain=sending_domain,
+            accepted_event_types=PROVIDER_ACCEPTED_EVENT_TYPES,
+            delivered_event_types=PROVIDER_DELIVERED_EVENT_TYPES,
+            hard_bounce_event_types=PROVIDER_HARD_BOUNCE_EVENT_TYPES,
+            complaint_event_types=PROVIDER_COMPLAINT_EVENT_TYPES,
+            unsubscribe_event_types=PROVIDER_UNSUBSCRIBE_EVENT_TYPES,
+        )
+
+        complaint_rate = _rate(metrics.complaints, metrics.delivered)
+        if complaint_rate is not None and complaint_rate >= COMPLAINT_STOP_RATE:
+            return (
+                GuardResult(
+                    decision=SendDecision.BLOCKED,
+                    reason=(
+                        "Provider history complaint rate reached stop threshold "
+                        f"({_format_rate_percent(complaint_rate)}). "
+                        "Admin review is required before resuming dispatch."
+                    ),
+                    code="provider_history_complaint_rate_stop",
+                    severity="critical",
+                    client_id=campaign.client_id,
+                    campaign_id=campaign.id,
+                    eligible_contact_count=guard_result.eligible_contact_count,
+                    blocked_contact_count=guard_result.blocked_contact_count,
+                    blocked_reasons=dict(guard_result.blocked_reasons or {}),
+                    diagnostic=(
+                        "Deliverability Guard blocked before listmonk because correlated "
+                        "provider complaints exceeded policy for the sending domain."
+                    ),
+                    limit_source="provider_history",
+                    sending_domain=sending_domain,
+                ),
+                [],
+            )
+
+        hard_bounce_rate = _rate(metrics.hard_bounces, metrics.accepted_sends)
+        if hard_bounce_rate is not None and hard_bounce_rate >= HARD_BOUNCE_STOP_RATE:
+            return (
+                GuardResult(
+                    decision=SendDecision.BLOCKED,
+                    reason=(
+                        "Provider history hard bounce rate reached stop threshold "
+                        f"({_format_rate_percent(hard_bounce_rate)}). "
+                        "List-quality review is required before resuming dispatch."
+                    ),
+                    code="provider_history_hard_bounce_rate_stop",
+                    severity="critical",
+                    client_id=campaign.client_id,
+                    campaign_id=campaign.id,
+                    eligible_contact_count=guard_result.eligible_contact_count,
+                    blocked_contact_count=guard_result.blocked_contact_count,
+                    blocked_reasons=dict(guard_result.blocked_reasons or {}),
+                    diagnostic=(
+                        "Deliverability Guard blocked before listmonk because correlated "
+                        "provider hard bounces exceeded policy for the sending domain."
+                    ),
+                    limit_source="provider_history",
+                    sending_domain=sending_domain,
+                ),
+                [],
+            )
+
+        return None, _provider_history_warning_messages(metrics=metrics)
+
     def _mark_campaign_running(
         self,
         *,
@@ -3028,7 +3193,7 @@ class CampaignDispatchService:
         ):
             blocked_send_domain = (
                 sending_domain
-                if guard_result.limit_source == "sending_domain_warmup"
+                if guard_result.limit_source in {"sending_domain_warmup", "provider_history"}
                 else None
             )
             blocked_send = blocked_send_repository.create_blocked_send(
@@ -3400,5 +3565,6 @@ def get_campaign_dispatch_service() -> CampaignDispatchService:
         suppression_list_repository=get_suppression_list_repository(),
         blocked_send_repository=get_blocked_send_repository(),
         email_log_repository=get_email_log_repository(),
+        provider_event_repository=get_provider_event_repository(),
         campaign_preparation_service=get_campaign_preparation_service(),
     )

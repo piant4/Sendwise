@@ -27,6 +27,15 @@ class ProviderEventRecord(BaseModel):
     created_at: datetime
 
 
+class ProviderHistoryThresholdMetrics(BaseModel):
+    sending_domain: str
+    accepted_sends: int
+    delivered: int
+    hard_bounces: int
+    complaints: int
+    unsubscribes: int
+
+
 class ProviderEventRepository:
     def create_or_get_event(
         self,
@@ -92,6 +101,18 @@ class ProviderEventRepository:
         *,
         event_types: tuple[str, ...],
     ) -> bool:
+        raise NotImplementedError
+
+    def get_domain_threshold_metrics(
+        self,
+        *,
+        sending_domain: str,
+        accepted_event_types: tuple[str, ...],
+        delivered_event_types: tuple[str, ...],
+        hard_bounce_event_types: tuple[str, ...],
+        complaint_event_types: tuple[str, ...],
+        unsubscribe_event_types: tuple[str, ...],
+    ) -> ProviderHistoryThresholdMetrics:
         raise NotImplementedError
 
 
@@ -424,6 +445,64 @@ class PostgresProviderEventRepository(ProviderEventRepository):
 
         return row is not None
 
+    def get_domain_threshold_metrics(
+        self,
+        *,
+        sending_domain: str,
+        accepted_event_types: tuple[str, ...],
+        delivered_event_types: tuple[str, ...],
+        hard_bounce_event_types: tuple[str, ...],
+        complaint_event_types: tuple[str, ...],
+        unsubscribe_event_types: tuple[str, ...],
+    ) -> ProviderHistoryThresholdMetrics:
+        event_query = """
+            SELECT
+                event_type,
+                COUNT(DISTINCT provider_events.email_log_id)::int AS total
+            FROM provider_events
+            INNER JOIN email_logs
+                ON email_logs.id = provider_events.email_log_id
+            WHERE email_logs.sending_domain = %s
+                AND provider_events.processed_at IS NOT NULL
+                AND provider_events.client_id IS NOT NULL
+                AND provider_events.campaign_id IS NOT NULL
+                AND provider_events.email_log_id IS NOT NULL
+                AND provider_events.event_type = ANY(%s)
+            GROUP BY provider_events.event_type
+        """
+        event_types = tuple(
+            sorted(
+                set(delivered_event_types)
+                | set(accepted_event_types)
+                | set(hard_bounce_event_types)
+                | set(complaint_event_types)
+                | set(unsubscribe_event_types)
+            )
+        )
+
+        with postgres_connection(self._settings) as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(event_query, (sending_domain, list(event_types)))
+                rows = cursor.fetchall()
+
+        event_counts = {str(row["event_type"]): int(row["total"]) for row in rows}
+        return ProviderHistoryThresholdMetrics(
+            sending_domain=sending_domain,
+            accepted_sends=sum(
+                event_counts.get(event_type, 0) for event_type in accepted_event_types
+            ),
+            delivered=sum(event_counts.get(event_type, 0) for event_type in delivered_event_types),
+            hard_bounces=sum(
+                event_counts.get(event_type, 0) for event_type in hard_bounce_event_types
+            ),
+            complaints=sum(
+                event_counts.get(event_type, 0) for event_type in complaint_event_types
+            ),
+            unsubscribes=sum(
+                event_counts.get(event_type, 0) for event_type in unsubscribe_event_types
+            ),
+        )
+
 
 class InMemoryProviderEventRepository(ProviderEventRepository):
     def __init__(self) -> None:
@@ -563,6 +642,61 @@ class InMemoryProviderEventRepository(ProviderEventRepository):
             and record.event_type in event_types
             for record in self._records.values()
         )
+
+    def get_domain_threshold_metrics(
+        self,
+        *,
+        sending_domain: str,
+        accepted_event_types: tuple[str, ...],
+        delivered_event_types: tuple[str, ...],
+        hard_bounce_event_types: tuple[str, ...],
+        complaint_event_types: tuple[str, ...],
+        unsubscribe_event_types: tuple[str, ...],
+    ) -> ProviderHistoryThresholdMetrics:
+        event_log_ids: dict[str, set[str]] = {}
+        for record in self._records.values():
+            if (
+                record.processed_at is None
+                or record.client_id is None
+                or record.campaign_id is None
+                or record.email_log_id is None
+            ):
+                continue
+            email_log = self._email_log_lookup().get(record.email_log_id)
+            if email_log is None or email_log.sending_domain != sending_domain:
+                continue
+            event_log_ids.setdefault(record.event_type, set()).add(record.email_log_id)
+
+        return ProviderHistoryThresholdMetrics(
+            sending_domain=sending_domain,
+            accepted_sends=sum(
+                len(event_log_ids.get(event_type, set()))
+                for event_type in accepted_event_types
+            ),
+            delivered=sum(
+                len(event_log_ids.get(event_type, set()))
+                for event_type in delivered_event_types
+            ),
+            hard_bounces=sum(
+                len(event_log_ids.get(event_type, set()))
+                for event_type in hard_bounce_event_types
+            ),
+            complaints=sum(
+                len(event_log_ids.get(event_type, set()))
+                for event_type in complaint_event_types
+            ),
+            unsubscribes=sum(
+                len(event_log_ids.get(event_type, set()))
+                for event_type in unsubscribe_event_types
+            ),
+        )
+
+    def attach_email_log_records(self, records: list[Any]) -> None:
+        self._attached_email_logs = records
+
+    def _email_log_lookup(self) -> dict[str, Any]:
+        records = getattr(self, "_attached_email_logs", [])
+        return {record.id: record for record in records}
 
 
 def _json_payload(payload: dict[str, Any]) -> str:

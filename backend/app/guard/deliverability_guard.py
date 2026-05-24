@@ -54,6 +54,7 @@ class GuardResult:
     period_remaining: int | None = None
     period_started_at: datetime | None = None
     period_ends_at: datetime | None = None
+    sending_domain: str | None = None
 
     @property
     def allowed(self) -> bool:
@@ -82,6 +83,7 @@ class GuardResult:
             "period_remaining": self.period_remaining,
             "period_started_at": self.period_started_at,
             "period_ends_at": self.period_ends_at,
+            "sending_domain": self.sending_domain,
         }
 
 
@@ -428,6 +430,7 @@ class DeliverabilityGuard:
         limit_source: str | None = None,
         limit_value: int | None = None,
         campaign_limit_usage: CampaignLimitUsage | None = None,
+        sending_domain: str | None = None,
     ) -> GuardResult:
         return GuardResult(
             decision=SendDecision.BLOCKED,
@@ -458,6 +461,7 @@ class DeliverabilityGuard:
             period_ends_at=(
                 campaign_limit_usage.period_ends_at if campaign_limit_usage else None
             ),
+            sending_domain=sending_domain,
         )
 
     def _resolve_limit(

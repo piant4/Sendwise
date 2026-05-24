@@ -18,6 +18,7 @@ from app.repositories.clients import ClientCampaignRecord, ClientRecord
 from app.repositories.contacts import ContactRecord, InMemoryContactRepository
 from app.repositories.email_logs import InMemoryEmailLogRepository
 from app.repositories.listmonk_mappings import InMemoryListmonkMappingRepository
+from app.repositories.provider_events import InMemoryProviderEventRepository
 from app.repositories.suppression_list import InMemorySuppressionListRepository
 from app.services import campaigns as campaigns_module
 from app.services.campaigns import CampaignDispatchService
@@ -209,6 +210,7 @@ def build_dispatch_service(
     suppression_repository: InMemorySuppressionListRepository | None = None,
     campaign_slot_repository: InMemoryCampaignSlotRepository | None = None,
     campaign_limit_repository: InMemoryCampaignSendingLimitRepository | None = None,
+    provider_event_repository: InMemoryProviderEventRepository | None = None,
     preparation_service: FakePreparationService | None = None,
     settings: Settings | None = None,
 ) -> CampaignDispatchService:
@@ -250,6 +252,8 @@ def build_dispatch_service(
         blocked_send_repository=blocked_send_repository
         or InMemoryBlockedSendRepository(),
         email_log_repository=email_log_repository or InMemoryEmailLogRepository(),
+        provider_event_repository=provider_event_repository
+        or InMemoryProviderEventRepository(),
         campaign_preparation_service=preparation_service,
     )
 
@@ -302,6 +306,93 @@ def build_ready_listmonk_settings(**overrides: Any) -> Settings:
     }
     values.update(overrides)
     return Settings(**values)
+
+
+def create_processed_provider_event(
+    repository: InMemoryProviderEventRepository,
+    *,
+    event_type: str,
+    email_log_id: str | None,
+    event_key: str,
+    client_id: str | None = "client_history",
+    campaign_id: str | None = "campaign_history",
+) -> None:
+    event, _created = repository.create_or_get_event(
+        client_id=client_id,
+        campaign_id=campaign_id,
+        contact_id=None,
+        email_log_id=email_log_id,
+        provider="mailgun",
+        source="webhook",
+        provider_event_id=None,
+        event_key=event_key,
+        event_type=event_type,
+        payload={},
+        occurred_at=datetime.now(timezone.utc),
+    )
+    repository.mark_processed(event_id=event.id)
+
+
+def add_domain_history(
+    *,
+    email_log_repository: InMemoryEmailLogRepository,
+    provider_event_repository: InMemoryProviderEventRepository,
+    sending_domain: str = "send.mailerpro.it",
+    accepted_count: int,
+    delivered_count: int,
+    complaint_count: int = 0,
+    hard_bounce_count: int = 0,
+    unsubscribe_count: int = 0,
+) -> None:
+    logs = [
+        email_log_repository.create_email_log(
+            client_id="client_history",
+            campaign_id="campaign_history",
+            contact_id=f"history_contact_{index}",
+            status="sent",
+            sending_domain=sending_domain,
+            created_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        )
+        for index in range(accepted_count)
+    ]
+    for index, log in enumerate(logs):
+        create_processed_provider_event(
+            provider_event_repository,
+            event_type="accepted",
+            email_log_id=log.id,
+            event_key=f"{sending_domain}:accepted:{index}",
+        )
+    for index, log in enumerate(logs[:delivered_count]):
+        create_processed_provider_event(
+            provider_event_repository,
+            event_type="delivered",
+            email_log_id=log.id,
+            event_key=f"{sending_domain}:delivered:{index}",
+        )
+    offset = 0
+    for index, log in enumerate(logs[offset : offset + complaint_count]):
+        create_processed_provider_event(
+            provider_event_repository,
+            event_type="complaint",
+            email_log_id=log.id,
+            event_key=f"{sending_domain}:complaint:{index}",
+        )
+    offset += complaint_count
+    for index, log in enumerate(logs[offset : offset + hard_bounce_count]):
+        create_processed_provider_event(
+            provider_event_repository,
+            event_type="hard_bounce",
+            email_log_id=log.id,
+            event_key=f"{sending_domain}:hard_bounce:{index}",
+        )
+    offset += hard_bounce_count
+    for index, log in enumerate(logs[offset : offset + unsubscribe_count]):
+        create_processed_provider_event(
+            provider_event_repository,
+            event_type="unsubscribe",
+            email_log_id=log.id,
+            event_key=f"{sending_domain}:unsubscribe:{index}",
+        )
 
 
 def test_upsert_mapping_creates_new_mapping() -> None:
@@ -1721,6 +1812,185 @@ def test_listmonk_provider_uses_listmonk_dispatch_even_with_mailgun_smtp_host() 
     assert fake_listmonk.sent_campaign_ids == ["lm_1"]
     assert fake_listmonk.created_campaign_payloads
     assert isinstance(fake_listmonk.created_campaign_payloads[0]["headers"], list)
+
+
+def test_provider_history_complaint_stop_blocks_before_listmonk() -> None:
+    fake_listmonk = FakeListmonkClient()
+    email_log_repository = InMemoryEmailLogRepository()
+    provider_event_repository = InMemoryProviderEventRepository()
+    blocked_send_repository = InMemoryBlockedSendRepository()
+    preparation_service = FakePreparationService(content_ready=True)
+    add_domain_history(
+        email_log_repository=email_log_repository,
+        provider_event_repository=provider_event_repository,
+        accepted_count=1000,
+        delivered_count=1000,
+        complaint_count=3,
+    )
+    service = build_dispatch_service(
+        fake_listmonk=fake_listmonk,
+        email_log_repository=email_log_repository,
+        provider_event_repository=provider_event_repository,
+        blocked_send_repository=blocked_send_repository,
+        settings=build_ready_listmonk_settings(),
+        preparation_service=preparation_service,
+    )
+
+    result = service.send_campaign("campaign_123")
+
+    assert result["status"] == "blocked"
+    assert result["code"] == "provider_history_complaint_rate_stop"
+    assert result["limit_source"] == "provider_history"
+    assert result["dispatch_attempted"] is False
+    assert result["listmonk_prepared"] is False
+    assert result["listmonk_dispatched"] is False
+    assert fake_listmonk.created_campaign_payloads == []
+    assert fake_listmonk.sent_campaign_ids == []
+    assert preparation_service.prepared_campaign_ids == []
+    blocked_sends = blocked_send_repository.list_by_campaign("campaign_123")
+    assert len(blocked_sends) == 1
+    assert blocked_sends[0].sending_domain == "send.mailerpro.it"
+    assert blocked_sends[0].decision == "blocked"
+    assert "complaint rate" in blocked_sends[0].reason
+    assert "Admin review is required" in blocked_sends[0].reason
+    assert "@" not in blocked_sends[0].reason
+    assert "Body" not in blocked_sends[0].reason
+    assert "token" not in blocked_sends[0].reason
+
+
+def test_provider_history_hard_bounce_stop_blocks_before_listmonk() -> None:
+    fake_listmonk = FakeListmonkClient()
+    email_log_repository = InMemoryEmailLogRepository()
+    provider_event_repository = InMemoryProviderEventRepository()
+    add_domain_history(
+        email_log_repository=email_log_repository,
+        provider_event_repository=provider_event_repository,
+        accepted_count=100,
+        delivered_count=0,
+        hard_bounce_count=5,
+    )
+    service = build_dispatch_service(
+        fake_listmonk=fake_listmonk,
+        email_log_repository=email_log_repository,
+        provider_event_repository=provider_event_repository,
+        settings=build_ready_listmonk_settings(),
+        preparation_service=FakePreparationService(content_ready=True),
+    )
+
+    result = service.send_campaign("campaign_123")
+
+    assert result["status"] == "blocked"
+    assert result["code"] == "provider_history_hard_bounce_rate_stop"
+    assert result["dispatch_attempted"] is False
+    assert result["listmonk_prepared"] is False
+    assert fake_listmonk.sent_campaign_ids == []
+
+
+def test_provider_history_under_stop_threshold_allows_existing_flow() -> None:
+    fake_listmonk = FakeListmonkClient()
+    email_log_repository = InMemoryEmailLogRepository()
+    provider_event_repository = InMemoryProviderEventRepository()
+    add_domain_history(
+        email_log_repository=email_log_repository,
+        provider_event_repository=provider_event_repository,
+        accepted_count=1000,
+        delivered_count=1000,
+        complaint_count=2,
+        hard_bounce_count=49,
+    )
+    service = build_dispatch_service(
+        fake_listmonk=fake_listmonk,
+        email_log_repository=email_log_repository,
+        provider_event_repository=provider_event_repository,
+        settings=build_ready_listmonk_settings(),
+        preparation_service=FakePreparationService(content_ready=True),
+    )
+
+    result = service.send_campaign("campaign_123")
+
+    assert result["status"] == "accepted"
+    assert result["listmonk_dispatched"] is True
+    assert fake_listmonk.sent_campaign_ids == ["lm_1"]
+
+
+def test_provider_history_unavailable_denominators_do_not_false_block() -> None:
+    fake_listmonk = FakeListmonkClient()
+    email_log_repository = InMemoryEmailLogRepository()
+    provider_event_repository = InMemoryProviderEventRepository()
+    create_processed_provider_event(
+        provider_event_repository,
+        event_type="complaint",
+        email_log_id=None,
+        event_key="unmatched:complaint:1",
+        client_id="client_history",
+        campaign_id="campaign_history",
+    )
+    service = build_dispatch_service(
+        fake_listmonk=fake_listmonk,
+        email_log_repository=email_log_repository,
+        provider_event_repository=provider_event_repository,
+        settings=build_ready_listmonk_settings(),
+        preparation_service=FakePreparationService(content_ready=True),
+    )
+
+    result = service.send_campaign("campaign_123")
+
+    assert result["status"] == "accepted"
+    assert fake_listmonk.sent_campaign_ids == ["lm_1"]
+
+
+def test_provider_history_unmatched_events_do_not_count() -> None:
+    fake_listmonk = FakeListmonkClient()
+    email_log_repository = InMemoryEmailLogRepository()
+    provider_event_repository = InMemoryProviderEventRepository()
+    for index in range(10):
+        create_processed_provider_event(
+            provider_event_repository,
+            event_type="complaint",
+            email_log_id=None,
+            event_key=f"unmatched:complaint:{index}",
+            client_id="client_history",
+            campaign_id="campaign_history",
+        )
+    service = build_dispatch_service(
+        fake_listmonk=fake_listmonk,
+        email_log_repository=email_log_repository,
+        provider_event_repository=provider_event_repository,
+        settings=build_ready_listmonk_settings(),
+        preparation_service=FakePreparationService(content_ready=True),
+    )
+
+    result = service.send_campaign("campaign_123")
+
+    assert result["status"] == "accepted"
+    assert fake_listmonk.sent_campaign_ids == ["lm_1"]
+
+
+def test_provider_history_other_domains_do_not_contaminate_domain_scope() -> None:
+    fake_listmonk = FakeListmonkClient()
+    email_log_repository = InMemoryEmailLogRepository()
+    provider_event_repository = InMemoryProviderEventRepository()
+    add_domain_history(
+        email_log_repository=email_log_repository,
+        provider_event_repository=provider_event_repository,
+        sending_domain="other-domain.test",
+        accepted_count=1000,
+        delivered_count=1000,
+        complaint_count=10,
+        hard_bounce_count=100,
+    )
+    service = build_dispatch_service(
+        fake_listmonk=fake_listmonk,
+        email_log_repository=email_log_repository,
+        provider_event_repository=provider_event_repository,
+        settings=build_ready_listmonk_settings(),
+        preparation_service=FakePreparationService(content_ready=True),
+    )
+
+    result = service.send_campaign("campaign_123")
+
+    assert result["status"] == "accepted"
+    assert fake_listmonk.sent_campaign_ids == ["lm_1"]
 
 
 def test_domain_warmup_guard_allows_send_under_daily_limit() -> None:

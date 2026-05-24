@@ -816,6 +816,8 @@ def test_ses_open_and_click_update_provider_events_and_stats_without_suppression
     summary = admin_service.get_campaign_summary("campaign_123")
     assert summary.logs.opened == 1
     assert summary.logs.clicked == 1
+    assert summary.logs.open_rate_available is False
+    assert summary.logs.click_rate_available is False
     assert summary.logs.provider_events_available is True
     assert suppression_repository._records == []
     assert email_log_repository.find_latest_for_contact(
@@ -1001,7 +1003,9 @@ def test_unmatched_mailgun_event_does_not_update_campaign_metrics_or_suppression
     ) == []
     assert len(provider_event_repository._records) == 1
     assert suppression_repository._records == []
-    assert admin_service.get_campaign_summary("campaign_123").logs.complained == 0
+    summary = admin_service.get_campaign_summary("campaign_123")
+    assert summary.logs.complained is None
+    assert summary.logs.complained_available is False
 
 
 def test_mailgun_hard_bounce_updates_suppression_only_when_correlation_is_safe() -> None:
@@ -1208,4 +1212,7 @@ def test_campaign_stats_read_model_counts_event_metrics() -> None:
     assert summary.logs.bounced == 1
     assert summary.logs.complained == 1
     assert summary.logs.unsubscribed == 1
+    assert summary.logs.bounce_rate is None
+    assert summary.logs.complaint_rate is None
+    assert summary.logs.unsubscribe_rate is None
     assert summary.logs.provider_events_available is True

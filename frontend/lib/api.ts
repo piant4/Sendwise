@@ -143,14 +143,34 @@ interface CampaignReadModelApiResponse {
   logs: {
     simulated: number;
     queued: number;
-    sent: number;
+    sent: number | null;
     failed: number;
-    delivered: number;
-    opened: number;
-    clicked: number;
-    bounced: number;
-    complained: number;
-    unsubscribed: number;
+    delivered: number | null;
+    opened: number | null;
+    clicked: number | null;
+    bounced: number | null;
+    complained: number | null;
+    unsubscribed: number | null;
+    sent_available: boolean;
+    failed_available: boolean;
+    delivered_available: boolean;
+    opened_available: boolean;
+    clicked_available: boolean;
+    bounced_available: boolean;
+    complained_available: boolean;
+    unsubscribed_available: boolean;
+    delivery_rate?: number | null;
+    open_rate?: number | null;
+    click_rate?: number | null;
+    bounce_rate?: number | null;
+    complaint_rate?: number | null;
+    unsubscribe_rate?: number | null;
+    delivery_rate_available: boolean;
+    open_rate_available: boolean;
+    click_rate_available: boolean;
+    bounce_rate_available: boolean;
+    complaint_rate_available: boolean;
+    unsubscribe_rate_available: boolean;
     provider_events_available: boolean;
   };
   period_usage?: {
@@ -174,6 +194,33 @@ interface CampaignReadModelApiResponse {
     total: number;
     latest: BlockedSend[];
   };
+  policy_state?: {
+    deliverability_guard: {
+      allowed: boolean;
+      decision: string;
+      code: string;
+      severity: string;
+      reason: string;
+    };
+    duplicate_guard: {
+      allowed: boolean;
+      decision: string;
+      code: string;
+      severity: string;
+      reason: string;
+    };
+    warmup_guard: {
+      allowed: boolean;
+      decision: string;
+      code: string;
+      severity: string;
+      reason: string;
+    };
+    score_products_available: boolean;
+    domain_health_score_available: boolean;
+    contact_quality_score_available: boolean;
+    campaign_risk_score_available: boolean;
+  } | null;
 }
 
 interface AdminCampaignSummaryApiResponse extends CampaignReadModelApiResponse {
@@ -575,6 +622,12 @@ interface ClientOverviewApiResponse {
         limit?: number | null;
         available: boolean;
       };
+      delivery_rate_last_7d?: number | null;
+      open_rate_last_7d?: number | null;
+      click_rate_last_7d?: number | null;
+      delivery_rate_available?: boolean;
+      open_rate_available?: boolean;
+      click_rate_available?: boolean;
     };
     performance_analytics: {
       default_window: "24h" | "7d" | "14d" | "30d" | "allTime";
@@ -591,6 +644,12 @@ interface ClientOverviewApiResponse {
           delivered_available: boolean;
           opened_available: boolean;
           clicked_available: boolean;
+          delivery_rate?: number | null;
+          open_rate?: number | null;
+          click_rate?: number | null;
+          delivery_rate_available?: boolean;
+          open_rate_available?: boolean;
+          click_rate_available?: boolean;
           window_started_at?: string | null;
           window_ended_at: string;
         }
@@ -621,6 +680,12 @@ interface ClientOverviewApiResponse {
       delivered: number | null;
       opened: number | null;
       clicked: number | null;
+    };
+    score_availability?: {
+      score_products_available: boolean;
+      domain_health_score_available: boolean;
+      contact_quality_score_available: boolean;
+      campaign_risk_score_available: boolean;
     };
   };
 }
@@ -1866,7 +1931,62 @@ function mapCampaignLogsSummary(
     bounced: payload.bounced,
     complained: payload.complained,
     unsubscribed: payload.unsubscribed,
+    sentAvailable: payload.sent_available,
+    failedAvailable: payload.failed_available,
+    deliveredAvailable: payload.delivered_available,
+    openedAvailable: payload.opened_available,
+    clickedAvailable: payload.clicked_available,
+    bouncedAvailable: payload.bounced_available,
+    complainedAvailable: payload.complained_available,
+    unsubscribedAvailable: payload.unsubscribed_available,
+    deliveryRate: payload.delivery_rate ?? null,
+    openRate: payload.open_rate ?? null,
+    clickRate: payload.click_rate ?? null,
+    bounceRate: payload.bounce_rate ?? null,
+    complaintRate: payload.complaint_rate ?? null,
+    unsubscribeRate: payload.unsubscribe_rate ?? null,
+    deliveryRateAvailable: payload.delivery_rate_available,
+    openRateAvailable: payload.open_rate_available,
+    clickRateAvailable: payload.click_rate_available,
+    bounceRateAvailable: payload.bounce_rate_available,
+    complaintRateAvailable: payload.complaint_rate_available,
+    unsubscribeRateAvailable: payload.unsubscribe_rate_available,
     providerEventsAvailable: payload.provider_events_available,
+  };
+}
+
+function mapCampaignPolicyState(
+  payload: CampaignReadModelApiResponse["policy_state"],
+): CampaignReadModel["policyState"] {
+  if (!payload) {
+    return null;
+  }
+  return {
+    deliverabilityGuard: {
+      allowed: payload.deliverability_guard.allowed,
+      decision: payload.deliverability_guard.decision,
+      code: payload.deliverability_guard.code,
+      severity: payload.deliverability_guard.severity,
+      reason: payload.deliverability_guard.reason,
+    },
+    duplicateGuard: {
+      allowed: payload.duplicate_guard.allowed,
+      decision: payload.duplicate_guard.decision,
+      code: payload.duplicate_guard.code,
+      severity: payload.duplicate_guard.severity,
+      reason: payload.duplicate_guard.reason,
+    },
+    warmupGuard: {
+      allowed: payload.warmup_guard.allowed,
+      decision: payload.warmup_guard.decision,
+      code: payload.warmup_guard.code,
+      severity: payload.warmup_guard.severity,
+      reason: payload.warmup_guard.reason,
+    },
+    scoreProductsAvailable: payload.score_products_available,
+    domainHealthScoreAvailable: payload.domain_health_score_available,
+    contactQualityScoreAvailable: payload.contact_quality_score_available,
+    campaignRiskScoreAvailable: payload.campaign_risk_score_available,
   };
 }
 
@@ -1909,6 +2029,7 @@ function mapCampaignReadModel(
       periodEndsAt: payload.period_usage?.period_ends_at ?? null,
       hasRealUsage: payload.period_usage?.has_real_usage ?? false,
     },
+    policyState: mapCampaignPolicyState(payload.policy_state),
     runtime: mapProviderRuntimeSummary(payload.runtime),
     blockedSends: mapCampaignBlockedSendsSummary(payload.blocked_sends),
   };
@@ -2130,6 +2251,16 @@ function mapClientOverviewSummary(
               limit: payload.client_dashboard.kpis.clicked_last_7d.limit ?? null,
               available: payload.client_dashboard.kpis.clicked_last_7d.available,
             },
+            deliveryRateLast7d:
+              payload.client_dashboard.kpis.delivery_rate_last_7d ?? null,
+            openRateLast7d: payload.client_dashboard.kpis.open_rate_last_7d ?? null,
+            clickRateLast7d: payload.client_dashboard.kpis.click_rate_last_7d ?? null,
+            deliveryRateAvailable:
+              payload.client_dashboard.kpis.delivery_rate_available ?? false,
+            openRateAvailable:
+              payload.client_dashboard.kpis.open_rate_available ?? false,
+            clickRateAvailable:
+              payload.client_dashboard.kpis.click_rate_available ?? false,
           },
           performanceAnalytics: {
             defaultWindow: payload.client_dashboard.performance_analytics.default_window,
@@ -2148,6 +2279,12 @@ function mapClientOverviewSummary(
                     deliveredAvailable: metrics.delivered_available,
                     openedAvailable: metrics.opened_available,
                     clickedAvailable: metrics.clicked_available,
+                    deliveryRate: metrics.delivery_rate ?? null,
+                    openRate: metrics.open_rate ?? null,
+                    clickRate: metrics.click_rate ?? null,
+                    deliveryRateAvailable: metrics.delivery_rate_available ?? false,
+                    openRateAvailable: metrics.open_rate_available ?? false,
+                    clickRateAvailable: metrics.click_rate_available ?? false,
                     windowStartedAt: metrics.window_started_at ?? null,
                     windowEndedAt: metrics.window_ended_at,
                   },
@@ -2183,6 +2320,20 @@ function mapClientOverviewSummary(
             delivered: payload.client_dashboard.period_usage.delivered,
             opened: payload.client_dashboard.period_usage.opened,
             clicked: payload.client_dashboard.period_usage.clicked,
+          },
+          scoreAvailability: {
+            scoreProductsAvailable:
+              payload.client_dashboard.score_availability?.score_products_available ??
+              false,
+            domainHealthScoreAvailable:
+              payload.client_dashboard.score_availability
+                ?.domain_health_score_available ?? false,
+            contactQualityScoreAvailable:
+              payload.client_dashboard.score_availability
+                ?.contact_quality_score_available ?? false,
+            campaignRiskScoreAvailable:
+              payload.client_dashboard.score_availability
+                ?.campaign_risk_score_available ?? false,
           },
         }
       : null,

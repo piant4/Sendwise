@@ -241,7 +241,7 @@ function hasRecentProviderSignal(
     return false;
   }
 
-  return logs.sent > 0 || logs.queued > 0 || snapshot.campaign.status === "running";
+  return (logs.sent ?? 0) > 0 || logs.queued > 0 || snapshot.campaign.status === "running";
 }
 
 function buildActionItems(

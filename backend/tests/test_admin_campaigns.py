@@ -565,7 +565,7 @@ def test_admin_campaign_detail_includes_email_brand() -> None:
     assert detail.email_brand == {
         "company_name": "Acme Labs",
         "sender_name": "Team Acme",
-        "website_url": "https://acme.example.test",
+        "website_url": "https://acme.example.test/",
     }
 
 
@@ -675,6 +675,11 @@ def test_admin_summary_returns_campaign_client_slot_and_readiness() -> None:
     assert result.runtime.ses_live_validation_status is None
     assert result.runtime.provider_events_available is False
     assert result.runtime.mailpit_dev_mode is True
+    assert result.policy_state is not None
+    assert result.policy_state.deliverability_guard.code == "dispatch_authorized"
+    assert result.policy_state.duplicate_guard.code == "duplicate_guard_clear"
+    assert result.policy_state.warmup_guard.code == "warmup_guard_clear"
+    assert result.policy_state.score_products_available is False
     assert result.warnings == [
         'EMAIL_SENDING_ENABLED is not exactly "true"; real dispatch is disabled.'
     ]
@@ -708,6 +713,8 @@ def test_admin_summary_endpoint_exposes_safe_runtime_shape_without_secrets() -> 
     assert payload["can_send"] is False
     assert payload["can_send_when_enabled"] is False
     assert payload["sending_enabled"] is True
+    assert payload["policy_state"]["score_products_available"] is False
+    assert payload["policy_state"]["deliverability_guard"]["code"] == "campaign_status_not_sendable"
     assert payload["runtime"] == {
         "email_sending_enabled": True,
         "email_provider": "ses",
@@ -847,7 +854,10 @@ def test_admin_summary_aggregates_email_logs_for_operational_reporting() -> None
     assert result.logs.queued == 2
     assert result.logs.sent == 0
     assert result.logs.failed == 1
-    assert result.logs.delivered == 0
+    assert result.logs.delivered is None
+    assert result.logs.delivered_available is False
+    assert result.logs.delivery_rate is None
+    assert result.logs.delivery_rate_available is False
     assert result.logs.provider_events_available is False
 
 

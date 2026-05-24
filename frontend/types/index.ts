@@ -518,15 +518,53 @@ export interface CampaignRecipientsSummary {
 export interface CampaignLogsSummary {
   simulated: number;
   queued: number;
-  sent: number;
+  sent: number | null;
   failed: number;
-  delivered: number;
-  opened: number;
-  clicked: number;
-  bounced: number;
-  complained: number;
-  unsubscribed: number;
+  delivered: number | null;
+  opened: number | null;
+  clicked: number | null;
+  bounced: number | null;
+  complained: number | null;
+  unsubscribed: number | null;
+  sentAvailable: boolean;
+  failedAvailable: boolean;
+  deliveredAvailable: boolean;
+  openedAvailable: boolean;
+  clickedAvailable: boolean;
+  bouncedAvailable: boolean;
+  complainedAvailable: boolean;
+  unsubscribedAvailable: boolean;
+  deliveryRate: number | null;
+  openRate: number | null;
+  clickRate: number | null;
+  bounceRate: number | null;
+  complaintRate: number | null;
+  unsubscribeRate: number | null;
+  deliveryRateAvailable: boolean;
+  openRateAvailable: boolean;
+  clickRateAvailable: boolean;
+  bounceRateAvailable: boolean;
+  complaintRateAvailable: boolean;
+  unsubscribeRateAvailable: boolean;
   providerEventsAvailable: boolean;
+}
+
+export interface CampaignPolicyStatusSummary {
+  allowed: boolean;
+  decision: string;
+  code: string;
+  severity: string;
+  reason: string;
+}
+
+export interface CampaignPolicyStateSummary {
+  deliverabilityGuard: CampaignPolicyStatusSummary;
+  duplicateGuard: CampaignPolicyStatusSummary;
+  warmupGuard: CampaignPolicyStatusSummary;
+  scoreProductsAvailable: boolean;
+  domainHealthScoreAvailable: boolean;
+  contactQualityScoreAvailable: boolean;
+  campaignRiskScoreAvailable: boolean;
 }
 
 export interface CampaignPeriodUsageSummary {
@@ -559,6 +597,7 @@ export interface CampaignReadModel {
   recipients: CampaignRecipientsSummary;
   logs: CampaignLogsSummary;
   periodUsage: CampaignPeriodUsageSummary;
+  policyState?: CampaignPolicyStateSummary | null;
   runtime: ProviderRuntimeSummary;
   blockedSends: CampaignBlockedSendsSummary;
 }
@@ -730,6 +769,12 @@ export interface ClientDashboardKpis {
   deliveredLast7d: ClientDashboardKpiValue;
   openedLast7d: ClientDashboardKpiValue;
   clickedLast7d: ClientDashboardKpiValue;
+  deliveryRateLast7d: number | null;
+  openRateLast7d: number | null;
+  clickRateLast7d: number | null;
+  deliveryRateAvailable: boolean;
+  openRateAvailable: boolean;
+  clickRateAvailable: boolean;
 }
 
 export interface ClientDashboardWindowMetrics {
@@ -743,6 +788,12 @@ export interface ClientDashboardWindowMetrics {
   deliveredAvailable: boolean;
   openedAvailable: boolean;
   clickedAvailable: boolean;
+  deliveryRate: number | null;
+  openRate: number | null;
+  clickRate: number | null;
+  deliveryRateAvailable: boolean;
+  openRateAvailable: boolean;
+  clickRateAvailable: boolean;
   windowStartedAt: string | null;
   windowEndedAt: string;
 }
@@ -783,6 +834,13 @@ export interface ClientDashboardPeriodUsage {
   clicked: number | null;
 }
 
+export interface ClientDashboardScoreAvailability {
+  scoreProductsAvailable: boolean;
+  domainHealthScoreAvailable: boolean;
+  contactQualityScoreAvailable: boolean;
+  campaignRiskScoreAvailable: boolean;
+}
+
 export interface ClientDashboardSummary {
   greetingName: string;
   cta: {
@@ -793,4 +851,5 @@ export interface ClientDashboardSummary {
   actionsRequired: ClientDashboardActionsRequired;
   statusSummary: ClientDashboardStatusSummary;
   periodUsage: ClientDashboardPeriodUsage;
+  scoreAvailability: ClientDashboardScoreAvailability;
 }

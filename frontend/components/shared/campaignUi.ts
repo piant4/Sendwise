@@ -168,7 +168,7 @@ export function getProviderEventsAvailabilityLabel(
     return "Eventi Mailgun disponibili";
   }
 
-  if (logs.sent > 0) {
+  if ((logs.sent ?? 0) > 0) {
     return "Dati Mailgun non ancora collegati";
   }
 
@@ -176,20 +176,22 @@ export function getProviderEventsAvailabilityLabel(
 }
 
 export function formatProviderEventMetric(
-  value: number,
+  value: number | null,
   logs: CampaignLogsSummary,
 ): string {
-  if (logs.providerEventsAvailable) {
+  if (logs.providerEventsAvailable && typeof value === "number") {
     return formatCampaignCount(value);
   }
 
-  return logs.sent > 0 ? "Dati Mailgun non ancora collegati" : "Non disponibili";
+  return (logs.sent ?? 0) > 0
+    ? "Dati Mailgun non ancora collegati"
+    : "Non disponibili";
 }
 
 export function getCampaignOperationalSendState(
   logs: CampaignLogsSummary,
 ): CampaignOperationalSendState {
-  if (logs.sent > 0 && logs.failed > 0) {
+  if ((logs.sent ?? 0) > 0 && logs.failed > 0) {
     return {
       label: "Invio parziale",
       detail: "Parte dei destinatari e' stata accettata, altri invii sono falliti.",
@@ -197,7 +199,7 @@ export function getCampaignOperationalSendState(
     };
   }
 
-  if (logs.sent > 0) {
+  if ((logs.sent ?? 0) > 0) {
     return {
       label: "Accettata dal sistema",
       detail: "Gli invii risultano accettati dal sistema di invio.",
@@ -517,12 +519,25 @@ export function getCampaignLogStatItems(
     { label: "In coda", value: formatCampaignCount(logs.queued) },
     {
       label: "Accettate dal sistema di invio",
-      value: formatCampaignCount(logs.sent),
+      value: formatCampaignCount(logs.sent ?? 0),
     },
     { label: "Fallite", value: formatCampaignCount(logs.failed) },
-    { label: "Bounce", value: formatCampaignCount(logs.bounced) },
-    { label: "Disiscritti", value: formatCampaignCount(logs.unsubscribed) },
-    { label: "Reclami", value: formatCampaignCount(logs.complained) },
+    {
+      label: "Bounce",
+      value: logs.bouncedAvailable ? formatCampaignCount(logs.bounced ?? 0) : "Non disponibili",
+    },
+    {
+      label: "Disiscritti",
+      value: logs.unsubscribedAvailable
+        ? formatCampaignCount(logs.unsubscribed ?? 0)
+        : "Non disponibili",
+    },
+    {
+      label: "Reclami",
+      value: logs.complainedAvailable
+        ? formatCampaignCount(logs.complained ?? 0)
+        : "Non disponibili",
+    },
   ];
 }
 

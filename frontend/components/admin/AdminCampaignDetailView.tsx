@@ -148,8 +148,10 @@ function buildPreviewDocument(value: string): string {
 </html>`;
 }
 
-function getProviderMetricValue(value: number, available: boolean): string {
-  return available ? value.toLocaleString("it-IT") : "Non disponibili";
+function getProviderMetricValue(value: number | null, available: boolean): string {
+  return available && typeof value === "number"
+    ? value.toLocaleString("it-IT")
+    : "Non disponibili";
 }
 
 function getProviderMetricNote(available: boolean): string {
@@ -178,7 +180,7 @@ function getOperationalSummary(
     };
   }
 
-  if (summary.logs.sent > 0) {
+  if ((summary.logs.sent ?? 0) > 0) {
     return {
       badgeLabel: "Accettata / avviata",
       badgeVariant: "success" as const,
@@ -379,7 +381,7 @@ export function AdminCampaignDetailView({
           >
             <article className="campaign-callout">
               <span className="admin-record-row__note">Accepted / started by system</span>
-              <strong style={{ color: "#0f172a" }}>{formatCampaignCount(summary.logs.sent)}</strong>
+              <strong style={{ color: "#0f172a" }}>{formatCampaignCount(summary.logs.sent ?? 0)}</strong>
               <span>Accettate o avviate da Listmonk. Non indica delivered.</span>
             </article>
             <article className="campaign-callout">

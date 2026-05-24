@@ -3857,6 +3857,12 @@ def test_client_overview_marks_missing_metric_sources_as_unavailable(
         "delivered_available": False,
         "opened_available": False,
         "clicked_available": False,
+        "delivery_rate": None,
+        "open_rate": None,
+        "click_rate": None,
+        "delivery_rate_available": False,
+        "open_rate_available": False,
+        "click_rate_available": False,
         "window_started_at": dashboard["performance_analytics"]["windows"]["7d"]["window_started_at"],
         "window_ended_at": dashboard["performance_analytics"]["windows"]["7d"]["window_ended_at"],
     }
@@ -4215,10 +4221,14 @@ def test_client_campaign_stats_return_only_db_backed_metrics(
     assert payload["logs"]["simulated"] == 1
     assert payload["logs"]["queued"] == 1
     assert payload["logs"]["sent"] == 0
-    assert payload["logs"]["delivered"] == 0
-    assert payload["logs"]["opened"] == 0
-    assert payload["logs"]["clicked"] == 0
-    assert payload["logs"]["complained"] == 0
+    assert payload["logs"]["delivered"] is None
+    assert payload["logs"]["delivered_available"] is False
+    assert payload["logs"]["opened"] is None
+    assert payload["logs"]["opened_available"] is False
+    assert payload["logs"]["clicked"] is None
+    assert payload["logs"]["clicked_available"] is False
+    assert payload["logs"]["complained"] is None
+    assert payload["logs"]["complained_available"] is False
     assert payload["logs"]["provider_events_available"] is False
     assert payload["blocked_sends"]["total"] == 1
 

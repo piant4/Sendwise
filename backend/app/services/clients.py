@@ -198,6 +198,23 @@ def _prefer_provider_metric(
     return sum(status_counts.get(status_key, 0) for status_key in status_keys)
 
 
+def _provider_metric(
+    *,
+    event_counts: dict[str, int],
+    provider_events_available: bool,
+    event_types: tuple[str, ...],
+) -> int | None:
+    if not provider_events_available:
+        return None
+    return sum(event_counts.get(event_type, 0) for event_type in event_types)
+
+
+def _rate(numerator: int | None, denominator: int | None) -> float | None:
+    if numerator is None or denominator is None or denominator <= 0:
+        return None
+    return round(numerator / denominator, 4)
+
+
 def _is_invalid_email_error(detail: object) -> bool:
     if not isinstance(detail, str):
         return False
@@ -1217,6 +1234,14 @@ class ClientsService:
                     value=performance_windows["7d"].clicked,
                     available=performance_windows["7d"].clicked_available,
                 ),
+                delivery_rate_last_7d=performance_windows["7d"].delivery_rate,
+                open_rate_last_7d=performance_windows["7d"].open_rate,
+                click_rate_last_7d=performance_windows["7d"].click_rate,
+                delivery_rate_available=performance_windows[
+                    "7d"
+                ].delivery_rate_available,
+                open_rate_available=performance_windows["7d"].open_rate_available,
+                click_rate_available=performance_windows["7d"].click_rate_available,
             ),
             performance_analytics=ClientDashboardPerformanceAnalytics(
                 default_window=CLIENT_DASHBOARD_DEFAULT_WINDOW,
@@ -1265,6 +1290,26 @@ class ClientsService:
             started_at = now - delta if delta is not None else None
             sent_available = email_log_repository is not None
             failed_available = email_log_repository is not None
+            sent_value = (
+                email_log_repository.count_client_real_logs(
+                    client_id=client_id,
+                    started_at=started_at,
+                    ended_at=now,
+                    statuses=ACCEPTED_EMAIL_LOG_STATUSES,
+                )
+                if email_log_repository is not None
+                else None
+            )
+            failed_value = (
+                email_log_repository.count_client_real_logs(
+                    client_id=client_id,
+                    started_at=started_at,
+                    ended_at=now,
+                    statuses=("failed",),
+                )
+                if email_log_repository is not None
+                else None
+            )
             delivered_available = False
             opened_available = False
             clicked_available = False
@@ -1302,28 +1347,13 @@ class ClientsService:
                         started_at=started_at,
                         ended_at=now,
                     )
+            delivery_rate = _rate(delivered_value, sent_value)
+            open_rate = _rate(opened_value, delivered_value)
+            click_rate = _rate(clicked_value, delivered_value)
 
             windows[window_key] = ClientDashboardWindowMetrics(
-                sent=(
-                    email_log_repository.count_client_real_logs(
-                        client_id=client_id,
-                        started_at=started_at,
-                        ended_at=now,
-                        statuses=ACCEPTED_EMAIL_LOG_STATUSES,
-                    )
-                    if email_log_repository is not None
-                    else None
-                ),
-                failed=(
-                    email_log_repository.count_client_real_logs(
-                        client_id=client_id,
-                        started_at=started_at,
-                        ended_at=now,
-                        statuses=("failed",),
-                    )
-                    if email_log_repository is not None
-                    else None
-                ),
+                sent=sent_value,
+                failed=failed_value,
                 delivered=delivered_value,
                 opened=opened_value,
                 clicked=clicked_value,
@@ -1332,6 +1362,12 @@ class ClientsService:
                 delivered_available=delivered_available,
                 opened_available=opened_available,
                 clicked_available=clicked_available,
+                delivery_rate=delivery_rate,
+                open_rate=open_rate,
+                click_rate=click_rate,
+                delivery_rate_available=delivery_rate is not None,
+                open_rate_available=open_rate is not None,
+                click_rate_available=click_rate is not None,
                 window_started_at=started_at,
                 window_ended_at=now,
             )
@@ -1849,65 +1885,80 @@ class ClientsService:
             client_id=client_id,
             campaign_id=campaign_id,
         )
+        sent = _prefer_provider_metric(
+            status_counts=status_counts,
+            event_counts=event_counts,
+            provider_events_available=provider_events_available,
+            status_keys=("sent", "dispatched", "delivered"),
+            event_types=PROVIDER_ACCEPTED_EVENT_TYPES,
+        )
+        delivered = _provider_metric(
+            event_counts=event_counts,
+            provider_events_available=provider_events_available,
+            event_types=PROVIDER_DELIVERED_EVENT_TYPES,
+        )
+        opened = _provider_metric(
+            event_counts=event_counts,
+            provider_events_available=provider_events_available,
+            event_types=PROVIDER_OPENED_EVENT_TYPES,
+        )
+        clicked = _provider_metric(
+            event_counts=event_counts,
+            provider_events_available=provider_events_available,
+            event_types=PROVIDER_CLICKED_EVENT_TYPES,
+        )
+        bounced = _provider_metric(
+            event_counts=event_counts,
+            provider_events_available=provider_events_available,
+            event_types=PROVIDER_BOUNCE_EVENT_TYPES,
+        )
+        complained = _provider_metric(
+            event_counts=event_counts,
+            provider_events_available=provider_events_available,
+            event_types=PROVIDER_COMPLAINT_EVENT_TYPES,
+        )
+        unsubscribed = _provider_metric(
+            event_counts=event_counts,
+            provider_events_available=provider_events_available,
+            event_types=PROVIDER_UNSUBSCRIBE_EVENT_TYPES,
+        )
+        delivery_rate = _rate(delivered, sent)
+        open_rate = _rate(opened, delivered)
+        click_rate = _rate(clicked, delivered)
+        bounce_rate = _rate(bounced, sent)
+        complaint_rate = _rate(complained, sent)
+        unsubscribe_rate = _rate(unsubscribed, sent)
         return CampaignLogsSummary(
             simulated=status_counts.get("simulated", 0),
             queued=status_counts.get("queued", 0),
-            sent=_prefer_provider_metric(
-                status_counts=status_counts,
-                event_counts=event_counts,
-                provider_events_available=provider_events_available,
-                status_keys=("sent", "dispatched", "delivered"),
-                event_types=PROVIDER_ACCEPTED_EVENT_TYPES,
-            ),
+            sent=sent,
             failed=status_counts.get("failed", 0),
-            delivered=_prefer_provider_metric(
-                status_counts=status_counts,
-                event_counts=event_counts,
-                provider_events_available=provider_events_available,
-                status_keys=("delivered",),
-                event_types=PROVIDER_DELIVERED_EVENT_TYPES,
-                fallback_to_statuses=False,
-            ),
-            opened=_prefer_provider_metric(
-                status_counts=status_counts,
-                event_counts=event_counts,
-                provider_events_available=provider_events_available,
-                status_keys=("opened",),
-                event_types=PROVIDER_OPENED_EVENT_TYPES,
-                fallback_to_statuses=False,
-            ),
-            clicked=_prefer_provider_metric(
-                status_counts=status_counts,
-                event_counts=event_counts,
-                provider_events_available=provider_events_available,
-                status_keys=("clicked",),
-                event_types=PROVIDER_CLICKED_EVENT_TYPES,
-                fallback_to_statuses=False,
-            ),
-            bounced=_prefer_provider_metric(
-                status_counts=status_counts,
-                event_counts=event_counts,
-                provider_events_available=provider_events_available,
-                status_keys=("bounced",),
-                event_types=PROVIDER_BOUNCE_EVENT_TYPES,
-                fallback_to_statuses=False,
-            ),
-            complained=_prefer_provider_metric(
-                status_counts=status_counts,
-                event_counts=event_counts,
-                provider_events_available=provider_events_available,
-                status_keys=("complained", "spam"),
-                event_types=PROVIDER_COMPLAINT_EVENT_TYPES,
-                fallback_to_statuses=False,
-            ),
-            unsubscribed=_prefer_provider_metric(
-                status_counts=status_counts,
-                event_counts=event_counts,
-                provider_events_available=provider_events_available,
-                status_keys=("unsubscribed",),
-                event_types=PROVIDER_UNSUBSCRIBE_EVENT_TYPES,
-                fallback_to_statuses=False,
-            ),
+            delivered=delivered,
+            opened=opened,
+            clicked=clicked,
+            bounced=bounced,
+            complained=complained,
+            unsubscribed=unsubscribed,
+            sent_available=True,
+            failed_available=True,
+            delivered_available=provider_events_available,
+            opened_available=provider_events_available,
+            clicked_available=provider_events_available,
+            bounced_available=provider_events_available,
+            complained_available=provider_events_available,
+            unsubscribed_available=provider_events_available,
+            delivery_rate=delivery_rate,
+            open_rate=open_rate,
+            click_rate=click_rate,
+            bounce_rate=bounce_rate,
+            complaint_rate=complaint_rate,
+            unsubscribe_rate=unsubscribe_rate,
+            delivery_rate_available=delivery_rate is not None,
+            open_rate_available=open_rate is not None,
+            click_rate_available=click_rate is not None,
+            bounce_rate_available=bounce_rate is not None,
+            complaint_rate_available=complaint_rate is not None,
+            unsubscribe_rate_available=unsubscribe_rate is not None,
             provider_events_available=provider_events_available,
         )
 

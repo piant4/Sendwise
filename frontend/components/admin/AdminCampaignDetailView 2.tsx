@@ -49,8 +49,8 @@ function getExcerpt(value?: string | null): string {
   return normalized.length > 180 ? `${normalized.slice(0, 177)}...` : normalized;
 }
 
-function formatProviderMetric(value: number, available: boolean): string {
-  if (!available) {
+function formatProviderMetric(value: number | null, available: boolean): string {
+  if (!available || typeof value !== "number") {
     return "Non disponibili";
   }
 
@@ -73,7 +73,7 @@ export function AdminCampaignDetailView({
     ? [
         {
           label: "Accettate",
-          value: formatCampaignCount(summary.logs.sent),
+          value: formatCampaignCount(summary.logs.sent ?? 0),
           note: "Accettate dal sistema di invio",
         },
         {
@@ -334,7 +334,7 @@ export function AdminCampaignDetailView({
           </dl>
 
           <p className="admin-record-row__note" style={{ marginTop: 16 }}>
-            Accettate dal sistema di invio: {formatCampaignCount(summary.logs.sent)}. Questo valore non indica la consegna in inbox.
+            Accettate dal sistema di invio: {formatCampaignCount(summary.logs.sent ?? 0)}. Questo valore non indica la consegna in inbox.
           </p>
 
           <div className="campaign-provider-metrics" style={{ marginTop: 16 }}>

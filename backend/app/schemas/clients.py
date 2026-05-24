@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Literal, Optional
 
-from pydantic import BaseModel, ConfigDict, TypeAdapter, field_validator
+from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, field_validator
 from pydantic.networks import AnyHttpUrl
 
 from app.schemas.common import CampaignStatus, ClientStatus, SendDecision
@@ -263,6 +263,12 @@ class ClientDashboardKpis(BaseModel):
     delivered_last_7d: ClientDashboardKpiValue
     opened_last_7d: ClientDashboardKpiValue
     clicked_last_7d: ClientDashboardKpiValue
+    delivery_rate_last_7d: Optional[float] = None
+    open_rate_last_7d: Optional[float] = None
+    click_rate_last_7d: Optional[float] = None
+    delivery_rate_available: bool = False
+    open_rate_available: bool = False
+    click_rate_available: bool = False
 
 
 class ClientDashboardWindowMetrics(BaseModel):
@@ -276,6 +282,12 @@ class ClientDashboardWindowMetrics(BaseModel):
     delivered_available: bool = False
     opened_available: bool = False
     clicked_available: bool = False
+    delivery_rate: Optional[float] = None
+    open_rate: Optional[float] = None
+    click_rate: Optional[float] = None
+    delivery_rate_available: bool = False
+    open_rate_available: bool = False
+    click_rate_available: bool = False
     window_started_at: Optional[datetime] = None
     window_ended_at: datetime
 
@@ -316,6 +328,13 @@ class ClientDashboardPeriodUsage(BaseModel):
     clicked: Optional[int] = None
 
 
+class ClientDashboardScoreAvailability(BaseModel):
+    score_products_available: bool = False
+    domain_health_score_available: bool = False
+    contact_quality_score_available: bool = False
+    campaign_risk_score_available: bool = False
+
+
 class ClientDashboardSummary(BaseModel):
     greeting_name: str
     cta: ClientDashboardCta
@@ -324,6 +343,9 @@ class ClientDashboardSummary(BaseModel):
     actions_required: ClientDashboardActionsRequired
     status_summary: ClientDashboardStatusSummary
     period_usage: ClientDashboardPeriodUsage
+    score_availability: ClientDashboardScoreAvailability = Field(
+        default_factory=ClientDashboardScoreAvailability
+    )
 
 
 class ClientOverviewSummary(BaseModel):

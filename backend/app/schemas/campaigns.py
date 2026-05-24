@@ -251,14 +251,34 @@ class CampaignRecipientsSummary(BaseModel):
 class CampaignLogsSummary(BaseModel):
     simulated: int = 0
     queued: int = 0
-    sent: int = 0
+    sent: Optional[int] = None
     failed: int = 0
-    delivered: int = 0
-    opened: int = 0
-    clicked: int = 0
-    bounced: int = 0
-    complained: int = 0
-    unsubscribed: int = 0
+    delivered: Optional[int] = None
+    opened: Optional[int] = None
+    clicked: Optional[int] = None
+    bounced: Optional[int] = None
+    complained: Optional[int] = None
+    unsubscribed: Optional[int] = None
+    sent_available: bool = False
+    failed_available: bool = False
+    delivered_available: bool = False
+    opened_available: bool = False
+    clicked_available: bool = False
+    bounced_available: bool = False
+    complained_available: bool = False
+    unsubscribed_available: bool = False
+    delivery_rate: Optional[float] = None
+    open_rate: Optional[float] = None
+    click_rate: Optional[float] = None
+    bounce_rate: Optional[float] = None
+    complaint_rate: Optional[float] = None
+    unsubscribe_rate: Optional[float] = None
+    delivery_rate_available: bool = False
+    open_rate_available: bool = False
+    click_rate_available: bool = False
+    bounce_rate_available: bool = False
+    complaint_rate_available: bool = False
+    unsubscribe_rate_available: bool = False
     provider_events_available: bool = False
 
 
@@ -281,6 +301,24 @@ class ProviderRuntimeSummary(BaseModel):
     mailpit_dev_mode: bool = False
 
 
+class CampaignPolicyStatusSummary(BaseModel):
+    allowed: bool
+    decision: str
+    code: str
+    severity: str
+    reason: str
+
+
+class CampaignPolicyStateSummary(BaseModel):
+    deliverability_guard: CampaignPolicyStatusSummary
+    duplicate_guard: CampaignPolicyStatusSummary
+    warmup_guard: CampaignPolicyStatusSummary
+    score_products_available: bool = False
+    domain_health_score_available: bool = False
+    contact_quality_score_available: bool = False
+    campaign_risk_score_available: bool = False
+
+
 class CampaignBlockedSendsSummary(BaseModel):
     total: int
     latest: list[BlockedSend]
@@ -294,6 +332,7 @@ class CampaignReadModel(BaseModel):
     period_usage: CampaignPeriodUsageSummary = Field(
         default_factory=CampaignPeriodUsageSummary
     )
+    policy_state: Optional[CampaignPolicyStateSummary] = None
     runtime: ProviderRuntimeSummary
     blocked_sends: CampaignBlockedSendsSummary
 

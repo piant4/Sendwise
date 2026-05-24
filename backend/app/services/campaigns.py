@@ -76,6 +76,8 @@ from app.schemas.campaigns import (
     CampaignClientSummary,
     CampaignLogsSummary,
     CampaignPeriodUsageSummary,
+    CampaignPolicyStateSummary,
+    CampaignPolicyStatusSummary,
     CampaignRecipientsSummary,
     CampaignSlotSummary,
     CampaignSummaryItem,
@@ -178,6 +180,23 @@ def _prefer_provider_metric(
     return sum(status_counts.get(status_key, 0) for status_key in status_keys)
 
 
+def _provider_metric(
+    *,
+    event_counts: dict[str, int],
+    provider_events_available: bool,
+    event_types: tuple[str, ...],
+) -> int | None:
+    if not provider_events_available:
+        return None
+    return sum(event_counts.get(event_type, 0) for event_type in event_types)
+
+
+def _rate(numerator: int | None, denominator: int | None) -> float | None:
+    if numerator is None or denominator is None or denominator <= 0:
+        return None
+    return round(numerator / denominator, 4)
+
+
 @dataclass(frozen=True)
 class CampaignStateService:
     repository: CampaignRepository
@@ -252,6 +271,7 @@ class CampaignEvaluation:
     warnings: list[str]
     blocking_errors: list[str]
     guard_result: GuardResult
+    duplicate_guard: "CampaignDispatchDuplicateGuard"
     limit_record: CampaignSendingLimitRecord
     limit_usage: CampaignLimitUsage
 
@@ -386,6 +406,7 @@ class AdminCampaignService:
             recipients=self._build_campaign_recipients_summary(contact_summary),
             logs=logs,
             period_usage=self._build_period_usage_summary(limit_context=limit_context),
+            policy_state=self._build_policy_state(evaluation=evaluation),
             runtime=build_provider_runtime_summary(
                 self.settings,
                 provider_events_available=logs.provider_events_available,
@@ -1347,6 +1368,7 @@ class AdminCampaignService:
             warnings=warnings,
             blocking_errors=blocking_errors,
             guard_result=guard_result,
+            duplicate_guard=duplicate_guard,
             limit_record=limit_context.record,
             limit_usage=limit_context.usage,
         )
@@ -1423,6 +1445,59 @@ class AdminCampaignService:
             blocked=contact_summary.blocked,
         )
 
+    def _build_policy_state(
+        self,
+        *,
+        evaluation: CampaignEvaluation,
+    ) -> CampaignPolicyStateSummary:
+        duplicate_guard = evaluation.duplicate_guard
+        limit_usage = evaluation.limit_usage
+        warmup_blocked = (
+            evaluation.guard_result.limit_source == "sending_domain_warmup"
+            and not evaluation.guard_result.allowed
+        )
+        warmup_at_limit = limit_usage.daily_used >= limit_usage.daily_limit
+        warmup_allowed = not warmup_blocked and not warmup_at_limit
+        return CampaignPolicyStateSummary(
+            deliverability_guard=CampaignPolicyStatusSummary(
+                allowed=evaluation.guard_result.allowed,
+                decision=evaluation.guard_result.decision.value,
+                code=evaluation.guard_result.code,
+                severity=evaluation.guard_result.severity,
+                reason=evaluation.guard_result.reason,
+            ),
+            duplicate_guard=CampaignPolicyStatusSummary(
+                allowed=not duplicate_guard.blocked,
+                decision="blocked" if duplicate_guard.blocked else "authorized",
+                code=duplicate_guard.code or "duplicate_guard_clear",
+                severity="error" if duplicate_guard.blocked else "info",
+                reason=duplicate_guard.reason or "No existing real dispatch logs block this campaign.",
+            ),
+            warmup_guard=CampaignPolicyStatusSummary(
+                allowed=warmup_allowed,
+                decision="blocked" if not warmup_allowed else "authorized",
+                code=(
+                    evaluation.guard_result.code
+                    if warmup_blocked
+                    else (
+                        "campaign_daily_limit_reached"
+                        if warmup_at_limit
+                        else "warmup_guard_clear"
+                    )
+                ),
+                severity="error" if not warmup_allowed else "info",
+                reason=(
+                    evaluation.guard_result.reason
+                    if warmup_blocked
+                    else (
+                        "Campaign daily pacing limit reached."
+                        if warmup_at_limit
+                        else "Campaign warmup and pacing limits have remaining capacity."
+                    )
+                ),
+            ),
+        )
+
     def _build_campaign_logs_summary(
         self,
         *,
@@ -1441,65 +1516,80 @@ class AdminCampaignService:
             client_id=client_id,
             campaign_id=campaign_id,
         )
+        sent = _prefer_provider_metric(
+            status_counts=status_counts,
+            event_counts=event_counts,
+            provider_events_available=provider_events_available,
+            status_keys=("sent", "dispatched", "delivered"),
+            event_types=PROVIDER_ACCEPTED_EVENT_TYPES,
+        )
+        delivered = _provider_metric(
+            event_counts=event_counts,
+            provider_events_available=provider_events_available,
+            event_types=PROVIDER_DELIVERED_EVENT_TYPES,
+        )
+        opened = _provider_metric(
+            event_counts=event_counts,
+            provider_events_available=provider_events_available,
+            event_types=PROVIDER_OPENED_EVENT_TYPES,
+        )
+        clicked = _provider_metric(
+            event_counts=event_counts,
+            provider_events_available=provider_events_available,
+            event_types=PROVIDER_CLICKED_EVENT_TYPES,
+        )
+        bounced = _provider_metric(
+            event_counts=event_counts,
+            provider_events_available=provider_events_available,
+            event_types=PROVIDER_BOUNCE_EVENT_TYPES,
+        )
+        complained = _provider_metric(
+            event_counts=event_counts,
+            provider_events_available=provider_events_available,
+            event_types=PROVIDER_COMPLAINT_EVENT_TYPES,
+        )
+        unsubscribed = _provider_metric(
+            event_counts=event_counts,
+            provider_events_available=provider_events_available,
+            event_types=PROVIDER_UNSUBSCRIBE_EVENT_TYPES,
+        )
+        delivery_rate = _rate(delivered, sent)
+        open_rate = _rate(opened, delivered)
+        click_rate = _rate(clicked, delivered)
+        bounce_rate = _rate(bounced, sent)
+        complaint_rate = _rate(complained, sent)
+        unsubscribe_rate = _rate(unsubscribed, sent)
         return CampaignLogsSummary(
             simulated=status_counts.get("simulated", 0),
             queued=status_counts.get("queued", 0),
-            sent=_prefer_provider_metric(
-                status_counts=status_counts,
-                event_counts=event_counts,
-                provider_events_available=provider_events_available,
-                status_keys=("sent", "dispatched", "delivered"),
-                event_types=PROVIDER_ACCEPTED_EVENT_TYPES,
-            ),
+            sent=sent,
             failed=status_counts.get("failed", 0),
-            delivered=_prefer_provider_metric(
-                status_counts=status_counts,
-                event_counts=event_counts,
-                provider_events_available=provider_events_available,
-                status_keys=("delivered",),
-                event_types=PROVIDER_DELIVERED_EVENT_TYPES,
-                fallback_to_statuses=False,
-            ),
-            opened=_prefer_provider_metric(
-                status_counts=status_counts,
-                event_counts=event_counts,
-                provider_events_available=provider_events_available,
-                status_keys=("opened",),
-                event_types=PROVIDER_OPENED_EVENT_TYPES,
-                fallback_to_statuses=False,
-            ),
-            clicked=_prefer_provider_metric(
-                status_counts=status_counts,
-                event_counts=event_counts,
-                provider_events_available=provider_events_available,
-                status_keys=("clicked",),
-                event_types=PROVIDER_CLICKED_EVENT_TYPES,
-                fallback_to_statuses=False,
-            ),
-            bounced=_prefer_provider_metric(
-                status_counts=status_counts,
-                event_counts=event_counts,
-                provider_events_available=provider_events_available,
-                status_keys=("bounced",),
-                event_types=PROVIDER_BOUNCE_EVENT_TYPES,
-                fallback_to_statuses=False,
-            ),
-            complained=_prefer_provider_metric(
-                status_counts=status_counts,
-                event_counts=event_counts,
-                provider_events_available=provider_events_available,
-                status_keys=("complained", "spam"),
-                event_types=PROVIDER_COMPLAINT_EVENT_TYPES,
-                fallback_to_statuses=False,
-            ),
-            unsubscribed=_prefer_provider_metric(
-                status_counts=status_counts,
-                event_counts=event_counts,
-                provider_events_available=provider_events_available,
-                status_keys=("unsubscribed",),
-                event_types=PROVIDER_UNSUBSCRIBE_EVENT_TYPES,
-                fallback_to_statuses=False,
-            ),
+            delivered=delivered,
+            opened=opened,
+            clicked=clicked,
+            bounced=bounced,
+            complained=complained,
+            unsubscribed=unsubscribed,
+            sent_available=True,
+            failed_available=True,
+            delivered_available=provider_events_available,
+            opened_available=provider_events_available,
+            clicked_available=provider_events_available,
+            bounced_available=provider_events_available,
+            complained_available=provider_events_available,
+            unsubscribed_available=provider_events_available,
+            delivery_rate=delivery_rate,
+            open_rate=open_rate,
+            click_rate=click_rate,
+            bounce_rate=bounce_rate,
+            complaint_rate=complaint_rate,
+            unsubscribe_rate=unsubscribe_rate,
+            delivery_rate_available=delivery_rate is not None,
+            open_rate_available=open_rate is not None,
+            click_rate_available=click_rate is not None,
+            bounce_rate_available=bounce_rate is not None,
+            complaint_rate_available=complaint_rate is not None,
+            unsubscribe_rate_available=unsubscribe_rate is not None,
             provider_events_available=provider_events_available,
         )
 

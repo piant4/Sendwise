@@ -199,7 +199,7 @@ export default async function ClientCampaignsPage({
                             <div className="client-row__stats">
                               <div className="client-row__stat">
                                 <span>Accettate dal sistema</span>
-                                <strong>{formatCampaignCount(detail.logs.sent)}</strong>
+                                <strong>{formatCampaignCount(detail.logs.sent ?? 0)}</strong>
                               </div>
                               <div className="client-row__stat">
                                 <span>Errori invio</span>

@@ -28,6 +28,7 @@ import type {
   CampaignReadModel,
   CampaignRecipientsSummary,
   ProviderRuntimeSummary,
+  ProviderHistoryPolicySummary,
   CampaignSlotSummary,
   CampaignSummaryItem,
   Client,
@@ -217,6 +218,7 @@ interface CampaignReadModelApiResponse {
       severity: string;
       reason: string;
     };
+    provider_history?: ProviderHistoryPolicyApiItem[];
     score_products_available: boolean;
     domain_health_score_available: boolean;
     contact_quality_score_available: boolean;
@@ -244,6 +246,17 @@ interface AdminCampaignSummaryApiResponse extends CampaignReadModelApiResponse {
   period_remaining?: number | null;
   period_started_at?: string | null;
   period_ends_at?: string | null;
+}
+
+interface ProviderHistoryPolicyApiItem {
+  code: string;
+  severity: string;
+  reason: string;
+  metric: string;
+  rate?: number | null;
+  band: string;
+  sending_domain?: string | null;
+  blocking: boolean;
 }
 
 interface AdminCampaignDetailApiResponse {
@@ -360,6 +373,7 @@ interface AdminCampaignReviewApiResponse {
   period_remaining?: number | null;
   period_started_at?: string | null;
   period_ends_at?: string | null;
+  provider_history?: ProviderHistoryPolicyApiItem[];
 }
 
 interface AdminCampaignDispatchApiResponse {
@@ -1876,7 +1890,23 @@ function mapAdminCampaignReviewResult(
     periodRemaining: payload.period_remaining ?? null,
     periodStartedAt: payload.period_started_at ?? null,
     periodEndsAt: payload.period_ends_at ?? null,
+    providerHistory: mapProviderHistoryPolicy(payload.provider_history ?? []),
   };
+}
+
+function mapProviderHistoryPolicy(
+  payload: ProviderHistoryPolicyApiItem[],
+): ProviderHistoryPolicySummary[] {
+  return payload.map((item) => ({
+    code: item.code,
+    severity: item.severity,
+    reason: item.reason,
+    metric: item.metric,
+    rate: item.rate ?? null,
+    band: item.band,
+    sendingDomain: item.sending_domain ?? null,
+    blocking: item.blocking,
+  }));
 }
 
 function mapCampaignSummaryItem(
@@ -1987,6 +2017,7 @@ function mapCampaignPolicyState(
       severity: payload.warmup_guard.severity,
       reason: payload.warmup_guard.reason,
     },
+    providerHistory: mapProviderHistoryPolicy(payload.provider_history ?? []),
     scoreProductsAvailable: payload.score_products_available,
     domainHealthScoreAvailable: payload.domain_health_score_available,
     contactQualityScoreAvailable: payload.contact_quality_score_available,

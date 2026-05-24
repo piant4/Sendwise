@@ -30,6 +30,7 @@ import {
   getCampaignDispatchUiMeta,
   getCampaignReviewStateMeta,
   getCampaignStatusLabel,
+  getProviderHistoryPolicyUiMeta,
   getReadableBackendReason,
   hasDuplicateDispatchBlock,
   isDuplicateDispatchCode,
@@ -345,6 +346,8 @@ export function AdminCampaignReviewPanel({
       })
     : null;
   const sendRecap = buildSendRecap(campaign, summary, state);
+  const providerHistoryPolicy =
+    reviewResult?.providerHistory ?? summary?.policyState?.providerHistory ?? [];
   const primaryProblem =
     blockingReasons[0]?.label ??
     (warningReasons.length > 0 ? warningReasons[0]?.label : "Nessun blocco principale rilevato.");
@@ -507,6 +510,37 @@ export function AdminCampaignReviewPanel({
             </article>
             ))}
         </div>
+
+        {providerHistoryPolicy.length > 0 ? (
+          <section
+            className="campaign-panel campaign-panel--subtle"
+            style={{ display: "grid", gap: 12, marginTop: 20, padding: 18 }}
+          >
+            <span className="admin-record-row__note">Deliverability provider</span>
+            {providerHistoryPolicy.map((item) => {
+              const meta = getProviderHistoryPolicyUiMeta(item);
+
+              return (
+                <article
+                  key={`${item.code}-${item.metric}-${item.band}`}
+                  className="campaign-callout"
+                  style={{ minHeight: 0 }}
+                >
+                  <div className="campaign-review-checklist__header">
+                    <strong className="campaign-review-checklist__title">{meta.title}</strong>
+                    <StatusBadge label={meta.badgeLabel} variant={meta.badgeVariant} />
+                  </div>
+                  <p className="campaign-review-checklist__reason">{meta.detail}</p>
+                  {meta.rateLabel || meta.domainLabel ? (
+                    <p className="admin-record-row__note" style={{ margin: 0 }}>
+                      {[meta.rateLabel, meta.domainLabel].filter(Boolean).join(" · ")}
+                    </p>
+                  ) : null}
+                </article>
+              );
+            })}
+          </section>
+        ) : null}
 
         <section
           className="campaign-panel campaign-panel--subtle"
@@ -763,6 +797,36 @@ export function AdminCampaignReviewPanel({
               <li key={`${reason.raw}-${reason.label}`}>{reason.label}</li>
             ))}
           </ul>
+        </div>
+      ) : null}
+
+      {providerHistoryPolicy.length > 0 ? (
+        <div className="campaign-detail-notes" style={{ marginTop: 18 }}>
+          <strong style={{ color: "#0f172a" }}>Deliverability provider</strong>
+          <div style={{ display: "grid", gap: 10, marginTop: 10 }}>
+            {providerHistoryPolicy.map((item) => {
+              const meta = getProviderHistoryPolicyUiMeta(item);
+
+              return (
+                <article
+                  key={`${item.code}-${item.metric}-${item.band}`}
+                  className="campaign-callout"
+                  style={{ minHeight: 0 }}
+                >
+                  <div className="campaign-review-checklist__header">
+                    <strong className="campaign-review-checklist__title">{meta.title}</strong>
+                    <StatusBadge label={meta.badgeLabel} variant={meta.badgeVariant} />
+                  </div>
+                  <p className="campaign-review-checklist__reason">{meta.detail}</p>
+                  {meta.rateLabel || meta.domainLabel ? (
+                    <p className="admin-record-row__note" style={{ margin: 0 }}>
+                      {[meta.rateLabel, meta.domainLabel].filter(Boolean).join(" · ")}
+                    </p>
+                  ) : null}
+                </article>
+              );
+            })}
+          </div>
         </div>
       ) : null}
 

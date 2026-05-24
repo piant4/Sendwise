@@ -81,6 +81,7 @@ from app.schemas.campaigns import (
     CampaignRecipientsSummary,
     CampaignSlotSummary,
     CampaignSummaryItem,
+    ProviderHistoryPolicySummary,
 )
 from app.schemas.common import CampaignStatus
 from app.services.provider_runtime import (
@@ -207,6 +208,24 @@ def _rate(numerator: int | None, denominator: int | None) -> float | None:
     return round(numerator / denominator, 4)
 
 
+def _resolve_controlled_provider(settings: Settings) -> str | None:
+    environment = settings.environment.strip().lower()
+    email_provider = settings.email_provider_normalized
+    allowed_environments = {"development", "staging", "test"}
+    allowed_providers = {"listmonk", "mailpit", "smtp_dev", "ses"}
+
+    if environment not in allowed_environments:
+        return None
+    if email_provider not in allowed_providers:
+        return None
+
+    if email_provider == "ses":
+        return "ses"
+    if email_provider == "listmonk":
+        return "listmonk"
+    return "mailpit"
+
+
 @dataclass(frozen=True)
 class CampaignStateService:
     repository: CampaignRepository
@@ -284,6 +303,7 @@ class CampaignEvaluation:
     duplicate_guard: "CampaignDispatchDuplicateGuard"
     limit_record: CampaignSendingLimitRecord
     limit_usage: CampaignLimitUsage
+    provider_history: list[ProviderHistoryPolicySummary]
 
 
 def _build_domain_warmup_guard_result(
@@ -325,38 +345,178 @@ def _format_rate_percent(rate: float) -> str:
     return f"{rate * 100:.2f}%"
 
 
-def _provider_history_warning_messages(
+def _build_provider_history_policy(
     *,
     metrics: Any,
-) -> list[str]:
-    warnings: list[str] = []
+    sending_domain: str,
+) -> list[ProviderHistoryPolicySummary]:
+    policy: list[ProviderHistoryPolicySummary] = []
     complaint_rate = _rate(metrics.complaints, metrics.delivered)
-    if (
-        complaint_rate is not None
-        and COMPLAINT_REVIEW_RATE <= complaint_rate < COMPLAINT_STOP_RATE
-    ):
-        warnings.append(
-            "Provider history complaint rate is in review band "
-            f"({_format_rate_percent(complaint_rate)}). Require admin review or throttling."
+    if complaint_rate is not None and complaint_rate >= COMPLAINT_STOP_RATE:
+        policy.append(
+            ProviderHistoryPolicySummary(
+                code="provider_history_complaint_rate_stop",
+                severity="critical",
+                reason=(
+                    "Provider history complaint rate reached stop threshold "
+                    f"({_format_rate_percent(complaint_rate)}). "
+                    "Admin review is required before resuming dispatch."
+                ),
+                metric="complaint_rate",
+                rate=complaint_rate,
+                band="stop",
+                sending_domain=sending_domain,
+                blocking=True,
+            )
+        )
+    elif complaint_rate is not None and complaint_rate >= COMPLAINT_REVIEW_RATE:
+        policy.append(
+            ProviderHistoryPolicySummary(
+                code="provider_history_complaint_rate_review",
+                severity="warning",
+                reason=(
+                    "Provider history complaint rate is in review band "
+                    f"({_format_rate_percent(complaint_rate)}). Require admin review or throttling."
+                ),
+                metric="complaint_rate",
+                rate=complaint_rate,
+                band="review",
+                sending_domain=sending_domain,
+            )
         )
 
     hard_bounce_rate = _rate(metrics.hard_bounces, metrics.accepted_sends)
-    if (
-        hard_bounce_rate is not None
-        and HARD_BOUNCE_REVIEW_RATE <= hard_bounce_rate < HARD_BOUNCE_STOP_RATE
-    ):
-        warnings.append(
-            "Provider history hard bounce rate is in review band "
-            f"({_format_rate_percent(hard_bounce_rate)}). Require list-quality review or throttling."
+    if hard_bounce_rate is not None and hard_bounce_rate >= HARD_BOUNCE_STOP_RATE:
+        policy.append(
+            ProviderHistoryPolicySummary(
+                code="provider_history_hard_bounce_rate_stop",
+                severity="critical",
+                reason=(
+                    "Provider history hard bounce rate reached stop threshold "
+                    f"({_format_rate_percent(hard_bounce_rate)}). "
+                    "List-quality review is required before resuming dispatch."
+                ),
+                metric="hard_bounce_rate",
+                rate=hard_bounce_rate,
+                band="stop",
+                sending_domain=sending_domain,
+                blocking=True,
+            )
+        )
+    elif hard_bounce_rate is not None and hard_bounce_rate >= HARD_BOUNCE_REVIEW_RATE:
+        policy.append(
+            ProviderHistoryPolicySummary(
+                code="provider_history_hard_bounce_rate_review",
+                severity="warning",
+                reason=(
+                    "Provider history hard bounce rate is in review band "
+                    f"({_format_rate_percent(hard_bounce_rate)}). Require list-quality review or throttling."
+                ),
+                metric="hard_bounce_rate",
+                rate=hard_bounce_rate,
+                band="review",
+                sending_domain=sending_domain,
+            )
         )
 
     unsubscribe_rate = _rate(metrics.unsubscribes, metrics.delivered)
     if unsubscribe_rate is not None and unsubscribe_rate > UNSUBSCRIBE_REVIEW_RATE:
-        warnings.append(
-            "Provider history unsubscribe rate is in review band "
-            f"({_format_rate_percent(unsubscribe_rate)}). Review content and audience fit."
+        policy.append(
+            ProviderHistoryPolicySummary(
+                code="provider_history_unsubscribe_rate_review",
+                severity="warning",
+                reason=(
+                    "Provider history unsubscribe rate is in review band "
+                    f"({_format_rate_percent(unsubscribe_rate)}). Review content and audience fit."
+                ),
+                metric="unsubscribe_rate",
+                rate=unsubscribe_rate,
+                band="review",
+                sending_domain=sending_domain,
+            )
         )
-    return warnings
+
+    has_usable_denominator = (
+        metrics.delivered > 0 or metrics.accepted_sends > 0
+    )
+    if not policy and has_usable_denominator:
+        policy.append(
+            ProviderHistoryPolicySummary(
+                code="provider_history_clear",
+                severity="info",
+                reason="Provider history metrics are available and no active deliverability risk was detected.",
+                metric="provider_history",
+                rate=None,
+                band="clear",
+                sending_domain=sending_domain,
+            )
+        )
+    return policy
+
+
+def _evaluate_provider_history_policy(
+    *,
+    settings: Settings,
+    provider: str,
+    campaign: ClientCampaignRecord,
+    guard_result: GuardResult,
+    provider_event_repository: ProviderEventRepository | None,
+    email_log_repository: EmailLogRepository,
+) -> tuple[GuardResult | None, list[ProviderHistoryPolicySummary]]:
+    if provider != "listmonk" or provider_event_repository is None:
+        return None, []
+
+    sending_domain = get_configured_sending_domain(settings)
+    if sending_domain is None:
+        return None, []
+
+    if hasattr(provider_event_repository, "attach_email_log_records") and hasattr(
+        email_log_repository,
+        "_records",
+    ):
+        provider_event_repository.attach_email_log_records(email_log_repository._records)  # type: ignore[attr-defined]
+
+    metrics = provider_event_repository.get_domain_threshold_metrics(
+        sending_domain=sending_domain,
+        accepted_event_types=PROVIDER_ACCEPTED_EVENT_TYPES,
+        delivered_event_types=PROVIDER_DELIVERED_EVENT_TYPES,
+        hard_bounce_event_types=PROVIDER_HARD_BOUNCE_EVENT_TYPES,
+        complaint_event_types=PROVIDER_COMPLAINT_EVENT_TYPES,
+        unsubscribe_event_types=PROVIDER_UNSUBSCRIBE_EVENT_TYPES,
+    )
+    provider_history_policy = _build_provider_history_policy(
+        metrics=metrics,
+        sending_domain=sending_domain,
+    )
+    stop_policy = next((item for item in provider_history_policy if item.blocking), None)
+    if stop_policy is None:
+        return None, provider_history_policy
+
+    diagnostic_metric = (
+        "complaints"
+        if stop_policy.code == "provider_history_complaint_rate_stop"
+        else "hard bounces"
+    )
+    return (
+        GuardResult(
+            decision=SendDecision.BLOCKED,
+            reason=stop_policy.reason,
+            code=stop_policy.code,
+            severity=stop_policy.severity,
+            client_id=campaign.client_id,
+            campaign_id=campaign.id,
+            eligible_contact_count=guard_result.eligible_contact_count,
+            blocked_contact_count=guard_result.blocked_contact_count,
+            blocked_reasons=dict(guard_result.blocked_reasons or {}),
+            diagnostic=(
+                "Deliverability Guard blocked before listmonk because correlated "
+                f"provider {diagnostic_metric} exceeded policy for the sending domain."
+            ),
+            limit_source="provider_history",
+            sending_domain=sending_domain,
+        ),
+        provider_history_policy,
+    )
 
 
 @dataclass(frozen=True)
@@ -477,6 +637,7 @@ class AdminCampaignService:
             period_remaining=evaluation.limit_usage.period_remaining,
             period_started_at=evaluation.limit_usage.period_started_at,
             period_ends_at=evaluation.limit_usage.period_ends_at,
+            provider_history=evaluation.provider_history,
         )
 
     def get_campaign_contacts(self, campaign_id: str) -> AdminCampaignContactsResponse:
@@ -1000,6 +1161,7 @@ class AdminCampaignService:
             period_remaining=evaluation.limit_usage.period_remaining,
             period_started_at=evaluation.limit_usage.period_started_at,
             period_ends_at=evaluation.limit_usage.period_ends_at,
+            provider_history=evaluation.provider_history,
         )
 
     def _get_client(self, client_id: str) -> ClientRecord:
@@ -1387,11 +1549,12 @@ class AdminCampaignService:
             active_campaign_count=active_campaign_count,
             campaign_limit_usage=limit_context.usage,
         )
-        provider_history_warnings: list[str] = []
+        provider_history_policy: list[ProviderHistoryPolicySummary] = []
         if guard_result.allowed:
-            provider_history_result, provider_history_warnings = (
-                self._evaluate_provider_history_guard(
-                    provider=self._resolve_controlled_provider() or "",
+            provider_history_result, provider_history_policy = (
+                _evaluate_provider_history_policy(
+                    settings=self.settings,
+                    provider=_resolve_controlled_provider(self.settings) or "",
                     campaign=guard_campaign,
                     guard_result=guard_result,
                     provider_event_repository=self.provider_event_repository,
@@ -1419,7 +1582,11 @@ class AdminCampaignService:
             warnings.append(
                 'EMAIL_SENDING_ENABLED is not exactly "true"; real dispatch is disabled.'
             )
-        warnings.extend(provider_history_warnings)
+        warnings.extend(
+            item.reason
+            for item in provider_history_policy
+            if item.band == "review" and not item.blocking
+        )
 
         can_send_when_enabled = (
             content_ready
@@ -1439,6 +1606,7 @@ class AdminCampaignService:
             duplicate_guard=duplicate_guard,
             limit_record=limit_context.record,
             limit_usage=limit_context.usage,
+            provider_history=provider_history_policy,
         )
 
     def _build_guard_campaign(
@@ -1591,6 +1759,7 @@ class AdminCampaignService:
                     )
                 ),
             ),
+            provider_history=evaluation.provider_history,
         )
 
     def _build_campaign_logs_summary(
@@ -2789,84 +2958,15 @@ class CampaignDispatchService:
         guard_result: GuardResult,
         provider_event_repository: ProviderEventRepository | None,
         email_log_repository: EmailLogRepository,
-    ) -> tuple[GuardResult | None, list[str]]:
-        if provider != "listmonk" or provider_event_repository is None:
-            return None, []
-
-        sending_domain = get_configured_sending_domain(self.settings)
-        if sending_domain is None:
-            return None, []
-
-        if hasattr(provider_event_repository, "attach_email_log_records") and hasattr(
-            email_log_repository,
-            "_records",
-        ):
-            provider_event_repository.attach_email_log_records(email_log_repository._records)  # type: ignore[attr-defined]
-
-        metrics = provider_event_repository.get_domain_threshold_metrics(
-            sending_domain=sending_domain,
-            accepted_event_types=PROVIDER_ACCEPTED_EVENT_TYPES,
-            delivered_event_types=PROVIDER_DELIVERED_EVENT_TYPES,
-            hard_bounce_event_types=PROVIDER_HARD_BOUNCE_EVENT_TYPES,
-            complaint_event_types=PROVIDER_COMPLAINT_EVENT_TYPES,
-            unsubscribe_event_types=PROVIDER_UNSUBSCRIBE_EVENT_TYPES,
+    ) -> tuple[GuardResult | None, list[ProviderHistoryPolicySummary]]:
+        return _evaluate_provider_history_policy(
+            settings=self.settings,
+            provider=provider,
+            campaign=campaign,
+            guard_result=guard_result,
+            provider_event_repository=provider_event_repository,
+            email_log_repository=email_log_repository,
         )
-
-        complaint_rate = _rate(metrics.complaints, metrics.delivered)
-        if complaint_rate is not None and complaint_rate >= COMPLAINT_STOP_RATE:
-            return (
-                GuardResult(
-                    decision=SendDecision.BLOCKED,
-                    reason=(
-                        "Provider history complaint rate reached stop threshold "
-                        f"({_format_rate_percent(complaint_rate)}). "
-                        "Admin review is required before resuming dispatch."
-                    ),
-                    code="provider_history_complaint_rate_stop",
-                    severity="critical",
-                    client_id=campaign.client_id,
-                    campaign_id=campaign.id,
-                    eligible_contact_count=guard_result.eligible_contact_count,
-                    blocked_contact_count=guard_result.blocked_contact_count,
-                    blocked_reasons=dict(guard_result.blocked_reasons or {}),
-                    diagnostic=(
-                        "Deliverability Guard blocked before listmonk because correlated "
-                        "provider complaints exceeded policy for the sending domain."
-                    ),
-                    limit_source="provider_history",
-                    sending_domain=sending_domain,
-                ),
-                [],
-            )
-
-        hard_bounce_rate = _rate(metrics.hard_bounces, metrics.accepted_sends)
-        if hard_bounce_rate is not None and hard_bounce_rate >= HARD_BOUNCE_STOP_RATE:
-            return (
-                GuardResult(
-                    decision=SendDecision.BLOCKED,
-                    reason=(
-                        "Provider history hard bounce rate reached stop threshold "
-                        f"({_format_rate_percent(hard_bounce_rate)}). "
-                        "List-quality review is required before resuming dispatch."
-                    ),
-                    code="provider_history_hard_bounce_rate_stop",
-                    severity="critical",
-                    client_id=campaign.client_id,
-                    campaign_id=campaign.id,
-                    eligible_contact_count=guard_result.eligible_contact_count,
-                    blocked_contact_count=guard_result.blocked_contact_count,
-                    blocked_reasons=dict(guard_result.blocked_reasons or {}),
-                    diagnostic=(
-                        "Deliverability Guard blocked before listmonk because correlated "
-                        "provider hard bounces exceeded policy for the sending domain."
-                    ),
-                    limit_source="provider_history",
-                    sending_domain=sending_domain,
-                ),
-                [],
-            )
-
-        return None, _provider_history_warning_messages(metrics=metrics)
 
     def _mark_campaign_running(
         self,
@@ -2908,21 +3008,7 @@ class CampaignDispatchService:
         return next_campaign
 
     def _resolve_controlled_provider(self) -> str | None:
-        environment = self.settings.environment.strip().lower()
-        email_provider = self.settings.email_provider_normalized
-        allowed_environments = {"development", "staging", "test"}
-        allowed_providers = {"listmonk", "mailpit", "smtp_dev", "ses"}
-
-        if environment not in allowed_environments:
-            return None
-        if email_provider not in allowed_providers:
-            return None
-
-        if email_provider == "ses":
-            return "ses"
-        if email_provider == "listmonk":
-            return "listmonk"
-        return "mailpit"
+        return _resolve_controlled_provider(self.settings)
 
     def _evaluate_real_send_safety(
         self,

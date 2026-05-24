@@ -183,6 +183,7 @@ def add_processed_provider_event(
     contact_id: str,
     email_log_id: str,
     event_type: str,
+    event_key: str | None = None,
 ) -> None:
     now = datetime.now(timezone.utc)
     record, _created = repository.create_or_get_event(
@@ -193,12 +194,105 @@ def add_processed_provider_event(
         provider="mailgun",
         source="test",
         provider_event_id=f"{campaign_id}-{contact_id}-{event_type}",
-        event_key=f"{campaign_id}:{contact_id}:{event_type}",
+        event_key=event_key or f"{campaign_id}:{contact_id}:{event_type}",
         event_type=event_type,
         payload={},
         occurred_at=now,
     )
     repository.mark_processed(event_id=record.id, processed_at=now)
+
+
+def add_domain_history(
+    *,
+    email_log_repository: InMemoryEmailLogRepository,
+    provider_event_repository: InMemoryProviderEventRepository,
+    sending_domain: str = "send.mailerpro.it",
+    accepted_count: int,
+    delivered_count: int,
+    complaint_count: int = 0,
+    hard_bounce_count: int = 0,
+    unsubscribe_count: int = 0,
+) -> None:
+    logs = [
+        email_log_repository.create_email_log(
+            client_id="client_history",
+            campaign_id="campaign_history",
+            contact_id=f"history_contact_{index}",
+            status="sent",
+            sending_domain=sending_domain,
+            created_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+        )
+        for index in range(accepted_count)
+    ]
+    for index, log in enumerate(logs):
+        add_processed_provider_event(
+            provider_event_repository,
+            client_id="client_history",
+            campaign_id="campaign_history",
+            contact_id=f"history_contact_{index}",
+            email_log_id=log.id,
+            event_type="accepted",
+            event_key=f"{sending_domain}:accepted:{index}",
+        )
+    for index, log in enumerate(logs[:delivered_count]):
+        add_processed_provider_event(
+            provider_event_repository,
+            client_id="client_history",
+            campaign_id="campaign_history",
+            contact_id=f"history_delivered_{index}",
+            email_log_id=log.id,
+            event_type="delivered",
+            event_key=f"{sending_domain}:delivered:{index}",
+        )
+    offset = 0
+    for index, log in enumerate(logs[offset : offset + complaint_count]):
+        add_processed_provider_event(
+            provider_event_repository,
+            client_id="client_history",
+            campaign_id="campaign_history",
+            contact_id=f"history_complaint_{index}",
+            email_log_id=log.id,
+            event_type="complaint",
+            event_key=f"{sending_domain}:complaint:{index}",
+        )
+    offset += complaint_count
+    for index, log in enumerate(logs[offset : offset + hard_bounce_count]):
+        add_processed_provider_event(
+            provider_event_repository,
+            client_id="client_history",
+            campaign_id="campaign_history",
+            contact_id=f"history_bounce_{index}",
+            email_log_id=log.id,
+            event_type="hard_bounce",
+            event_key=f"{sending_domain}:hard_bounce:{index}",
+        )
+    offset += hard_bounce_count
+    for index, log in enumerate(logs[offset : offset + unsubscribe_count]):
+        add_processed_provider_event(
+            provider_event_repository,
+            client_id="client_history",
+            campaign_id="campaign_history",
+            contact_id=f"history_unsubscribe_{index}",
+            email_log_id=log.id,
+            event_type="unsubscribe",
+            event_key=f"{sending_domain}:unsubscribe:{index}",
+        )
+
+
+def build_ready_listmonk_settings(**overrides: Any) -> Settings:
+    values: dict[str, Any] = {
+        "email_sending_enabled_raw": "true",
+        "email_provider": "listmonk",
+        "environment": "staging",
+        "smtp_host": "smtp.mailgun.org",
+        "smtp_port": 587,
+        "smtp_username": "configured",
+        "smtp_password": "configured",
+        "smtp_tls_raw": "true",
+        "smtp_from_email": "sendwise@send.mailerpro.it",
+    }
+    values.update(overrides)
+    return Settings(**values)
 
 
 def to_client_campaign(campaign: CampaignRecord) -> ClientCampaignRecord:
@@ -1336,6 +1430,128 @@ def test_admin_review_keeps_real_send_disabled_warning_when_promoting_draft() ->
     assert result.warnings == [
         'EMAIL_SENDING_ENABLED is not exactly "true"; real dispatch is disabled.'
     ]
+
+
+def test_admin_review_exposes_provider_history_review_band() -> None:
+    repository = InMemoryCampaignRepository(
+        campaign_contacts={("client_123", "campaign_123", "contact_1")},
+    )
+    campaign = repository.add_campaign(
+        campaign_id="campaign_123",
+        client_id="client_123",
+        status="ready",
+        subject="Launch",
+        body_html="<p>Hello</p>",
+        body_text="Hello",
+        content_ready=True,
+        contacts_ready=True,
+    )
+    contact = build_contact(contact_id="contact_1", email="one@example.test")
+    email_logs = InMemoryEmailLogRepository()
+    provider_events = InMemoryProviderEventRepository()
+    add_domain_history(
+        email_log_repository=email_logs,
+        provider_event_repository=provider_events,
+        accepted_count=1000,
+        delivered_count=1000,
+        complaint_count=2,
+    )
+    service = build_admin_service(
+        settings=build_ready_listmonk_settings(),
+        campaign_repository=repository,
+        contacts=[contact],
+        campaign_contacts={("client_123", campaign.id, contact.id)},
+        email_log_repository=email_logs,
+        provider_event_repository=provider_events,
+    )
+
+    result = service.review_campaign(campaign.id)
+
+    assert result.review_ready is True
+    assert result.blocking_errors == []
+    assert len(result.provider_history) == 1
+    assert result.provider_history[0].code == "provider_history_complaint_rate_review"
+    assert result.provider_history[0].severity == "warning"
+    assert result.provider_history[0].metric == "complaint_rate"
+    assert result.provider_history[0].band == "review"
+    assert result.provider_history[0].blocking is False
+    assert result.provider_history[0].sending_domain == "send.mailerpro.it"
+    assert "review band" in result.warnings[0]
+
+
+def test_admin_review_exposes_provider_history_stop_band_as_blocking() -> None:
+    repository = InMemoryCampaignRepository(
+        campaign_contacts={("client_123", "campaign_123", "contact_1")},
+    )
+    campaign = repository.add_campaign(
+        campaign_id="campaign_123",
+        client_id="client_123",
+        status="ready",
+        subject="Launch",
+        body_html="<p>Hello</p>",
+        body_text="Hello",
+        content_ready=True,
+        contacts_ready=True,
+    )
+    contact = build_contact(contact_id="contact_1", email="one@example.test")
+    email_logs = InMemoryEmailLogRepository()
+    provider_events = InMemoryProviderEventRepository()
+    add_domain_history(
+        email_log_repository=email_logs,
+        provider_event_repository=provider_events,
+        accepted_count=1000,
+        delivered_count=1000,
+        complaint_count=3,
+    )
+    service = build_admin_service(
+        settings=build_ready_listmonk_settings(),
+        campaign_repository=repository,
+        contacts=[contact],
+        campaign_contacts={("client_123", campaign.id, contact.id)},
+        email_log_repository=email_logs,
+        provider_event_repository=provider_events,
+    )
+
+    result = service.review_campaign(campaign.id)
+
+    assert result.review_ready is False
+    assert result.provider_history[0].code == "provider_history_complaint_rate_stop"
+    assert result.provider_history[0].severity == "critical"
+    assert result.provider_history[0].band == "stop"
+    assert result.provider_history[0].blocking is True
+    assert result.provider_history[0].reason in result.blocking_errors
+    assert result.warnings == []
+
+
+def test_admin_summary_omits_provider_history_when_denominators_unavailable() -> None:
+    repository = InMemoryCampaignRepository(
+        campaign_contacts={("client_123", "campaign_123", "contact_1")},
+    )
+    campaign = repository.add_campaign(
+        campaign_id="campaign_123",
+        client_id="client_123",
+        status="ready",
+        subject="Launch",
+        body_html="<p>Hello</p>",
+        body_text="Hello",
+        content_ready=True,
+        contacts_ready=True,
+    )
+    contact = build_contact(contact_id="contact_1", email="one@example.test")
+    service = build_admin_service(
+        settings=build_ready_listmonk_settings(),
+        campaign_repository=repository,
+        contacts=[contact],
+        campaign_contacts={("client_123", campaign.id, contact.id)},
+        email_log_repository=InMemoryEmailLogRepository(),
+        provider_event_repository=InMemoryProviderEventRepository(),
+    )
+
+    result = service.get_campaign_summary(campaign.id)
+
+    assert result.policy_state is not None
+    assert result.policy_state.provider_history == []
+    assert result.warnings == []
 
 def test_admin_simulate_send_endpoint_uses_simulation_service() -> None:
     repository = InMemoryCampaignRepository(

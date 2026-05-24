@@ -3,6 +3,7 @@ import type {
   CampaignRecipientsSummary,
   CampaignStatus,
   CampaignSummaryItem,
+  ProviderHistoryPolicySummary,
   ProviderRuntimeSummary,
 } from "../../types";
 
@@ -147,6 +148,15 @@ export interface CampaignOperationalSendState {
   label: string;
   detail: string;
   variant: StatusBadgeVariant;
+}
+
+export interface ProviderHistoryPolicyUiMeta {
+  title: string;
+  detail: string;
+  badgeLabel: string;
+  badgeVariant: StatusBadgeVariant;
+  rateLabel: string | null;
+  domainLabel: string | null;
 }
 
 export function formatCampaignCount(value: number): string {
@@ -564,6 +574,74 @@ export function getCampaignLogStatItems(
         : "Non disponibili",
     },
   ];
+}
+
+function formatPolicyRate(rate?: number | null): string | null {
+  if (typeof rate !== "number") {
+    return null;
+  }
+
+  return `${(rate * 100).toLocaleString("it-IT", {
+    maximumFractionDigits: 2,
+    minimumFractionDigits: 2,
+  })}%`;
+}
+
+function getProviderHistoryMetricLabel(metric: string): string {
+  switch (metric) {
+    case "complaint_rate":
+      return "complaint rate elevato";
+    case "hard_bounce_rate":
+      return "hard bounce rate elevato";
+    case "unsubscribe_rate":
+      return "unsubscribe rate da revisionare";
+    default:
+      return "metriche provider disponibili";
+  }
+}
+
+export function isProviderHistoryPolicyActive(
+  item: ProviderHistoryPolicySummary,
+): boolean {
+  return item.band !== "clear" || item.severity !== "info";
+}
+
+export function getProviderHistoryPolicyUiMeta(
+  item: ProviderHistoryPolicySummary,
+): ProviderHistoryPolicyUiMeta {
+  const rateLabel = formatPolicyRate(item.rate);
+  const domainLabel = item.sendingDomain ? `Dominio: ${item.sendingDomain}` : null;
+
+  if (item.blocking || item.band === "stop" || item.severity === "critical") {
+    return {
+      title: "Blocco deliverability provider",
+      detail: `${getProviderHistoryMetricLabel(item.metric)}: soglia stop raggiunta. Invio non consentito.`,
+      badgeLabel: "Blocco",
+      badgeVariant: "danger",
+      rateLabel,
+      domainLabel,
+    };
+  }
+
+  if (item.band === "review" || item.severity === "warning") {
+    return {
+      title: "Attenzione deliverability provider",
+      detail: `${getProviderHistoryMetricLabel(item.metric)}. Review richiesta; invio non automaticamente bloccato salvo blocco backend.`,
+      badgeLabel: "Attenzione",
+      badgeVariant: "warning",
+      rateLabel,
+      domainLabel,
+    };
+  }
+
+  return {
+    title: "Informazione provider",
+    detail: "Metriche provider disponibili ma nessun rischio attivo.",
+    badgeLabel: "Informazione",
+    badgeVariant: "neutral",
+    rateLabel: null,
+    domainLabel,
+  };
 }
 
 export function isDuplicateDispatchCode(code: string): boolean {

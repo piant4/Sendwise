@@ -453,6 +453,7 @@ export interface AdminCampaignReviewResult {
   periodRemaining?: number | null;
   periodStartedAt?: string | null;
   periodEndsAt?: string | null;
+  providerHistory: ProviderHistoryPolicySummary[];
 }
 
 export interface AdminCampaignDetail {
@@ -559,10 +560,22 @@ export interface CampaignPolicyStatusSummary {
   reason: string;
 }
 
+export interface ProviderHistoryPolicySummary {
+  code: string;
+  severity: string;
+  reason: string;
+  metric: string;
+  rate?: number | null;
+  band: string;
+  sendingDomain?: string | null;
+  blocking: boolean;
+}
+
 export interface CampaignPolicyStateSummary {
   deliverabilityGuard: CampaignPolicyStatusSummary;
   duplicateGuard: CampaignPolicyStatusSummary;
   warmupGuard: CampaignPolicyStatusSummary;
+  providerHistory: ProviderHistoryPolicySummary[];
   scoreProductsAvailable: boolean;
   domainHealthScoreAvailable: boolean;
   contactQualityScoreAvailable: boolean;

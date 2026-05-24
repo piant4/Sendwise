@@ -14,6 +14,7 @@ import {
   getCampaignStatusLabel,
   getCampaignStatusVariant,
   getCampaignStepLabel,
+  getProviderHistoryPolicyUiMeta,
   getProviderEventsDetail,
   getProviderEventsLabel,
   getReadableBackendReason,
@@ -271,6 +272,7 @@ export function AdminCampaignDetailView({
             .map(getReadableBackendReason),
         )
       : [];
+  const providerHistoryPolicy = summary?.policyState?.providerHistory ?? [];
   const operationalSummary = getOperationalSummary(summary, campaign);
   const recipientSummary = summary
     ? `${formatCampaignCount(summary.recipients.total)} totali · ${formatCampaignCount(summary.recipients.eligible)} idonei · ${formatCampaignCount(summary.recipients.blocked)} bloccati`
@@ -517,6 +519,38 @@ export function AdminCampaignDetailView({
                   <li key={`${reason.raw}-${reason.label}`}>{reason.label}</li>
                 ))}
               </ul>
+            </div>
+          ) : null}
+
+          {providerHistoryPolicy.length > 0 ? (
+            <div className="campaign-detail-notes" style={{ marginTop: 16 }}>
+              <strong style={{ color: "#0f172a" }}>Deliverability provider</strong>
+              <div style={{ display: "grid", gap: 10, marginTop: 10 }}>
+                {providerHistoryPolicy.map((item) => {
+                  const meta = getProviderHistoryPolicyUiMeta(item);
+
+                  return (
+                    <article
+                      key={`${item.code}-${item.metric}-${item.band}`}
+                      className="campaign-callout"
+                      style={{ minHeight: 0 }}
+                    >
+                      <div className="campaign-review-checklist__header">
+                        <strong className="campaign-review-checklist__title">
+                          {meta.title}
+                        </strong>
+                        <StatusBadge label={meta.badgeLabel} variant={meta.badgeVariant} />
+                      </div>
+                      <p className="campaign-review-checklist__reason">{meta.detail}</p>
+                      {meta.rateLabel || meta.domainLabel ? (
+                        <p className="admin-record-row__note" style={{ margin: 0 }}>
+                          {[meta.rateLabel, meta.domainLabel].filter(Boolean).join(" · ")}
+                        </p>
+                      ) : null}
+                    </article>
+                  );
+                })}
+              </div>
             </div>
           ) : null}
 

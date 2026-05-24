@@ -5,6 +5,7 @@ import type {
   AdminCampaignReadinessSummary,
 } from "../../types";
 import {
+  getProviderHistoryPolicyUiMeta,
   getReadableBackendReason,
   isInternalCampaignDraftSubject,
   normalizeCampaignWizardStep,
@@ -71,6 +72,9 @@ function buildSteps(
   const topWarningReason = summary?.warnings[0]
     ? getReadableBackendReason(summary.warnings[0]).label
     : null;
+  const topProviderHistory = summary?.policyState?.providerHistory[0]
+    ? getProviderHistoryPolicyUiMeta(summary.policyState.providerHistory[0]).detail
+    : null;
 
   return [
     {
@@ -133,7 +137,7 @@ function buildSteps(
           : "not-ready",
       reason: campaign.reviewReady
         ? "Review completata"
-        : topBlockingReason ?? topWarningReason ?? "Esegui la review finale",
+        : topBlockingReason ?? topProviderHistory ?? topWarningReason ?? "Esegui la review finale",
     },
     {
       id: "send",
@@ -150,7 +154,7 @@ function buildSteps(
           ? "Pronta all'invio"
           : summary?.canSendWhenEnabled
             ? "Invio reale disattivato"
-            : topBlockingReason ?? "Risolvi invio reale",
+            : topBlockingReason ?? topProviderHistory ?? "Risolvi invio reale",
     },
   ];
 }

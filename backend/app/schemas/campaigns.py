@@ -122,6 +122,17 @@ class AdminCampaignSlotAssignmentResponse(BaseModel):
     review_ready: bool
 
 
+class ProviderHistoryPolicySummary(BaseModel):
+    code: str
+    severity: str
+    reason: str
+    metric: str
+    rate: Optional[float] = None
+    band: str
+    sending_domain: Optional[str] = None
+    blocking: bool = False
+
+
 class AdminCampaignReviewResponse(BaseModel):
     campaign_id: str
     client_id: str
@@ -147,6 +158,7 @@ class AdminCampaignReviewResponse(BaseModel):
     period_remaining: Optional[int] = None
     period_started_at: Optional[datetime] = None
     period_ends_at: Optional[datetime] = None
+    provider_history: list[ProviderHistoryPolicySummary] = Field(default_factory=list)
 
 
 class AdminCampaignContactPayload(BaseModel):
@@ -315,6 +327,7 @@ class CampaignPolicyStateSummary(BaseModel):
     deliverability_guard: CampaignPolicyStatusSummary
     duplicate_guard: CampaignPolicyStatusSummary
     warmup_guard: CampaignPolicyStatusSummary
+    provider_history: list[ProviderHistoryPolicySummary] = Field(default_factory=list)
     score_products_available: bool = False
     domain_health_score_available: bool = False
     contact_quality_score_available: bool = False

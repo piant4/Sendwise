@@ -10,24 +10,24 @@ const variantStyles: Record<
   { background: string; borderColor: string; color: string }
 > = {
   neutral: {
-    background: "rgba(248, 250, 252, 0.96)",
-    borderColor: "rgba(148, 163, 184, 0.28)",
-    color: "#334155",
+    background: "var(--sw-badge-neutral-bg)",
+    borderColor: "var(--sw-badge-neutral-border)",
+    color: "var(--sw-badge-neutral-text)",
   },
   success: {
-    background: "#eef6ff",
-    borderColor: "#bfdbfe",
-    color: "#1d4ed8",
+    background: "var(--sw-badge-success-bg)",
+    borderColor: "var(--sw-badge-success-border)",
+    color: "var(--sw-badge-success-text)",
   },
   warning: {
-    background: "#fffaeb",
-    borderColor: "#fedf89",
-    color: "#b54708",
+    background: "var(--sw-badge-warning-bg)",
+    borderColor: "var(--sw-badge-warning-border)",
+    color: "var(--sw-badge-warning-text)",
   },
   danger: {
-    background: "#fef3f2",
-    borderColor: "#fecdca",
-    color: "#b42318",
+    background: "var(--sw-badge-danger-bg)",
+    borderColor: "var(--sw-badge-danger-border)",
+    color: "var(--sw-badge-danger-text)",
   },
 };
 

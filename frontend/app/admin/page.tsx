@@ -67,7 +67,6 @@ function AdminDashboardContent({ summary }: { summary: AdminOverviewSummary }) {
     summary.system.emailProvider === "ses"
       ? "AWS non ha ancora approvato l'accesso production di SES. Mantieni Sendwise in QA sandbox e considera bloccato l'invio verso destinatari reali di produzione."
       : null;
-  const smtpRelayFallbackNotice = summary.system.providerModeLabel.includes("SMTP relay");
   const providerEventsState = summary.system.providerEventsAvailable
     ? {
         label: "Disponibili",
@@ -169,7 +168,7 @@ function AdminDashboardContent({ summary }: { summary: AdminOverviewSummary }) {
             <div className="admin-clients-card__intro">
               <div>
                 <p className="admin-surface__eyebrow">Eventi Mailgun</p>
-                <h2 className="admin-clients-card__title" style={{ color: "var(--sw-olive)", marginTop: 0 }}>
+                <h2 className="admin-clients-card__title admin-overview__section-title">
                   Disponibilita metriche
                 </h2>
               </div>
@@ -197,7 +196,7 @@ function AdminDashboardContent({ summary }: { summary: AdminOverviewSummary }) {
             <div className="admin-clients-card__intro">
               <div>
                 <p className="admin-surface__eyebrow">Clienti</p>
-                <h2 className="admin-clients-card__title" style={{ color: "var(--sw-olive)", marginTop: 0 }}>
+                <h2 className="admin-clients-card__title admin-overview__section-title">
                   Clienti da seguire
                 </h2>
               </div>
@@ -229,7 +228,7 @@ function AdminDashboardContent({ summary }: { summary: AdminOverviewSummary }) {
             <div className="admin-clients-card__intro">
               <div>
                 <p className="admin-surface__eyebrow">Campagne</p>
-                <h2 className="admin-clients-card__title" style={{ color: "var(--sw-olive)", marginTop: 0 }}>
+                <h2 className="admin-clients-card__title admin-overview__section-title">
                   Attivita recente
                 </h2>
               </div>
@@ -246,12 +245,11 @@ function AdminDashboardContent({ summary }: { summary: AdminOverviewSummary }) {
                   <Link
                     key={campaign.id}
                     href={`/admin/campaigns/${campaign.id}`}
-                    className="admin-overview__list-item"
-                    style={{ color: "inherit", textDecoration: "none" }}
+                    className="admin-overview__list-item admin-overview__list-link"
                   >
                     <div style={{ alignItems: "start", display: "flex", gap: 10, justifyContent: "space-between" }}>
                       <div style={{ display: "grid", gap: 4 }}>
-                        <strong style={{ color: "var(--sw-olive)" }}>{campaign.campaignName}</strong>
+                        <strong className="admin-overview__item-title">{campaign.campaignName}</strong>
                         <span className="admin-record-row__note">
                           {campaign.clientName} / {campaign.clientEmail}
                         </span>
@@ -283,7 +281,7 @@ function AdminDashboardContent({ summary }: { summary: AdminOverviewSummary }) {
               <div className="admin-clients-card__intro">
                 <div>
                   <p className="admin-surface__eyebrow">Blocchi</p>
-                  <h2 className="admin-clients-card__title" style={{ color: "var(--sw-olive)", marginTop: 0 }}>
+                  <h2 className="admin-clients-card__title admin-overview__section-title">
                     Invii bloccati recenti
                   </h2>
                 </div>
@@ -295,7 +293,7 @@ function AdminDashboardContent({ summary }: { summary: AdminOverviewSummary }) {
                 <div className="admin-overview__list">
                   {summary.blocks.recentCriticalEvents.slice(0, 4).map((event) => (
                     <div key={event.id} className="admin-overview__list-item">
-                      <strong style={{ color: "var(--sw-olive)" }}>
+                      <strong className="admin-overview__item-title">
                         {event.campaignName || "Campagna non disponibile"}
                       </strong>
                       <span className="admin-record-row__note">
@@ -314,7 +312,7 @@ function AdminDashboardContent({ summary }: { summary: AdminOverviewSummary }) {
               <div className="admin-clients-card__intro">
                 <div>
                   <p className="admin-surface__eyebrow">Capacita</p>
-                  <h2 className="admin-clients-card__title" style={{ color: "var(--sw-olive)", marginTop: 0 }}>
+                  <h2 className="admin-clients-card__title admin-overview__section-title">
                     Clienti vicini al limite
                   </h2>
                 </div>
@@ -326,7 +324,7 @@ function AdminDashboardContent({ summary }: { summary: AdminOverviewSummary }) {
                 <div className="admin-overview__list">
                   {summary.limits.clientsNearLimit.slice(0, 4).map((client) => (
                     <div key={client.clientId} className="admin-overview__list-item">
-                      <strong style={{ color: "var(--sw-olive)" }}>{client.clientName}</strong>
+                      <strong className="admin-overview__item-title">{client.clientName}</strong>
                       <span className="admin-record-row__note">{client.clientEmail}</span>
                       <span className="admin-record-row__note">
                         {getLimitLabel(client)} / occupazione {(client.usageRatio * 100).toFixed(0)}%
@@ -343,7 +341,7 @@ function AdminDashboardContent({ summary }: { summary: AdminOverviewSummary }) {
           <section className="admin-overview__notice">
             <div style={{ alignItems: "center", display: "flex", gap: 10 }}>
               <AlertTriangle aria-hidden="true" color="#b45309" size={18} />
-              <strong style={{ color: "var(--sw-olive)" }}>Metriche provider non ancora confermabili</strong>
+              <strong className="admin-overview__item-title">Metriche provider non ancora confermabili</strong>
             </div>
             <p className="admin-record-row__note">
               La dashboard non mostra zero fittizi per delivered, opened o clicked quando la sorgente eventi non esiste ancora.

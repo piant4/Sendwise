@@ -42,13 +42,13 @@ export function ThemePreferenceSelector() {
 
       <div className="settings-section__body">
         <div className="theme-preference">
-          <div className="theme-preference__status">
+          {/* <div className="theme-preference__status">
             <span className="theme-preference__eyebrow">Preferenza attiva</span>
             <strong className="theme-preference__value">{selectedOption?.label}</strong>
             <p className="theme-preference__description">
               Tema visibile: {resolvedTheme === "dark" ? "Dark" : "Light"}.
             </p>
-          </div>
+          </div> */}
 
           <div
             className="theme-preference__options"

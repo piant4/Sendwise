@@ -461,12 +461,14 @@ Provider-event semantics:
 - `sent` means the backend successfully started the Listmonk campaign or received an equivalent provider acceptance signal; it does not mean inbox delivery.
 - For the current Listmonk SMTP relay path, `provider_message_id` is expected to stay empty because the Listmonk campaign-start response does not expose stable per-recipient Mailgun message IDs.
 - Listmonk SMTP campaign payloads must not rely on custom Sendwise `List-Unsubscribe` or templated `sendwise_contact_id` headers; Listmonk does not render recipient attributes inside custom header values.
-- Before the next controlled resend, deploy code that keeps only static Mailgun `sendwise_client_id` and `sendwise_campaign_id` variables, then configure a restricted public `/subscription/*` route, approved public `app.root_url`, and `privacy.unsubscribe_header=true` for native Listmonk one-click unsubscribe.
+- The controlled native Listmonk one-click path has been verified with a restricted public `subscription.mailerpro.it` `/subscription/*` route, public HTTPS native `List-Unsubscribe`, `List-Unsubscribe-Post: List-Unsubscribe=One-Click`, DKIM coverage for both unsubscribe headers, retained visible Sendwise body unsubscribe, no localhost unsubscribe/body link, and no extra Listmonk footer.
+- Native unsubscribe reconciliation must stay no-dispatch and idempotent: the verified controlled campaign changed Sendwise suppression count `2 -> 3 -> 3` across first reconciliation and replay, while email-log count remained `1`, provider-event count remained `2`, and campaign Listmonk mapping count remained `2`.
 - `delivered`, `opened`, `clicked`, `bounced`, `complained`, and `unsubscribed` must come only from processed provider or unsubscribe events.
 - If provider events are missing, those metrics must stay unavailable rather than being inferred from recipient totals or send attempts.
 - Mailgun suppression side effects are destructive and must be verified only with synthetic local/unit payloads or already-observed safe records. Do not create live complaint, unsubscribe, bounce, rejection, or failure events against the production Mailgun domain.
 - Only correlated Mailgun complaint, unsubscribe, and permanent-failure hard-bounce events may create suppression. Soft bounce, generic delivery failure, rejected, accepted, delivered, opened, clicked, and unmatched events must not suppress.
 - Safe VPS verification, if needed, is read-only: confirm provider-event rows are correlated and processed, confirm suppression rows exist only for already legitimate negative events, and do not insert suppression rows by hand to simulate success.
+- Non-blocking deliverability hardening follow-up: audit the delivered `Message-Id` domain, which still used a localhost-style domain during final native one-click verification.
 
 ## Restore Safety
 

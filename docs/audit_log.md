@@ -1,5 +1,32 @@
 # Audit Log
 
+## Milestone 19.6-CLOSE - Final Native One-Click Verification And V1 Deliverability Closure
+
+Date: 2026-05-25
+Branch: main
+
+Runtime verification recorded:
+- FIX2A Mailgun correlation restoration is confirmed on controlled campaign `aec2fd13-1017-45e1-927b-ba596ae069cc`: the email log reached `delivered`, and Mailgun `accepted` plus `delivered` events were correlated and processed with populated client, campaign, contact, and email-log references.
+- The delivered message included native Listmonk one-click unsubscribe headers: `List-Unsubscribe` was present with a public HTTPS `subscription.mailerpro.it` URL, `List-Unsubscribe-Post: List-Unsubscribe=One-Click` was present, and DKIM covered both unsubscribe headers.
+- The visible Sendwise body unsubscribe remained present, no localhost unsubscribe or body link was present, and no extra Listmonk footer was added.
+- One controlled native RFC 8058 POST returned HTTP 200, and Listmonk subscription membership became `unsubscribed`.
+- Before Sendwise reconciliation, the Sendwise suppression count remained at baseline `2`.
+- The admin no-dispatch reconciliation endpoint was invoked twice for the controlled campaign: the first HTTP 200 response found the native unsubscribe and applied suppression; the replay HTTP 200 response found the native unsubscribe and did not apply a second suppression.
+- Exact-once evidence: suppression count changed `2 -> 3 -> 3`, email-log count remained `1`, provider-event count remained `2`, and campaign Listmonk mapping count remained `2`.
+
+Closure confirmation:
+- No additional real send, negative provider event, schema or migration change, secret exposure, or public Listmonk API/admin exposure occurred during final reconciliation verification.
+- No recipient addresses, unsubscribe URLs or tokens, full headers, raw payloads, credentials, auth data, or sensitive values are recorded here.
+- Non-blocking follow-up: the delivered `Message-Id` still uses a localhost-style domain and should be audited in a separate deliverability hardening milestone.
+- Deliverability Guard V1 is ready for the documented controlled low-volume posture with native one-click unsubscribe, exact-once suppression reconciliation, Mailgun correlation, provider-backed analytics, and the existing backend guardrails verified for this path.
+
+Checks executed for this documentation closure:
+- `git diff --check`
+- `bash scripts/audit.sh`
+- `bash scripts/smoke_test.sh`
+- Changed-file scope check confirmed documentation-only changes.
+- Added-line sensitivity check confirmed no recipient addresses, unsubscribe URLs or tokens, full headers, raw payloads, credentials, or auth data were introduced.
+
 ## Milestone 19.6-FIX2C-VALIDATION - Safe Loopback Listmonk Audit Boundary
 
 Date: 2026-05-25

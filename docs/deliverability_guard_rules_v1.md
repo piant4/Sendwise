@@ -293,13 +293,15 @@ Do not show:
 
 - Backend-owned campaign preparation and send gating.
 - Controlled Listmonk to Mailgun sending path.
-- Listmonk campaign payload composition no longer uses Sendwise custom one-click unsubscribe headers; native Listmonk one-click unsubscribe is the intended V1 path after public runtime routing is approved and verified.
+- Listmonk campaign payload composition no longer uses Sendwise custom one-click unsubscribe headers; native Listmonk one-click unsubscribe is the verified V1 path through public HTTPS `subscription.mailerpro.it` headers, with visible Sendwise body unsubscribe retained.
 - Mailgun correlation for Listmonk SMTP sends uses static campaign/client variables plus tenant-validated recipient fallback, not templated recipient IDs in custom headers.
+- Native Listmonk one-click reconciliation is verified exact-once for the controlled campaign path: a first no-dispatch reconciliation applied one Sendwise suppression and replay applied no second suppression.
 - Domain-scoped warmup attribution.
 - Mailgun webhook analytics boundary.
 - Suppression and unsubscribe handling boundaries.
 - Client dashboard metrics constrained by backend/provider data availability.
 - Guard blocking concepts for risky sends and readiness failures.
+- V1 runtime closure has verified correlated Mailgun `accepted` and `delivered` events, native one-click headers, RFC 8058 HTTP 200 unsubscribe handling, Listmonk membership becoming `unsubscribed`, and Sendwise suppression reconciliation without additional sends, negative provider events, schema changes, secret exposure, or public Listmonk API/admin exposure.
 
 ### Next
 
@@ -309,6 +311,7 @@ Do not show:
 - Add provider-event freshness checks before showing delivery analytics.
 - Add campaign risk scoring for list quality, content lint, and recent domain health.
 - Add admin-visible remediation steps for blocked sends.
+- Audit delivered `Message-Id` domain alignment; final native one-click verification still observed a localhost-style domain there.
 
 ### V2
 

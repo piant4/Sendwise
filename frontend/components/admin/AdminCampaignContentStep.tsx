@@ -744,7 +744,7 @@ export function AdminCampaignContentStep({
       <div className="admin-clients-card__intro">
         <div>
           <p className="admin-surface__eyebrow">{mode === "template" ? "Step 2" : "Step 3"}</p>
-          <h2 className="admin-clients-card__title" style={{ color: "#0f172a" }}>
+          <h2 className="admin-clients-card__title" style={{ color: "var(--sw-olive)" }}>
             {mode === "template" ? "Selezione template" : "Editor email"}
           </h2>
           {mode === "editor" ? (
@@ -903,8 +903,8 @@ export function AdminCampaignContentStep({
               </div>
               <div
                 style={{
-                  background: "rgba(248, 250, 252, 0.96)",
-                  border: "1px solid rgba(148, 163, 184, 0.2)",
+                  background: "var(--sw-surface-elevated)",
+                  border: "1px solid var(--sw-border)",
                   borderRadius: 20,
                   display: "grid",
                   gap: 14,
@@ -1021,8 +1021,8 @@ export function AdminCampaignContentStep({
                     className="campaign-variable-helper"
                     aria-label="Variabili supportate"
                     style={{
-                      background: "rgba(255, 255, 255, 0.88)",
-                      border: "1px solid rgba(148, 163, 184, 0.18)",
+                      background: "var(--sw-surface-strong)",
+                      border: "1px solid var(--sw-border)",
                       borderRadius: 16,
                       padding: 14,
                     }}

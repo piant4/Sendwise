@@ -142,7 +142,7 @@ export function AdminCampaignSetupForm({
       <div className="admin-clients-card__intro">
         <div>
           <p className="admin-surface__eyebrow">Step 1</p>
-          <h2 className="admin-clients-card__title" style={{ color: "#0f172a" }}>
+          <h2 className="admin-clients-card__title" style={{ color: "var(--sw-olive)" }}>
             Setup base
           </h2>
           <p className="admin-clients-card__description">
@@ -181,7 +181,7 @@ export function AdminCampaignSetupForm({
               className="campaign-callout"
             >
               <span className="admin-record-row__note">{label}</span>
-              <strong style={{ color: "#0f172a" }}>{value}</strong>
+              <strong style={{ color: "var(--sw-olive)" }}>{value}</strong>
             </article>
           ))}
         </div>
@@ -271,7 +271,7 @@ export function AdminCampaignSetupForm({
           ].map(([label, value]) => (
             <article key={label} className="campaign-callout">
               <span className="admin-record-row__note">{label}</span>
-              <strong style={{ color: "#0f172a" }}>{value}</strong>
+              <strong style={{ color: "var(--sw-olive)" }}>{value}</strong>
             </article>
           ))}
         </div>

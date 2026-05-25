@@ -39,6 +39,58 @@
   );
   --sw-campaign-shadow: 0 20px 54px rgba(37, 99, 235, 0.12);
   --sw-campaign-ring: rgba(37, 99, 235, 0.18);
+  --sw-surface-elevated: rgba(248, 250, 252, 0.96);
+  --sw-surface-strong: rgba(255, 255, 255, 0.9);
+  --sw-accent-soft: rgba(239, 246, 255, 0.96);
+  --sw-accent-border-strong: rgba(96, 165, 250, 0.22);
+  --sw-warning-surface: rgba(255, 247, 237, 0.96);
+  --sw-warning-border: rgba(251, 146, 60, 0.22);
+  --sw-danger-surface: rgba(244, 225, 223, 0.92);
+  --sw-danger-border: rgba(166, 70, 63, 0.2);
+}
+
+.dark {
+  color-scheme: dark;
+  --sw-pale-mint: #13243f;
+  --sw-aqua: #8fd7ff;
+  --sw-primary: #60a5fa;
+  --sw-primary-hover: #93c5fd;
+  --sw-olive: #e2e8f0;
+  --sw-background: #08111f;
+  --sw-surface: #0f1a2b;
+  --sw-surface-mint: #12223a;
+  --sw-border: #22304a;
+  --sw-border-strong: #30415e;
+  --sw-bg-soft: #101a2c;
+  --sw-text: #e2e8f0;
+  --sw-text-muted: #9fb0c9;
+  --sw-text-faint: #6f84a5;
+  --sw-success: #34d399;
+  --sw-success-bg: rgba(19, 78, 74, 0.42);
+  --sw-warning: #fbbf24;
+  --sw-warning-bg: rgba(120, 71, 14, 0.34);
+  --sw-danger: #fda4af;
+  --sw-danger-bg: rgba(127, 29, 29, 0.34);
+  --sw-info-bg: rgba(30, 64, 175, 0.26);
+  --sw-campaign-accent: #60a5fa;
+  --sw-campaign-accent-strong: #93c5fd;
+  --sw-campaign-accent-soft: rgba(30, 64, 175, 0.26);
+  --sw-campaign-accent-border: rgba(96, 165, 250, 0.22);
+  --sw-campaign-surface: linear-gradient(
+    180deg,
+    rgba(15, 23, 42, 0.96),
+    rgba(19, 35, 59, 0.94)
+  );
+  --sw-campaign-shadow: 0 24px 60px rgba(2, 6, 23, 0.42);
+  --sw-campaign-ring: rgba(96, 165, 250, 0.18);
+  --sw-surface-elevated: rgba(20, 31, 48, 0.94);
+  --sw-surface-strong: rgba(11, 18, 31, 0.92);
+  --sw-accent-soft: rgba(30, 64, 175, 0.24);
+  --sw-accent-border-strong: rgba(96, 165, 250, 0.24);
+  --sw-warning-surface: rgba(120, 71, 14, 0.3);
+  --sw-warning-border: rgba(245, 158, 11, 0.24);
+  --sw-danger-surface: rgba(127, 29, 29, 0.3);
+  --sw-danger-border: rgba(248, 113, 113, 0.24);
 }
 
 * {
@@ -72,6 +124,16 @@ body {
   min-height: 100vh;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
+}
+
+.dark body {
+  background-image:
+    radial-gradient(
+      circle at top left,
+      rgba(56, 189, 248, 0.16),
+      transparent 22rem
+    ),
+    linear-gradient(180deg, rgba(30, 41, 59, 0.42), transparent 18rem);
 }
 
 a {
@@ -5472,6 +5534,13 @@ p {
   gap: 4px;
 }
 
+.settings-header__description {
+  color: var(--sw-text-muted);
+  font-size: 0.92rem;
+  line-height: 1.75;
+  margin: 0;
+}
+
 .settings-header__copy h1 {
   color: var(--sw-olive);
   font-family: "Fraunces", "Iowan Old Style", Georgia, serif;
@@ -5484,6 +5553,108 @@ p {
 
 .settings-sections {
   gap: 14px;
+}
+
+.theme-preference,
+.theme-preference__status,
+.theme-preference__options,
+.theme-preference__option,
+.theme-preference__option-copy {
+  display: grid;
+}
+
+.theme-preference {
+  gap: 14px;
+}
+
+.theme-preference__status {
+  gap: 4px;
+}
+
+.theme-preference__eyebrow {
+  color: var(--sw-text-faint);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.theme-preference__value {
+  color: var(--sw-olive);
+  font-size: 1rem;
+}
+
+.theme-preference__description {
+  color: var(--sw-text-muted);
+  font-size: 0.88rem;
+  line-height: 1.5;
+  margin: 0;
+}
+
+.theme-preference__options {
+  gap: 10px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.theme-preference__option {
+  align-items: start;
+  background: var(--sw-surface-elevated);
+  border: 1px solid rgba(203, 213, 225, 0.82);
+  border-radius: 16px;
+  gap: 12px;
+  grid-template-columns: auto minmax(0, 1fr);
+  padding: 14px;
+  text-align: left;
+  transition:
+    transform 0.15s ease,
+    border-color 0.15s ease,
+    background-color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.theme-preference__option:hover,
+.theme-preference__option:focus-visible {
+  border-color: rgba(37, 99, 235, 0.24);
+  box-shadow: 0 12px 24px rgba(15, 23, 42, 0.08);
+  outline: none;
+  transform: translateY(-1px);
+}
+
+.theme-preference__option[data-active="true"] {
+  background: linear-gradient(
+    180deg,
+    rgba(239, 246, 255, 0.98),
+    rgba(219, 234, 254, 0.92)
+  );
+  border-color: rgba(96, 165, 250, 0.32);
+  box-shadow: 0 18px 36px rgba(37, 99, 235, 0.12);
+}
+
+.theme-preference__option-icon {
+  align-items: center;
+  background: rgba(255, 255, 255, 0.94);
+  border-radius: 12px;
+  color: var(--sw-primary);
+  display: inline-flex;
+  height: 38px;
+  justify-content: center;
+  width: 38px;
+}
+
+.theme-preference__option-copy {
+  gap: 4px;
+}
+
+.theme-preference__option-copy strong {
+  color: var(--sw-olive);
+  font-size: 0.9rem;
+  line-height: 1.25;
+}
+
+.theme-preference__option-copy span {
+  color: var(--sw-text-muted);
+  font-size: 0.82rem;
+  line-height: 1.45;
 }
 
 .settings-section {
@@ -6567,6 +6738,340 @@ p {
   }
 }
 
+.dark .public-card,
+.dark .sidebar-account-panel,
+.dark .admin-topbar-action--secondary[data-slot="button"],
+.dark .campaign-action--secondary[data-slot="button"],
+.dark .campaign-record-link__open,
+.dark .settings-back,
+.dark .settings-row__action,
+.dark .invite-modal,
+.dark .access-state-card,
+.dark .onboarding-card {
+  background: var(--sw-surface-elevated);
+  border-color: var(--sw-border);
+  color: var(--sw-text);
+}
+
+.dark .public-card,
+.dark .admin-hero,
+.dark .admin-surface,
+.dark .admin-kpi-card,
+.dark .client-dashboard-hero,
+.dark .client-kpi-card,
+.dark .client-surface,
+.dark .campaign-panel,
+.dark .campaign-panel--subtle,
+.dark .settings-shell,
+.dark .settings-section,
+.dark .access-state-card,
+.dark .invite-modal,
+.dark .onboarding-card {
+  box-shadow: 0 24px 64px rgba(2, 6, 23, 0.34);
+}
+
+.dark .app-sidebar,
+.dark .topbar,
+.dark .mobile-nav-sheet,
+.dark .mobile-nav-account {
+  background: rgba(8, 17, 31, 0.82);
+  border-color: var(--sw-border);
+}
+
+.dark .main-nav__link[data-active="true"],
+.dark .main-nav__link:hover,
+.dark .theme-preference__option[data-active="true"],
+.dark .campaign-editor-toggle,
+.dark .campaign-editor-toolbar__chip,
+.dark .account-clerk-shell__helper,
+.dark .account-sheet__helper {
+  background: var(--sw-accent-soft);
+  border-color: var(--sw-accent-border-strong);
+}
+
+.dark .main-nav__link[data-active="true"],
+.dark .main-nav__link:hover,
+.dark .campaign-editor-toolbar__chip,
+.dark .campaign-review-checklist__badge,
+.dark .campaign-editor-toggle__button[data-active="true"] {
+  color: var(--sw-text);
+}
+
+.dark .brand-mark,
+.dark .brand-mark__symbol,
+.dark .admin-hero__title,
+.dark .admin-surface__title,
+.dark .admin-row__title,
+.dark .admin-kpi-card__value,
+.dark .admin-hero__summary-item strong,
+.dark .admin-metric-item strong,
+.dark .admin-row__stat,
+.dark .campaign-page-header,
+.dark .campaign-review-overview__item strong,
+.dark .campaign-review-checklist__title,
+.dark .campaign-review-checklist__action span,
+.dark .campaign-dispatch-result__stat strong,
+.dark .campaign-detail-metrics__item strong,
+.dark .campaign-provider-metrics__item strong,
+.dark .campaign-record-link__title,
+.dark .campaign-contact-manual-action__title,
+.dark .campaign-contact-section__title,
+.dark .campaign-contact-upload__label,
+.dark .campaign-contact-import-summary__stats,
+.dark .campaign-field__label,
+.dark .campaign-variable-helper__title,
+.dark .campaign-variable-chip code,
+.dark .campaign-input,
+.dark .campaign-select,
+.dark .campaign-textarea,
+.dark .campaign-editor-pane__header strong,
+.dark .settings-header__copy h1,
+.dark .settings-section__header h2,
+.dark .settings-row__value,
+.dark .theme-preference__value,
+.dark .theme-preference__option-copy strong,
+.dark .access-state-card__title,
+.dark .onboarding-card__title,
+.dark .invite-modal__title {
+  color: var(--sw-text);
+}
+
+.dark .brand-mark__symbol {
+  background: var(--sw-text);
+  color: var(--sw-background);
+}
+
+.dark .public-card__description,
+.dark .public-card__helper,
+.dark .sidebar-account__copy span:last-child,
+.dark .sidebar-account__meta span:last-child,
+.dark .sidebar-label,
+.dark .admin-hero__lead,
+.dark .admin-hero__helper,
+.dark .admin-kpi-card__detail,
+.dark .admin-kpi-card__note,
+.dark .admin-row__support,
+.dark .admin-row__meta,
+.dark .admin-row__timestamp,
+.dark .admin-empty-state,
+.dark .admin-surface__description,
+.dark .campaign-page-header .admin-page-description,
+.dark .campaign-review-overview__label,
+.dark .campaign-review-checklist__reason,
+.dark .campaign-review-checklist__action,
+.dark .campaign-dispatch-result__stat p,
+.dark .campaign-detail-metrics__item p,
+.dark .campaign-provider-metrics__item p,
+.dark .campaign-contact-section__description,
+.dark .campaign-contact-upload__hint,
+.dark .campaign-contact-import-summary__errors,
+.dark .campaign-field__helper,
+.dark .campaign-variable-helper__note,
+.dark .campaign-variable-helper__availability,
+.dark .settings-header__description,
+.dark .settings-row__description,
+.dark .theme-preference__description,
+.dark .theme-preference__option-copy span,
+.dark .access-state-card__message,
+.dark .invite-modal__message,
+.dark .onboarding-card__message,
+.dark .login-card__description,
+.dark .login-card__support span {
+  color: var(--sw-text-muted);
+}
+
+.dark .public-card,
+.dark .login-card,
+.dark .settings-shell,
+.dark .settings-section,
+.dark .settings-row,
+.dark .theme-preference__option,
+.dark .admin-hero,
+.dark .admin-surface,
+.dark .admin-kpi-card,
+.dark .admin-row,
+.dark .admin-empty-state,
+.dark .client-dashboard-hero,
+.dark .client-kpi-card,
+.dark .client-surface,
+.dark .client-performance-summary__item,
+.dark .client-metric-stack__item,
+.dark .client-status-summary span,
+.dark .client-delivery-state,
+.dark .client-row,
+.dark .client-row__chip,
+.dark .client-row__progress--muted,
+.dark .client-action-card,
+.dark .campaign-panel,
+.dark .campaign-panel--subtle,
+.dark .campaign-review-overview__item,
+.dark .campaign-review-checklist__item,
+.dark .campaign-dispatch-result,
+.dark .campaign-dispatch-result__stat,
+.dark .campaign-detail-metrics__item,
+.dark .campaign-provider-metrics__item,
+.dark .campaign-contact-manual-action,
+.dark .campaign-contact-section,
+.dark .campaign-contact-upload,
+.dark .campaign-contact-import-summary,
+.dark .campaign-contact-list-shell,
+.dark .campaign-variable-helper,
+.dark .campaign-variable-chip,
+.dark .campaign-editor-pane,
+.dark .campaign-callout,
+.dark .account-clerk-shell__helper,
+.dark .account-sheet__helper,
+.dark .access-state-card,
+.dark .invite-modal,
+.dark .onboarding-card,
+.dark .top-notice--success {
+  background: var(--sw-surface-elevated);
+  border-color: var(--sw-border);
+}
+
+.dark .admin-hero,
+.dark .client-dashboard-hero,
+.dark .campaign-page-header,
+.dark .campaign-callout--dispatch {
+  background-image:
+    linear-gradient(135deg, rgba(15, 23, 42, 0.96), rgba(19, 35, 59, 0.92)),
+    radial-gradient(
+      circle at top right,
+      rgba(96, 165, 250, 0.14),
+      transparent 18rem
+    );
+}
+
+.dark .admin-kpi-card[data-tone="blocked"],
+.dark .client-kpi-card[data-tone="blocked"],
+.dark .client-action-card[data-tone="danger"],
+.dark .settings-danger,
+.dark .top-notice--error {
+  background: var(--sw-danger-surface);
+  border-color: var(--sw-danger-border);
+}
+
+.dark .admin-row--alert,
+.dark .campaign-review-checklist__item[data-state="warning"],
+.dark .client-kpi-card[data-tone="attention"],
+.dark .client-action-card[data-tone="warning"] {
+  background: var(--sw-warning-surface);
+  border-color: var(--sw-warning-border);
+}
+
+.dark .login-page,
+.dark .account-page,
+.dark .access-state-page {
+  background:
+    radial-gradient(circle at top left, rgba(30, 64, 175, 0.24), transparent 34%),
+    linear-gradient(180deg, #08111f 0%, #0d1728 100%);
+}
+
+.dark .login-card,
+.dark .settings-shell,
+.dark .access-state-card {
+  background: linear-gradient(
+    180deg,
+    rgba(11, 18, 31, 0.98),
+    rgba(15, 23, 42, 0.94)
+  );
+  border-color: var(--sw-border);
+}
+
+.dark .login-submit--secondary,
+.dark .sidebar-account__action,
+.dark .settings-back,
+.dark .settings-row__action,
+.dark .theme-preference__option-icon,
+.dark .campaign-contact-row__remove {
+  background: var(--sw-surface-strong);
+  border-color: var(--sw-border-strong);
+  color: var(--sw-text);
+}
+
+.dark .login-submit--secondary:hover,
+.dark .sidebar-account__action:hover,
+.dark .settings-back:hover,
+.dark .settings-row__action:hover,
+.dark .campaign-contact-row__remove:hover,
+.dark .campaign-contact-row__remove:focus-visible {
+  background: var(--sw-surface-elevated);
+  color: var(--sw-text);
+}
+
+.dark .login-submit--ghost {
+  background: var(--sw-accent-soft);
+  border-color: var(--sw-accent-border-strong);
+}
+
+.dark .login-feedback--info,
+.dark .theme-preference__option[data-active="true"],
+.dark .campaign-review-checklist__badge {
+  background: var(--sw-accent-soft);
+}
+
+.dark .campaign-input,
+.dark .campaign-select,
+.dark .campaign-textarea,
+.dark .invite-modal__input-shell,
+.dark .onboarding-form__input-shell {
+  background: var(--sw-surface-strong);
+  border-color: var(--sw-border-strong);
+  color: var(--sw-text);
+}
+
+.dark .campaign-input:disabled,
+.dark .campaign-select:disabled,
+.dark .campaign-textarea:disabled {
+  background: rgba(15, 23, 42, 0.82);
+  color: var(--sw-text-muted);
+}
+
+.dark .campaign-preview-viewport,
+.dark .campaign-email-preview-frame {
+  background: rgba(8, 17, 31, 0.94);
+  border-color: var(--sw-border);
+}
+
+.dark .campaign-editor-toggle__button[data-active="true"] {
+  background: rgba(15, 23, 42, 0.82);
+  box-shadow: 0 10px 24px rgba(2, 6, 23, 0.32);
+}
+
+.dark .campaign-record-link:hover,
+.dark .campaign-record-link:focus-visible {
+  background: linear-gradient(
+    180deg,
+    rgba(15, 23, 42, 0.98),
+    rgba(19, 35, 59, 0.96)
+  );
+}
+
+.dark .account-clerk-shell__loading,
+.dark .account-sheet__loading,
+.dark .login-card__support strong,
+.dark .settings-danger__copy h3,
+.dark .settings-danger__warning,
+.dark .settings-danger__toggle,
+.dark .settings-danger__toggle:hover {
+  color: var(--sw-text);
+}
+
+.dark .settings-danger__copy p,
+.dark .access-state-card__details p,
+.dark .access-state-card__details summary {
+  color: var(--sw-text-muted);
+}
+
+.dark .settings-danger__warning svg,
+.dark .settings-danger--blocked svg {
+  color: var(--sw-danger);
+}
+
+.dark .settings-danger__checkbox input {
+  accent-color: var(--sw-danger);
+}
+
 .client-page-shell,
 .client-page-stat-grid,
 .client-fact-grid,
@@ -7583,6 +8088,10 @@ p {
   .client-status-summary,
   .client-metric-stack {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .theme-preference__options {
+    grid-template-columns: 1fr;
   }
 }
 

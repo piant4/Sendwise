@@ -48,7 +48,7 @@ export function ClerkForgotPasswordShell() {
                   formButtonPrimary:
                     "bg-[var(--sw-primary)] hover:bg-[var(--sw-primary-hover)] text-white shadow-none",
                   formFieldInput:
-                    "min-h-12 rounded-[14px] border border-[#d9ddd7] bg-[#fcfcfa] text-[var(--sw-olive)]",
+                    "min-h-12 rounded-[14px] border border-[color:var(--sw-border-strong)] bg-[color:var(--sw-surface-elevated)] text-[var(--sw-text)]",
                   formFieldLabel: "text-[var(--sw-text-muted)]",
                   header: "hidden",
                   identityPreviewText: "text-[var(--sw-text-muted)]",
@@ -59,9 +59,9 @@ export function ClerkForgotPasswordShell() {
                   formResendCodeLink:
                     "text-[var(--sw-primary)] hover:text-[var(--sw-primary-hover)]",
                   otpCodeFieldInput:
-                    "min-h-12 rounded-[14px] border border-[#d9ddd7] bg-[#fcfcfa] text-[var(--sw-olive)]",
+                    "min-h-12 rounded-[14px] border border-[color:var(--sw-border-strong)] bg-[color:var(--sw-surface-elevated)] text-[var(--sw-text)]",
                   alert:
-                    "rounded-2xl border border-[rgba(166,70,63,0.2)] bg-[rgba(244,225,223,0.92)] text-[var(--sw-danger)]",
+                    "rounded-2xl border border-[color:var(--sw-danger-border)] bg-[color:var(--sw-danger-surface)] text-[var(--sw-danger)]",
                 },
               }}
               path="/login"

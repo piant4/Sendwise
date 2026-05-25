@@ -6,6 +6,7 @@ import { ArrowLeft, LogOut } from "lucide-react";
 import type { AuthMeResponse } from "@/lib/api";
 import { AccountDeleteSection } from "@/components/shared/AccountDeleteSection";
 import { ClerkSignOutButton } from "@/components/shared/ClerkSignOutButton";
+import { ThemePreferenceSelector } from "@/components/theme/ThemePreferenceSelector";
 
 interface AccountWorkspaceProps {
   authState: AuthMeResponse;
@@ -70,7 +71,7 @@ export function AccountWorkspace({
 
               <div className="settings-header__copy">
                 <h1>{title}</h1>
-                <p className="text-sm leading-7 text-slate-600">{description}</p>
+                <p className="settings-header__description">{description}</p>
               </div>
             </header>
 
@@ -98,6 +99,8 @@ export function AccountWorkspace({
             </section>
 
             <div className="settings-sections">
+              <ThemePreferenceSelector />
+
               <section className="settings-section" aria-labelledby="account-profile">
                 <div className="settings-section__header">
                   <h2 id="account-profile">Profilo</h2>
@@ -153,27 +156,29 @@ export function AccountWorkspace({
                         elements: {
                           card: "bg-transparent border-0 shadow-none p-0",
                           cardBox: "shadow-none",
-                          navbar: "bg-[rgba(248,250,252,0.9)] border border-[rgba(226,232,240,0.95)] rounded-2xl",
+                          navbar:
+                            "bg-[color:var(--sw-surface-elevated)] border border-[color:var(--sw-border)] rounded-2xl",
                           navbarButton:
                             "text-[var(--sw-text-muted)] hover:text-[var(--sw-primary)] rounded-xl",
                           navbarButtonActive:
-                            "bg-[rgba(93,118,78,0.12)] text-[var(--sw-primary)] shadow-none",
+                            "bg-[color:var(--sw-accent-soft)] text-[var(--sw-primary)] shadow-none",
                           pageScrollBox: "p-0",
                           profilePage: "p-0",
-                          profileSection: "rounded-2xl border border-[rgba(226,232,240,0.95)] bg-white/90",
+                          profileSection:
+                            "rounded-2xl border border-[color:var(--sw-border)] bg-[color:var(--sw-surface-elevated)]",
                           formButtonPrimary:
                             "bg-[var(--sw-primary)] hover:bg-[var(--sw-primary-hover)] text-white shadow-none",
                           formFieldInput:
-                            "min-h-12 rounded-[14px] border border-[#d9ddd7] bg-[#fcfcfa] text-[var(--sw-olive)]",
+                            "min-h-12 rounded-[14px] border border-[color:var(--sw-border-strong)] bg-[color:var(--sw-surface-elevated)] text-[var(--sw-text)]",
                           formFieldLabel: "text-[var(--sw-text-muted)]",
-                          badge: "bg-[rgba(93,118,78,0.12)] text-[var(--sw-primary)]",
+                          badge: "bg-[color:var(--sw-accent-soft)] text-[var(--sw-primary)]",
                           alert:
-                            "rounded-2xl border border-[rgba(166,70,63,0.2)] bg-[rgba(244,225,223,0.92)] text-[var(--sw-danger)]",
+                            "rounded-2xl border border-[color:var(--sw-danger-border)] bg-[color:var(--sw-danger-surface)] text-[var(--sw-danger)]",
                           footer: "hidden",
-                          headerTitle: "text-[var(--sw-olive)]",
+                          headerTitle: "text-[var(--sw-text)]",
                           headerSubtitle: "text-[var(--sw-text-muted)]",
                           accordionTriggerButton:
-                            "text-[var(--sw-olive)] hover:text-[var(--sw-primary)]",
+                            "text-[var(--sw-text)] hover:text-[var(--sw-primary)]",
                           menuButton:
                             "text-[var(--sw-text-muted)] hover:text-[var(--sw-primary)]",
                         },

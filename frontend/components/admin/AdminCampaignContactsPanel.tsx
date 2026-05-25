@@ -501,7 +501,7 @@ export function AdminCampaignContactsPanel({
       <div className="admin-clients-card__intro">
         <div>
           <p className="admin-surface__eyebrow">Step 3</p>
-          <h2 className="admin-clients-card__title" style={{ color: "#0f172a" }}>
+          <h2 className="admin-clients-card__title" style={{ color: "var(--sw-olive)" }}>
             Destinatari
           </h2>
           <p className="admin-clients-card__description">

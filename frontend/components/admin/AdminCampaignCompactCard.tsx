@@ -58,11 +58,11 @@ export function AdminCampaignCompactCard({
       <div className="campaign-record-link__summary">
         <div>
           <div className="admin-record-row__note">Readiness</div>
-          <strong style={{ color: "#0f172a" }}>{readinessLabel}</strong>
+          <strong style={{ color: "var(--sw-olive)" }}>{readinessLabel}</strong>
         </div>
         <div>
           <div className="admin-record-row__note">Destinatari</div>
-          <strong style={{ color: "#0f172a" }}>
+          <strong style={{ color: "var(--sw-olive)" }}>
             {recipients
               ? `${formatCampaignCount(recipients.total)} totali / ${formatCampaignCount(recipients.eligible)} idonei`
               : "Conteggi non disponibili"}
@@ -70,7 +70,7 @@ export function AdminCampaignCompactCard({
         </div>
         <div>
           <div className="admin-record-row__note">Aggiornata</div>
-          <strong style={{ color: "#0f172a" }}>{formatDateLabel(campaign.updatedAt)}</strong>
+          <strong style={{ color: "var(--sw-olive)" }}>{formatDateLabel(campaign.updatedAt)}</strong>
         </div>
       </div>
     </Link>

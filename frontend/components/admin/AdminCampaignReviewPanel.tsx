@@ -273,8 +273,8 @@ function getSendStepStatusMeta(
     return {
       badge: "Pronta all'invio",
       border: "1px solid rgba(16, 185, 129, 0.24)",
-      background: "linear-gradient(135deg, rgba(236, 253, 245, 0.98), rgba(239, 246, 255, 0.98))",
-      accent: "#047857",
+      background: "linear-gradient(135deg, rgba(16, 185, 129, 0.16), var(--sw-accent-soft))",
+      accent: "var(--sw-success)",
       title: "Campagna pronta per l'avvio",
     };
   }
@@ -282,18 +282,18 @@ function getSendStepStatusMeta(
   if (blockingReasonsCount > 0) {
     return {
       badge: "Invio bloccato",
-      border: "1px solid rgba(248, 113, 113, 0.24)",
-      background: "linear-gradient(135deg, rgba(254, 242, 242, 0.98), rgba(255, 247, 237, 0.98))",
-      accent: "#b91c1c",
+      border: "1px solid var(--sw-danger-border)",
+      background: "var(--sw-danger-surface)",
+      accent: "var(--sw-danger)",
       title: "Blocchi da risolvere prima dell'invio",
     };
   }
 
   return {
     badge: warningReasonsCount > 0 ? "Verifica finale richiesta" : "Invio in preparazione",
-    border: "1px solid rgba(251, 191, 36, 0.24)",
-    background: "linear-gradient(135deg, rgba(255, 251, 235, 0.98), rgba(239, 246, 255, 0.98))",
-    accent: "#b45309",
+    border: "1px solid var(--sw-warning-border)",
+    background: "var(--sw-warning-surface)",
+    accent: "var(--sw-warning)",
     title: "Verifica operativa ancora aperta",
   };
 }
@@ -416,7 +416,7 @@ export function AdminCampaignReviewPanel({
         <div className="admin-clients-card__intro">
           <div>
             <p className="admin-surface__eyebrow">Step 6</p>
-            <h2 className="admin-clients-card__title" style={{ color: "#0f172a" }}>
+            <h2 className="admin-clients-card__title" style={{ color: "var(--sw-olive)" }}>
               Invio finale
             </h2>
             <p className="admin-clients-card__description" style={{ marginTop: 8 }}>
@@ -451,10 +451,10 @@ export function AdminCampaignReviewPanel({
           >
             Readiness finale
           </span>
-          <strong style={{ color: "#0f172a", fontSize: "1.35rem", lineHeight: 1.2 }}>
+          <strong style={{ color: "var(--sw-olive)", fontSize: "1.35rem", lineHeight: 1.2 }}>
             {sendStatusMeta.title}
           </strong>
-          <p className="campaign-field__helper" style={{ color: "#0f172a", margin: 0 }}>
+          <p className="campaign-field__helper" style={{ color: "var(--sw-olive)", margin: 0 }}>
             {dispatchEnabled
               ? "Sent significa accettata o avviata dal sistema Listmonk, non consegnata."
               : primaryProblem}
@@ -468,17 +468,17 @@ export function AdminCampaignReviewPanel({
           >
             <article className="campaign-callout" style={{ minHeight: 0 }}>
               <span className="admin-record-row__note">Campagna</span>
-              <strong style={{ color: "#0f172a" }}>{campaign.name}</strong>
+              <strong style={{ color: "var(--sw-olive)" }}>{campaign.name}</strong>
             </article>
             <article className="campaign-callout" style={{ minHeight: 0 }}>
               <span className="admin-record-row__note">Destinatari idonei</span>
-              <strong style={{ color: "#0f172a" }}>
+              <strong style={{ color: "var(--sw-olive)" }}>
                 {state.eligibleContactCount.toLocaleString("it-IT")}
               </strong>
             </article>
             <article className="campaign-callout" style={{ minHeight: 0 }}>
               <span className="admin-record-row__note">Stato runtime</span>
-              <strong style={{ color: "#0f172a" }}>
+              <strong style={{ color: "var(--sw-olive)" }}>
                 {summary?.runtime.providerModeLabel ?? "Non disponibile"}
               </strong>
             </article>
@@ -506,7 +506,7 @@ export function AdminCampaignReviewPanel({
               style={{ minHeight: 96 }}
             >
               <span className="admin-record-row__note">{item.label}</span>
-              <strong style={{ color: "#0f172a" }}>{item.value}</strong>
+              <strong style={{ color: "var(--sw-olive)" }}>{item.value}</strong>
             </article>
             ))}
         </div>
@@ -547,7 +547,7 @@ export function AdminCampaignReviewPanel({
           style={{ display: "grid", gap: 10, marginTop: 20, padding: 18 }}
         >
           <span className="admin-record-row__note">Nota provider / runtime</span>
-          <strong style={{ color: "#0f172a" }}>
+          <strong style={{ color: "var(--sw-olive)" }}>
             {summary?.runtime.providerModeLabel ?? "Runtime non disponibile"}
           </strong>
           <p className="campaign-field__helper" style={{ margin: 0 }}>
@@ -573,7 +573,7 @@ export function AdminCampaignReviewPanel({
 
         <section
           style={{
-            border: "1px solid rgba(148, 163, 184, 0.18)",
+            border: "1px solid var(--sw-border)",
             borderRadius: 24,
             display: "grid",
             gap: 14,
@@ -583,7 +583,7 @@ export function AdminCampaignReviewPanel({
         >
           <div style={{ display: "grid", gap: 6 }}>
             <span className="admin-record-row__note">Azione finale</span>
-            <strong style={{ color: "#0f172a" }}>Avvia il dispatch controllato</strong>
+            <strong style={{ color: "var(--sw-olive)" }}>Avvia il dispatch controllato</strong>
             <p className="campaign-field__helper" style={{ margin: 0 }}>
               Il backend riesegue i controlli di sicurezza prima di inviare la campagna.
             </p>
@@ -677,7 +677,7 @@ export function AdminCampaignReviewPanel({
       <div className="admin-clients-card__intro">
         <div>
           <p className="admin-surface__eyebrow">Step 5</p>
-          <h2 className="admin-clients-card__title" style={{ color: "#0f172a" }}>
+          <h2 className="admin-clients-card__title" style={{ color: "var(--sw-olive)" }}>
             Review finale
           </h2>
         </div>
@@ -698,10 +698,13 @@ export function AdminCampaignReviewPanel({
 
       <div
         style={{
-          background: reviewState.badgeVariant === "warning" ? "rgba(255, 247, 237, 0.96)" : "rgba(239, 246, 255, 0.96)",
+          background:
+            reviewState.badgeVariant === "warning"
+              ? "var(--sw-warning-surface)"
+              : "var(--sw-accent-soft)",
           border: reviewState.badgeVariant === "warning"
-            ? "1px solid rgba(251, 146, 60, 0.22)"
-            : "1px solid rgba(96, 165, 250, 0.22)",
+            ? "1px solid var(--sw-warning-border)"
+            : "1px solid var(--sw-accent-border-strong)",
           borderRadius: 24,
           display: "grid",
           gap: 10,
@@ -710,7 +713,7 @@ export function AdminCampaignReviewPanel({
         }}
       >
         <span className="campaign-review-overview__label">Campagna non pronta / focus</span>
-        <strong style={{ color: "#0f172a" }}>{primaryProblem}</strong>
+        <strong style={{ color: "var(--sw-olive)" }}>{primaryProblem}</strong>
         <p className="campaign-field__helper" style={{ margin: 0 }}>
           {reviewState.helperText}
         </p>
@@ -749,7 +752,7 @@ export function AdminCampaignReviewPanel({
         <summary
           style={{
             alignItems: "center",
-            color: "#0f172a",
+            color: "var(--sw-olive)",
             cursor: "pointer",
             display: "flex",
             fontWeight: 700,
@@ -791,7 +794,7 @@ export function AdminCampaignReviewPanel({
 
       {warningReasons.length > 0 ? (
         <div className="campaign-detail-notes" style={{ marginTop: 18 }}>
-          <strong style={{ color: "#0f172a" }}>Controlli utili</strong>
+          <strong style={{ color: "var(--sw-olive)" }}>Controlli utili</strong>
           <ul className="admin-record-row__note" style={{ margin: 0 }}>
             {warningReasons.map((reason) => (
               <li key={`${reason.raw}-${reason.label}`}>{reason.label}</li>
@@ -802,7 +805,7 @@ export function AdminCampaignReviewPanel({
 
       {providerHistoryPolicy.length > 0 ? (
         <div className="campaign-detail-notes" style={{ marginTop: 18 }}>
-          <strong style={{ color: "#0f172a" }}>Deliverability provider</strong>
+          <strong style={{ color: "var(--sw-olive)" }}>Deliverability provider</strong>
           <div style={{ display: "grid", gap: 10, marginTop: 10 }}>
             {providerHistoryPolicy.map((item) => {
               const meta = getProviderHistoryPolicyUiMeta(item);

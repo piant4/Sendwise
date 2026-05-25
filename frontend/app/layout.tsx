@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { ClerkProvider } from "@clerk/nextjs";
 import { AppShell } from "../components/layout/AppShell";
+import { ThemeProvider } from "../components/theme/ThemeProvider";
+import { ThemeScript } from "../components/theme/ThemeScript";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -21,8 +23,9 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="it">
+    <html lang="it" suppressHydrationWarning>
       <body className="theme">
+        <ThemeScript />
         <ClerkProvider
           afterSignOutUrl="/login"
           signInFallbackRedirectUrl="/auth/redirect"
@@ -31,7 +34,9 @@ export default function RootLayout({
           signUpForceRedirectUrl="/auth/redirect"
           signUpFallbackRedirectUrl="/auth/redirect"
         >
-          <AppShell>{children}</AppShell>
+          <ThemeProvider>
+            <AppShell>{children}</AppShell>
+          </ThemeProvider>
         </ClerkProvider>
       </body>
     </html>

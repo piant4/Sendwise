@@ -194,7 +194,7 @@ export function AdminCampaignSetupProgress({
           <h2 className="admin-clients-card__title">Step campagna</h2>
         </div>
         <div style={{ display: "grid", gap: 6, textAlign: "right" }}>
-          <strong style={{ color: "#0f172a" }}>
+          <strong style={{ color: "var(--sw-olive)" }}>
             Step {activeIndex + 1} di {steps.length}
           </strong>
           <span className="admin-record-row__note">
@@ -247,19 +247,19 @@ export function AdminCampaignSetupProgress({
                 className="admin-record-row__note"
                 style={{
                   color: isCurrent
-                    ? "#1d4ed8"
+                    ? "var(--sw-primary)"
                     : step.state === "ready"
-                      ? "#0f766e"
+                      ? "var(--sw-success)"
                       : step.state === "needs-attention"
-                        ? "#b45309"
-                        : "#64748b",
+                        ? "var(--sw-warning)"
+                        : "var(--sw-text-muted)",
                 }}
               >
                 {getStepReasonTone(step.state, isCurrent)}
               </span>
               <span
                 style={{
-                  color: "#0f172a",
+                  color: "var(--sw-olive)",
                   display: "block",
                   fontSize: "0.92rem",
                   lineHeight: 1.35,

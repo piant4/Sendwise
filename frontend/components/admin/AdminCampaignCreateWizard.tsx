@@ -167,7 +167,7 @@ export function AdminCampaignCreateWizard({
             gap: 12,
           }}
         >
-          <strong style={{ color: "#0f172a" }}>Step 1 di 6</strong>
+          <strong style={{ color: "var(--sw-olive)" }}>Step 1 di 6</strong>
           <span className="admin-record-row__note">Setup</span>
         </div>
         <div
@@ -200,7 +200,7 @@ export function AdminCampaignCreateWizard({
               style={{
                 border: index === 0 ? "1px solid rgba(37, 99, 235, 0.3)" : "1px solid rgba(148, 163, 184, 0.18)",
                 borderRadius: 16,
-                color: index === 0 ? "#0f172a" : "#64748b",
+                color: index === 0 ? "var(--sw-olive)" : "var(--sw-text-muted)",
                 padding: "10px 12px",
               }}
             >
@@ -214,7 +214,7 @@ export function AdminCampaignCreateWizard({
       <div className="admin-clients-card__intro">
         <div>
           <p className="admin-surface__eyebrow">Creazione campagna</p>
-          <h2 className="admin-clients-card__title" style={{ color: "#0f172a" }}>
+          <h2 className="admin-clients-card__title" style={{ color: "var(--sw-olive)" }}>
             Nuova campagna
           </h2>
           <p className="admin-clients-card__description">
@@ -306,7 +306,7 @@ export function AdminCampaignCreateWizard({
         >
           <div>
             <span className="admin-record-row__note">Cliente selezionato</span>
-            <strong style={{ color: "#0f172a", display: "block", marginTop: 4 }}>
+            <strong style={{ color: "var(--sw-olive)", display: "block", marginTop: 4 }}>
               {selectedClient ? getClientDisplayName(selectedClient) : "-"}
             </strong>
           </div>

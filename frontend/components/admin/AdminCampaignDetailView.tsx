@@ -384,7 +384,7 @@ export function AdminCampaignDetailView({
             ].map((item) => (
               <article key={item.label}>
                 <span className="admin-record-row__note">{item.label}</span>
-                <strong style={{ color: "#0f172a" }}>{item.value}</strong>
+                <strong style={{ color: "var(--sw-olive)" }}>{item.value}</strong>
               </article>
             ))}
           </div>
@@ -395,14 +395,14 @@ export function AdminCampaignDetailView({
         <section
           className="admin-clients-card"
           style={{
-            background: "rgba(254, 242, 242, 0.96)",
-            border: "1px solid rgba(248, 113, 113, 0.2)",
+            background: "var(--sw-danger-surface)",
+            border: "1px solid var(--sw-danger-border)",
           }}
         >
           <div className="admin-clients-card__intro">
             <div>
               <p className="admin-surface__eyebrow">Problemi</p>
-              <h2 className="admin-clients-card__title" style={{ color: "#0f172a" }}>
+              <h2 className="admin-clients-card__title" style={{ color: "var(--sw-olive)" }}>
                 Problemi da risolvere
               </h2>
             </div>
@@ -420,7 +420,7 @@ export function AdminCampaignDetailView({
           <div className="admin-clients-card__intro">
             <div>
               <p className="admin-surface__eyebrow">Reporting</p>
-              <h2 className="admin-clients-card__title" style={{ color: "#0f172a" }}>
+              <h2 className="admin-clients-card__title" style={{ color: "var(--sw-olive)" }}>
                 Report post-send
               </h2>
             </div>
@@ -447,22 +447,22 @@ export function AdminCampaignDetailView({
           >
             <article className="campaign-callout">
               <span className="admin-record-row__note">Accepted / started by system</span>
-              <strong style={{ color: "#0f172a" }}>{formatCampaignCount(summary.logs.sent ?? 0)}</strong>
+              <strong style={{ color: "var(--sw-olive)" }}>{formatCampaignCount(summary.logs.sent ?? 0)}</strong>
               <span>Accettate o avviate da Listmonk. Non indica delivered.</span>
             </article>
             <article className="campaign-callout">
               <span className="admin-record-row__note">Prepared / queued</span>
-              <strong style={{ color: "#0f172a" }}>{formatCampaignCount(summary.logs.queued)}</strong>
+              <strong style={{ color: "var(--sw-olive)" }}>{formatCampaignCount(summary.logs.queued)}</strong>
               <span>Preparate ma non ancora accettate dal sistema di invio.</span>
             </article>
             <article className="campaign-callout">
               <span className="admin-record-row__note">Failed</span>
-              <strong style={{ color: "#0f172a" }}>{formatCampaignCount(summary.logs.failed)}</strong>
+              <strong style={{ color: "var(--sw-olive)" }}>{formatCampaignCount(summary.logs.failed)}</strong>
               <span>Errori operativi o di dispatch registrati dal backend.</span>
             </article>
             <article className="campaign-callout">
               <span className="admin-record-row__note">Eventi Mailgun</span>
-              <strong style={{ color: "#0f172a" }}>
+              <strong style={{ color: "var(--sw-olive)" }}>
                 {summary.logs.providerEventsAvailable ? "Disponibili" : "Non disponibili"}
               </strong>
               <span>{getProviderEventsDetail(summary.logs)}</span>
@@ -489,7 +489,7 @@ export function AdminCampaignDetailView({
             <div className="campaign-event-feed">
               <div className="campaign-reporting-section__header">
                 <div>
-                  <strong style={{ color: "#0f172a" }}>Eventi recenti</strong>
+                  <strong style={{ color: "var(--sw-olive)" }}>Eventi recenti</strong>
                   <p className="admin-record-row__note">
                     Ultimi blocchi o alert backend collegati a questa campagna.
                   </p>
@@ -499,7 +499,7 @@ export function AdminCampaignDetailView({
               <div className="campaign-event-feed__list">
                 {summary.blockedSends.latest.map((event) => (
                   <article key={event.id} className="campaign-event-feed__item">
-                    <strong style={{ color: "#0f172a" }}>
+                    <strong style={{ color: "var(--sw-olive)" }}>
                       {getReadableBackendReason(event.reason).label}
                     </strong>
                     <span className="admin-record-row__note">
@@ -513,7 +513,7 @@ export function AdminCampaignDetailView({
 
           {duplicateProtectionReasons.length > 0 ? (
             <div className="campaign-detail-notes" style={{ marginTop: 16 }}>
-              <strong style={{ color: "#0f172a" }}>Protezione duplicati</strong>
+              <strong style={{ color: "var(--sw-olive)" }}>Protezione duplicati</strong>
               <ul className="admin-record-row__note" style={{ margin: 0 }}>
                 {duplicateProtectionReasons.map((reason) => (
                   <li key={`${reason.raw}-${reason.label}`}>{reason.label}</li>
@@ -524,7 +524,7 @@ export function AdminCampaignDetailView({
 
           {providerHistoryPolicy.length > 0 ? (
             <div className="campaign-detail-notes" style={{ marginTop: 16 }}>
-              <strong style={{ color: "#0f172a" }}>Deliverability provider</strong>
+              <strong style={{ color: "var(--sw-olive)" }}>Deliverability provider</strong>
               <div style={{ display: "grid", gap: 10, marginTop: 10 }}>
                 {providerHistoryPolicy.map((item) => {
                   const meta = getProviderHistoryPolicyUiMeta(item);
@@ -556,7 +556,7 @@ export function AdminCampaignDetailView({
 
           {warningReasons.length > 0 ? (
             <div className="campaign-detail-notes" style={{ marginTop: 16 }}>
-              <strong style={{ color: "#0f172a" }}>Controlli utili</strong>
+              <strong style={{ color: "var(--sw-olive)" }}>Controlli utili</strong>
               <ul className="admin-record-row__note" style={{ margin: 0 }}>
                 {warningReasons.map((reason) => (
                   <li key={`${reason.raw}-${reason.label}`}>{reason.label}</li>
@@ -571,7 +571,7 @@ export function AdminCampaignDetailView({
         <div className="admin-clients-card__intro">
           <div>
             <p className="admin-surface__eyebrow">Anteprima</p>
-            <h2 className="admin-clients-card__title" style={{ color: "#0f172a" }}>
+            <h2 className="admin-clients-card__title" style={{ color: "var(--sw-olive)" }}>
               Email formattata
             </h2>
           </div>
@@ -586,13 +586,13 @@ export function AdminCampaignDetailView({
         >
           <article className="campaign-callout">
             <span className="admin-record-row__note">Oggetto</span>
-            <strong style={{ color: "#0f172a" }}>
+            <strong style={{ color: "var(--sw-olive)" }}>
               {subjectDisplay}
             </strong>
           </article>
           <article className="campaign-callout">
             <span className="admin-record-row__note">Preview text</span>
-            <strong style={{ color: "#0f172a" }}>
+            <strong style={{ color: "var(--sw-olive)" }}>
               {normalizePlaceholderValue(campaign.previewText) || "Non disponibile"}
             </strong>
           </article>

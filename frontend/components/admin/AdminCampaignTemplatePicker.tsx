@@ -115,7 +115,7 @@ export function AdminCampaignTemplatePicker({
         <div className="admin-clients-card__intro">
           <div>
             <p className="admin-surface__eyebrow">Template</p>
-            <h3 className="admin-clients-card__title" style={{ color: "#0f172a", fontSize: "1.1rem" }}>
+            <h3 className="admin-clients-card__title" style={{ color: "var(--sw-olive)", fontSize: "1.1rem" }}>
               Libreria template
             </h3>
           </div>
@@ -166,7 +166,7 @@ export function AdminCampaignTemplatePicker({
                   </p>
                   <p
                     className="campaign-template-card__excerpt"
-                    style={{ color: "#0f172a", fontWeight: 600, marginTop: 2 }}
+                    style={{ color: "var(--sw-olive)", fontWeight: 600, marginTop: 2 }}
                   >
                     {getStructureHint(template)}
                   </p>
@@ -252,21 +252,21 @@ export function AdminCampaignTemplatePicker({
 
             <div className="campaign-template-modal__grid">
               <section className="campaign-template-modal__section">
-                <strong style={{ color: "#0f172a" }}>Oggetto</strong>
+                <strong style={{ color: "var(--sw-olive)" }}>Oggetto</strong>
                 <p className="campaign-template-modal__preview-text">
                   {previewTemplate.subject}
                 </p>
               </section>
 
               <section className="campaign-template-modal__section">
-                <strong style={{ color: "#0f172a" }}>Anteprima email</strong>
+                <strong style={{ color: "var(--sw-olive)" }}>Anteprima email</strong>
                 <p className="campaign-template-modal__preview-text">
                   {previewTemplate.previewText}
                 </p>
               </section>
 
               <section className="campaign-template-modal__section">
-                <strong style={{ color: "#0f172a" }}>HTML</strong>
+                <strong style={{ color: "var(--sw-olive)" }}>HTML</strong>
                 <iframe
                   className="campaign-email-preview-frame campaign-email-preview-frame--template"
                   sandbox=""

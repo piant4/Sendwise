@@ -1,5 +1,47 @@
 # Audit Log
 
+## Milestone 19.8-CLOSE + 19.9-AUDIT - Template Readiness Closure And Brand Configuration Flow
+
+Date: 2026-05-25
+Branch: main
+
+19.8 runtime closure facts recorded:
+- QA campaign id: `f0aa4ba6-1a2e-4231-9e57-75bf50959f60`.
+- Admin review returned HTTP 200 with `allowed_to_send=false`, `content_ready=false`, and `review_ready=false`.
+- `blocking_errors` contained `template_missing_company_name`.
+- After review, database counts remained `email_logs = 0`, `provider_events = 0`, and `listmonk_mappings = 0`.
+- No real send occurred.
+
+Template readiness coverage boundary:
+- `template_missing_company_name` has runtime QA evidence from the no-send admin review above.
+- `template_empty_cta_url` is covered by automated backend preparation tests and has not yet been separately runtime-exercised.
+- Optional logo and social behavior is covered by automated backend preparation/rendering tests and has not yet been separately runtime-exercised.
+
+19.9 brand configuration audit result:
+- A supported platform-admin configuration path already exists for mandatory brand values and optional logo/social fields; manual database edits are not the product solution.
+- Frontend form: `frontend/app/admin/clients/[clientId]/page.tsx` renders the Brand email form on the admin client detail page and submits `company_name`, `sender_name`, `website_url`, `linkedin_url`, `instagram_url`, `facebook_url`, `x_url`, current `logo_url`, and optional WebP logo upload.
+- Frontend API path: `frontend/lib/api.ts` builds the trimmed `email_brand` payload with `buildClientEmailBrandPayload()`, persists it through `updateAdminClientLimits()` / `patchAdminClient()`, and uploads logos through `uploadAdminClientBrandLogo()` / `POST /admin/clients/{client_id}/brand/logo`.
+- API route: `backend/app/api/admin.py` accepts `PATCH /admin/clients/{client_id}` with `email_brand` inside `AdminClientUpdateRequest` and accepts `POST /admin/clients/{client_id}/brand/logo` for managed logo upload.
+- Backend service path: `backend/app/services/clients.py` validates and merges the brand profile with `merge_client_email_brand_metadata()`, updates the client through `ClientsService.update_client()`, and stores uploaded logo URLs through `ClientsService.upload_client_email_brand_logo()`.
+- Repository persistence path: `backend/app/repositories/clients.py` writes the merged JSON payload into `clients.metadata`, so the persisted product location is `clients.metadata.email_brand`.
+- Schema/renderer path: `backend/app/schemas/clients.py` defines `ClientEmailBrand` fields and URL/logo validation; `backend/app/services/template_renderer.py` reads `company_name`, `sender_name`, `website_url`, social URLs, and `logo_url` from the same email-brand metadata during render/readiness validation.
+
+No-send QA path for the existing configuration flow:
+- In the admin UI, open a test client detail page, fill `Company name` and `Website`, optionally upload a managed WebP logo and social URLs, and save the brand email form.
+- Re-open the client detail page and confirm the fields reload from the backend response.
+- Open a draft campaign for that client, use content with `{{company_name}}` and `{{website_url}}`, run admin review only, and verify review readiness without clicking send.
+- Confirm no-send invariants remain `email_logs = 0`, `provider_events = 0`, and no new Listmonk mapping/dispatch side effects for that review-only exercise.
+
+Remaining blockers before sending a branded campaign:
+- Run the no-send runtime QA path for `template_empty_cta_url` and optional logo/social behavior if runtime evidence is required beyond automated tests.
+- Configure mandatory brand values through the supported admin flow before campaign review/send.
+- Keep the normal pre-send gates active: Deliverability Guard, unsubscribe readiness, recipient eligibility/suppression checks, configured campaign limits, provider runtime checks, and `EMAIL_SENDING_ENABLED`.
+
+Scope confirmation:
+- Documentation-only change for this closure/audit.
+- No backend, frontend, client metadata, database row, Docker, Caddy, DNS, `.env`, Listmonk setting, Mailgun setting, schema, migration, unsubscribe, reconciliation, provider-event, campaign send, or runtime behavior was changed.
+- No recipient addresses, real email-brand values from clients, message bodies, tokens, raw payloads, full headers, credentials, auth data, or sensitive values are recorded here.
+
 ## Milestone 19.8-AUDIT - Empty Delivered Template Fields
 
 Date: 2026-05-25

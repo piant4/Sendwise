@@ -1,12 +1,8 @@
 import { ChevronRight } from "lucide-react";
 import Link from "next/link";
-import type {
-  AdminCampaignReadinessSummary,
-  AdminCampaignSummary,
-} from "../../types";
+import type { AdminCampaignSummary } from "../../types";
 import {
-  formatCampaignCount,
-  getCampaignReadinessShortLabel,
+  getCampaignSubjectDisplay,
   getCampaignStatusLabel,
   getCampaignStatusVariant,
 } from "../shared/campaignUi";
@@ -15,22 +11,31 @@ import { StatusBadge } from "../ui/StatusBadge";
 
 interface AdminCampaignCompactCardProps {
   campaign: AdminCampaignSummary;
-  readiness?: AdminCampaignReadinessSummary | Error;
 }
 
 function formatDateLabel(value: string): string {
   return formatDateTimeInRome(value);
 }
 
-export function AdminCampaignCompactCard({
-  campaign,
-  readiness,
-}: AdminCampaignCompactCardProps) {
-  const recipients = readiness instanceof Error || !readiness ? null : readiness.recipients;
-  const readinessLabel =
-    readiness instanceof Error || !readiness
-      ? "Verifica non disponibile"
-      : getCampaignReadinessShortLabel(readiness.campaign);
+function getLightweightReadinessLabel(campaign: AdminCampaignSummary): string {
+  if (campaign.status === "ready") {
+    return "Stato pronto";
+  }
+
+  if (campaign.status === "running" || campaign.status === "completed") {
+    return "Apri dettagli per readiness";
+  }
+
+  return "Da verificare";
+}
+
+export function AdminCampaignCompactCard({ campaign }: AdminCampaignCompactCardProps) {
+  const readinessLabel = getLightweightReadinessLabel(campaign);
+  const statusLabel = getCampaignStatusLabel(campaign.status);
+  const blockedSendsLabel =
+    campaign.blockedSendsCount > 0
+      ? `${campaign.blockedSendsCount.toLocaleString("it-IT")} blocchi registrati`
+      : "Nessun blocco registrato";
 
   return (
     <Link
@@ -42,10 +47,13 @@ export function AdminCampaignCompactCard({
         <div className="admin-record-row__copy campaign-record-link__copy">
           <strong className="campaign-record-link__title">{campaign.name}</strong>
           <span className="campaign-record-link__client">{campaign.clientName}</span>
+          <span className="admin-record-row__note">
+            {getCampaignSubjectDisplay(campaign.subject, "Oggetto email da definire")}
+          </span>
         </div>
         <div className="campaign-record-link__actions">
           <StatusBadge
-            label={getCampaignStatusLabel(campaign.status)}
+            label={statusLabel}
             variant={getCampaignStatusVariant(campaign.status)}
           />
           <span className="campaign-record-link__open">
@@ -61,12 +69,12 @@ export function AdminCampaignCompactCard({
           <strong style={{ color: "var(--sw-olive)" }}>{readinessLabel}</strong>
         </div>
         <div>
-          <div className="admin-record-row__note">Destinatari</div>
-          <strong style={{ color: "var(--sw-olive)" }}>
-            {recipients
-              ? `${formatCampaignCount(recipients.total)} totali / ${formatCampaignCount(recipients.eligible)} idonei`
-              : "Conteggi non disponibili"}
-          </strong>
+          <div className="admin-record-row__note">Stato lista</div>
+          <strong style={{ color: "var(--sw-olive)" }}>{statusLabel}</strong>
+        </div>
+        <div>
+          <div className="admin-record-row__note">Segnali</div>
+          <strong style={{ color: "var(--sw-olive)" }}>{blockedSendsLabel}</strong>
         </div>
         <div>
           <div className="admin-record-row__note">Aggiornata</div>

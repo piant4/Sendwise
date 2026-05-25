@@ -6,50 +6,17 @@ import { AdminCampaignCompactCard } from "../../../components/admin/AdminCampaig
 import { buildPageMetadata } from "../../../components/shared/metadata";
 import { AdminSurface } from "../../../components/admin/AdminSurface";
 import { Button } from "../../../components/ui/button";
-import {
-  getAdminCampaigns,
-  getAdminCampaignSummary,
-  isApiError,
-} from "../../../lib/api";
-import type {
-  AdminCampaignReadinessSummary,
-  AdminCampaignSummary,
-} from "../../../types";
+import { getAdminCampaigns, isApiError } from "../../../lib/api";
+import type { AdminCampaignSummary } from "../../../types";
 
 export const dynamic = "force-dynamic";
 export const metadata = buildPageMetadata("Campagne Admin");
-
-async function loadCampaignReadiness(
-  campaigns: AdminCampaignSummary[],
-  accessToken: string | null,
-): Promise<Record<string, AdminCampaignReadinessSummary | Error>> {
-  const entries = await Promise.all(
-    campaigns.map(async (campaign) => {
-      try {
-        return [
-          campaign.id,
-          await getAdminCampaignSummary(campaign.id, accessToken),
-        ] as const;
-      } catch (error) {
-        return [
-          campaign.id,
-          error instanceof Error
-            ? error
-            : new Error("Read model campagna non disponibile."),
-        ] as const;
-      }
-    }),
-  );
-
-  return Object.fromEntries(entries);
-}
 
 export default async function AdminCampaignsPage() {
   const { getToken } = await auth();
   let result:
     | {
         campaigns: AdminCampaignSummary[];
-        campaignReadiness: Record<string, AdminCampaignReadinessSummary | Error>;
       }
     | {
         errorMessage: string;
@@ -58,9 +25,8 @@ export default async function AdminCampaignsPage() {
   try {
     const accessToken = await getToken();
     const campaigns = await getAdminCampaigns(accessToken);
-    const campaignReadiness = await loadCampaignReadiness(campaigns, accessToken);
 
-    result = { campaigns, campaignReadiness };
+    result = { campaigns };
   } catch (error) {
     if (isApiError(error) && [401, 403].includes(error.status ?? 0)) {
       redirect("/auth/redirect");
@@ -117,7 +83,7 @@ export default async function AdminCampaignsPage() {
         ) : (
           <AdminSurface
             title="Elenco campagne"
-            description="Nome, cliente, stato, readiness breve, destinatari e ultimo aggiornamento."
+            description="Nome, cliente, stato, indicazione leggera di readiness, blocchi registrati e ultimo aggiornamento."
             aside={
               <span className="admin-surface__eyebrow">
                 {result.campaigns.length.toLocaleString("it-IT")} elementi
@@ -131,11 +97,7 @@ export default async function AdminCampaignsPage() {
             ) : (
               <div className="admin-record-list" style={{ gap: 14 }}>
                 {result.campaigns.map((campaign) => (
-                  <AdminCampaignCompactCard
-                    key={campaign.id}
-                    campaign={campaign}
-                    readiness={result.campaignReadiness[campaign.id]}
-                  />
+                  <AdminCampaignCompactCard key={campaign.id} campaign={campaign} />
                 ))}
               </div>
             )}

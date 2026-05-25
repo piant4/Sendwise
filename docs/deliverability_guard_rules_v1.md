@@ -303,8 +303,12 @@ Do not show:
 - Guard blocking concepts for risky sends and readiness failures.
 - V1 runtime closure has verified correlated Mailgun `accepted` and `delivered` events, native one-click headers, RFC 8058 HTTP 200 unsubscribe handling, Listmonk membership becoming `unsubscribed`, and Sendwise suppression reconciliation without additional sends, negative provider events, schema changes, secret exposure, or public Listmonk API/admin exposure.
 - Staging Listmonk is configured with container hostname `listmonk.send.mailerpro.it` only to avoid localhost-style generated `Message-Id` values in outbound SMTP messages; controlled delivery verified the delivered `Message-Id` no longer used `localhost.localdomain` and used `listmonk.send.mailerpro.it`, while native List-Unsubscribe HTTPS, One-Click, DKIM, and Mailgun accepted/delivered correlation remained valid.
-- Template readiness blocks unresolved mandatory brand identity before dispatch: runtime no-send QA for campaign `f0aa4ba6-1a2e-4231-9e57-75bf50959f60` returned HTTP 200 admin review with `allowed_to_send=false`, `content_ready=false`, `review_ready=false`, `template_missing_company_name`, and no `email_logs`, `provider_events`, or `listmonk_mappings` rows created. `template_empty_cta_url` and optional logo/social handling remain automated-test-covered until separately runtime-exercised.
+- Template readiness blocks unresolved mandatory brand identity and required CTA URL targets before dispatch: runtime no-send QA for campaign `f0aa4ba6-1a2e-4231-9e57-75bf50959f60` used authenticated admin `POST /admin/campaigns/{campaign_id}/review`. The review route was confirmed as no-dispatch for this QA and changed only review/readiness state, creating no `email_logs`, no `provider_events`, and no `listmonk_mappings`.
+- Blank mandatory brand identity returned HTTP 200 with `allowed_to_send=false`, `content_ready=false`, `review_ready=false`, and `blocking_errors` containing `template_missing_company_name`.
+- Blank CTA URL after setting a valid `company_name` returned HTTP 200 with `blocking_errors` containing `template_empty_cta_url`; `template_missing_company_name` was absent, and post-review counts remained `email_logs = 0`, `provider_events = 0`, and `listmonk_mappings = 0`.
+- Valid mandatory brand identity after setting a valid `company_name` and valid `website_url`, while leaving optional logo/social fields absent, returned HTTP 200 with `content_ready=true`, `review_ready=false` only because the QA campaign intentionally had no contacts, and `blocking_errors` containing only `Campaign has no associated contacts.`; `template_missing_company_name` and `template_empty_cta_url` were absent, and post-review counts remained `email_logs = 0`, `provider_events = 0`, and `listmonk_mappings = 0`.
 - Brand values must be configured through the supported admin client Brand email flow that persists `clients.metadata.email_brand`; manual database edits are not a valid product path before branded campaign review/send.
+- No real send, unsubscribe, reconciliation, provider event, schema/migration, Listmonk configuration, Mailgun configuration, Docker, Caddy, DNS, or `.env` change occurred during the QA review verification.
 
 ### Next
 
@@ -314,7 +318,6 @@ Do not show:
 - Add provider-event freshness checks before showing delivery analytics.
 - Add campaign risk scoring for list quality, content lint, and recent domain health.
 - Add admin-visible remediation steps for blocked sends.
-- Separately runtime-exercise `template_empty_cta_url` and optional logo/social behavior without sending, if runtime evidence beyond automated tests is required.
 
 ### V2
 

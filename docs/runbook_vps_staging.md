@@ -474,10 +474,13 @@ Provider-event semantics:
 - Delivered `Message-Id` hardening has been verified for the controlled Listmonk SMTP path: the received domain no longer used `localhost.localdomain` and used `listmonk.send.mailerpro.it`.
 
 Template readiness and brand setup:
-- The 19.8 no-send runtime QA used campaign id `f0aa4ba6-1a2e-4231-9e57-75bf50959f60`; admin review returned HTTP 200 with `allowed_to_send=false`, `content_ready=false`, `review_ready=false`, and `blocking_errors` containing `template_missing_company_name`.
-- After that review-only check, `email_logs = 0`, `provider_events = 0`, and `listmonk_mappings = 0`; no real send occurred.
-- `template_empty_cta_url` and optional logo/social behavior are covered by automated backend tests, but have not yet been separately runtime-exercised.
+- The 19.8 final no-send runtime QA used campaign id `f0aa4ba6-1a2e-4231-9e57-75bf50959f60` and authenticated admin `POST /admin/campaigns/{campaign_id}/review`.
+- The review route was confirmed as no-dispatch for this QA: it changed only review/readiness state and created no `email_logs`, no `provider_events`, and no `listmonk_mappings`.
+- Initial blank mandatory brand identity review returned HTTP 200 with `allowed_to_send=false`, `content_ready=false`, `review_ready=false`, and `blocking_errors` containing `template_missing_company_name`.
+- CTA URL blank review after setting a valid `company_name` returned HTTP 200 with `blocking_errors` containing `template_empty_cta_url`; `template_missing_company_name` was no longer present, and post-review counts remained `email_logs = 0`, `provider_events = 0`, and `listmonk_mappings = 0`.
+- Valid mandatory brand review after setting a valid `company_name` and valid `website_url`, while leaving optional logo/social fields absent, returned HTTP 200 with `content_ready=true`, `review_ready=false` only because the QA campaign intentionally had no contacts, and `blocking_errors` containing only `Campaign has no associated contacts.`; `template_missing_company_name` and `template_empty_cta_url` were absent, and post-review counts remained `email_logs = 0`, `provider_events = 0`, and `listmonk_mappings = 0`.
 - Configure brand values through the supported admin client detail Brand email form, not by manual database edits. Mandatory values for branded templates are `email_brand.company_name` and any URL used by required CTA placeholders such as `email_brand.website_url`; optional fields include `sender_name`, `logo_url`, and social URLs.
+- No real send, unsubscribe, reconciliation, provider event, schema/migration, Listmonk configuration, Mailgun configuration, Docker, Caddy, DNS, or `.env` change occurred during the QA review verification.
 - No-send QA for brand setup: save the admin client Brand email form, reopen the client detail page to confirm persistence, run campaign review only on draft content that uses brand placeholders, and re-check that no send/log/provider/listmonk dispatch side effects occurred before any controlled send approval.
 
 ## Restore Safety

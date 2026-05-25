@@ -1,21 +1,24 @@
 # Audit Log
 
-## Milestone 19.8-CLOSE + 19.9-AUDIT - Template Readiness Closure And Brand Configuration Flow
+## Milestone 19.8-CLOSE-FINAL + 19.9-AUDIT - Template Readiness Closure And Brand Configuration Flow
 
 Date: 2026-05-25
 Branch: main
 
-19.8 runtime closure facts recorded:
+19.8 final runtime closure facts recorded:
 - QA campaign id: `f0aa4ba6-1a2e-4231-9e57-75bf50959f60`.
-- Admin review returned HTTP 200 with `allowed_to_send=false`, `content_ready=false`, and `review_ready=false`.
-- `blocking_errors` contained `template_missing_company_name`.
-- After review, database counts remained `email_logs = 0`, `provider_events = 0`, and `listmonk_mappings = 0`.
-- No real send occurred.
+- Review endpoint used: authenticated admin `POST /admin/campaigns/{campaign_id}/review`.
+- The review route was confirmed as no-dispatch for this QA: it changed only review/readiness state and created no `email_logs`, no `provider_events`, and no `listmonk_mappings`.
+- Initial blank mandatory brand identity case returned HTTP 200 with `allowed_to_send=false`, `content_ready=false`, `review_ready=false`, and `blocking_errors` containing `template_missing_company_name`.
+- CTA URL blank case after setting a valid `company_name` returned HTTP 200 with `blocking_errors` containing `template_empty_cta_url`; `template_missing_company_name` was no longer present. After review, counts remained `email_logs = 0`, `provider_events = 0`, and `listmonk_mappings = 0`.
+- Valid mandatory brand case after setting a valid `company_name` and valid `website_url`, while leaving optional logo/social fields absent, returned HTTP 200 with `content_ready=true`. `review_ready=false` only because the QA campaign intentionally had no contacts. `blocking_errors` contained only `Campaign has no associated contacts.`; `template_missing_company_name` and `template_empty_cta_url` were absent. After review, counts remained `email_logs = 0`, `provider_events = 0`, and `listmonk_mappings = 0`.
+- No real send, unsubscribe, reconciliation, provider event, schema/migration, Listmonk configuration, Mailgun configuration, Docker, Caddy, DNS, or `.env` change occurred during QA review verification.
+- Existing admin brand configuration flow was used to set required values; no manual DB edit was required.
 
 Template readiness coverage boundary:
 - `template_missing_company_name` has runtime QA evidence from the no-send admin review above.
-- `template_empty_cta_url` is covered by automated backend preparation tests and has not yet been separately runtime-exercised.
-- Optional logo and social behavior is covered by automated backend preparation/rendering tests and has not yet been separately runtime-exercised.
+- `template_empty_cta_url` has runtime QA evidence from the no-send admin review above.
+- Optional logo and social absence is runtime-exercised as allowed when mandatory `company_name` and required CTA URL values are present.
 
 19.9 brand configuration audit result:
 - A supported platform-admin configuration path already exists for mandatory brand values and optional logo/social fields; manual database edits are not the product solution.
@@ -33,7 +36,6 @@ No-send QA path for the existing configuration flow:
 - Confirm no-send invariants remain `email_logs = 0`, `provider_events = 0`, and no new Listmonk mapping/dispatch side effects for that review-only exercise.
 
 Remaining blockers before sending a branded campaign:
-- Run the no-send runtime QA path for `template_empty_cta_url` and optional logo/social behavior if runtime evidence is required beyond automated tests.
 - Configure mandatory brand values through the supported admin flow before campaign review/send.
 - Keep the normal pre-send gates active: Deliverability Guard, unsubscribe readiness, recipient eligibility/suppression checks, configured campaign limits, provider runtime checks, and `EMAIL_SENDING_ENABLED`.
 

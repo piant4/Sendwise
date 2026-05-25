@@ -4221,3 +4221,28 @@ Required VPS/config evidence before native unsubscribe sync:
 Scope confirmation:
 - No real send, unsubscribe, complaint, bounce, webhook trigger, provider API call, Docker/env/DNS/Caddy/Listmonk runtime setting change, schema/migration change, direct Mailgun/SES send path, or Listmonk bypass was performed.
 - No recipient emails, full headers, message bodies, raw webhook payloads, unsubscribe tokens, credentials, signing keys, auth headers, or full sender addresses were printed.
+
+## Milestone 20.1-G - Running Campaign Slot Lifecycle
+
+Date: 2026-05-25
+Branch: main
+
+Verified state:
+- Client `max_campaigns` enforcement now counts only campaigns in the existing runtime `running` status. `ready`, `draft`, `completed`, `failed`, `paused`, and `blocked` campaigns no longer consume concurrent running capacity.
+- Dispatch still moves a campaign into `running` only after a real send is accepted by the controlled provider path.
+- Provider-event ingestion now moves a `running` campaign to `completed` only when every campaign contact has a latest non-simulated email log and none of those latest logs remain `queued`.
+- Historical email logs and provider-event-derived metrics remain readable after the slot is freed because completion changes only the campaign status.
+
+Checks executed:
+- `bash scripts/audit.sh`
+- `bash scripts/smoke_test.sh`
+- `git diff --check`
+- `/Users/leonardo/.local/share/uv/python/cpython-3.13-macos-aarch64-none/bin/python3.13 -m py_compile backend/app/schemas/common.py backend/app/services/campaigns.py backend/app/services/provider_events.py backend/tests/test_campaign_dispatch.py backend/tests/test_provider_events.py backend/tests/test_admin_campaigns.py`
+- `PYTHONPATH=backend python3 -m pytest backend/tests` was attempted with system Python 3.9 and failed during collection because the codebase uses modern `X | Y` type syntax.
+- `UV_CACHE_DIR=/private/tmp/uv-cache uv run --python /Users/leonardo/.local/share/uv/python/cpython-3.13-macos-aarch64-none/bin/python3.13 --with-requirements backend/requirements.txt -- pytest backend/tests` was attempted and failed because dependency resolution could not reach `pypi.org` in the current restricted environment.
+
+Residual risk:
+- Full backend pytest coverage remains unverified in this environment because the available system Python is too old and network-restricted dependency installation blocked the Python 3.13 test run.
+
+Scope confirmation:
+- No runtime DB mutation, real send, webhook replay, provider configuration change, Docker/runtime setting change, secret read, or recipient email output was performed.

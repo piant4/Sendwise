@@ -22,6 +22,7 @@ from app.repositories.suppression_list import (
     SuppressionListRepository,
     get_suppression_list_repository,
 )
+from app.schemas.common import CampaignStatus, campaign_consumes_running_slot
 from app.schemas.provider_events import ProviderEventIngestResponse
 
 PROVIDER_EVENT_TERMINAL = {
@@ -62,6 +63,17 @@ REDACTED_PAYLOAD_KEYS = {
     "subject",
     "text",
     "token",
+}
+RUNNING_SLOT_PENDING_LOG_STATUSES = {"queued"}
+RUNNING_SLOT_COMPLETION_LOG_STATUSES = {
+    "sent",
+    "delivered",
+    "opened",
+    "clicked",
+    "failed",
+    "bounced",
+    "complained",
+    "unsubscribed",
 }
 
 
@@ -671,9 +683,12 @@ class ProviderEventIngestionService:
                 event_type=event.event_type,
             )
             if next_status is not None:
-                self.email_log_repository.update_status(
+                updated_log = self.email_log_repository.update_status(
                     email_log_id=correlation.email_log.id,
                     status=next_status,
+                )
+                self._complete_running_campaign_if_dispatch_finished(
+                    email_log=updated_log or correlation.email_log,
                 )
 
         suppressed = False
@@ -697,6 +712,47 @@ class ProviderEventIngestionService:
                 suppressed = True
 
         return suppressed
+
+    def _complete_running_campaign_if_dispatch_finished(
+        self,
+        *,
+        email_log: EmailLogRecord,
+    ) -> None:
+        campaign_id = email_log.campaign_id
+        client_id = email_log.client_id
+        if campaign_id is None:
+            return
+
+        campaign = self.campaign_repository.get_by_id(
+            campaign_id=campaign_id,
+            client_id=client_id,
+        )
+        if campaign is None or not campaign_consumes_running_slot(campaign.status):
+            return
+
+        contacts = self.contact_repository.list_campaign_contacts(
+            client_id=client_id,
+            campaign_id=campaign_id,
+        )
+        if not contacts:
+            return
+
+        latest_logs = self.email_log_repository.list_latest_for_campaign(
+            client_id=client_id,
+            campaign_id=campaign_id,
+        )
+        if len(latest_logs) != len(contacts):
+            return
+        if any(log.status in RUNNING_SLOT_PENDING_LOG_STATUSES for log in latest_logs):
+            return
+        if any(log.status not in RUNNING_SLOT_COMPLETION_LOG_STATUSES for log in latest_logs):
+            return
+
+        self.campaign_repository.update_campaign(
+            client_id=client_id,
+            campaign_id=campaign_id,
+            status=CampaignStatus.completed.value,
+        )
 
     def _next_email_log_status(
         self,

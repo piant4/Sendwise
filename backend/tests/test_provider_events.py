@@ -750,6 +750,92 @@ def test_ses_delivery_updates_email_log_and_campaign_metrics() -> None:
     assert admin_service.get_campaign_summary("campaign_123").logs.delivered == 1
 
 
+def test_campaign_stays_running_while_queued_dispatch_work_remains() -> None:
+    contacts = [
+        build_contact(contact_id="contact_123", email="person@example.test"),
+        build_contact(contact_id="contact_456", email="two@example.test"),
+    ]
+    runtime = build_runtime(contacts=contacts)
+    provider_event_service: ProviderEventIngestionService = runtime["provider_event_service"]  # type: ignore[assignment]
+    admin_service: AdminCampaignService = runtime["admin_service"]  # type: ignore[assignment]
+
+    provider_event_service.campaign_repository.update_campaign(
+        client_id="client_123",
+        campaign_id="campaign_123",
+        status="running",
+    )
+    provider_event_service.ingest_event(
+        NormalizedProviderEvent(
+            provider="ses",
+            source="provider_webhook",
+            provider_event_id="accepted-1",
+            event_type="ses_send",
+            campaign_id="campaign_123",
+            contact_id="contact_123",
+            provider_message_id="msg-1",
+            email="person@example.test",
+        )
+    )
+
+    assert admin_service.get_campaign_summary("campaign_123").campaign.status == "running"
+
+
+def test_campaign_completes_and_frees_slot_when_all_dispatch_logs_resolve() -> None:
+    contacts = [
+        build_contact(contact_id="contact_123", email="person@example.test"),
+        build_contact(contact_id="contact_456", email="two@example.test"),
+    ]
+    runtime = build_runtime(contacts=contacts)
+    provider_event_service: ProviderEventIngestionService = runtime["provider_event_service"]  # type: ignore[assignment]
+    email_log_repository: InMemoryEmailLogRepository = runtime["email_log_repository"]  # type: ignore[assignment]
+    admin_service: AdminCampaignService = runtime["admin_service"]  # type: ignore[assignment]
+
+    provider_event_service.campaign_repository.update_campaign(
+        client_id="client_123",
+        campaign_id="campaign_123",
+        status="running",
+    )
+    provider_event_service.ingest_event(
+        NormalizedProviderEvent(
+            provider="ses",
+            source="provider_webhook",
+            provider_event_id="accepted-1",
+            event_type="ses_send",
+            campaign_id="campaign_123",
+            contact_id="contact_123",
+            provider_message_id="msg-1",
+            email="person@example.test",
+        )
+    )
+    provider_event_service.ingest_event(
+        NormalizedProviderEvent(
+            provider="ses",
+            source="provider_webhook",
+            provider_event_id="accepted-2",
+            event_type="ses_send",
+            campaign_id="campaign_123",
+            contact_id="contact_456",
+            provider_message_id="msg-2",
+            email="two@example.test",
+        )
+    )
+
+    summary = admin_service.get_campaign_summary("campaign_123")
+
+    assert email_log_repository.find_latest_for_contact(
+        client_id="client_123",
+        campaign_id="campaign_123",
+        contact_id="contact_123",
+    ).status == "sent"
+    assert email_log_repository.find_latest_for_contact(
+        client_id="client_123",
+        campaign_id="campaign_123",
+        contact_id="contact_456",
+    ).status == "sent"
+    assert summary.campaign.status == "completed"
+    assert summary.logs.sent == 2
+
+
 def test_ses_complaint_updates_provider_events_email_logs_and_suppression_list() -> None:
     runtime = build_runtime()
     provider_event_service: ProviderEventIngestionService = runtime["provider_event_service"]  # type: ignore[assignment]

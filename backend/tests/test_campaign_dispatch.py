@@ -1737,7 +1737,7 @@ def test_max_campaigns_blocks_when_active_campaign_count_exceeds_limit() -> None
         clients=[build_client(max_campaigns=1)],
         campaigns=[
             build_campaign(campaign_id="campaign_123"),
-            build_campaign(campaign_id="campaign_456"),
+            build_campaign(campaign_id="campaign_456", status="running"),
         ],
     )
 
@@ -1746,6 +1746,44 @@ def test_max_campaigns_blocks_when_active_campaign_count_exceeds_limit() -> None
     assert result["status"] == "blocked"
     assert result["code"] == "max_campaigns_exceeded"
     assert fake_listmonk.sent_campaign_ids == []
+
+
+def test_ready_campaigns_do_not_count_against_running_slot_limit() -> None:
+    fake_listmonk = FakeListmonkClient()
+    service = build_dispatch_service(
+        fake_listmonk=fake_listmonk,
+        clients=[build_client(max_campaigns=1)],
+        campaigns=[
+            build_campaign(campaign_id="campaign_123", status="ready"),
+            build_campaign(campaign_id="campaign_456", status="ready"),
+        ],
+        preparation_service=FakePreparationService(content_ready=True),
+    )
+
+    result = service.send_campaign("campaign_123")
+
+    assert result["status"] == "accepted"
+    assert result["code"] == "authorized"
+    assert fake_listmonk.sent_campaign_ids == ["lm_1"]
+
+
+def test_completed_campaign_does_not_count_against_running_slot_limit() -> None:
+    fake_listmonk = FakeListmonkClient()
+    service = build_dispatch_service(
+        fake_listmonk=fake_listmonk,
+        clients=[build_client(max_campaigns=1)],
+        campaigns=[
+            build_campaign(campaign_id="campaign_123", status="ready"),
+            build_campaign(campaign_id="campaign_456", status="completed"),
+        ],
+        preparation_service=FakePreparationService(content_ready=True),
+    )
+
+    result = service.send_campaign("campaign_123")
+
+    assert result["status"] == "accepted"
+    assert result["code"] == "authorized"
+    assert fake_listmonk.sent_campaign_ids == ["lm_1"]
 
 
 def test_disabled_campaign_send_without_campaign_context_does_not_persist_fake_block() -> None:
@@ -1867,7 +1905,7 @@ def test_enabled_campaign_send_creates_mapping_after_guard_authorizes() -> None:
     assert "subject" not in result["preparation"]["content"]
 
 
-def test_successful_dispatch_marks_campaign_running_and_starts_period() -> None:
+def test_successful_dispatch_frees_running_slot_when_dispatch_finishes() -> None:
     fake_listmonk = FakeListmonkClient()
     email_log_repository = InMemoryEmailLogRepository()
     limit_repository = InMemoryCampaignSendingLimitRepository()
@@ -1889,7 +1927,7 @@ def test_successful_dispatch_marks_campaign_running_and_starts_period() -> None:
         campaign_id="campaign_123"
     ).period_started_at is not None
     assert client_repository is not None
-    assert client_repository.list_admin_campaigns()[0].status == "running"
+    assert client_repository.list_admin_campaigns()[0].status == "completed"
 
 
 def test_enabled_campaign_send_reuses_existing_mapping() -> None:

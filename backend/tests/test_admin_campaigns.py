@@ -329,6 +329,7 @@ def build_admin_service(
     campaign_repository: InMemoryCampaignRepository | None = None,
     slot_repository: InMemoryCampaignSlotRepository | None = None,
     clients: list[ClientRecord] | None = None,
+    client_campaigns: list[ClientCampaignRecord] | None = None,
     contacts: list[ContactRecord] | None = None,
     campaign_contacts: set[tuple[str, str, str]] | None = None,
     suppression_records: list[SuppressionRecord] | None = None,
@@ -346,7 +347,10 @@ def build_admin_service(
         repository=repository,
         campaign_limit_repository=campaign_limit_repository
         or InMemoryCampaignSendingLimitRepository(),
-        client_repository=FakeClientRepository(clients=clients or [build_client()]),  # type: ignore[arg-type]
+        client_repository=FakeClientRepository(
+            clients=clients or [build_client()],
+            campaigns=client_campaigns,
+        ),  # type: ignore[arg-type]
         campaign_slot_service=CampaignSlotService(
             slot_repository=slots,
             campaign_repository=repository,
@@ -1022,6 +1026,45 @@ def test_admin_campaign_detail_includes_email_brand() -> None:
         "sender_name": "Team Acme",
         "website_url": "https://acme.example.test/",
     }
+
+
+def test_review_campaign_ignores_ready_and_completed_campaigns_for_running_slot_limit() -> None:
+    repository = InMemoryCampaignRepository()
+    current = repository.add_campaign(
+        campaign_id="campaign_123",
+        client_id="client_123",
+        status="ready",
+        subject="Launch",
+        body_html="<p>Hello</p>",
+        content_ready=True,
+        contacts_ready=True,
+        review_ready=True,
+        current_step="review",
+    )
+    repository.add_campaign(
+        campaign_id="campaign_456",
+        client_id="client_123",
+        status="completed",
+        subject="Past launch",
+        body_html="<p>Done</p>",
+        content_ready=True,
+        contacts_ready=True,
+        review_ready=True,
+        current_step="send",
+    )
+    contact = build_contact(contact_id="contact_123", email="person@example.test")
+    service = build_admin_service(
+        settings=Settings(email_sending_enabled_raw="true"),
+        campaign_repository=repository,
+        clients=[build_client(max_campaigns=1)],
+        contacts=[contact],
+        campaign_contacts={(current.client_id, current.id, contact.id)},
+    )
+
+    result = service.review_campaign(current.id)
+
+    assert result.can_send_when_enabled is True
+    assert "Client max_campaigns limit is exceeded." not in result.blocking_errors
 
 
 def test_admin_select_slot_assigns_valid_slot() -> None:

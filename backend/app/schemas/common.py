@@ -45,3 +45,10 @@ class CampaignStats(BaseModel):
     clicked: int
     bounced: int
     unsubscribed: int
+
+
+RUNNING_SLOT_CAMPAIGN_STATUSES = frozenset({CampaignStatus.running.value})
+
+
+def campaign_consumes_running_slot(status: str) -> bool:
+    return status.strip().lower() in RUNNING_SLOT_CAMPAIGN_STATUSES

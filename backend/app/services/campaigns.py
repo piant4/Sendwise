@@ -83,7 +83,7 @@ from app.schemas.campaigns import (
     CampaignSummaryItem,
     ProviderHistoryPolicySummary,
 )
-from app.schemas.common import CampaignStatus
+from app.schemas.common import CampaignStatus, campaign_consumes_running_slot
 from app.services.provider_runtime import (
     build_listmonk_client,
     build_provider_runtime_summary,
@@ -162,6 +162,10 @@ ACCEPTED_OR_COMPLETED_LOG_STATUSES = {
 }
 DOMAIN_WARMUP_COUNTED_LOG_STATUSES = tuple(sorted(ACCEPTED_OR_COMPLETED_LOG_STATUSES))
 RETRYABLE_FAILED_LOG_STATUSES = {"failed"}
+RUNNING_SLOT_COMPLETION_LOG_STATUSES = (
+    ACCEPTED_OR_COMPLETED_LOG_STATUSES
+    | RETRYABLE_FAILED_LOG_STATUSES
+)
 PREPARATION_CONTENT_REDACTED_KEYS = {
     "subject",
     "preview_text",
@@ -1982,7 +1986,7 @@ class AdminCampaignService:
         return sum(
             1
             for campaign in self.repository.list_by_client(client_id)
-            if campaign.status.lower() in self.guard.SENDABLE_CAMPAIGN_STATUSES
+            if campaign_consumes_running_slot(campaign.status)
         )
 
     def _to_client_campaign_record(self, campaign: CampaignRecord) -> ClientCampaignRecord:
@@ -2839,6 +2843,12 @@ class CampaignDispatchService:
                 campaign_limit_repository=campaign_limit_repository,
                 email_log_repository=email_log_repository,
             )
+            campaign = self._complete_campaign_if_dispatch_finished(
+                campaign=campaign,
+                contacts=contacts,
+                client_repository=client_repository,
+                email_log_repository=email_log_repository,
+            )
             limit_usage = self._build_dispatch_limit_usage(
                 campaign=campaign,
                 client_id=campaign.client_id,
@@ -3039,7 +3049,7 @@ class CampaignDispatchService:
         return sum(
             1
             for campaign in client_repository.list_client_campaigns(client_id)
-            if campaign.status.lower() in self.guard.SENDABLE_CAMPAIGN_STATUSES
+            if campaign_consumes_running_slot(campaign.status)
         )
 
     def _build_dispatch_limit_usage(
@@ -3388,6 +3398,40 @@ class CampaignDispatchService:
                     period_started_at=first_activity_at,
                 )
         return next_campaign
+
+    def _complete_campaign_if_dispatch_finished(
+        self,
+        *,
+        campaign: ClientCampaignRecord,
+        contacts: list[ContactRecord],
+        client_repository: ClientRepository,
+        email_log_repository: EmailLogRepository,
+    ) -> ClientCampaignRecord:
+        if not campaign_consumes_running_slot(campaign.status) or not contacts:
+            return campaign
+
+        latest_logs = email_log_repository.list_latest_for_campaign(
+            client_id=campaign.client_id,
+            campaign_id=campaign.id,
+        )
+        if len(latest_logs) != len(contacts):
+            return campaign
+        if any(log.status in IN_PROGRESS_LOG_STATUSES for log in latest_logs):
+            return campaign
+        if any(log.status not in RUNNING_SLOT_COMPLETION_LOG_STATUSES for log in latest_logs):
+            return campaign
+
+        if not hasattr(client_repository, "update_campaign_status"):
+            return campaign.model_copy(update={"status": CampaignStatus.completed.value})
+
+        updated = client_repository.update_campaign_status(  # type: ignore[attr-defined]
+            client_id=campaign.client_id,
+            campaign_id=campaign.id,
+            status=CampaignStatus.completed.value,
+        )
+        return updated or campaign.model_copy(
+            update={"status": CampaignStatus.completed.value}
+        )
 
     def _resolve_controlled_provider(self) -> str | None:
         return _resolve_controlled_provider(self.settings)

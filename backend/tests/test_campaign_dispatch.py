@@ -94,6 +94,44 @@ class FakePreparationService:
         }
 
 
+class TemplateBlockedPreparationService(FakePreparationService):
+    def __init__(self) -> None:
+        super().__init__(content_ready=False)
+
+    def prepare_campaign(
+        self,
+        campaign_id: str,
+        _current_user: AuthenticatedUser | None = None,
+    ) -> dict[str, Any]:
+        self.prepared_campaign_ids.append(campaign_id)
+        return {
+            "status": "blocked",
+            "campaign_id": campaign_id,
+            "client_id": "client_123",
+            "listmonk_synced": False,
+            "content_ready": False,
+            "reason": (
+                "Campaign template content is not ready: required brand variable "
+                "{{company_name}} is blank."
+            ),
+            "reason_code": "template_missing_company_name",
+            "content": {
+                "template_name": "campaign_business_db",
+                "content_ready": False,
+                "allow_listmonk_sync": False,
+                "reason_code": "template_missing_company_name",
+                "reason": (
+                    "Campaign template content is not ready: required brand variable "
+                    "{{company_name}} is blank."
+                ),
+                "subject": "",
+                "preview_text": "",
+                "body": "",
+                "body_text": "",
+            },
+        }
+
+
 class SesReadyPreparationService(FakePreparationService):
     def prepare_campaign(
         self,
@@ -490,6 +528,38 @@ def test_dispatch_does_not_trigger_real_send_when_content_is_not_ready() -> None
     assert "subject" not in result["preparation"]["content"]
     assert email_log_repository.list_by_campaign("campaign_123") == []
     assert fake_listmonk.sent_campaign_ids == []
+
+
+def test_dispatch_template_readiness_block_creates_no_logs_or_provider_events() -> None:
+    fake_listmonk = FakeListmonkClient()
+    email_log_repository = InMemoryEmailLogRepository()
+    provider_event_repository = InMemoryProviderEventRepository()
+    preparation_service = TemplateBlockedPreparationService()
+    service = build_dispatch_service(
+        fake_listmonk=fake_listmonk,
+        email_log_repository=email_log_repository,
+        provider_event_repository=provider_event_repository,
+        preparation_service=preparation_service,
+    )
+
+    result = service.send_campaign("campaign_123")
+
+    assert result["status"] == "dispatch_blocked"
+    assert result["code"] == "template_missing_company_name"
+    assert result["listmonk_prepared"] is False
+    assert result["listmonk_dispatched"] is False
+    assert result["dispatch_attempted"] is False
+    assert result["real_send_attempted"] is False
+    assert result["email_logs_created"] == 0
+    assert result["email_logs_updated"] == 0
+    assert preparation_service.prepared_campaign_ids == ["campaign_123"]
+    assert fake_listmonk.created_campaign_payloads == []
+    assert fake_listmonk.sent_campaign_ids == []
+    assert email_log_repository.list_by_campaign("campaign_123") == []
+    assert provider_event_repository.list_by_campaign(
+        client_id="client_123",
+        campaign_id="campaign_123",
+    ) == []
 
 
 def test_upsert_mapping_is_idempotent_for_same_target() -> None:

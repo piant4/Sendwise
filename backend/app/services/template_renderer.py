@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from html import escape
+from html.parser import HTMLParser
 from pathlib import Path
 import re
 from typing import Mapping
@@ -40,6 +41,7 @@ LISTMONK_NATIVE_SIMPLE_PLACEHOLDERS = frozenset(
         "unsubscribeurl",
     }
 )
+MANDATORY_USED_TEMPLATE_VARIABLES = frozenset({"company_name"})
 
 
 class TemplateRenderError(RuntimeError):
@@ -61,6 +63,12 @@ class UnresolvedSendwisePlaceholderError(TemplateRenderError):
         )
         self.field_name = field_name
         self.placeholders = frozenset(placeholders)
+
+
+class TemplateContentReadinessError(TemplateRenderError):
+    def __init__(self, *, code: str, message: str) -> None:
+        super().__init__(message)
+        self.code = code
 
 
 @dataclass(frozen=True)
@@ -242,6 +250,170 @@ def render_sendwise_template_string(
             placeholders=unknown_placeholders,
         )
     return rendered
+
+
+def validate_rendered_template_content_ready(
+    *,
+    source_fields: Mapping[str, str | None],
+    rendered_body_html: str,
+    resolved_variables: Mapping[str, str],
+) -> None:
+    used_variables = _extract_template_variables(source_fields.values())
+    for variable in sorted(MANDATORY_USED_TEMPLATE_VARIABLES & used_variables):
+        if not str(resolved_variables.get(variable) or "").strip():
+            raise TemplateContentReadinessError(
+                code=f"template_missing_{variable}",
+                message=(
+                    "Campaign template content is not ready: required brand "
+                    f"variable {{{{{variable}}}}} is blank."
+                ),
+            )
+
+    href_placeholder = _source_blank_href_placeholder(
+        source_fields=source_fields,
+        resolved_variables=resolved_variables,
+    )
+    if href_placeholder is not None:
+        raise TemplateContentReadinessError(
+            code=(
+                "template_empty_cta_url"
+                if href_placeholder == "website_url"
+                else f"template_empty_{href_placeholder}"
+            ),
+            message=(
+                "Campaign template content is not ready: a visible link rendered "
+                "with a missing or blank href."
+            ),
+        )
+
+    empty_anchor = _find_first_empty_visible_anchor(rendered_body_html)
+    if empty_anchor is not None:
+        code = "template_empty_cta_url"
+        if empty_anchor.placeholder_name:
+            code = f"template_empty_{empty_anchor.placeholder_name}"
+        raise TemplateContentReadinessError(
+            code=code,
+            message=(
+                "Campaign template content is not ready: a visible link rendered "
+                "with a missing or blank href."
+            ),
+        )
+
+    unresolved = {
+        placeholder
+        for placeholder in _extract_template_variables([rendered_body_html])
+        if placeholder not in LISTMONK_NATIVE_SIMPLE_PLACEHOLDERS
+    }
+    if unresolved:
+        raise TemplateContentReadinessError(
+            code="template_content_not_ready",
+            message=(
+                "Campaign template content is not ready: supported placeholders "
+                "remain unresolved in required output."
+            ),
+        )
+
+
+def _extract_template_variables(values: object) -> set[str]:
+    variables: set[str] = set()
+    for value in values:
+        if not value:
+            continue
+        variables.update(
+            match.group(1).strip().lower()
+            for match in TEMPLATE_VARIABLE_PATTERN.finditer(str(value))
+        )
+    return variables
+
+
+def _source_blank_href_placeholder(
+    *,
+    source_fields: Mapping[str, str | None],
+    resolved_variables: Mapping[str, str],
+) -> str | None:
+    href_pattern = re.compile(
+        r"<a\b[^>]*\bhref\s*=\s*(['\"])\s*{{\s*([A-Za-z0-9_]+)\s*}}\s*\1",
+        re.IGNORECASE,
+    )
+    for value in source_fields.values():
+        if not value:
+            continue
+        for match in href_pattern.finditer(str(value)):
+            placeholder = match.group(2).strip().lower()
+            if not str(resolved_variables.get(placeholder) or "").strip():
+                return placeholder
+    return None
+
+
+@dataclass(frozen=True)
+class _RenderedAnchorIssue:
+    placeholder_name: str | None = None
+
+
+class _EmptyAnchorParser(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self._anchor_stack: list[dict[str, object]] = []
+        self.issue: _RenderedAnchorIssue | None = None
+
+    def handle_starttag(
+        self,
+        tag: str,
+        attrs: list[tuple[str, str | None]],
+    ) -> None:
+        if self.issue is not None:
+            return
+        normalized_tag = tag.lower()
+        if normalized_tag != "a":
+            if normalized_tag == "img" and self._anchor_stack:
+                self._anchor_stack[-1]["visible"] = True
+            return
+
+        attr_map = {key.lower(): value for key, value in attrs}
+        href = attr_map.get("href")
+        self._anchor_stack.append(
+            {
+                "empty": href is None or not str(href).strip(),
+                "visible": False,
+                "placeholder": self._placeholder_name_from_attrs(attrs),
+            }
+        )
+
+    def handle_endtag(self, tag: str) -> None:
+        if self.issue is not None or tag.lower() != "a" or not self._anchor_stack:
+            return
+        anchor = self._anchor_stack.pop()
+        if bool(anchor["empty"]) and bool(anchor["visible"]):
+            self.issue = _RenderedAnchorIssue(
+                placeholder_name=anchor["placeholder"]
+                if isinstance(anchor["placeholder"], str)
+                else None
+            )
+
+    def handle_data(self, data: str) -> None:
+        if self.issue is None and self._anchor_stack and data.strip():
+            self._anchor_stack[-1]["visible"] = True
+
+    def _placeholder_name_from_attrs(
+        self,
+        attrs: list[tuple[str, str | None]],
+    ) -> str | None:
+        for _key, value in attrs:
+            if value is None:
+                continue
+            match = TEMPLATE_VARIABLE_PATTERN.search(value)
+            if match:
+                return match.group(1).strip().lower()
+        return None
+
+
+def _find_first_empty_visible_anchor(
+    rendered_body_html: str,
+) -> _RenderedAnchorIssue | None:
+    parser = _EmptyAnchorParser()
+    parser.feed(rendered_body_html)
+    parser.close()
+    return parser.issue
 
 
 def build_brand_template_variables(

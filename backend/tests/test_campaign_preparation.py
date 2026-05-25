@@ -676,6 +676,104 @@ def test_prepare_campaign_cleans_empty_brand_blocks() -> None:
     assert result["content"]["unsubscribe_url"] in result["content"]["body"]
 
 
+def test_prepare_campaign_blocks_blank_company_name_used_in_template() -> None:
+    service, fake_listmonk, _repository = build_preparation_service(
+        campaign=build_campaign(
+            body_html=(
+                "<html><body><p>Ricevi questa email perche sei iscritto agli "
+                "aggiornamenti di {{company_name}}.</p></body></html>"
+            ),
+            body_text="Aggiornamenti di {{company_name}}",
+        ),
+        client_metadata={"email_brand": {"website_url": "https://acme.example.test"}},
+    )
+
+    result = service.prepare_campaign("campaign_123")
+
+    assert result["status"] == "blocked"
+    assert result["listmonk_synced"] is False
+    assert result["reason_code"] == "template_missing_company_name"
+    assert result["content"]["reason_code"] == "template_missing_company_name"
+    assert fake_listmonk.created_lists == []
+    assert fake_listmonk.created_subscribers == []
+    assert fake_listmonk.created_campaign_payloads == []
+
+
+def test_prepare_campaign_blocks_blank_cta_href_from_website_url() -> None:
+    service, fake_listmonk, _repository = build_preparation_service(
+        campaign=build_campaign(
+            body_html=(
+                "<html><body><a href=\"{{website_url}}\">Scopri l'offerta</a>"
+                "</body></html>"
+            ),
+            body_text="Scopri l'offerta",
+        ),
+        client_metadata={"email_brand": {"company_name": "Acme Labs"}},
+    )
+
+    result = service.prepare_campaign("campaign_123")
+
+    assert result["status"] == "blocked"
+    assert result["reason_code"] == "template_empty_cta_url"
+    assert "missing or blank href" in result["reason"]
+    assert fake_listmonk.created_lists == []
+    assert fake_listmonk.created_subscribers == []
+    assert fake_listmonk.created_campaign_payloads == []
+
+
+def test_prepare_campaign_allows_missing_optional_logo_and_social_when_safely_omitted() -> None:
+    service, fake_listmonk, _repository = build_preparation_service(
+        campaign=build_campaign(
+            body_html=(
+                "<html><body><p>{{logo}}</p><p>{{social_icons}}</p>"
+                "<p>{{company_name}}</p><a href=\"{{website_url}}\">Visita</a>"
+                "</body></html>"
+            ),
+            body_text="Visita {{website_url}}",
+        ),
+        client_metadata={
+            "email_brand": {
+                "company_name": "Acme Labs",
+                "website_url": "https://acme.example.test",
+            }
+        },
+    )
+
+    result = service.prepare_campaign("campaign_123")
+
+    assert result["status"] == "synced"
+    assert result["content_ready"] is True
+    assert "img src=" not in result["content"]["body"]
+    assert "linkedin.com/company/acme" not in result["content"]["body"]
+    assert fake_listmonk.created_campaign_payloads
+
+
+def test_prepare_campaign_allows_non_empty_company_and_cta_values() -> None:
+    service, fake_listmonk, _repository = build_preparation_service(
+        campaign=build_campaign(
+            body_html=(
+                "<html><body><p>{{company_name}}</p>"
+                "<a href=\"{{website_url}}\">Visita</a></body></html>"
+            ),
+            body_text="{{company_name}} {{website_url}}",
+        ),
+        client_metadata={
+            "email_brand": {
+                "company_name": "Acme Labs",
+                "website_url": "https://acme.example.test",
+            }
+        },
+    )
+
+    result = service.prepare_campaign("campaign_123")
+
+    assert result["status"] == "synced"
+    assert result["content_ready"] is True
+    assert "Acme Labs" in result["content"]["body"]
+    assert 'href="https://acme.example.test/"' in result["content"]["body"]
+    assert len(fake_listmonk.created_campaign_payloads) == 1
+
+
 def test_prepare_campaign_blocks_unknown_sendwise_placeholders_before_listmonk() -> None:
     service, fake_listmonk, _repository = build_preparation_service(
         campaign=build_campaign(

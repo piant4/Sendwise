@@ -33,6 +33,7 @@ from app.services.template_renderer import (
     ensure_unsubscribe_link,
     get_default_template_renderer,
     render_sendwise_template_string,
+    validate_rendered_template_content_ready,
 )
 from app.services.unsubscribe import (
     UnsubscribeTokenService,
@@ -133,6 +134,24 @@ class CampaignPreparationService:
 
         client = self.client_repository.get_by_id(campaign.client_id)
         content = self._render_campaign_content(campaign=campaign, client=client)
+        if not content.get("allow_listmonk_sync", True):
+            return {
+                "status": "blocked",
+                "campaign_id": campaign.id,
+                "client_id": campaign.client_id,
+                "listmonk_synced": False,
+                "content_ready": False,
+                "reason": str(
+                    content.get(
+                        "reason",
+                        "Campaign content contains unsupported Sendwise placeholders.",
+                    )
+                ),
+                "reason_code": str(
+                    content.get("reason_code") or "template_content_not_ready"
+                ),
+                "content": content,
+            }
 
         list_mapping, list_created = self.contact_sync_service.ensure_campaign_list(
             client_id=campaign.client_id,
@@ -154,6 +173,9 @@ class CampaignPreparationService:
                         "reason",
                         "Campaign content contains unsupported Sendwise placeholders.",
                     )
+                ),
+                "reason_code": str(
+                    content.get("reason_code") or "template_content_not_ready"
                 ),
                 "contact_summary": contact_summary,
                 "content": content,
@@ -283,11 +305,27 @@ class CampaignPreparationService:
                     content_variables,
                     field_name="body_text",
                 )
+                rendered_body = ensure_unsubscribe_link(rendered_body, unsubscribe_url)
+                validate_rendered_template_content_ready(
+                    source_fields={
+                        "subject": subject,
+                        "preview_text": preview_text_value,
+                        "body_html": str(campaign.body_html or ""),
+                        "body_text": str(campaign.body_text or ""),
+                    },
+                    rendered_body_html=rendered_body,
+                    resolved_variables=content_variables,
+                )
             except TemplateRenderError as error:
                 return {
                     "template_name": "campaign_business_db",
                     "content_ready": False,
                     "allow_listmonk_sync": False,
+                    "reason_code": getattr(
+                        error,
+                        "code",
+                        "template_content_not_ready",
+                    ),
                     "reason": str(error),
                     "subject": "",
                     "preview_text": "",
@@ -296,11 +334,11 @@ class CampaignPreparationService:
                     "unsubscribe_url": unsubscribe_url,
                     "client_name": client_name,
                 }
-            rendered_body = ensure_unsubscribe_link(rendered_body, unsubscribe_url)
             return {
                 "template_name": "campaign_business_db",
                 "content_ready": True,
                 "allow_listmonk_sync": True,
+                "reason_code": None,
                 "reason": None,
                 "subject": rendered_subject,
                 "preview_text": rendered_preview_text,

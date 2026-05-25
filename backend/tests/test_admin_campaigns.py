@@ -952,6 +952,51 @@ def test_admin_create_email_template_rejects_missing_body() -> None:
         raise AssertionError("Expected template body validation error")
 
 
+def test_admin_review_exposes_template_readiness_blocking_reason() -> None:
+    repository = InMemoryCampaignRepository()
+    campaign = repository.add_campaign(
+        campaign_id="campaign_123",
+        status="draft",
+        subject="Launch",
+        body_html=(
+            "<html><body><p>Ricevi questa email perche sei iscritto agli "
+            "aggiornamenti di {{company_name}}.</p></body></html>"
+        ),
+        content_ready=True,
+        contacts_ready=True,
+    )
+    contact = build_contact(
+        contact_id="contact_123",
+        email="person@example.test",
+    )
+    service = build_admin_service(
+        settings=Settings(email_sending_enabled_raw="true"),
+        campaign_repository=repository,
+        clients=[
+            build_client(
+                metadata={
+                    "email_brand": {
+                        "website_url": "https://acme.example.test",
+                    }
+                }
+            )
+        ],
+        contacts=[contact],
+        campaign_contacts={(campaign.client_id, campaign.id, contact.id)},
+    )
+
+    result = service.review_campaign(campaign.id)
+
+    assert result.allowed_to_send is False
+    assert result.can_send_when_enabled is False
+    assert result.content_ready is False
+    assert result.review_ready is False
+    assert any(
+        error.startswith("template_missing_company_name:")
+        for error in result.blocking_errors
+    )
+
+
 def test_admin_campaign_detail_includes_email_brand() -> None:
     repository = InMemoryCampaignRepository()
     campaign = repository.add_campaign(campaign_id="campaign_123", client_id="client_123")

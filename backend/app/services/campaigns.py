@@ -92,8 +92,12 @@ from app.services.provider_runtime import (
 from app.services.clients import build_client_email_brand
 from app.services.template_renderer import (
     KNOWN_TEMPLATE_VARIABLES,
+    TemplateRenderError,
     build_template_variable_values,
+    build_brand_template_variables,
+    ensure_unsubscribe_link,
     render_template_string,
+    validate_rendered_template_content_ready,
 )
 from app.services.campaign_slots import (
     CampaignSlotConflictError,
@@ -1538,6 +1542,14 @@ class AdminCampaignService:
             subject=campaign.subject,
             body_html=campaign.body_html,
         )
+        content_blocker_code, content_blocker_reason = (
+            self._evaluate_template_content_readiness(
+                campaign=campaign,
+                client=client,
+            )
+        )
+        if content_blocker_code is not None:
+            content_ready = False
         contacts_ready = contact_summary.contacts_ready
         active_campaign_count = self._count_active_campaigns(client.id)
         duplicate_guard = self._evaluate_duplicate_dispatch_guard(
@@ -1582,7 +1594,9 @@ class AdminCampaignService:
             if provider_history_result is not None:
                 guard_result = provider_history_result
         blocking_errors: list[str] = []
-        if not content_ready:
+        if content_blocker_code is not None and content_blocker_reason is not None:
+            blocking_errors.append(f"{content_blocker_code}: {content_blocker_reason}")
+        elif not content_ready:
             blocking_errors.append("Campaign content is not ready.")
         if not contacts_ready:
             blocking_errors.append("Campaign has no associated contacts.")
@@ -1626,6 +1640,64 @@ class AdminCampaignService:
             limit_usage=limit_context.usage,
             provider_history=provider_history_policy,
         )
+
+    def _evaluate_template_content_readiness(
+        self,
+        *,
+        campaign: CampaignRecord,
+        client: ClientRecord,
+    ) -> tuple[str | None, str | None]:
+        if not self._content_ready(
+            subject=campaign.subject,
+            body_html=campaign.body_html,
+        ):
+            return None, None
+
+        email_brand = build_brand_template_variables(None)
+        brand = build_client_email_brand(client.metadata)
+        if brand is not None:
+            email_brand = build_brand_template_variables(
+                brand.model_dump(exclude_none=True)
+            )
+        variables = build_template_variable_values(
+            subject=(campaign.subject or "").strip(),
+            preview_text=(campaign.preview_text or "").strip(),
+            body=str(campaign.body_html or ""),
+            unsubscribe_url=LISTMONK_UNSUBSCRIBE_TOKEN_PLACEHOLDER,
+            client_name=client.personal_name or client.email.split("@")[0],
+            campaign_name=campaign.name,
+            current_year=datetime.now(timezone.utc).year,
+        )
+        variables.update(
+            {
+                "nome": "{{ .Subscriber.Attribs.nome }}",
+                "cognome": "{{ .Subscriber.Attribs.cognome }}",
+                "email": "{{ .Subscriber.Email }}",
+            }
+        )
+        variables.update(email_brand)
+        rendered_body = render_template_string(str(campaign.body_html or ""), variables)
+        rendered_body = ensure_unsubscribe_link(
+            rendered_body,
+            LISTMONK_UNSUBSCRIBE_TOKEN_PLACEHOLDER,
+        )
+        try:
+            validate_rendered_template_content_ready(
+                source_fields={
+                    "subject": campaign.subject,
+                    "preview_text": campaign.preview_text,
+                    "body_html": campaign.body_html,
+                    "body_text": campaign.body_text,
+                },
+                rendered_body_html=rendered_body,
+                resolved_variables=variables,
+            )
+        except TemplateRenderError as error:
+            return (
+                str(getattr(error, "code", "template_content_not_ready")),
+                str(error),
+            )
+        return None, None
 
     def _build_guard_campaign(
         self,
@@ -2574,7 +2646,7 @@ class CampaignDispatchService:
                 )
 
             if preparation.get("status") != "synced":
-                return self._diagnostic_response(
+                response = self._diagnostic_response(
                     campaign_id=campaign_id,
                     decision=guard_result,
                     reason=str(
@@ -2584,9 +2656,14 @@ class CampaignDispatchService:
                         )
                     ),
                     client_id=campaign.client_id,
-                    code="campaign_preparation_failed",
+                    code=str(
+                        preparation.get("reason_code")
+                        or "campaign_preparation_failed"
+                    ),
                     preparation=preparation,
                 )
+                response["listmonk_prepared"] = bool(preparation.get("listmonk_synced"))
+                return response
 
             content = preparation.get("content")
             if not isinstance(content, dict) or not content.get("content_ready"):

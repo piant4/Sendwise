@@ -5415,7 +5415,7 @@ p {
 
 .account-clerk-shell {
   display: grid;
-  gap: 14px;
+  gap: 0;
 }
 
 .account-clerk-shell__helper {
@@ -5477,6 +5477,10 @@ p {
   display: grid;
   gap: 18px;
   padding: clamp(18px, 2.5vw, 24px);
+}
+
+.settings-shell--minimal {
+  gap: 22px;
 }
 
 .settings-header,
@@ -5555,6 +5559,10 @@ p {
   gap: 14px;
 }
 
+.settings-sections--minimal {
+  gap: 16px;
+}
+
 .theme-preference,
 .theme-preference__status,
 .theme-preference__options,
@@ -5597,13 +5605,14 @@ p {
 }
 
 .theme-preference__option {
-  align-items: start;
+  align-items: center;
   background: var(--sw-surface-elevated);
   border: 1px solid rgba(203, 213, 225, 0.82);
   border-radius: 16px;
-  gap: 12px;
+  gap: 10px;
   grid-template-columns: auto minmax(0, 1fr);
-  padding: 14px;
+  min-height: 74px;
+  padding: 12px 14px;
   text-align: left;
   transition:
     transform 0.15s ease,
@@ -5642,7 +5651,7 @@ p {
 }
 
 .theme-preference__option-copy {
-  gap: 4px;
+  gap: 3px;
 }
 
 .theme-preference__option-copy strong {
@@ -5653,8 +5662,8 @@ p {
 
 .theme-preference__option-copy span {
   color: var(--sw-text-muted);
-  font-size: 0.82rem;
-  line-height: 1.45;
+  font-size: 0.78rem;
+  line-height: 1.35;
 }
 
 .settings-section {
@@ -5663,6 +5672,10 @@ p {
   border-radius: 18px;
   gap: 14px;
   padding: 16px;
+}
+
+.settings-section--clerk {
+  padding: 18px;
 }
 
 .settings-section--account {

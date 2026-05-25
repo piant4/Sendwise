@@ -73,8 +73,8 @@ export default async function AccountPage({ params }: AccountPageProps) {
         personalName={null}
         companyName={null}
         profileEditSupported={false}
-        title="Account cliente"
-        description="Area account cliente Sendwise. Profilo, email verificata, password e MFA restano gestiti da Clerk dentro questa cornice."
+        title="Account"
+        description="Gestisci profilo, email, password e sicurezza."
       />
     );
   }
@@ -89,7 +89,7 @@ export default async function AccountPage({ params }: AccountPageProps) {
       companyName={null}
       profileEditSupported={false}
       title="Account piattaforma"
-      description="Area account amministratore Sendwise. I dati amministratore sono gestiti da Clerk e la sicurezza resta nel pannello protetto."
+      description="Gestisci profilo, email, password e sicurezza."
     />
   );
 }

@@ -32,6 +32,7 @@ const OPTIONS: Array<{
 
 export function ThemePreferenceSelector() {
   const { preference, resolvedTheme, setPreference } = useThemePreference();
+  const selectedOption = OPTIONS.find((item) => item.value === preference);
 
   return (
     <section className="settings-section" aria-labelledby="account-theme">
@@ -42,10 +43,10 @@ export function ThemePreferenceSelector() {
       <div className="settings-section__body">
         <div className="theme-preference">
           <div className="theme-preference__status">
-            <span className="theme-preference__eyebrow">Preferenza salvata</span>
-            <strong className="theme-preference__value">{OPTIONS.find((item) => item.value === preference)?.label}</strong>
+            <span className="theme-preference__eyebrow">Preferenza attiva</span>
+            <strong className="theme-preference__value">{selectedOption?.label}</strong>
             <p className="theme-preference__description">
-              Tema attivo: {resolvedTheme === "dark" ? "Dark" : "Light"}.
+              Tema visibile: {resolvedTheme === "dark" ? "Dark" : "Light"}.
             </p>
           </div>
 
@@ -72,7 +73,7 @@ export function ThemePreferenceSelector() {
                   </span>
                   <span className="theme-preference__option-copy">
                     <strong>{label}</strong>
-                    <span>{description}</span>
+                    <span>{isActive ? "Selezionato" : description}</span>
                   </span>
                 </button>
               );

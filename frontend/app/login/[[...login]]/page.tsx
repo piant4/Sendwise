@@ -20,8 +20,12 @@ export default async function LoginPage({ params }: LoginPageProps) {
     redirect("/auth/redirect");
   }
 
-  if (loginSegments.length > 0) {
+  if (loginSegments.length === 1 && loginSegments[0] === "forgot-password") {
     return <ClerkForgotPasswordShell />;
+  }
+
+  if (loginSegments.length > 0) {
+    redirect("/login");
   }
 
   return <LoginContent />;

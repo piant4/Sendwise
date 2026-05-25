@@ -81,7 +81,7 @@ export default async function ClientAccountPage({
       companyName={null}
       profileEditSupported={false}
       title="Account cliente"
-      description="Gestisci i dati visibili del tuo account cliente Sendwise senza uscire dal portale. Password, email verificata e MFA restano in Clerk."
+      description="Gestisci tema, sicurezza e sessioni del tuo account cliente senza esporre personalizzazioni profilo."
     />
   );
 }

@@ -1145,6 +1145,10 @@ button {
   padding: 28px;
 }
 
+.admin-clients-hero .admin-surface__eyebrow {
+  color: var(--sw-primary);
+}
+
 .admin-clients-hero__title {
   color: var(--sw-olive);
   font-size: clamp(2rem, 4vw, 2.8rem);
@@ -5113,6 +5117,7 @@ p {
   margin: 0 auto;
   max-width: 860px;
   position: relative;
+  width: 100%;
   z-index: 1;
 }
 
@@ -5524,6 +5529,8 @@ p {
   box-shadow: 0 18px 54px rgba(15, 23, 42, 0.08);
   display: grid;
   gap: 18px;
+  min-width: 0;
+  overflow: hidden;
   padding: clamp(18px, 2.5vw, 24px);
 }
 
@@ -5719,6 +5726,8 @@ p {
   border: 1px solid rgba(226, 232, 240, 0.94);
   border-radius: 18px;
   gap: 14px;
+  min-width: 0;
+  overflow: hidden;
   padding: 16px;
 }
 
@@ -5797,6 +5806,12 @@ p {
     background-color 0.15s ease,
     color 0.15s ease,
     box-shadow 0.15s ease;
+}
+
+.settings-row__action svg {
+  flex-shrink: 0;
+  height: 15px;
+  width: 15px;
 }
 
 .settings-row__action:hover {
@@ -7173,15 +7188,29 @@ p {
 .dark .admin-overview__list-item strong,
 .dark .campaign-inline-summary article strong,
 .dark .admin-overview__item-title,
-.dark .admin-overview__section-title {
+.dark .admin-overview__section-title,
+.dark .admin-clients-card__title,
+.dark .admin-clients-hero__title,
+.dark .admin-clients-cell strong,
+.dark .admin-clients-cell--primary strong {
   color: var(--sw-text);
 }
 
 .dark .admin-overview__metric span,
 .dark .admin-overview__metric p,
 .dark .admin-overview .admin-record-row__note,
-.dark .admin-overview .admin-surface__eyebrow {
+.dark .admin-overview .admin-surface__eyebrow,
+.dark .admin-clients-hero__description,
+.dark .admin-clients-card__description,
+.dark .admin-clients-stat-card span,
+.dark .admin-clients-cell span {
   color: var(--sw-text-muted);
+}
+
+.dark .admin-clients-hero .admin-surface__eyebrow,
+.dark .admin-clients-table--header,
+.dark .admin-clients-cell--chevron {
+  color: var(--sw-text-faint);
 }
 
 .dark .admin-overview__list-link:hover {
@@ -7261,6 +7290,117 @@ p {
 .dark .admin-record-chip,
 .dark .admin-inline-button {
   color: var(--sw-text-muted);
+}
+
+.dark .admin-clients-card,
+.dark .admin-clients-stat-card,
+.dark .admin-clients-table--row {
+  background: linear-gradient(
+    180deg,
+    rgba(14, 23, 38, 0.98),
+    rgba(17, 28, 45, 0.94)
+  );
+  border-color: rgba(96, 165, 250, 0.16);
+  box-shadow: 0 20px 48px rgba(2, 6, 23, 0.34);
+}
+
+.dark .admin-clients-hero {
+  background:
+    linear-gradient(135deg, rgba(15, 23, 42, 0.96), rgba(19, 35, 59, 0.92)),
+    radial-gradient(
+      circle at top right,
+      rgba(96, 165, 250, 0.14),
+      transparent 18rem
+    );
+  border-color: rgba(96, 165, 250, 0.18);
+  box-shadow: 0 24px 64px rgba(2, 6, 23, 0.34);
+}
+
+.dark .admin-clients-stat-card {
+  background: linear-gradient(
+    180deg,
+    rgba(17, 28, 45, 0.98),
+    rgba(20, 38, 61, 0.94)
+  );
+}
+
+.dark .admin-clients-table--row {
+  background: linear-gradient(
+    180deg,
+    rgba(19, 31, 49, 0.98),
+    rgba(14, 24, 39, 0.94)
+  );
+}
+
+.dark .admin-clients-table--row:hover,
+.dark .admin-clients-table--row:focus-visible {
+  border-color: rgba(96, 165, 250, 0.28);
+  box-shadow: 0 18px 36px rgba(2, 6, 23, 0.28);
+}
+
+.dark .admin-clients-feedback--error {
+  background: var(--sw-danger-surface);
+  border-color: var(--sw-danger-border);
+  color: var(--sw-danger);
+}
+
+.dark .admin-clients-empty {
+  background: var(--sw-surface-nested);
+  border-color: var(--sw-border);
+  color: var(--sw-text-muted);
+}
+
+.dark .client-surface__title,
+.dark .admin-clients-stat-card strong,
+.dark .client-kpi-card__value,
+.dark .client-performance-summary__item strong,
+.dark .client-performance-chart__summary strong,
+.dark .client-delivery-state strong,
+.dark .client-action-card__copy strong,
+.dark .client-action-card__count,
+.dark .client-dashboard-hero__focus-label,
+.dark .client-dashboard-hero__focus-value,
+.dark .client-dashboard-hero__fact-pill strong,
+.dark .client-hero__title {
+  color: var(--sw-text);
+}
+
+.dark .client-kpi-card__title,
+.dark .client-surface__description,
+.dark .client-empty-state,
+.dark .client-performance-chart__summary span,
+.dark .client-delivery-state span,
+.dark .client-action-card__copy span,
+.dark .client-dashboard-hero__copy h2,
+.dark .client-dashboard-hero__lead,
+.dark .client-dashboard-hero__focus-copy,
+.dark .client-dashboard-hero__fact-pill span {
+  color: var(--sw-text-muted);
+}
+
+.dark .client-dashboard-hero__workspace,
+.dark .client-surface__eyebrow {
+  color: var(--sw-text-faint);
+}
+
+.dark .client-dashboard-hero__fact-pill,
+.dark .client-dashboard-hero__focus {
+  background: var(--sw-surface-nested);
+  border-color: var(--sw-border);
+}
+
+.dark .client-performance-chart__track {
+  background: rgba(51, 65, 85, 0.54);
+}
+
+.dark .client-action-card__count {
+  background: rgba(15, 23, 42, 0.68);
+}
+
+.dark .account-clerk-shell,
+.dark .account-sheet__clerk-shell {
+  max-width: 100%;
+  overflow-x: hidden;
 }
 
 .dark .campaign-template-badge--muted,

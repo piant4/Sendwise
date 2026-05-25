@@ -74,7 +74,7 @@ export default async function AccountPage({ params }: AccountPageProps) {
         companyName={null}
         profileEditSupported={false}
         title="Account"
-        description="Gestisci profilo, email, password e sicurezza."
+        description="Gestisci preferenza tema, accesso e sicurezza senza esporre personalizzazioni profilo."
       />
     );
   }
@@ -89,7 +89,7 @@ export default async function AccountPage({ params }: AccountPageProps) {
       companyName={null}
       profileEditSupported={false}
       title="Account piattaforma"
-      description="Gestisci profilo, email, password e sicurezza."
+      description="Gestisci preferenza tema, accesso e sicurezza dell'account piattaforma."
     />
   );
 }

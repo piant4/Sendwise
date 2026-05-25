@@ -31,8 +31,7 @@ const OPTIONS: Array<{
 ];
 
 export function ThemePreferenceSelector() {
-  const { preference, resolvedTheme, setPreference } = useThemePreference();
-  const selectedOption = OPTIONS.find((item) => item.value === preference);
+  const { preference, setPreference } = useThemePreference();
 
   return (
     <section className="settings-section" aria-labelledby="account-theme">

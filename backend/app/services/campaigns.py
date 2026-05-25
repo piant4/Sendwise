@@ -546,6 +546,9 @@ class ListmonkNativeUnsubscribeReconciliation:
     reason: str | None = None
     code: str | None = None
     suppressed_count: int = 0
+    attempted: bool = False
+    native_unsubscribe_found: bool = False
+    already_suppressed_count: int = 0
 
 
 @dataclass(frozen=True)
@@ -2121,6 +2124,98 @@ class CampaignDispatchService:
     campaign_preparation_service: Any | None = None
     unsubscribe_service: UnsubscribeService | None = None
 
+    def reconcile_native_listmonk_unsubscribe_no_dispatch(
+        self,
+        campaign_id: str,
+    ) -> dict[str, Any]:
+        mapping_service = self.mapping_service
+        client_repository = self.client_repository
+        contact_repository = self.contact_repository
+        unsubscribe_service = self.unsubscribe_service
+
+        if (
+            mapping_service is None
+            or client_repository is None
+            or contact_repository is None
+            or unsubscribe_service is None
+        ):
+            return {
+                "campaign_id": campaign_id,
+                "status": "not_applied",
+                "reconciliation_attempted": False,
+                "native_unsubscribe_found": False,
+                "suppression_applied": False,
+                "already_suppressed": False,
+                "code": "reconciliation_persistence_unavailable",
+                "severity": "error",
+            }
+
+        campaign = self._get_campaign_for_dispatch(
+            campaign_id=campaign_id,
+            current_user=None,
+            client_repository=client_repository,
+        )
+        if campaign is None:
+            return {
+                "campaign_id": campaign_id,
+                "status": "not_found",
+                "reconciliation_attempted": False,
+                "native_unsubscribe_found": False,
+                "suppression_applied": False,
+                "already_suppressed": False,
+                "code": "campaign_not_found",
+                "severity": "error",
+            }
+
+        contacts = contact_repository.list_campaign_contacts(
+            client_id=campaign.client_id,
+            campaign_id=campaign.id,
+        )
+        reconciliation = self._reconcile_native_listmonk_unsubscribes(
+            campaign=campaign,
+            contacts=contacts,
+            mapping_service=mapping_service,
+            unsubscribe_service=unsubscribe_service,
+            suppression_only=True,
+        )
+        if reconciliation.failed:
+            return {
+                "campaign_id": campaign.id,
+                "status": "not_applied",
+                "reconciliation_attempted": reconciliation.attempted,
+                "native_unsubscribe_found": False,
+                "suppression_applied": False,
+                "already_suppressed": False,
+                "code": reconciliation.code
+                or "listmonk_unsubscribe_reconciliation_failed",
+                "severity": "critical",
+            }
+
+        suppression_applied = reconciliation.suppressed_count > 0
+        already_suppressed = (
+            reconciliation.native_unsubscribe_found
+            and not suppression_applied
+            and reconciliation.already_suppressed_count > 0
+        )
+        return {
+            "campaign_id": campaign.id,
+            "status": (
+                "applied" if suppression_applied or already_suppressed else "not_applied"
+            ),
+            "reconciliation_attempted": reconciliation.attempted,
+            "native_unsubscribe_found": reconciliation.native_unsubscribe_found,
+            "suppression_applied": suppression_applied,
+            "already_suppressed": already_suppressed,
+            "code": (
+                "native_unsubscribe_suppression_applied"
+                if suppression_applied
+                else "native_unsubscribe_already_suppressed"
+                if already_suppressed
+                else "native_unsubscribe_not_found"
+            ),
+            "severity": "info",
+        }
+
     def _evaluate_duplicate_dispatch_guard(
         self,
         *,
@@ -3008,6 +3103,7 @@ class CampaignDispatchService:
         contacts: list[ContactRecord],
         mapping_service: ListmonkMappingService,
         unsubscribe_service: UnsubscribeService,
+        suppression_only: bool = False,
     ) -> ListmonkNativeUnsubscribeReconciliation:
         if (
             not self.settings.email_sending_enabled
@@ -3016,6 +3112,7 @@ class CampaignDispatchService:
             return ListmonkNativeUnsubscribeReconciliation()
 
         suppressed_count = 0
+        already_suppressed_count = 0
         for contact in contacts:
             subscriber_mapping = mapping_service.get_mapping(
                 client_id=campaign.client_id,
@@ -3037,6 +3134,7 @@ class CampaignDispatchService:
                     reason=(
                         "Listmonk subscription state could not be checked safely."
                     ),
+                    attempted=True,
                 )
 
             memberships = self._extract_listmonk_subscriber_memberships(
@@ -3049,6 +3147,7 @@ class CampaignDispatchService:
                     reason=(
                         "Listmonk subscription state response could not be validated safely."
                     ),
+                    attempted=True,
                 )
 
             actionable = self._resolve_validated_unsubscribed_membership(
@@ -3058,18 +3157,34 @@ class CampaignDispatchService:
             )
             if actionable is None:
                 continue
+            if suppression_only and actionable["campaign_id"] != campaign.id:
+                continue
 
-            unsubscribe_service.record_native_listmonk_unsubscribe(
-                client_id=campaign.client_id,
-                contact_id=contact.id,
-                campaign_id=actionable["campaign_id"],
-                listmonk_subscriber_id=subscriber_mapping.listmonk_id,
-                listmonk_list_id=actionable["list_id"],
-            )
-            suppressed_count += 1
+            if suppression_only:
+                result = unsubscribe_service.apply_native_listmonk_unsubscribe_suppression(
+                    client_id=campaign.client_id,
+                    contact_id=contact.id,
+                )
+            else:
+                result = unsubscribe_service.record_native_listmonk_unsubscribe(
+                    client_id=campaign.client_id,
+                    contact_id=contact.id,
+                    campaign_id=actionable["campaign_id"],
+                    listmonk_subscriber_id=subscriber_mapping.listmonk_id,
+                    listmonk_list_id=actionable["list_id"],
+                )
+            if result.get("already_suppressed") or result.get("already_unsubscribed"):
+                already_suppressed_count += 1
+            else:
+                suppressed_count += 1
 
         return ListmonkNativeUnsubscribeReconciliation(
-            suppressed_count=suppressed_count
+            suppressed_count=suppressed_count,
+            attempted=True,
+            native_unsubscribe_found=(
+                suppressed_count > 0 or already_suppressed_count > 0
+            ),
+            already_suppressed_count=already_suppressed_count,
         )
 
     def _extract_listmonk_subscriber_memberships(

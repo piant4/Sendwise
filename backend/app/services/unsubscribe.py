@@ -179,6 +179,49 @@ class UnsubscribeService:
             "already_unsubscribed": already_unsubscribed,
         }
 
+    def apply_native_listmonk_unsubscribe_suppression(
+        self,
+        *,
+        client_id: str,
+        contact_id: str,
+    ) -> dict[str, Any]:
+        contact = self.contact_repository.get_by_id(contact_id)
+        if contact is None or contact.client_id != client_id:
+            raise InvalidUnsubscribeTokenError("Invalid unsubscribe token.")
+
+        already_suppressed = (
+            contact.email.strip().lower()
+            in self.contact_repository_suppressed_emails(
+                client_id=client_id,
+                emails=[contact.email],
+            )
+        )
+        if contact.status.strip().lower() != "unsubscribed":
+            self.contact_repository.update_status(
+                contact_id=contact.id,
+                status="unsubscribed",
+            )
+        self.provider_event_service.suppression_list_repository.add_suppression(
+            email=contact.email,
+            client_id=contact.client_id,
+            reason="unsubscribe",
+        )
+        return {
+            "status": "already_suppressed" if already_suppressed else "suppressed",
+            "already_suppressed": already_suppressed,
+        }
+
+    def contact_repository_suppressed_emails(
+        self,
+        *,
+        client_id: str,
+        emails: list[str],
+    ) -> set[str]:
+        return self.provider_event_service.suppression_list_repository.list_suppressed_emails_for_campaign(
+            client_id=client_id,
+            emails=emails,
+        )
+
 
 def _urlsafe_b64encode(value: bytes) -> str:
     return base64.urlsafe_b64encode(value).decode("utf-8").rstrip("=")

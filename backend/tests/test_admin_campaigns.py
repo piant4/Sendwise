@@ -34,7 +34,9 @@ from app.services.campaigns import (
     get_campaign_dispatch_service,
 )
 from app.services.listmonk_mappings import ListmonkMappingService
+from app.services.provider_events import ProviderEventIngestionService
 from app.services.send_simulation import SendSimulationService, get_send_simulation_service
+from app.services.unsubscribe import UnsubscribeService, UnsubscribeTokenService
 
 
 class FakeClientRepository:
@@ -76,14 +78,20 @@ class FakeClientRepository:
 
 class FakeListmonkClient:
     def __init__(self) -> None:
+        self.created_campaign_payloads: list[dict[str, Any]] = []
         self.sent_campaign_ids: list[str] = []
+        self.subscribers: dict[str, dict[str, Any]] = {}
 
-    def create_campaign(self, _payload: dict[str, Any]) -> dict[str, Any]:
+    def create_campaign(self, payload: dict[str, Any]) -> dict[str, Any]:
+        self.created_campaign_payloads.append(payload)
         return {"data": {"id": "lm_123"}}
 
     def trigger_campaign_send(self, campaign_id: str) -> dict[str, str]:
         self.sent_campaign_ids.append(campaign_id)
         return {"status": "mocked"}
+
+    def get_subscriber(self, subscriber_id: int | str) -> dict[str, Any]:
+        return self.subscribers.get(str(subscriber_id), {"data": {"lists": []}})
 
 
 class FakePreparationService:
@@ -395,12 +403,47 @@ def build_dispatch_service(
     fake_listmonk: FakeListmonkClient | None = None,
     preparation_service: FakePreparationService | None = None,
     campaign_limit_repository: InMemoryCampaignSendingLimitRepository | None = None,
+    mapping_service: ListmonkMappingService | None = None,
+    suppression_repository: InMemorySuppressionListRepository | None = None,
+    email_log_repository: InMemoryEmailLogRepository | None = None,
+    provider_event_repository: InMemoryProviderEventRepository | None = None,
 ) -> CampaignDispatchService:
+    contact_repository = InMemoryContactRepository(
+        contacts=contacts,
+        campaign_contacts=campaign_contacts,
+    )
+    campaign_repository = InMemoryCampaignRepository(
+        campaigns=[CampaignRecord(**campaign.model_dump())],
+        campaign_contacts=set(campaign_contacts),
+    )
+    selected_mapping_service = mapping_service or ListmonkMappingService(
+        InMemoryListmonkMappingRepository()
+    )
+    selected_suppression_repository = (
+        suppression_repository or InMemorySuppressionListRepository()
+    )
+    selected_email_log_repository = email_log_repository or InMemoryEmailLogRepository()
+    selected_provider_event_repository = (
+        provider_event_repository or InMemoryProviderEventRepository()
+    )
+    unsubscribe_service = UnsubscribeService(
+        settings=settings,
+        token_service=UnsubscribeTokenService(settings),
+        contact_repository=contact_repository,
+        provider_event_service=ProviderEventIngestionService(
+            settings=settings,
+            provider_event_repository=selected_provider_event_repository,
+            campaign_repository=campaign_repository,
+            contact_repository=contact_repository,
+            email_log_repository=selected_email_log_repository,
+            suppression_list_repository=selected_suppression_repository,
+        ),
+    )
     return CampaignDispatchService(
         settings=settings,
         guard=DeliverabilityGuard(),
         listmonk_client=fake_listmonk or FakeListmonkClient(),  # type: ignore[arg-type]
-        mapping_service=ListmonkMappingService(InMemoryListmonkMappingRepository()),
+        mapping_service=selected_mapping_service,
         client_repository=FakeClientRepository(  # type: ignore[arg-type]
             clients=[client],
             campaigns=[campaign],
@@ -408,15 +451,260 @@ def build_dispatch_service(
         campaign_slot_repository=InMemoryCampaignSlotRepository(),
         campaign_limit_repository=campaign_limit_repository
         or InMemoryCampaignSendingLimitRepository(),
-        contact_repository=InMemoryContactRepository(
-            contacts=contacts,
-            campaign_contacts=campaign_contacts,
-        ),
-        suppression_list_repository=InMemorySuppressionListRepository(),
+        contact_repository=contact_repository,
+        suppression_list_repository=selected_suppression_repository,
         blocked_send_repository=InMemoryBlockedSendRepository(),
-        email_log_repository=InMemoryEmailLogRepository(),
+        email_log_repository=selected_email_log_repository,
+        provider_event_repository=selected_provider_event_repository,
         campaign_preparation_service=preparation_service or FakePreparationService(),
+        unsubscribe_service=unsubscribe_service,
     )
+
+
+def build_native_reconciliation_stack(
+    *,
+    subscriber_payload: dict[str, Any],
+    campaign_id: str = "campaign_123",
+    client_id: str = "client_123",
+    contact_id: str = "contact_123",
+    listmonk_list_id: str = "1",
+    subscriber_id: str = "sub_123",
+) -> tuple[
+    AdminCampaignService,
+    CampaignDispatchService,
+    InMemorySuppressionListRepository,
+    InMemoryEmailLogRepository,
+    InMemoryProviderEventRepository,
+    FakePreparationService,
+    FakeListmonkClient,
+]:
+    campaign = to_client_campaign(
+        InMemoryCampaignRepository().add_campaign(
+            campaign_id=campaign_id,
+            client_id=client_id,
+            status="ready",
+            content_ready=True,
+            contacts_ready=True,
+            review_ready=True,
+        )
+    )
+    client = build_client(client_id=client_id)
+    contact = build_contact(
+        contact_id=contact_id,
+        client_id=client_id,
+        email="person@example.test",
+    )
+    mapping_service = ListmonkMappingService(InMemoryListmonkMappingRepository())
+    mapping_service.ensure_campaign_list_mapping(
+        client_id=client_id,
+        campaign_id=campaign_id,
+        listmonk_list_id=listmonk_list_id,
+    )
+    mapping_service.ensure_contact_subscriber_mapping(
+        client_id=client_id,
+        contact_id=contact_id,
+        listmonk_subscriber_id=subscriber_id,
+    )
+    suppression_repository = InMemorySuppressionListRepository()
+    email_log_repository = InMemoryEmailLogRepository()
+    provider_event_repository = InMemoryProviderEventRepository()
+    preparation_service = FakePreparationService()
+    fake_listmonk = FakeListmonkClient()
+    fake_listmonk.subscribers[subscriber_id] = subscriber_payload
+    campaign_repository = InMemoryCampaignRepository(
+        campaigns=[CampaignRecord(**campaign.model_dump())],
+        campaign_contacts={(client_id, campaign_id, contact_id)},
+    )
+    admin_service = build_admin_service(
+        settings=build_ready_listmonk_settings(),
+        campaign_repository=campaign_repository,
+        clients=[client],
+        contacts=[contact],
+        campaign_contacts={(client_id, campaign_id, contact_id)},
+        suppression_records=suppression_repository._records,
+        email_log_repository=email_log_repository,
+        provider_event_repository=provider_event_repository,
+    )
+    dispatch_service = build_dispatch_service(
+        settings=build_ready_listmonk_settings(),
+        campaign=campaign,
+        client=client,
+        contacts=[contact],
+        campaign_contacts={(client_id, campaign_id, contact_id)},
+        fake_listmonk=fake_listmonk,
+        preparation_service=preparation_service,
+        mapping_service=mapping_service,
+        suppression_repository=suppression_repository,
+        email_log_repository=email_log_repository,
+        provider_event_repository=provider_event_repository,
+    )
+    return (
+        admin_service,
+        dispatch_service,
+        suppression_repository,
+        email_log_repository,
+        provider_event_repository,
+        preparation_service,
+        fake_listmonk,
+    )
+
+
+def test_admin_native_reconciliation_requires_platform_admin() -> None:
+    app.dependency_overrides.clear()
+    response = TestClient(app).post(
+        "/admin/campaigns/campaign_123/reconcile-native-unsubscribe"
+    )
+    app.dependency_overrides.clear()
+
+    assert response.status_code in {401, 403}
+
+
+def test_admin_native_reconciliation_applies_suppression_without_dispatch() -> None:
+    (
+        admin_service,
+        dispatch_service,
+        suppression_repository,
+        email_log_repository,
+        provider_event_repository,
+        preparation_service,
+        fake_listmonk,
+    ) = build_native_reconciliation_stack(
+        subscriber_payload={
+            "data": {"lists": [{"id": 1, "subscription_status": "unsubscribed"}]}
+        }
+    )
+    app.dependency_overrides[require_platform_admin] = build_admin_user
+    app.dependency_overrides[get_admin_campaign_service] = lambda: admin_service
+    app.dependency_overrides[get_campaign_dispatch_service] = lambda: dispatch_service
+
+    try:
+        response = TestClient(app).post(
+            "/admin/campaigns/campaign_123/reconcile-native-unsubscribe"
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "campaign_id": "campaign_123",
+        "status": "applied",
+        "reconciliation_attempted": True,
+        "native_unsubscribe_found": True,
+        "suppression_applied": True,
+        "already_suppressed": False,
+        "code": "native_unsubscribe_suppression_applied",
+        "severity": "info",
+    }
+    assert len(suppression_repository._records) == 1
+    assert suppression_repository._records[0].reason == "unsubscribe"
+    assert email_log_repository.list_by_campaign("campaign_123") == []
+    assert provider_event_repository.list_by_campaign(
+        client_id="client_123",
+        campaign_id="campaign_123",
+    ) == []
+    assert preparation_service.prepared_campaign_ids == []
+    assert fake_listmonk.created_campaign_payloads == []
+    assert fake_listmonk.sent_campaign_ids == []
+
+
+def test_admin_native_reconciliation_replay_is_idempotent() -> None:
+    (
+        _admin_service,
+        dispatch_service,
+        suppression_repository,
+        _email_log_repository,
+        provider_event_repository,
+        _preparation_service,
+        _fake_listmonk,
+    ) = build_native_reconciliation_stack(
+        subscriber_payload={
+            "data": {"lists": [{"id": 1, "subscription_status": "unsubscribed"}]}
+        }
+    )
+
+    first = dispatch_service.reconcile_native_listmonk_unsubscribe_no_dispatch(
+        "campaign_123"
+    )
+    second = dispatch_service.reconcile_native_listmonk_unsubscribe_no_dispatch(
+        "campaign_123"
+    )
+
+    assert first["suppression_applied"] is True
+    assert second["status"] == "applied"
+    assert second["already_suppressed"] is True
+    assert len(suppression_repository._records) == 1
+    assert provider_event_repository.list_by_campaign(
+        client_id="client_123",
+        campaign_id="campaign_123",
+    ) == []
+
+
+def test_admin_native_reconciliation_confirmed_membership_does_not_suppress() -> None:
+    (
+        _admin_service,
+        dispatch_service,
+        suppression_repository,
+        _email_log_repository,
+        _provider_event_repository,
+        _preparation_service,
+        _fake_listmonk,
+    ) = build_native_reconciliation_stack(
+        subscriber_payload={
+            "data": {"lists": [{"id": 1, "subscription_status": "confirmed"}]}
+        }
+    )
+
+    result = dispatch_service.reconcile_native_listmonk_unsubscribe_no_dispatch(
+        "campaign_123"
+    )
+
+    assert result["status"] == "not_applied"
+    assert result["native_unsubscribe_found"] is False
+    assert suppression_repository._records == []
+
+
+def test_admin_native_reconciliation_unsafe_listmonk_state_does_not_suppress() -> None:
+    unsafe_payloads = [
+        {"data": {"lists": [{"id": 999, "subscription_status": "unsubscribed"}]}},
+        {"data": {"lists": [{"id": 99, "subscription_status": "unsubscribed"}]}},
+        {"data": {"lists": [{"id": 2, "subscription_status": "unsubscribed"}]}},
+        {"data": {"lists": [{"id": 1}]}},
+    ]
+
+    for index, payload in enumerate(unsafe_payloads):
+        (
+            _admin_service,
+            dispatch_service,
+            suppression_repository,
+            _email_log_repository,
+            _provider_event_repository,
+            _preparation_service,
+            _fake_listmonk,
+        ) = build_native_reconciliation_stack(
+            subscriber_payload=payload,
+            campaign_id=f"campaign_{index}",
+        )
+        if index == 1:
+            assert dispatch_service.mapping_service is not None
+            dispatch_service.mapping_service.ensure_campaign_list_mapping(
+                client_id="client_other",
+                campaign_id="campaign_other",
+                listmonk_list_id="99",
+            )
+        if index == 2:
+            assert dispatch_service.mapping_service is not None
+            dispatch_service.mapping_service.ensure_campaign_list_mapping(
+                client_id="client_123",
+                campaign_id="campaign_other",
+                listmonk_list_id="2",
+            )
+
+        result = dispatch_service.reconcile_native_listmonk_unsubscribe_no_dispatch(
+            f"campaign_{index}"
+        )
+
+        assert result["suppression_applied"] is False
+        assert suppression_repository._records == []
 
 
 def test_admin_create_campaign_for_valid_client() -> None:

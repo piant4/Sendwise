@@ -161,6 +161,17 @@ class AdminCampaignReviewResponse(BaseModel):
     provider_history: list[ProviderHistoryPolicySummary] = Field(default_factory=list)
 
 
+class AdminNativeUnsubscribeReconciliationResponse(BaseModel):
+    campaign_id: str
+    status: str
+    reconciliation_attempted: bool
+    native_unsubscribe_found: bool
+    suppression_applied: bool
+    already_suppressed: bool
+    code: str
+    severity: str
+
+
 class AdminCampaignContactPayload(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

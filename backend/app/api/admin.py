@@ -18,6 +18,7 @@ from app.schemas.campaigns import (
     AdminCampaignSlotAssignmentResponse,
     AdminCampaignUpdateRequest,
     AdminClientCampaignCreateRequest,
+    AdminNativeUnsubscribeReconciliationResponse,
 )
 from app.schemas.clients import (
     AdminBlockedSendItem,
@@ -515,6 +516,24 @@ def send_campaign(
             "email_logs_created": 0,
             "email_logs_updated": 0,
         }
+
+
+@router.post(
+    "/campaigns/{campaign_id}/reconcile-native-unsubscribe",
+    response_model=AdminNativeUnsubscribeReconciliationResponse,
+)
+def reconcile_native_unsubscribe(
+    campaign_id: str,
+    _current_user: AuthenticatedUser = Depends(require_platform_admin),
+    campaign_service: AdminCampaignService = Depends(get_admin_campaign_service),
+    campaign_dispatch_service: CampaignDispatchService = Depends(
+        get_campaign_dispatch_service
+    ),
+) -> dict[str, object]:
+    campaign_service.get_campaign_record(campaign_id)
+    return campaign_dispatch_service.reconcile_native_listmonk_unsubscribe_no_dispatch(
+        campaign_id
+    )
 
 
 @router.post("/campaigns/{campaign_id}/pause")

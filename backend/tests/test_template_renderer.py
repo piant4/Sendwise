@@ -175,6 +175,15 @@ def test_build_brand_template_variables_falls_back_sender_name_to_sendwise() -> 
     assert variables["sender_name"] == "Sendwise"
 
 
+def test_build_brand_template_variables_expands_relative_logo_to_public_origin() -> None:
+    variables = build_brand_template_variables(
+        {"logo_url": "/static/client-brand-logos/acme.webp"},
+        asset_origin="https://assets.sendwise.test",
+    )
+
+    assert 'src="https://assets.sendwise.test/static/client-brand-logos/acme.webp"' in variables["logo"]
+
+
 def test_render_template_string_cleans_unknown_placeholders() -> None:
     rendered = render_template_string(
         "<p>{{nome}} {{unsupported}}</p><a href='{{unsubscribe_url}}'>u</a>",

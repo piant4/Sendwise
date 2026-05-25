@@ -8,7 +8,7 @@ from pathlib import Path
 import re
 from typing import Mapping
 
-from app.core.config import Settings
+from app.core.config import Settings, get_settings
 from app.services.unsubscribe import LISTMONK_UNSUBSCRIBE_TOKEN_PLACEHOLDER
 
 TEMPLATE_VARIABLE_PATTERN = re.compile(r"{{\s*([A-Za-z0-9_]+)\s*}}")
@@ -84,6 +84,7 @@ class RenderedEmailTemplate:
 @dataclass(frozen=True)
 class TemplateRenderer:
     dist_dir: Path
+    asset_origin: str = ""
 
     def render(
         self,
@@ -115,6 +116,7 @@ class TemplateRenderer:
             campaign_name=campaign_name,
             current_year=current_year,
             email_brand=email_brand,
+            asset_origin=self.asset_origin,
         )
         for key, value in replacements.items():
             placeholder = f"{{{{{key}}}}}"
@@ -182,6 +184,7 @@ def build_template_variable_values(
     campaign_name: str | None = None,
     current_year: int | None = None,
     email_brand: Mapping[str, str | None] | None = None,
+    asset_origin: str = "",
 ) -> dict[str, str]:
     resolved_current_year = current_year or datetime.now(timezone.utc).year
     return {
@@ -195,7 +198,7 @@ def build_template_variable_values(
         "email": (contact_email or "").strip(),
         "campaign_name": (campaign_name or "").strip(),
         "current_year": str(resolved_current_year),
-        **build_brand_template_variables(email_brand),
+        **build_brand_template_variables(email_brand, asset_origin=asset_origin),
     }
 
 
@@ -418,6 +421,8 @@ def _find_first_empty_visible_anchor(
 
 def build_brand_template_variables(
     email_brand: Mapping[str, str | None] | None,
+    *,
+    asset_origin: str = "",
 ) -> dict[str, str]:
     email_brand_payload = dict(email_brand or {})
     company_name = (email_brand_payload.get("company_name") or "").strip()
@@ -426,7 +431,7 @@ def build_brand_template_variables(
     return {
         "company_name": company_name,
         "sender_name": sender_name or company_name or "Sendwise",
-        "logo": build_logo_html(email_brand_payload.get("logo_url")),
+        "logo": build_logo_html(email_brand_payload.get("logo_url"), asset_origin=asset_origin),
         "website_url": (email_brand_payload.get("website_url") or "").strip(),
         "linkedin_url": (email_brand_payload.get("linkedin_url") or "").strip(),
         "instagram_url": (email_brand_payload.get("instagram_url") or "").strip(),
@@ -436,10 +441,13 @@ def build_brand_template_variables(
     }
 
 
-def build_logo_html(logo_url: str | None) -> str:
+def build_logo_html(logo_url: str | None, *, asset_origin: str = "") -> str:
     safe_logo_url = (logo_url or "").strip()
     if not safe_logo_url:
         return ""
+
+    if safe_logo_url.startswith("/") and asset_origin.strip():
+        safe_logo_url = f"{asset_origin.rstrip('/')}{safe_logo_url}"
 
     escaped_logo_url = escape(safe_logo_url, quote=True)
     return (
@@ -487,8 +495,10 @@ def build_social_icons_html(email_brand: Mapping[str, str | None]) -> str:
 
 
 def get_default_template_renderer() -> TemplateRenderer:
+    settings = get_settings()
     return TemplateRenderer(
-        dist_dir=Path(__file__).resolve().parents[3] / "templates" / "dist"
+        dist_dir=Path(__file__).resolve().parents[3] / "templates" / "dist",
+        asset_origin=settings.backend_public_origin or settings.backend_public_url.strip(),
     )
 
 

@@ -1,5 +1,48 @@
 # Audit Log
 
+## Milestone 19.8-AUDIT - Empty Delivered Template Fields
+
+Date: 2026-05-25
+Branch: main
+
+Read-only audit result:
+- Runtime evidence showed the delivered body could contain incomplete footer copy (`aggiornamenti di .`) when `{{company_name}}` renders empty.
+- Runtime evidence also showed an empty CTA/link target when a template CTA exists but its target resolves from an empty brand URL field.
+- The source path is admin-authored campaign content saved in Business DB, then `CampaignPreparationService._render_campaign_content` renders Business DB metadata and body fields through `render_sendwise_template_string`, using variables from `build_template_variable_values` plus `build_brand_template_variables`.
+- `build_brand_template_variables` currently returns empty strings for absent `company_name`, `website_url`, `linkedin_url`, `instagram_url`, `facebook_url`, `x_url`, `logo`, and `social_icons`; `sender_name` falls back to company name or `Sendwise`.
+- Current readiness is too weak for this defect: `AdminCampaignService._content_ready` only requires non-empty subject and HTML, while save-time placeholder validation only rejects unsupported placeholders. Supported placeholders that resolve to empty strings can still be saved, marked content-ready, synced to Listmonk, and sent.
+
+Content decision for 19.8-FIX:
+- Block sending when a CTA label or CTA anchor exists but the resolved URL is empty.
+- Block sending when mandatory footer or brand identity copy depends on an empty field, especially `company_name` in footer/company identity contexts.
+- Keep optional brand adornments optional when absent, including logo and social icons, if their absence does not create empty links, broken visible copy, or raw placeholders.
+
+Scope confirmation:
+- No backend, frontend, template, schema, migration, Docker, Caddy, DNS, `.env`, Listmonk, Mailgun, unsubscribe, provider-event, or runtime behavior was changed.
+- No email was sent, no unsubscribe or reconciliation was triggered, and no provider event was triggered.
+- No recipient addresses, unsubscribe URLs or tokens, full headers, raw message bodies, credentials, auth data, or sensitive values are recorded here.
+
+Minimum scoped FIX milestone:
+- Milestone 19.8-FIX - Enforce Template Content Readiness For Resolved Brand Fields. Add backend readiness validation before Listmonk sync/send for resolved campaign HTML/text so empty mandatory brand/footer identity and empty CTA href targets block dispatch with explicit reason codes; preserve optional logo/social fields when absent; add targeted backend tests for CTA-with-empty-URL, empty company footer identity, and optional absent logo/social fields.
+
+## Milestone 19.7-CLOSE - Verified Message-Id Runtime Closure
+
+Date: 2026-05-25
+Branch: main
+
+Runtime verification recorded:
+- The controlled campaign was delivered.
+- Mailgun accepted and delivered events remained correlated and processed for the controlled campaign path.
+- The delivered `Message-Id` no longer used `localhost.localdomain`.
+- The delivered `Message-Id` used `listmonk.send.mailerpro.it`.
+- Native List-Unsubscribe HTTPS, One-Click header, and DKIM remained valid.
+- No additional unsubscribe verification was performed during this Message-Id closure.
+
+Scope confirmation:
+- No backend, frontend, campaign payload, Listmonk campaign header/template, native unsubscribe, suppression reconciliation, provider correlation, Caddy, DNS, `.env`, Mailgun setting, schema, migration, or send behavior was changed for this documentation closure.
+- No additional real send, unsubscribe action, provider API call, runtime VPS mutation, or sensitive output was performed in this repository task.
+- No recipient addresses, unsubscribe URLs or tokens, full headers, raw message bodies, credentials, auth data, or sensitive values are recorded here.
+
 ## Milestone 19.7-FIX - Configure Listmonk FQDN Hostname For Message-Id Hardening
 
 Date: 2026-05-25

@@ -302,7 +302,7 @@ Do not show:
 - Client dashboard metrics constrained by backend/provider data availability.
 - Guard blocking concepts for risky sends and readiness failures.
 - V1 runtime closure has verified correlated Mailgun `accepted` and `delivered` events, native one-click headers, RFC 8058 HTTP 200 unsubscribe handling, Listmonk membership becoming `unsubscribed`, and Sendwise suppression reconciliation without additional sends, negative provider events, schema changes, secret exposure, or public Listmonk API/admin exposure.
-- Staging Listmonk is configured with container hostname `listmonk.send.mailerpro.it` only to avoid localhost-style generated `Message-Id` values in outbound SMTP messages; delivered-header verification still requires a later approved controlled resend.
+- Staging Listmonk is configured with container hostname `listmonk.send.mailerpro.it` only to avoid localhost-style generated `Message-Id` values in outbound SMTP messages; controlled delivery verified the delivered `Message-Id` no longer used `localhost.localdomain` and used `listmonk.send.mailerpro.it`, while native List-Unsubscribe HTTPS, One-Click, DKIM, and Mailgun accepted/delivered correlation remained valid.
 
 ### Next
 
@@ -312,7 +312,7 @@ Do not show:
 - Add provider-event freshness checks before showing delivery analytics.
 - Add campaign risk scoring for list quality, content lint, and recent domain health.
 - Add admin-visible remediation steps for blocked sends.
-- Verify delivered `Message-Id` domain alignment with one later approved controlled resend; final native one-click verification still observed a localhost-style domain there.
+- Enforce content-readiness validation on resolved campaign HTML/text so empty mandatory brand/footer identity and empty CTA href targets block dispatch, while absent optional logo and social fields remain allowed when they do not create broken visible output.
 
 ### V2
 

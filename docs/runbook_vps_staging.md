@@ -46,7 +46,7 @@ Restricted Listmonk subscription and public asset proxy:
 - Caddy proxies only `/subscription/*` and `/public/*` to `127.0.0.1:9000`.
 - `/` and `/api/` on `subscription.mailerpro.it` must remain blocked with 404 responses.
 - Listmonk must be published only on host loopback as `127.0.0.1:9000:9000` for restricted Caddy proxying; this is not public Listmonk service exposure. Never bind Listmonk to `0.0.0.0` or a public interface.
-- Staging Listmonk must run with container hostname `listmonk.send.mailerpro.it` only to avoid localhost-style generated `Message-Id` values in outbound SMTP messages. Do not treat this as DNS, Caddy, unsubscribe, or provider-routing configuration.
+- Staging Listmonk must run with container hostname `listmonk.send.mailerpro.it` only to avoid localhost-style generated `Message-Id` values in outbound SMTP messages. A controlled delivery verified that delivered `Message-Id` no longer used `localhost.localdomain` and used `listmonk.send.mailerpro.it`; native List-Unsubscribe HTTPS, One-Click, DKIM, and Mailgun accepted/delivered correlation remained valid. Do not treat this as DNS, Caddy, unsubscribe, or provider-routing configuration.
 - Caddy remains the only public entry boundary for this route. Listmonk admin and API surfaces must not be directly exposed publicly.
 
 Required public URLs:
@@ -471,7 +471,7 @@ Provider-event semantics:
 - Mailgun suppression side effects are destructive and must be verified only with synthetic local/unit payloads or already-observed safe records. Do not create live complaint, unsubscribe, bounce, rejection, or failure events against the production Mailgun domain.
 - Only correlated Mailgun complaint, unsubscribe, and permanent-failure hard-bounce events may create suppression. Soft bounce, generic delivery failure, rejected, accepted, delivered, opened, clicked, and unmatched events must not suppress.
 - Safe VPS verification, if needed, is read-only: confirm provider-event rows are correlated and processed, confirm suppression rows exist only for already legitimate negative events, and do not insert suppression rows by hand to simulate success.
-- Non-blocking deliverability hardening follow-up: audit the delivered `Message-Id` domain, which still used a localhost-style domain during final native one-click verification.
+- Delivered `Message-Id` hardening has been verified for the controlled Listmonk SMTP path: the received domain no longer used `localhost.localdomain` and used `listmonk.send.mailerpro.it`.
 
 ## Restore Safety
 

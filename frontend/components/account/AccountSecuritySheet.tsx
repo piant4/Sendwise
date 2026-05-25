@@ -190,21 +190,24 @@ export function AccountSecuritySheet({
                     elements: {
                       rootBox: "w-full",
                       cardBox: "w-full",
-                      card: "w-full border border-slate-200 bg-white shadow-none",
+                      card:
+                        "w-full border border-[color:var(--sw-border)] bg-[color:var(--sw-surface-elevated)] text-[color:var(--sw-text)] shadow-none",
                       navbar: "hidden",
                       pageScrollBox: "p-0",
                       scrollBox: "p-0",
-                      headerTitle: "text-slate-950",
-                      headerSubtitle: "text-slate-500",
-                      profileSectionTitleText: "text-slate-950",
-                      profileSectionSubtitleText: "text-slate-500",
-                      navbarButton: "text-slate-500",
-                      navbarButtonIcon: "text-slate-500",
+                      headerTitle: "text-[color:var(--sw-text)]",
+                      headerSubtitle: "text-[color:var(--sw-text-muted)]",
+                      profileSectionTitleText: "text-[color:var(--sw-text)]",
+                      profileSectionSubtitleText:
+                        "text-[color:var(--sw-text-muted)]",
+                      navbarButton: "text-[color:var(--sw-text-muted)]",
+                      navbarButtonIcon: "text-[color:var(--sw-text-muted)]",
                       formButtonPrimary:
-                        "bg-sky-600 hover:bg-sky-700 text-white shadow-none",
+                        "bg-[var(--sw-primary)] hover:bg-[var(--sw-primary-hover)] text-white shadow-none",
                       formFieldInput:
-                        "border-slate-200 focus:border-sky-400 focus:ring-sky-200",
-                      badge: "bg-sky-50 text-sky-700",
+                        "border-[color:var(--sw-border-strong)] bg-[color:var(--sw-surface-strong)] text-[color:var(--sw-text)] focus:border-[color:var(--sw-primary)] focus:ring-[rgba(96,165,250,0.18)]",
+                      badge:
+                        "bg-[color:var(--sw-accent-soft)] text-[color:var(--sw-primary)]",
                     },
                   }}
                   fallback={

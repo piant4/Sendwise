@@ -8,6 +8,7 @@ services:
       - "127.0.0.1:3000:3000"
 
   listmonk:
+    hostname: listmonk.send.mailerpro.it
     environment:
       LISTMONK_ADMIN_USER: ${LISTMONK_USERNAME:?required}
       LISTMONK_ADMIN_PASSWORD: ${LISTMONK_PASSWORD:?required}

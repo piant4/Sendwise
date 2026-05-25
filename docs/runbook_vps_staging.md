@@ -46,6 +46,7 @@ Restricted Listmonk subscription and public asset proxy:
 - Caddy proxies only `/subscription/*` and `/public/*` to `127.0.0.1:9000`.
 - `/` and `/api/` on `subscription.mailerpro.it` must remain blocked with 404 responses.
 - Listmonk must be published only on host loopback as `127.0.0.1:9000:9000` for restricted Caddy proxying; this is not public Listmonk service exposure. Never bind Listmonk to `0.0.0.0` or a public interface.
+- Staging Listmonk must run with container hostname `listmonk.send.mailerpro.it` only to avoid localhost-style generated `Message-Id` values in outbound SMTP messages. Do not treat this as DNS, Caddy, unsubscribe, or provider-routing configuration.
 - Caddy remains the only public entry boundary for this route. Listmonk admin and API surfaces must not be directly exposed publicly.
 
 Required public URLs:
@@ -323,6 +324,8 @@ The staging Compose stack must expose only:
 - `127.0.0.1:3000:3000` for frontend.
 - `127.0.0.1:8000:8000` for backend.
 - `127.0.0.1:9000:9000` for Listmonk, used only by the restricted Caddy `/subscription/*` and `/public/*` proxy.
+
+The staging Compose stack must set Listmonk container hostname to `listmonk.send.mailerpro.it` so generated outbound SMTP `Message-Id` values do not fall back to localhost-style domains.
 
 The staging Compose stack must not publish public host ports for:
 

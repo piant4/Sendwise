@@ -1,5 +1,22 @@
 # Audit Log
 
+## Milestone 19.7-FIX - Configure Listmonk FQDN Hostname For Message-Id Hardening
+
+Date: 2026-05-25
+Branch: main
+
+Verified state:
+- Audited the base and staging Compose Listmonk service definitions. Base Compose did not set a container hostname, and the staging override did not provide an FQDN hostname for the Listmonk container.
+- Updated only the staging override so Listmonk runs with `hostname: listmonk.send.mailerpro.it`.
+- The hostname is staging-only and exists only to avoid localhost-style generated `Message-Id` values in outbound Listmonk SMTP messages when the SMTP library derives a message id from the process/container hostname.
+- Preserved the approved loopback-only Listmonk host publication `127.0.0.1:9000:9000` for the restricted Caddy subscription/public asset proxy.
+
+Scope confirmation:
+- No backend, frontend, campaign payload, Listmonk campaign header/template, native unsubscribe, suppression reconciliation, provider correlation, Caddy, DNS, `.env`, Mailgun setting, schema, migration, or send behavior was changed.
+- No delivered-header fix is claimed until a later approved controlled resend verifies the received `Message-Id` domain.
+- No real send, unsubscribe action, provider API call, runtime VPS mutation, or sensitive output was performed.
+- No secrets, credentials, recipient addresses, message bodies, unsubscribe tokens, raw payloads, full headers, auth headers, signing keys, SMTP secrets, or provider headers are recorded here.
+
 ## Milestone 19.6-CLOSE - Final Native One-Click Verification And V1 Deliverability Closure
 
 Date: 2026-05-25

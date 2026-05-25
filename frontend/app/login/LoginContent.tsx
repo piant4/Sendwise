@@ -607,56 +607,11 @@ export function LoginContent() {
   }
 
   async function handleStartPasswordReset() {
-    setErrorMessage(null);
-    setHelperMessage(null);
+    const nextPath = email.trim()
+      ? `/login/forgot-password?identifier=${encodeURIComponent(email.trim())}`
+      : "/login/forgot-password";
 
-    if (fetchStatus === "fetching") {
-      setErrorMessage(
-        "Il servizio di accesso non è ancora pronto. Riprova tra qualche secondo.",
-      );
-      return;
-    }
-
-    if (!email.trim()) {
-      setErrorMessage("Inserisci l'email del tuo account per reimpostare la password.");
-      return;
-    }
-
-    setIsSubmitting(true);
-
-    try {
-      const createResetPasswordAttempt = signIn.create as unknown as (params: {
-        identifier: string;
-        strategy: "reset_password_email_code";
-      }) => Promise<{ error: unknown | null }>;
-      const createResult = await createResetPasswordAttempt({
-        strategy: "reset_password_email_code",
-        identifier: email.trim(),
-      });
-
-      if (createResult.error) {
-        setErrorMessage(getItalianAuthErrorMessage(createResult.error));
-        return;
-      }
-
-      const sendResult = await signIn.resetPasswordEmailCode.sendCode();
-
-      if (sendResult.error) {
-        setErrorMessage(getItalianAuthErrorMessage(sendResult.error));
-        return;
-      }
-
-      setAuthMode("reset_verify");
-      setFlowStep("credentials");
-      setVerificationCode("");
-      setPassword("");
-      setConfirmPassword("");
-      setHelperMessage(`Abbiamo inviato un codice di reset a ${email.trim()}.`);
-    } catch (error) {
-      setErrorMessage(getItalianAuthErrorMessage(error));
-    } finally {
-      setIsSubmitting(false);
-    }
+    router.push(nextPath);
   }
 
   async function handleResetPasswordSubmit(event: FormEvent<HTMLFormElement>) {

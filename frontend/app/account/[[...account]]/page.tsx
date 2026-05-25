@@ -64,11 +64,19 @@ export default async function AccountPage({ params }: AccountPageProps) {
       redirect("/onboarding");
     }
 
-    if (authState.portal_slug) {
-      redirect(`/c/${authState.portal_slug}/account`);
-    }
-
-    redirect("/auth/redirect");
+    return (
+      <AccountWorkspace
+        authState={authState}
+        backHref={authState.portal_slug ? `/c/${authState.portal_slug}` : "/auth/redirect"}
+        backLabel="Torna alla dashboard"
+        email={authState.email}
+        personalName={null}
+        companyName={null}
+        profileEditSupported={false}
+        title="Account cliente"
+        description="Area account cliente Sendwise. Profilo, email verificata, password e MFA restano gestiti da Clerk dentro questa cornice."
+      />
+    );
   }
 
   return (

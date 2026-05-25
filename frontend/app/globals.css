@@ -5351,6 +5351,40 @@ p {
   gap: 14px;
 }
 
+.account-clerk-shell {
+  display: grid;
+  gap: 14px;
+}
+
+.account-clerk-shell__helper {
+  background: rgba(239, 246, 255, 0.82);
+  border: 1px solid rgba(147, 197, 253, 0.32);
+  border-radius: 16px;
+  color: #475569;
+  font-size: 0.9rem;
+  line-height: 1.55;
+  margin: 0;
+  padding: 14px 16px;
+}
+
+.account-clerk-shell__loading {
+  color: #5f6857;
+  padding: 24px 4px;
+}
+
+.account-clerk-shell :where(h1, h2, h3, h4, h5, h6) {
+  color: var(--sw-olive);
+  letter-spacing: -0.02em;
+}
+
+.account-clerk-shell :where(p, span, small, label, a, button) {
+  font: inherit;
+}
+
+.account-clerk-shell :where(a) {
+  color: var(--sw-primary);
+}
+
 .account-sheet__helper {
   background: rgba(239, 246, 255, 0.82);
   border: 1px solid rgba(147, 197, 253, 0.32);

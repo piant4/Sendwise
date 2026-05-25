@@ -1,16 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
-import { useSessionList, useUser } from "@clerk/nextjs";
-import { ArrowLeft, ArrowUpRight, LogOut } from "lucide-react";
+import { UserProfile, useSessionList, useUser } from "@clerk/nextjs";
+import { ArrowLeft, LogOut } from "lucide-react";
 import type { AuthMeResponse } from "@/lib/api";
 import { AccountDeleteSection } from "@/components/shared/AccountDeleteSection";
 import { ClerkSignOutButton } from "@/components/shared/ClerkSignOutButton";
-import {
-  AccountSecuritySheet,
-  type AccountSecuritySheetMode,
-} from "./AccountSecuritySheet";
 
 interface AccountWorkspaceProps {
   authState: AuthMeResponse;
@@ -22,44 +17,6 @@ interface AccountWorkspaceProps {
   profileEditSupported: boolean;
   title: string;
   description: string;
-}
-
-interface ActionRowProps {
-  actionLabel: string;
-  description: string;
-  disabled?: boolean;
-  label: string;
-  onAction?: () => void;
-  value: string;
-}
-
-function ActionRow({
-  actionLabel,
-  description,
-  disabled = false,
-  label,
-  onAction,
-  value,
-}: ActionRowProps) {
-  return (
-    <div className="settings-row">
-      <div className="settings-row__content">
-        <span className="settings-row__label">{label}</span>
-        <strong className="settings-row__value">{value}</strong>
-        <p className="settings-row__description">{description}</p>
-      </div>
-
-      <button
-        type="button"
-        className="settings-row__action"
-        disabled={disabled}
-        onClick={onAction}
-      >
-        {actionLabel}
-        <ArrowUpRight aria-hidden="true" />
-      </button>
-    </div>
-  );
 }
 
 export function AccountWorkspace({
@@ -75,11 +32,6 @@ export function AccountWorkspace({
 }: AccountWorkspaceProps) {
   const { isLoaded, isSignedIn, user } = useUser();
   const { isLoaded: sessionsLoaded, sessions } = useSessionList();
-  const [activeSheet, setActiveSheet] = useState<AccountSecuritySheetMode | null>(
-    null,
-  );
-
-  const managementDisabled = !isLoaded || !isSignedIn;
   const displayEmail = email ?? user?.primaryEmailAddress?.emailAddress ?? "Email non disponibile";
   const displayName =
     personalName?.trim() ||
@@ -186,40 +138,54 @@ export function AccountWorkspace({
 
               <section className="settings-section" aria-labelledby="account-security">
                 <div className="settings-section__header">
-                  <h2 id="account-security">Sicurezza account</h2>
+                  <h2 id="account-security">Profilo e sicurezza</h2>
                 </div>
 
                 <div className="settings-section__body">
-                  <ActionRow
-                    actionLabel="Apri"
-                    description="Apri il pannello protetto per verificare o aggiornare l'indirizzo email."
-                    disabled={managementDisabled}
-                    label="Email e identita"
-                    onAction={() => {
-                      setActiveSheet("email");
-                    }}
-                    value={displayEmail}
-                  />
-                  <ActionRow
-                    actionLabel="Apri"
-                    description="Password gestita da Clerk. Sendwise non salva password."
-                    disabled={managementDisabled}
-                    label="Password"
-                    onAction={() => {
-                      setActiveSheet("password");
-                    }}
-                    value={passwordState}
-                  />
-                  <ActionRow
-                    actionLabel="Apri"
-                    description="Gestisci autenticazione a due fattori e codici di recupero."
-                    disabled={managementDisabled}
-                    label="MFA"
-                    onAction={() => {
-                      setActiveSheet("mfa");
-                    }}
-                    value={mfaState}
-                  />
+                  <div className="account-clerk-shell">
+                    <p className="account-clerk-shell__helper">
+                      Questa area usa i componenti account di Clerk per profilo,
+                      email, password, MFA e dispositivi, mantenendo la cornice
+                      Sendwise.
+                    </p>
+                    <UserProfile
+                      appearance={{
+                        elements: {
+                          card: "bg-transparent border-0 shadow-none p-0",
+                          cardBox: "shadow-none",
+                          navbar: "bg-[rgba(248,250,252,0.9)] border border-[rgba(226,232,240,0.95)] rounded-2xl",
+                          navbarButton:
+                            "text-[var(--sw-text-muted)] hover:text-[var(--sw-primary)] rounded-xl",
+                          navbarButtonActive:
+                            "bg-[rgba(93,118,78,0.12)] text-[var(--sw-primary)] shadow-none",
+                          pageScrollBox: "p-0",
+                          profilePage: "p-0",
+                          profileSection: "rounded-2xl border border-[rgba(226,232,240,0.95)] bg-white/90",
+                          formButtonPrimary:
+                            "bg-[var(--sw-primary)] hover:bg-[var(--sw-primary-hover)] text-white shadow-none",
+                          formFieldInput:
+                            "min-h-12 rounded-[14px] border border-[#d9ddd7] bg-[#fcfcfa] text-[var(--sw-olive)]",
+                          formFieldLabel: "text-[var(--sw-text-muted)]",
+                          badge: "bg-[rgba(93,118,78,0.12)] text-[var(--sw-primary)]",
+                          alert:
+                            "rounded-2xl border border-[rgba(166,70,63,0.2)] bg-[rgba(244,225,223,0.92)] text-[var(--sw-danger)]",
+                          footer: "hidden",
+                          headerTitle: "text-[var(--sw-olive)]",
+                          headerSubtitle: "text-[var(--sw-text-muted)]",
+                          accordionTriggerButton:
+                            "text-[var(--sw-olive)] hover:text-[var(--sw-primary)]",
+                          menuButton:
+                            "text-[var(--sw-text-muted)] hover:text-[var(--sw-primary)]",
+                        },
+                      }}
+                      routing="hash"
+                      fallback={
+                        <div className="account-clerk-shell__loading">
+                          Caricamento impostazioni protette...
+                        </div>
+                      }
+                    />
+                  </div>
                 </div>
               </section>
 
@@ -229,16 +195,15 @@ export function AccountWorkspace({
                 </div>
 
                 <div className="settings-section__body">
-                  <ActionRow
-                    actionLabel="Apri"
-                    description="Controlla dispositivi recenti e sessioni attive nel pannello sicurezza di Clerk."
-                    disabled={managementDisabled}
-                    label="Sessioni e dispositivi"
-                    onAction={() => {
-                      setActiveSheet("sessions");
-                    }}
-                    value={sessionsState}
-                  />
+                  <div className="settings-row">
+                    <div className="settings-row__content">
+                      <span className="settings-row__label">Sessioni e dispositivi</span>
+                      <strong className="settings-row__value">{sessionsState}</strong>
+                      <p className="settings-row__description">
+                        La gestione dettagliata resta nel pannello Clerk mostrato sopra.
+                      </p>
+                    </div>
+                  </div>
 
                   <div className="settings-row">
                     <div className="settings-row__content">
@@ -271,8 +236,6 @@ export function AccountWorkspace({
           </section>
         </div>
       </main>
-
-      <AccountSecuritySheet mode={activeSheet} onOpenChange={setActiveSheet} />
     </>
   );
 }

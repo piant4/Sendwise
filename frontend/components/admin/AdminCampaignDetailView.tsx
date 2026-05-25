@@ -1,5 +1,6 @@
 import { ChevronRight, PenSquare, ShieldAlert } from "lucide-react";
 import Link from "next/link";
+import { getBackendAssetUrl } from "../../lib/api";
 import type {
   AdminCampaignContactsSummary,
   AdminCampaignDetail,
@@ -46,7 +47,7 @@ function normalizePlaceholderValue(value?: string | null): string {
 }
 
 function buildPreviewLogoHtml(logoUrl?: string | null): string {
-  const safeLogoUrl = normalizePlaceholderValue(logoUrl);
+  const safeLogoUrl = normalizePlaceholderValue(getBackendAssetUrl(logoUrl));
   if (!safeLogoUrl) {
     return "";
   }

@@ -13,28 +13,6 @@ interface AdminCampaignTemplatePickerProps {
   onApply: (template: CampaignTemplate) => void;
 }
 
-function getPreviewExcerpt(value: string): string {
-  if (value.length <= 82) {
-    return value;
-  }
-
-  const trimmed = value.slice(0, 82);
-  const lastSpace = trimmed.lastIndexOf(" ");
-  return `${trimmed.slice(0, lastSpace > 48 ? lastSpace : trimmed.length).trim()}...`;
-}
-
-function getStructureHint(template: CampaignTemplate): string {
-  if (template.htmlBody.includes("<table")) {
-    return "Layout email strutturato";
-  }
-
-  if (template.htmlBody.includes("<section")) {
-    return "Sezioni editoriali";
-  }
-
-  return "Markup essenziale";
-}
-
 function stripScripts(value: string): string {
   return value.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, "");
 }
@@ -52,7 +30,7 @@ function buildPreviewDocument(value: string): string {
     <meta charset="utf-8" />
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'none'; img-src data: blob:; style-src 'unsafe-inline'; font-src data:; form-action 'none'; frame-ancestors 'none'; base-uri 'none'"
+      content="default-src 'none'; img-src https: http: data: blob:; style-src 'unsafe-inline'; font-src data:; form-action 'none'; frame-ancestors 'none'; base-uri 'none'"
     />
     <style>
       :root {
@@ -95,6 +73,10 @@ const clampTwoLinesStyle = {
   display: "-webkit-box",
   overflow: "hidden",
 };
+
+function getCompactDescription(template: CampaignTemplate): string {
+  return template.description.trim() || template.recommendedUseCase.trim() || template.previewText.trim();
+}
 
 export function AdminCampaignTemplatePicker({
   templates,
@@ -140,7 +122,7 @@ export function AdminCampaignTemplatePicker({
                 key={template.id}
                 className={`campaign-template-card${isSelected ? " campaign-template-card--selected" : ""}`}
                 style={{
-                  minHeight: 280,
+                  minHeight: 220,
                   padding: 18,
                 }}
               >
@@ -162,22 +144,7 @@ export function AdminCampaignTemplatePicker({
                     {template.name}
                   </h4>
                   <p className="campaign-template-card__description" style={clampTwoLinesStyle}>
-                    {template.description}
-                  </p>
-                  <p
-                    className="campaign-template-card__excerpt"
-                    style={{ color: "var(--sw-olive)", fontWeight: 600, marginTop: 2 }}
-                  >
-                    {getStructureHint(template)}
-                  </p>
-                  <p className="campaign-template-card__excerpt" style={clampTwoLinesStyle}>
-                    {template.recommendedUseCase}
-                  </p>
-                  <p className="campaign-template-card__subject" style={clampTwoLinesStyle}>
-                    {template.subject}
-                  </p>
-                  <p className="campaign-template-card__excerpt" style={clampTwoLinesStyle}>
-                    {getPreviewExcerpt(template.previewText)}
+                    {getCompactDescription(template)}
                   </p>
                 </div>
 
@@ -224,19 +191,22 @@ export function AdminCampaignTemplatePicker({
             onClick={(event) => event.stopPropagation()}
           >
             <div className="campaign-template-modal__header">
-              <div style={{ display: "grid", gap: 8 }}>
-                <div className="campaign-template-card__meta">
-                  <span className="campaign-template-badge">{previewTemplate.category}</span>
+                <div style={{ display: "grid", gap: 8 }}>
+                  <div className="campaign-template-card__meta">
+                    <span className="campaign-template-badge">{previewTemplate.category}</span>
+                    <span className="campaign-template-badge campaign-template-badge--muted">
+                      {previewTemplate.source === "saved" ? "Cliente" : "Default"}
+                    </span>
+                  </div>
+                  <div>
+                    <h4 id="campaign-template-preview-title" className="campaign-template-card__title">
+                      {previewTemplate.name}
+                    </h4>
+                    <p className="campaign-template-card__description">
+                      {getCompactDescription(previewTemplate)}
+                    </p>
+                  </div>
                 </div>
-                <div>
-                  <h4 id="campaign-template-preview-title" className="campaign-template-card__title">
-                    {previewTemplate.name}
-                  </h4>
-                  <p className="campaign-template-card__description">
-                    {previewTemplate.recommendedUseCase}
-                  </p>
-                </div>
-              </div>
 
               <Button
                 type="button"
@@ -255,6 +225,12 @@ export function AdminCampaignTemplatePicker({
                 <strong style={{ color: "var(--sw-olive)" }}>Oggetto</strong>
                 <p className="campaign-template-modal__preview-text">
                   {previewTemplate.subject}
+                </p>
+              </section>
+              <section className="campaign-template-modal__section">
+                <strong style={{ color: "var(--sw-olive)" }}>Uso consigliato</strong>
+                <p className="campaign-template-modal__preview-text">
+                  {previewTemplate.recommendedUseCase}
                 </p>
               </section>
 

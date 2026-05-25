@@ -273,7 +273,7 @@ export default async function AdminClientDetailPage({
 
               <div className="admin-client-brand-card__grid">
                 <label className="admin-clients-form__field">
-                  <span>Company name</span>
+                  <span>Ragione sociale</span>
                   <input
                     className="admin-clients-form__input"
                     type="text"
@@ -284,7 +284,7 @@ export default async function AdminClientDetailPage({
                 </label>
 
                 <label className="admin-clients-form__field">
-                  <span>Sender name</span>
+                  <span>Nome mittente</span>
                   <input
                     className="admin-clients-form__input"
                     type="text"
@@ -292,10 +292,14 @@ export default async function AdminClientDetailPage({
                     defaultValue={brand?.sender_name ?? ""}
                     placeholder="Es. Team Sendwise"
                   />
+                  <small className="admin-client-brand-card__field-help">
+                    Usato come display name del campo From quando supportato. Non controlla
+                    la foto profilo mostrata dall&apos;inbox.
+                  </small>
                 </label>
 
                 <label className="admin-clients-form__field admin-client-brand-card__field--full">
-                  <span>Website</span>
+                  <span>Sito web</span>
                   <input
                     className="admin-clients-form__input"
                     type="url"
@@ -352,9 +356,10 @@ export default async function AdminClientDetailPage({
 
               <div className="admin-client-brand-card__logo-row">
                 <div className="admin-client-brand-card__logo-copy">
-                  <strong>Logo .webp</strong>
+                  <strong>Logo email (.webp)</strong>
                   <span>
                     Carica un file WebP quadrato o con lato massimo 1200 px.
+                    Il logo viene mostrato dentro il template email quando configurato.
                     Il backend genera un nome file stabile e ignora il nome originale.
                   </span>
                 </div>
@@ -380,7 +385,7 @@ export default async function AdminClientDetailPage({
                     unoptimized
                   />
                   <div className="admin-client-brand-card__preview-copy">
-                    <span>Logo attuale</span>
+                    <span>Logo email attuale</span>
                     <code>{brand?.logo_url}</code>
                   </div>
                 </div>

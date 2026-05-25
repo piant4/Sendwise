@@ -18,6 +18,7 @@ interface AdminCampaignCreateWizardProps {
 }
 
 const TECHNICAL_NAME_PATTERN = /^[A-Za-z0-9-]+$/;
+const WIZARD_STEPS = ["Setup", "Template", "Editor", "Destinatari", "Review", "Invio"] as const;
 
 function getClientDisplayName(client: Client): string {
   return client.personal_name || client.name || client.email;
@@ -194,18 +195,28 @@ export function AdminCampaignCreateWizard({
             gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))",
           }}
         >
-          {["Setup", "Template", "Editor", "Destinatari", "Review", "Send"].map((label, index) => (
+          {WIZARD_STEPS.map((label, index) => (
             <div
               key={label}
+              className="campaign-step-button"
+              data-current={index === 0}
+              data-ready={index === 0}
               style={{
-                border: index === 0 ? "1px solid rgba(37, 99, 235, 0.3)" : "1px solid rgba(148, 163, 184, 0.18)",
-                borderRadius: 16,
-                color: index === 0 ? "var(--sw-olive)" : "var(--sw-text-muted)",
                 padding: "10px 12px",
               }}
             >
-              <span className="admin-record-row__note">0{index + 1}</span>
-              <strong style={{ display: "block", marginTop: 4 }}>{label}</strong>
+              <span className="campaign-step-button__header">
+                <span className="admin-record-row__note">0{index + 1}</span>
+                {index === 0 ? (
+                  <span className="campaign-step-button__state">Attuale</span>
+                ) : null}
+              </span>
+              <strong className="campaign-step-button__title" style={{ display: "block", marginTop: 4 }}>
+                {label}
+              </strong>
+              <span className="campaign-step-button__reason">
+                {index === 0 ? "Configura cliente, nome e limiti." : "Step disponibile dopo la creazione."}
+              </span>
             </div>
           ))}
         </div>

@@ -16,7 +16,7 @@ export function ClientPageHeader({
   return (
     <header className="client-page-header">
       <div className="client-page-header__copy">
-        {eyebrow ? <p className="client-page-header__eyebrow">{eyebrow}</p> : null}
+        {/* {eyebrow ? <p className="client-page-header__eyebrow">{eyebrow}</p> : null} */}
         <h1 className="client-page-header__title">{title}</h1>
         <p className="client-page-header__description">{description}</p>
       </div>

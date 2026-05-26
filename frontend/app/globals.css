@@ -7599,6 +7599,51 @@ p {
   border-color: var(--sw-border);
 }
 
+.dark .client-page-stat-card,
+.dark .client-detail-grid div,
+.dark .client-empty-state {
+  background: var(--sw-surface-nested);
+  border-color: var(--sw-border);
+  box-shadow: 0 18px 40px rgba(2, 6, 23, 0.24);
+}
+
+.dark .client-page-stat-card {
+  background: linear-gradient(
+    180deg,
+    rgba(15, 24, 39, 0.96),
+    rgba(18, 30, 47, 0.94)
+  );
+  border-color: rgba(96, 165, 250, 0.18);
+}
+
+.dark .client-page-stat-card span,
+.dark .client-detail-grid span {
+  color: var(--sw-text-faint);
+}
+
+.dark .client-page-stat-card strong,
+.dark .client-metric-stack__item strong,
+.dark .client-row__title,
+.dark .client-detail-grid strong {
+  color: var(--sw-text);
+}
+
+.dark .client-row__meta,
+.dark .client-row__summary span,
+.dark .client-row__support,
+.dark .client-row__chip {
+  color: var(--sw-text-muted);
+}
+
+.dark .client-row__chip {
+  background: var(--sw-surface-strong);
+  border-color: var(--sw-border-strong);
+}
+
+.dark .client-empty-state b {
+  color: var(--sw-text);
+}
+
 .dark .client-performance-chart__track {
   background: rgba(51, 65, 85, 0.54);
 }

@@ -2,7 +2,10 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import { formatProviderEventMetric } from "../shared/campaignUi";
+import {
+  formatProviderEventMetric,
+  getProviderEventsAvailabilityLabel,
+} from "../shared/campaignUi";
 import type {
   CampaignLogsSummary,
   ClientDashboardWindowKey,
@@ -140,6 +143,59 @@ function getMetricDisplayValue(
   return "Non disponibili";
 }
 
+function formatRate(value: number | null): string {
+  if (typeof value !== "number" || Number.isNaN(value)) {
+    return "Non disponibile";
+  }
+
+  return `${(value * 100).toLocaleString("it-IT", {
+    maximumFractionDigits: value * 100 >= 10 ? 0 : 1,
+  })}%`;
+}
+
+function getRatioLabel(
+  numerator: number | null,
+  numeratorAvailable: boolean,
+  denominator: number | null,
+  denominatorAvailable: boolean,
+  suffix: string,
+  unavailableLabel = "Non disponibile",
+): string {
+  if (!numeratorAvailable || !denominatorAvailable) {
+    return unavailableLabel;
+  }
+
+  if (typeof denominator !== "number" || denominator <= 0) {
+    return "Non disponibile";
+  }
+
+  return `${formatRate((numerator ?? 0) / denominator)} ${suffix}`;
+}
+
+function formatRatioInsight(
+  numerator: number,
+  denominator: number,
+  singular: string,
+  plural: string,
+): string {
+  if (numerator <= 0 || denominator <= 0) {
+    return "Non disponibile";
+  }
+
+  const every = Math.max(1, Math.round(denominator / numerator));
+  return `1 ${singular} su ${every} ${plural}`;
+}
+
+function getMetricEntry(
+  metricEntries: Array<{
+    key: (typeof METRIC_CONFIG)[number]["key"];
+    displayValue: string;
+  }>,
+  key: (typeof METRIC_CONFIG)[number]["key"],
+): string {
+  return metricEntries.find((metric) => metric.key === key)?.displayValue ?? "Non disponibili";
+}
+
 export function ClientRecentCampaignsCard({
   summary,
 }: ClientRecentCampaignsCardProps) {
@@ -167,6 +223,18 @@ export function ClientRecentCampaignsCard({
       }),
     [selectedMetrics],
   );
+  const providerLogs = useMemo(
+    () => toProviderMetricLogs(selectedMetrics),
+    [selectedMetrics],
+  );
+  const providerStatusLabel = getProviderEventsAvailabilityLabel(providerLogs);
+  const providerStatusTone = providerLogs.providerEventsAvailable
+    ? "success"
+    : (selectedMetrics.sent ?? 0) > 0
+      ? "warning"
+      : "neutral";
+  const providerUnavailableLabel =
+    (selectedMetrics.sent ?? 0) > 0 ? providerStatusLabel : "Non disponibile";
   const maxValue = Math.max(
     ...metricEntries
       .filter((metric) => metric.available && typeof metric.value === "number")
@@ -176,6 +244,122 @@ export function ClientRecentCampaignsCard({
   const hasAnyVisibleData = metricEntries.some(
     (metric) => metric.available && typeof metric.value === "number",
   );
+  const detailedMetricHelpers: Record<(typeof METRIC_CONFIG)[number]["key"], string> = {
+    sent: selectedMetrics.sentAvailable ? "Base del periodo selezionato" : "Non disponibile",
+    failed: getRatioLabel(
+      selectedMetrics.failed,
+      selectedMetrics.failedAvailable,
+      selectedMetrics.sent,
+      selectedMetrics.sentAvailable,
+      "delle accettate",
+    ),
+    delivered: getRatioLabel(
+      selectedMetrics.delivered,
+      selectedMetrics.deliveredAvailable,
+      selectedMetrics.sent,
+      selectedMetrics.sentAvailable,
+      "delle accettate",
+      providerUnavailableLabel,
+    ),
+    opened: getRatioLabel(
+      selectedMetrics.opened,
+      selectedMetrics.openedAvailable,
+      selectedMetrics.delivered,
+      selectedMetrics.deliveredAvailable,
+      "delle consegnate",
+      providerUnavailableLabel,
+    ),
+    clicked: getRatioLabel(
+      selectedMetrics.clicked,
+      selectedMetrics.clickedAvailable,
+      selectedMetrics.opened,
+      selectedMetrics.openedAvailable,
+      "delle aperture",
+      providerUnavailableLabel,
+    ),
+  };
+  const funnelSteps = [
+    {
+      label: "Accettate",
+      value: getMetricEntry(metricEntries, "sent"),
+      helper: selectedMetrics.sentAvailable ? "Base del funnel" : "Non disponibile",
+      accent: "sent",
+    },
+    {
+      label: "Consegnate",
+      value: getMetricEntry(metricEntries, "delivered"),
+      helper: getRatioLabel(
+        selectedMetrics.delivered,
+        selectedMetrics.deliveredAvailable,
+        selectedMetrics.sent,
+        selectedMetrics.sentAvailable,
+        "delle accettate",
+        providerUnavailableLabel,
+      ),
+      accent: "opened",
+    },
+    {
+      label: "Aperte",
+      value: getMetricEntry(metricEntries, "opened"),
+      helper: getRatioLabel(
+        selectedMetrics.opened,
+        selectedMetrics.openedAvailable,
+        selectedMetrics.delivered,
+        selectedMetrics.deliveredAvailable,
+        "delle consegnate",
+        providerUnavailableLabel,
+      ),
+      accent: "limits",
+    },
+    {
+      label: "Click",
+      value: getMetricEntry(metricEntries, "clicked"),
+      helper: getRatioLabel(
+        selectedMetrics.clicked,
+        selectedMetrics.clickedAvailable,
+        selectedMetrics.opened,
+        selectedMetrics.openedAvailable,
+        "delle aperture",
+        providerUnavailableLabel,
+      ),
+      accent: "queued",
+    },
+  ] as const;
+  const insights = [
+    selectedMetrics.failedAvailable
+      ? (selectedMetrics.failed ?? 0) === 0
+        ? "Nessun errore invio nel periodo"
+        : selectedMetrics.sentAvailable && (selectedMetrics.sent ?? 0) > 0
+          ? formatRatioInsight(
+              selectedMetrics.failed ?? 0,
+              selectedMetrics.sent ?? 0,
+              "invio fallito",
+              "accettate",
+            )
+          : "Errori invio registrati nel periodo"
+      : "Stato errori non disponibile",
+    selectedMetrics.clickedAvailable
+        && selectedMetrics.openedAvailable
+        && (selectedMetrics.opened ?? 0) > 0
+      ? formatRatioInsight(
+          selectedMetrics.clicked ?? 0,
+          selectedMetrics.opened ?? 0,
+          "click",
+          "aperture",
+        )
+      : selectedMetrics.openedAvailable
+          && selectedMetrics.deliveredAvailable
+          && (selectedMetrics.delivered ?? 0) > 0
+        ? formatRatioInsight(
+            selectedMetrics.opened ?? 0,
+            selectedMetrics.delivered ?? 0,
+            "apertura",
+            "consegnate",
+          )
+        : providerLogs.providerEventsAvailable
+          ? "Nessun segnale provider utile nel periodo"
+          : providerUnavailableLabel,
+  ];
   const campaignsHref =
     summary.clientDashboard?.cta.campaignsHref || `/c/${summary.client.portalSlug}/campaigns`;
 
@@ -184,57 +368,96 @@ export function ClientRecentCampaignsCard({
       className="client-surface--performance"
       bodyClassName="client-surface__body--performance"
       title="Trend invii e segnali Mailgun"
-      // description="Mail inviate = accettate dal sistema. Consegne, aperture e click arrivano solo da eventi provider."
       aside={
-        <div className="client-period-selector" aria-label="Selettore periodo">
-          {(Object.keys(WINDOW_LABELS) as ClientDashboardWindowKey[]).map((windowKey) => (
-            <button
-              key={windowKey}
-              type="button"
-              className="client-period-selector__button"
-              data-active={selectedWindow === windowKey}
-              onClick={() => setSelectedWindow(windowKey)}
-            >
-              {WINDOW_LABELS[windowKey]}
-            </button>
-          ))}
+        <div className="client-performance-header__aside">
+          <span
+            className="client-performance-status-chip"
+            data-tone={providerStatusTone}
+          >
+            {providerStatusLabel}
+          </span>
+          <div className="client-period-selector" aria-label="Selettore periodo">
+            {(Object.keys(WINDOW_LABELS) as ClientDashboardWindowKey[]).map((windowKey) => (
+              <button
+                key={windowKey}
+                type="button"
+                className="client-period-selector__button"
+                data-active={selectedWindow === windowKey}
+                onClick={() => setSelectedWindow(windowKey)}
+              >
+                {WINDOW_LABELS[windowKey]}
+              </button>
+            ))}
+          </div>
         </div>
       }
     >
-      {/* <div className="client-performance-summary">
-        {metricEntries.map((metric) => (
-          <article key={metric.label} className="client-performance-summary__item">
-            <span>{metric.label}</span>
-            <strong>{metric.displayValue}</strong>
-          </article>
-        ))}
-      </div> */}
-
       {hasAnyVisibleData ? (
-        <div className="client-performance-chart" aria-label="Performance campagne nel periodo">
-          {metricEntries.map((metric) => {
-            const width =
-              metric.available && typeof metric.value === "number" && maxValue > 0
-                ? `${Math.max((metric.value / maxValue) * 100, metric.value > 0 ? 16 : 0)}%`
-                : "0%";
-
-            return (
-              <article key={metric.label} className="client-performance-chart__row">
-                <div className="client-performance-chart__summary">
-                  <span>{metric.label}</span>
-                  <strong>{metric.displayValue}</strong>
-                </div>
-                <div className="client-performance-chart__track" aria-hidden="true">
-                  <span
-                    className="client-performance-chart__fill"
-                    data-tone={metric.tone}
-                    style={{ width }}
-                  />
-                </div>
+        <>
+          <div className="client-performance-summary">
+            {metricEntries.map((metric) => (
+              <article key={metric.label} className="client-performance-summary__item">
+                <span>{metric.label}</span>
+                <strong data-unavailable={typeof metric.value !== "number"}>
+                  {metric.displayValue}
+                </strong>
               </article>
-            );
-          })}
-        </div>
+            ))}
+          </div>
+
+          <div className="client-performance-journey">
+            {funnelSteps.map((step, index) => (
+              <article
+                key={step.label}
+                className="client-performance-journey__step"
+                data-tone={step.accent}
+              >
+                <span className="client-performance-journey__label">{step.label}</span>
+                <strong>{step.value}</strong>
+                <span className="client-performance-journey__helper">{step.helper}</span>
+                {index < funnelSteps.length - 1 ? (
+                  <span className="client-performance-journey__connector" aria-hidden="true" />
+                ) : null}
+              </article>
+            ))}
+          </div>
+
+          <div className="client-performance-chart" aria-label="Performance campagne nel periodo">
+            {metricEntries.map((metric) => {
+              const width =
+                metric.available && typeof metric.value === "number" && maxValue > 0
+                  ? `${Math.max((metric.value / maxValue) * 100, metric.value > 0 ? 16 : 0)}%`
+                  : "0%";
+
+              return (
+                <article key={metric.label} className="client-performance-chart__row">
+                  <div className="client-performance-chart__summary">
+                    <span>{metric.label}</span>
+                    <strong>{metric.displayValue}</strong>
+                  </div>
+                  <div className="client-performance-chart__track" aria-hidden="true">
+                    <span
+                      className="client-performance-chart__fill"
+                      data-tone={metric.tone}
+                      style={{ width }}
+                    />
+                  </div>
+                  <p className="client-performance-chart__helper">
+                    {detailedMetricHelpers[metric.key]}
+                  </p>
+                </article>
+              );
+            })}
+          </div>
+
+          <div className="client-performance-insights" aria-label="Insight del periodo">
+            {insights.map((insight) => (
+              <p key={insight} className="client-performance-insights__item">
+                {insight}
+              </p>
+            ))}
+          </div>
+        </>
       ) : (
         <div className="client-empty-state client-empty-state--compact">
           Nessun volume reale disponibile nel periodo selezionato.

@@ -7388,6 +7388,7 @@ p {
 .dark .admin-record-grid dt,
 .dark .admin-system-config-card span,
 .dark .client-performance-summary__item span,
+.dark .client-performance-journey__label,
 .dark .client-metric-stack__item span,
 .dark .client-status-summary span,
 .dark .login-field__hint,
@@ -7418,6 +7419,9 @@ p {
 .dark .client-kpi-card,
 .dark .client-surface,
 .dark .client-performance-summary__item,
+.dark .client-performance-journey__step,
+.dark .client-performance-chart__row,
+.dark .client-performance-insights__item,
 .dark .client-metric-stack__item,
 .dark .client-status-summary span,
 .dark .client-delivery-state,
@@ -7540,6 +7544,8 @@ p {
 .dark .admin-record-row,
 .dark .admin-record-grid div,
 .dark .client-performance-summary__item,
+.dark .client-performance-journey__step,
+.dark .client-performance-chart__row,
 .dark .client-metric-stack__item,
 .dark .client-period-selector__button,
 .dark .campaign-template-card,
@@ -7555,6 +7561,8 @@ p {
 
 .dark .admin-record-grid div,
 .dark .client-performance-summary__item,
+.dark .client-performance-journey__step,
+.dark .client-performance-chart__row,
 .dark .client-metric-stack__item,
 .dark .campaign-inline-summary article {
   background: var(--sw-surface-muted);
@@ -7952,6 +7960,7 @@ p {
 .dark .admin-clients-stat-card strong,
 .dark .client-kpi-card__value,
 .dark .client-performance-summary__item strong,
+.dark .client-performance-journey__step strong,
 .dark .client-performance-chart__summary strong,
 .dark .client-delivery-state strong,
 .dark .client-action-card__copy strong,
@@ -7967,6 +7976,8 @@ p {
 .dark .client-surface__description,
 .dark .client-empty-state,
 .dark .client-performance-chart__summary span,
+.dark .client-performance-chart__helper,
+.dark .client-performance-journey__helper,
 .dark .client-delivery-state span,
 .dark .client-action-card__copy span,
 .dark .client-dashboard-hero__copy h2,
@@ -8034,6 +8045,12 @@ p {
 
 .dark .client-performance-chart__track {
   background: rgba(51, 65, 85, 0.54);
+}
+
+.dark .client-performance-insights__item {
+  background: rgba(37, 99, 235, 0.18);
+  border-color: rgba(96, 165, 250, 0.22);
+  color: var(--sw-text);
 }
 
 .dark .client-action-card__count {
@@ -8811,9 +8828,15 @@ p {
   margin-top: 2px;
 }
 
+.client-performance-header__aside {
+  display: grid;
+  gap: 10px;
+  justify-items: end;
+}
+
 .client-period-selector {
   display: flex;
-  /* flex-wrap: wrap; */
+  flex-wrap: wrap;
   gap: 8px;
   justify-content: flex-end;
 }
@@ -8848,6 +8871,38 @@ p {
   transform: translateY(-1px);
 }
 
+.client-performance-status-chip {
+  align-items: center;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  display: inline-flex;
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  max-width: 100%;
+  min-height: 32px;
+  padding: 0 12px;
+  text-align: center;
+}
+
+.client-performance-status-chip[data-tone="success"] {
+  background: var(--sw-badge-success-bg);
+  border-color: var(--sw-badge-success-border);
+  color: var(--sw-badge-success-text);
+}
+
+.client-performance-status-chip[data-tone="warning"] {
+  background: var(--sw-badge-warning-bg);
+  border-color: var(--sw-badge-warning-border);
+  color: var(--sw-badge-warning-text);
+}
+
+.client-performance-status-chip[data-tone="neutral"] {
+  background: var(--sw-badge-neutral-bg);
+  border-color: var(--sw-badge-neutral-border);
+  color: var(--sw-badge-neutral-text);
+}
+
 .client-performance-summary,
 .client-status-summary,
 .client-metric-stack {
@@ -8856,7 +8911,7 @@ p {
 }
 
 .client-performance-summary {
-  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
 }
 
 .client-surface--performance {
@@ -8883,7 +8938,7 @@ p {
 }
 
 .client-surface__body--performance {
-  gap: 14px;
+  gap: 16px;
 }
 
 .client-surface--performance .client-period-selector {
@@ -8897,7 +8952,7 @@ p {
   border-radius: 16px;
   display: grid;
   gap: 6px;
-  min-height: 84px;
+  min-height: 88px;
   padding: 14px 15px;
 }
 
@@ -8911,18 +8966,104 @@ p {
 .client-performance-summary__item strong,
 .client-metric-stack__item strong {
   color: #0f172a;
-  font-size: 1rem;
+  font-size: 1.18rem;
+  letter-spacing: -0.03em;
+  line-height: 1.05;
+}
+
+.client-performance-summary__item strong[data-unavailable="true"] {
+  font-size: 0.94rem;
+  line-height: 1.35;
+}
+
+.client-performance-journey {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.client-performance-journey__step {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(239, 246, 255, 0.7));
+  border: 1px solid rgba(202, 213, 225, 0.78);
+  border-radius: 18px;
+  display: grid;
+  gap: 6px;
+  min-height: 124px;
+  padding: 16px;
+  position: relative;
+}
+
+.client-performance-journey__step::before {
+  background: var(--sw-campaign-accent);
+  border-radius: 999px;
+  content: "";
+  height: 8px;
+  left: 16px;
+  opacity: 0.92;
+  position: absolute;
+  top: 16px;
+  width: 32px;
+}
+
+.client-performance-journey__step[data-tone="opened"]::before {
+  background: var(--sw-success);
+}
+
+.client-performance-journey__step[data-tone="limits"]::before {
+  background: #0284c7;
+}
+
+.client-performance-journey__step[data-tone="queued"]::before {
+  background: var(--sw-warning);
+}
+
+.client-performance-journey__label {
+  color: #526075;
+  font-size: 0.76rem;
+  font-weight: 700;
+  margin-top: 14px;
+  text-transform: uppercase;
+}
+
+.client-performance-journey__step strong {
+  color: #0f172a;
+  font-size: 1.24rem;
+  letter-spacing: -0.04em;
+  line-height: 1.05;
+}
+
+.client-performance-journey__helper {
+  color: #64748b;
+  font-size: 0.84rem;
+  line-height: 1.35;
+}
+
+.client-performance-journey__connector {
+  background:
+    linear-gradient(90deg, rgba(96, 165, 250, 0.18), rgba(37, 99, 235, 0.45));
+  border-radius: 999px;
+  height: 2px;
+  position: absolute;
+  right: -8px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 16px;
 }
 
 .client-performance-chart {
   display: grid;
-  gap: 16px;
-  margin: 20px 0px 30px;
+  gap: 12px;
+  margin: 0;
 }
 
 .client-performance-chart__row {
+  background: rgba(248, 250, 252, 0.74);
+  border: 1px solid rgba(202, 213, 225, 0.72);
+  border-radius: 18px;
   display: grid;
-  gap: 9px;
+  gap: 10px;
+  padding: 14px 15px;
 }
 
 .client-performance-chart__summary {
@@ -8940,6 +9081,12 @@ p {
 .client-performance-chart__summary strong {
   color: #0f172a;
   font-size: 0.94rem;
+}
+
+.client-performance-chart__helper {
+  color: #64748b;
+  font-size: 0.82rem;
+  margin: 0;
 }
 
 .client-performance-chart__track {
@@ -8973,6 +9120,22 @@ p {
 
 .client-performance-chart__fill[data-tone="queued"] {
   background: linear-gradient(90deg, #b45309, #f59e0b);
+}
+
+.client-performance-insights {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.client-performance-insights__item {
+  background: rgba(239, 246, 255, 0.76);
+  border: 1px solid rgba(96, 165, 250, 0.2);
+  border-radius: 999px;
+  color: #334155;
+  margin: 0;
+  min-height: 42px;
+  padding: 10px 14px;
 }
 
 .client-status-summary {
@@ -9211,6 +9374,7 @@ p {
   }
 
   .client-performance-summary,
+  .client-performance-journey,
   .client-status-summary,
   .client-metric-stack {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -9252,6 +9416,10 @@ p {
     justify-content: flex-start;
   }
 
+  .client-performance-header__aside {
+    justify-items: flex-start;
+  }
+
   .client-surface--performance .client-surface__aside {
     flex-basis: 100%;
     justify-content: flex-start;
@@ -9263,9 +9431,14 @@ p {
   }
 
   .client-performance-summary,
+  .client-performance-journey,
   .client-status-summary,
   .client-metric-stack {
     grid-template-columns: 1fr;
+  }
+
+  .client-performance-journey__connector {
+    display: none;
   }
 }
 
@@ -9614,6 +9787,7 @@ body {
 
 .client-dashboard-hero__facts,
 .client-performance-summary,
+.client-performance-journey,
 .client-status-summary,
 .client-metric-stack,
 .theme-preference__options {
@@ -9658,6 +9832,7 @@ body {
   .client-dashboard-hero__facts,
   .client-row__stats,
   .client-performance-summary,
+  .client-performance-journey,
   .client-status-summary,
   .client-metric-stack,
   .campaign-form-grid,

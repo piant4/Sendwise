@@ -699,7 +699,6 @@ button {
 }
 
 .topbar__icon-button svg,
-.mobile-nav-trigger svg,
 .mobile-nav-sheet__close svg {
   height: 16px;
   width: 16px;
@@ -716,7 +715,52 @@ button {
 }
 
 .mobile-nav-trigger {
+  background: linear-gradient(
+    180deg,
+    var(--sw-surface),
+    var(--sw-bg-soft)
+  );
+  border-color: var(--sw-border-strong);
+  box-shadow:
+    0 10px 24px rgba(15, 23, 42, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.58);
+  color: var(--sw-text);
   display: none;
+  flex-shrink: 0;
+  min-height: 44px;
+  min-width: 44px;
+  position: relative;
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease,
+    box-shadow 0.15s ease,
+    color 0.15s ease,
+    transform 0.15s ease;
+  z-index: 31;
+}
+
+.mobile-nav-trigger svg {
+  flex-shrink: 0;
+  height: 22px;
+  stroke: currentColor;
+  stroke-width: 2.2;
+  width: 22px;
+}
+
+.mobile-nav-trigger:hover {
+  background: rgba(239, 246, 255, 0.96);
+  border-color: rgba(37, 99, 235, 0.28);
+  color: var(--sw-primary);
+}
+
+.mobile-nav-trigger:focus-visible {
+  background: rgba(239, 246, 255, 0.98);
+  border-color: rgba(37, 99, 235, 0.36);
+  box-shadow:
+    0 0 0 3px rgba(37, 99, 235, 0.16),
+    0 12px 28px rgba(15, 23, 42, 0.12);
+  color: var(--sw-primary);
+  outline: none;
 }
 
 .topbar__indicator {
@@ -6532,7 +6576,7 @@ p {
   }
 
   .mobile-nav-trigger {
-    background: var(--sw-bg-soft);
+    display: inline-flex;
   }
 
   .shell {
@@ -7091,6 +7135,26 @@ p {
 .dark .mobile-nav-account {
   background: rgba(8, 17, 31, 0.82);
   border-color: var(--sw-border);
+}
+
+.dark .mobile-nav-trigger {
+  background: linear-gradient(
+    180deg,
+    rgba(18, 28, 44, 0.96),
+    rgba(8, 17, 31, 0.96)
+  );
+  border-color: rgba(96, 165, 250, 0.24);
+  box-shadow:
+    0 12px 28px rgba(2, 6, 23, 0.34),
+    inset 0 1px 0 rgba(148, 163, 184, 0.08);
+  color: #dbeafe;
+}
+
+.dark .mobile-nav-trigger:hover,
+.dark .mobile-nav-trigger:focus-visible {
+  background: rgba(30, 64, 175, 0.3);
+  border-color: rgba(96, 165, 250, 0.38);
+  color: #eff6ff;
 }
 
 .dark .main-nav__link[data-active="true"],

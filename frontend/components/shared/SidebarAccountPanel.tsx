@@ -27,11 +27,13 @@ function getAccountInitials(fullName: string | null | undefined, email: string) 
 }
 
 interface SidebarAccountPanelProps {
+  accountHref: string;
   isMockMode?: boolean;
   onAction?: () => void;
 }
 
 export function SidebarAccountPanel({
+  accountHref,
   isMockMode = false,
   onAction,
 }: SidebarAccountPanelProps) {
@@ -64,7 +66,7 @@ export function SidebarAccountPanel({
       </div>
       <div className="sidebar-account__actions">
         <Link
-          href="/account"
+          href={accountHref}
           className="sidebar-account__action sidebar-account__action--secondary"
           onClick={onAction}
         >

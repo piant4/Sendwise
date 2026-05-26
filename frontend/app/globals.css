@@ -589,6 +589,15 @@ button {
   min-width: 0;
 }
 
+.topbar__eyebrow {
+  color: var(--sw-text-faint);
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  margin: 0;
+  text-transform: uppercase;
+}
+
 .topbar__title-row {
   align-items: center;
   display: flex;
@@ -683,10 +692,10 @@ button {
   border-radius: 10px;
   color: var(--sw-text-muted);
   display: inline-flex;
-  height: 38px;
+  height: 44px;
   justify-content: center;
   padding: 0;
-  width: 38px;
+  width: 44px;
 }
 
 .topbar__icon-button svg,
@@ -816,6 +825,7 @@ button {
   color: var(--sw-text-muted);
   display: flex;
   gap: 10px;
+  min-height: 44px;
   min-width: 0;
   padding: 11px 12px;
   position: relative;
@@ -903,6 +913,32 @@ button {
   justify-content: space-between;
 }
 
+.mobile-nav-sheet__context {
+  display: grid;
+  gap: 4px;
+  margin-top: 14px;
+}
+
+.mobile-nav-sheet__context strong {
+  color: var(--sw-text);
+  font-size: 1.02rem;
+  line-height: 1.2;
+}
+
+.mobile-nav-sheet__context span:last-child {
+  color: var(--sw-text-muted);
+  font-size: 0.86rem;
+  line-height: 1.45;
+}
+
+.mobile-nav-sheet__eyebrow {
+  color: var(--sw-text-faint);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
 .mobile-nav-sheet__close {
   background: var(--sw-bg-soft);
 }
@@ -910,6 +946,7 @@ button {
 .mobile-nav-content {
   display: grid;
   gap: 20px;
+  min-width: 0;
   min-height: 100%;
   padding: 16px 18px 22px;
 }
@@ -1264,6 +1301,15 @@ button {
   min-width: 0;
 }
 
+.admin-clients-cell__label {
+  color: var(--sw-text-faint);
+  display: none;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
 .admin-clients-cell strong {
   color: var(--sw-olive);
   font-size: 0.92rem;
@@ -1296,6 +1342,15 @@ button {
 .admin-client-detail__grid {
   gap: 20px;
   grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.admin-client-detail__back-row {
+  display: flex;
+  margin-bottom: 16px;
+}
+
+.admin-client-detail__back-button[data-slot="button"] {
+  min-height: 44px;
 }
 
 .admin-client-detail__facts {
@@ -2105,11 +2160,13 @@ button {
   display: flex;
   gap: 12px;
   justify-content: space-between;
+  min-width: 0;
 }
 
 .admin-record-row__copy {
   display: grid;
   gap: 4px;
+  min-width: 0;
 }
 
 .admin-record-row__copy strong {
@@ -2498,6 +2555,7 @@ button {
   flex-wrap: wrap;
   gap: 8px;
   justify-content: flex-end;
+  min-width: 0;
 }
 
 .campaign-record-link__open {
@@ -2533,6 +2591,14 @@ button {
   display: grid;
   gap: 16px;
   margin-top: 20px;
+}
+
+.campaign-create-progress__header {
+  min-width: 0;
+}
+
+.campaign-create-progress__steps {
+  min-width: 0;
 }
 
 .campaign-contacts-layout {
@@ -5836,7 +5902,7 @@ p {
   font-size: 0.85rem;
   font-weight: 600;
   gap: 6px;
-  min-height: 40px;
+  min-height: 44px;
   padding: 0 14px;
   text-decoration: none;
   transition:
@@ -6434,7 +6500,7 @@ p {
   justify-items: start;
 }
 
-@media (max-width: 860px) {
+@media (max-width: 1023px) {
   .app-shell {
     display: block;
   }
@@ -6444,8 +6510,7 @@ p {
   }
 
   .topbar {
-    align-items: flex-start;
-    flex-direction: column;
+    gap: 14px;
     padding: 16px 18px;
   }
 
@@ -6478,6 +6543,71 @@ p {
     padding: 20px;
   }
 
+  .admin-page-stat-grid,
+  .client-page-stat-grid,
+  .admin-overview__hero-meta,
+  .admin-overview__grid,
+  .admin-overview__stack,
+  .admin-overview__metric-row,
+  .admin-client-detail__grid,
+  .admin-client-detail__facts,
+  .admin-client-brand-card__grid,
+  .admin-client-brand-card__preview,
+  .admin-clients-stats,
+  .campaign-review-overview,
+  .campaign-dispatch-result__stats,
+  .campaign-detail-metrics,
+  .campaign-provider-metrics,
+  .client-dashboard__content,
+  .client-hero__facts,
+  .client-fact-grid,
+  .client-detail-grid,
+  .client-row__stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .admin-page-header,
+  .client-page-header,
+  .campaign-record-link__header,
+  .admin-record-row__primary,
+  .settings-row {
+    grid-template-columns: 1fr;
+  }
+
+  .client-page-header {
+    gap: 14px;
+  }
+
+  .client-page-header__actions,
+  .campaign-record-link__actions {
+    justify-content: flex-start;
+  }
+
+  .campaign-editor-shell[data-mode="split"] {
+    grid-template-columns: 1fr;
+  }
+
+  .campaign-preview-viewport {
+    height: auto;
+    min-height: 0;
+  }
+
+  .campaign-email-preview-frame--editor {
+    height: 820px;
+    min-height: 820px;
+  }
+
+  .campaign-stepper {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 767px) {
+  .topbar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
   .admin-hero,
   .admin-dashboard__content,
   .admin-page-stat-grid,
@@ -6494,11 +6624,19 @@ p {
   }
 
   .admin-clients-stats,
+  .admin-overview__hero-meta,
+  .admin-overview__grid,
+  .admin-overview__stack,
+  .admin-overview__metric-row,
   .admin-client-detail__grid,
   .admin-client-detail__facts,
   .admin-client-brand-card__grid,
   .admin-client-brand-card__preview,
   .admin-clients-table,
+  .campaign-review-overview,
+  .campaign-dispatch-result__stats,
+  .campaign-detail-metrics,
+  .campaign-provider-metrics,
   .invite-modal__actions,
   .access-state-card__actions,
   .admin-client-actions__buttons,
@@ -6513,6 +6651,10 @@ p {
 
   .admin-clients-table--row {
     gap: 12px;
+  }
+
+  .admin-clients-cell__label {
+    display: block;
   }
 
   .admin-clients-hero,
@@ -6612,6 +6754,64 @@ p {
 
   .account-name-form__grid {
     grid-template-columns: 1fr;
+  }
+
+  .client-page-header,
+  .client-page-stat-grid,
+  .client-hero__facts,
+  .client-fact-grid,
+  .client-detail-grid,
+  .client-row__stats,
+  .campaign-stepper,
+  .campaign-create-progress__steps {
+    grid-template-columns: 1fr;
+  }
+
+  .client-page-header__actions {
+    width: 100%;
+  }
+
+  .client-page-header__actions > * {
+    width: 100%;
+  }
+
+  .campaign-record-link__open,
+  .campaign-record-link__actions,
+  .admin-record-row__primary > [data-slot],
+  .admin-client-detail__back-button[data-slot="button"] {
+    width: 100%;
+  }
+
+  .campaign-record-link__actions {
+    align-items: stretch;
+  }
+
+  .campaign-action-row,
+  .campaign-action-row__group,
+  .campaign-create-progress__header,
+  .campaign-dispatch-result__header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .campaign-action-row > [data-slot="button"],
+  .campaign-action-row__group > [data-slot="button"],
+  .campaign-create-progress__header > strong,
+  .campaign-create-progress__header > span {
+    width: 100%;
+  }
+
+  .campaign-template-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .campaign-email-preview-frame--editor {
+    height: 720px;
+    min-height: 720px;
+  }
+
+  .campaign-preview-viewport {
+    padding: 12px;
   }
 }
 

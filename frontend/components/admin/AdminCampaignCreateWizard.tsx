@@ -153,6 +153,7 @@ export function AdminCampaignCreateWizard({
   return (
     <form className="admin-clients-card campaign-panel" onSubmit={handleSubmit}>
       <div
+        className="campaign-create-progress"
         aria-label="Avanzamento wizard campagna"
         style={{
           display: "grid",
@@ -161,6 +162,7 @@ export function AdminCampaignCreateWizard({
         }}
       >
         <div
+          className="campaign-create-progress__header"
           style={{
             alignItems: "center",
             display: "flex",
@@ -189,6 +191,7 @@ export function AdminCampaignCreateWizard({
           />
         </div>
         <div
+          className="campaign-create-progress__steps"
           style={{
             display: "grid",
             gap: 10,

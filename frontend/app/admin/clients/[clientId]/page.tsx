@@ -1,10 +1,13 @@
 import { auth } from "@clerk/nextjs/server";
 import Image from "next/image";
 import { revalidatePath } from "next/cache";
+import Link from "next/link";
+import { ArrowLeft } from "lucide-react";
 import { redirect } from "next/navigation";
 import { AdminClientAccessActions } from "../../../../components/admin/AdminClientAccessActions";
 import { formatDateTimeInRome } from "../../../../components/shared/dateTime";
 import { buildPageMetadata } from "../../../../components/shared/metadata";
+import { Button } from "../../../../components/ui/button";
 import {
   buildClientEmailBrandPayload,
   getBackendAssetUrl,
@@ -222,6 +225,14 @@ export default async function AdminClientDetailPage({
     <main className="shell">
       <section className="admin-client-detail">
         <header className="admin-clients-hero">
+          <div className="admin-client-detail__back-row">
+            <Button asChild variant="outline" size="sm" className="admin-client-detail__back-button">
+              <Link href="/admin/clients">
+                <ArrowLeft aria-hidden="true" />
+                Torna ai clienti
+              </Link>
+            </Button>
+          </div>
           <div>
             <p className="admin-surface__eyebrow">Cliente</p>
             <h1 className="admin-clients-hero__title">

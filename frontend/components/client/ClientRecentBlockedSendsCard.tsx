@@ -13,7 +13,7 @@ export function ClientRecentBlockedSendsCard({
   return (
     <ClientSurface
       title="Azioni richieste"
-      description="Solo attività reali emerse dal read model dashboard."
+      // description="Solo attività reali emerse dal read model dashboard."
     >
       {items.length > 0 ? (
         <div className="client-action-list">

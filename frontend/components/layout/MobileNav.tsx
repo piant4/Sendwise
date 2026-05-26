@@ -17,18 +17,31 @@ import {
 import { MainNav, type AppRole } from "./MainNav";
 
 interface MobileNavProps {
+  accountHref: string;
+  currentLabel: string;
+  pageTitle: string;
   role: AppRole;
   isMockMode: boolean;
 }
 
-export function MobileNav({ role, isMockMode }: MobileNavProps) {
+export function MobileNav({
+  accountHref,
+  currentLabel,
+  pageTitle,
+  role,
+  isMockMode,
+}: MobileNavProps) {
   const [open, setOpen] = useState(false);
+  const navId = role === "admin" ? "admin-mobile-navigation" : "client-mobile-navigation";
+  const sectionLabel = role === "admin" ? "Operazioni admin" : "Portale cliente";
 
   return (
     <Sheet open={open} onOpenChange={setOpen}>
       <SheetTrigger asChild>
         <button
           type="button"
+          aria-controls={navId}
+          aria-expanded={open}
           aria-label="Apri navigazione"
           className="mobile-nav-trigger"
         >
@@ -36,6 +49,7 @@ export function MobileNav({ role, isMockMode }: MobileNavProps) {
         </button>
       </SheetTrigger>
       <SheetContent
+        id={navId}
         className="mobile-nav-sheet"
         side="left"
         showCloseButton={false}
@@ -57,6 +71,11 @@ export function MobileNav({ role, isMockMode }: MobileNavProps) {
           <SheetDescription className="sr-only">
             Menu laterale mobile con navigazione contestuale per admin o cliente.
           </SheetDescription>
+          <div className="mobile-nav-sheet__context">
+            <span className="mobile-nav-sheet__eyebrow">{sectionLabel}</span>
+            <strong>{pageTitle}</strong>
+            <span>{currentLabel}</span>
+          </div>
         </SheetHeader>
         <div className="mobile-nav-content">
           <div className="sidebar-section">
@@ -67,6 +86,7 @@ export function MobileNav({ role, isMockMode }: MobileNavProps) {
           </div>
           <div className="mobile-nav-account">
             <SidebarAccountPanel
+              accountHref={accountHref}
               isMockMode={isMockMode}
               onAction={() => setOpen(false)}
             />

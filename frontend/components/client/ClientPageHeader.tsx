@@ -10,13 +10,13 @@ interface ClientPageHeaderProps {
 export function ClientPageHeader({
   title,
   description,
-  eyebrow = "",
+  eyebrow,
   actions,
 }: ClientPageHeaderProps) {
   return (
     <header className="client-page-header">
       <div className="client-page-header__copy">
-        <p className="client-page-header__eyebrow">{eyebrow}</p>
+        {eyebrow ? <p className="client-page-header__eyebrow">{eyebrow}</p> : null}
         <h1 className="client-page-header__title">{title}</h1>
         <p className="client-page-header__description">{description}</p>
       </div>

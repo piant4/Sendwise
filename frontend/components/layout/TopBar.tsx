@@ -3,6 +3,7 @@ import { Bell, Search } from "lucide-react";
 import { MockModeBadge } from "../shared/MockModeBadge";
 
 interface TopBarProps {
+  eyebrow?: string;
   title: string;
   actions?: ReactNode;
   leading?: ReactNode;
@@ -11,6 +12,7 @@ interface TopBarProps {
 }
 
 export function TopBar({
+  eyebrow,
   title,
   actions,
   leading,
@@ -22,6 +24,7 @@ export function TopBar({
       <div className="topbar__main">
         {leading ? <div className="topbar__leading">{leading}</div> : null}
         <div className="topbar__copy">
+          {eyebrow ? <p className="topbar__eyebrow">{eyebrow}</p> : null}
           <div className="topbar__title-row">
             <h1>{title}</h1>
             {isMockMode ? <MockModeBadge /> : null}

@@ -66,10 +66,10 @@ export function ClientDeliveryCard({ summary }: ClientDeliveryCardProps) {
       <ClientSurface
         title="Stato metriche reali"
       >
-        <div className="client-delivery-state">
+        {/* <div className="client-delivery-state">
           <strong>{getProviderEventsAvailabilityLabel(logs)}</strong>
           <span>Disponibilita eventi Mailgun</span>
-        </div>
+        </div> */}
         <div className="client-metric-stack client-metric-stack--single-column">
           {facts.map((fact) => (
             <article key={fact.label} className="client-metric-stack__item">

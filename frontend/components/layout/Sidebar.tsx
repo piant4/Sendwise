@@ -19,12 +19,18 @@ const ROLE_META: Record<
 };
 
 interface SidebarProps {
+  accountHref: string;
   role: AppRole;
   isMockMode: boolean;
   logoHref: string;
 }
 
-export function Sidebar({ role, isMockMode, logoHref }: SidebarProps) {
+export function Sidebar({
+  accountHref,
+  role,
+  isMockMode,
+  logoHref,
+}: SidebarProps) {
   const meta = ROLE_META[role];
 
   return (
@@ -44,7 +50,7 @@ export function Sidebar({ role, isMockMode, logoHref }: SidebarProps) {
       </div>
       <div className="sidebar-account">
         {isMockMode ? <MockModeBadge /> : null}
-        <SidebarAccountPanel isMockMode={isMockMode} />
+        <SidebarAccountPanel accountHref={accountHref} isMockMode={isMockMode} />
       </div>
     </div>
   );

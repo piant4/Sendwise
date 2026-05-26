@@ -207,6 +207,7 @@ export default async function AdminClientsPage() {
                           aria-label={`Apri dettaglio cliente ${getClientDisplayName(client)}`}
                         >
                           <div className="admin-clients-cell admin-clients-cell--primary">
+                            <span className="admin-clients-cell__label">Cliente</span>
                             <strong>{getClientDisplayName(client)}</strong>
                             <span>{client.email}</span>
                             <span>
@@ -215,6 +216,7 @@ export default async function AdminClientsPage() {
                           </div>
 
                           <div className="admin-clients-cell">
+                            <span className="admin-clients-cell__label">Accesso</span>
                             <strong>{getAccessStatusLabel(client.access?.status)}</strong>
                             <span>
                               {client.access?.status === "active" &&
@@ -226,6 +228,7 @@ export default async function AdminClientsPage() {
                           </div>
 
                           <div className="admin-clients-cell">
+                            <span className="admin-clients-cell__label">Email accesso</span>
                             <strong>{getInvitationStatusLabel(client.access?.invitation_status)}</strong>
                             <span>
                               Inviata: {formatDateLabel(client.access?.invited_at)}
@@ -233,11 +236,13 @@ export default async function AdminClientsPage() {
                           </div>
 
                           <div className="admin-clients-cell">
+                            <span className="admin-clients-cell__label">Capacita</span>
                             <strong>{getClientLimitsLabel(client)}</strong>
                             <span>Solo campagne attive a livello account</span>
                           </div>
 
                           <div className="admin-clients-cell">
+                            <span className="admin-clients-cell__label">Stato profilo</span>
                             <strong>{getProfileStatusLabel(client.status)}</strong>
                             <span>
                               Accesso completato: {formatDateLabel(client.access?.accepted_at)}

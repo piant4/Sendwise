@@ -71,6 +71,7 @@ export function AppShell({ children }: AppShellProps) {
       <div className="app-frame">
         <TopBar
           eyebrow={eyebrow}
+          mobileLabel={currentLabel}
           title={title}
           actions={actions}
           leading={

@@ -4,6 +4,7 @@ import { MockModeBadge } from "../shared/MockModeBadge";
 
 interface TopBarProps {
   eyebrow?: string;
+  mobileLabel?: string;
   title: string;
   actions?: ReactNode;
   leading?: ReactNode;
@@ -13,6 +14,7 @@ interface TopBarProps {
 
 export function TopBar({
   eyebrow,
+  mobileLabel,
   title,
   actions,
   leading,
@@ -22,7 +24,16 @@ export function TopBar({
   return (
     <header className="topbar">
       <div className="topbar__main">
-        {leading ? <div className="topbar__leading">{leading}</div> : null}
+        <div className="topbar__mobile-bar">
+          {leading ? <div className="topbar__leading">{leading}</div> : null}
+          <div className="topbar__mobile-copy">
+            {eyebrow ? <p className="topbar__mobile-eyebrow">{eyebrow}</p> : null}
+            <div className="topbar__mobile-title-row">
+              <strong className="topbar__mobile-title">{mobileLabel ?? title}</strong>
+              {isMockMode ? <MockModeBadge /> : null}
+            </div>
+          </div>
+        </div>
         <div className="topbar__copy">
           {eyebrow ? <p className="topbar__eyebrow">{eyebrow}</p> : null}
           <div className="topbar__title-row">

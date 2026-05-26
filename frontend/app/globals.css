@@ -339,15 +339,15 @@ button {
 }
 
 .app-shell {
-  display: grid;
-  grid-template-columns: 264px minmax(0, 1fr);
-  min-height: 100vh;
+  display: block;
+  min-height: 100svh;
 }
 
 .app-sidebar {
   background: rgba(255, 255, 255, 0.72);
   border-right: 1px solid var(--sw-border);
   backdrop-filter: blur(16px);
+  display: none;
   min-height: 100vh;
 }
 
@@ -550,41 +550,84 @@ button {
 .app-frame {
   display: flex;
   flex-direction: column;
+  min-height: 100svh;
   min-width: 0;
 }
 
 .app-content {
+  min-height: 100svh;
   min-width: 0;
 }
 
 .topbar {
-  align-items: center;
+  align-items: flex-start;
   background: rgba(255, 255, 255, 0.86);
   border-bottom: 1px solid var(--sw-border);
   backdrop-filter: blur(18px);
   display: flex;
-  gap: 18px;
-  justify-content: space-between;
-  padding: 18px 28px;
+  flex-direction: column;
+  gap: 12px;
+  justify-content: flex-start;
+  padding: 16px;
   position: sticky;
   top: 0;
   z-index: 20;
 }
 
 .topbar__main {
-  align-items: center;
   display: flex;
   flex: 1;
-  gap: 14px;
   min-width: 0;
+  width: 100%;
+}
+
+.topbar__mobile-bar {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  min-width: 0;
+  width: 100%;
 }
 
 .topbar__leading {
-  display: none;
+  align-items: center;
+  display: inline-flex;
+  flex: 0 0 auto;
+}
+
+.topbar__mobile-copy {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.topbar__mobile-eyebrow {
+  color: var(--sw-text-faint);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  margin: 0;
+  text-transform: uppercase;
+}
+
+.topbar__mobile-title-row {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.topbar__mobile-title {
+  color: var(--sw-text);
+  font-size: clamp(1.02rem, 4.6vw, 1.16rem);
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .topbar__copy {
-  display: grid;
+  display: none;
   gap: 4px;
   min-width: 0;
 }
@@ -619,8 +662,9 @@ button {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  justify-content: flex-end;
+  justify-content: flex-start;
   position: relative;
+  width: 100%;
 }
 
 .admin-topbar-action[data-slot="button"] {
@@ -725,7 +769,7 @@ button {
     0 10px 24px rgba(15, 23, 42, 0.08),
     inset 0 1px 0 rgba(255, 255, 255, 0.58);
   color: var(--sw-text);
-  display: none;
+  display: inline-flex;
   flex-shrink: 0;
   min-height: 44px;
   min-width: 44px;
@@ -6545,40 +6589,6 @@ p {
 }
 
 @media (max-width: 1023px) {
-  .app-shell {
-    display: block;
-  }
-
-  .app-sidebar {
-    display: none;
-  }
-
-  .topbar {
-    gap: 14px;
-    padding: 16px 18px;
-  }
-
-  .topbar__main,
-  .topbar__actions {
-    width: 100%;
-  }
-
-  .topbar__leading {
-    display: inline-flex;
-  }
-
-  .topbar__title-row h1 {
-    font-size: 17px;
-  }
-
-  .topbar__actions {
-    justify-content: flex-end;
-  }
-
-  .mobile-nav-trigger {
-    display: inline-flex;
-  }
-
   .shell {
     padding: 24px;
   }
@@ -9191,38 +9201,6 @@ body {
   padding: 16px;
 }
 
-.app-shell {
-  display: block;
-  min-height: 100svh;
-}
-
-.app-sidebar {
-  display: none;
-}
-
-.app-frame,
-.app-content {
-  min-height: 100svh;
-}
-
-.topbar {
-  align-items: flex-start;
-  flex-direction: column;
-  gap: 12px;
-  padding: 16px;
-}
-
-.topbar__main,
-.topbar__actions {
-  width: 100%;
-}
-
-.topbar__leading {
-  align-items: center;
-  display: inline-flex;
-  flex: 0 0 auto;
-}
-
 .topbar__copy {
   gap: 6px;
 }
@@ -9246,21 +9224,6 @@ body {
 
 .topbar__title-row h1 {
   font-size: clamp(1.18rem, 5.2vw, 1.55rem);
-}
-
-.topbar__actions {
-  justify-content: flex-start;
-}
-
-.mobile-nav-trigger {
-  align-items: center;
-  background: var(--sw-surface-strong);
-  box-shadow: 0 12px 24px rgba(15, 23, 42, 0.08);
-  color: var(--sw-text);
-  display: inline-flex;
-  justify-content: center;
-  position: relative;
-  z-index: 30;
 }
 
 .mobile-nav-sheet {
@@ -9676,9 +9639,14 @@ body {
     width: auto;
   }
 
+  .topbar__mobile-bar,
   .topbar__leading,
   .mobile-nav-trigger {
     display: none;
+  }
+
+  .topbar__copy {
+    display: grid;
   }
 
   .topbar__actions {

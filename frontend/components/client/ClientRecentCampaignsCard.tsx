@@ -201,14 +201,14 @@ export function ClientRecentCampaignsCard({
         </div>
       }
     >
-      <div className="client-performance-summary">
+      {/* <div className="client-performance-summary">
         {metricEntries.map((metric) => (
           <article key={metric.label} className="client-performance-summary__item">
             <span>{metric.label}</span>
             <strong>{metric.displayValue}</strong>
           </article>
         ))}
-      </div>
+      </div> */}
 
       {hasAnyVisibleData ? (
         <div className="client-performance-chart" aria-label="Performance campagne nel periodo">

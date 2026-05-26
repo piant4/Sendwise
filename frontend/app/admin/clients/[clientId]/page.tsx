@@ -224,15 +224,15 @@ export default async function AdminClientDetailPage({
   return (
     <main className="shell">
       <section className="admin-client-detail">
+        <div className="admin-client-detail__back-row">
+          <Button asChild variant="outline" size="sm" className="admin-client-detail__back-button">
+            <Link href="/admin/clients">
+              <ArrowLeft aria-hidden="true" />
+              Torna ai clienti
+            </Link>
+          </Button>
+        </div>
         <header className="admin-clients-hero">
-          <div className="admin-client-detail__back-row">
-            <Button asChild variant="outline" size="sm" className="admin-client-detail__back-button">
-              <Link href="/admin/clients">
-                <ArrowLeft aria-hidden="true" />
-                Torna ai clienti
-              </Link>
-            </Button>
-          </div>
           <div>
             <p className="admin-surface__eyebrow">Cliente</p>
             <h1 className="admin-clients-hero__title">

@@ -9069,7 +9069,643 @@ p {
 
   .client-performance-summary,
   .client-status-summary,
-  .client-metric-stack {
+    .client-metric-stack {
     grid-template-columns: 1fr;
+  }
+}
+
+/* Responsive shell real fix */
+html,
+body {
+  overflow-x: clip;
+}
+
+.app-shell,
+.app-frame,
+.app-content,
+.shell,
+.admin-page-shell,
+.admin-overview,
+.admin-clients-control-panel,
+.admin-client-detail,
+.client-page-shell,
+.client-dashboard,
+.client-dashboard__content,
+.client-dashboard__content-main,
+.client-dashboard__content-side,
+.client-surface,
+.client-surface__header,
+.client-surface__body,
+.settings-shell,
+.settings-section,
+.settings-row,
+.campaign-panel,
+.campaign-action-row,
+.campaign-action-row__group,
+.campaign-editor-shell,
+.campaign-editor-pane,
+.campaign-template-modal__card,
+.campaign-template-save-grid,
+.client-row,
+.client-row__header,
+.client-row__copy,
+.client-row__summary,
+.campaign-record-link__header,
+.campaign-record-link__copy,
+.admin-overview__list-item,
+.admin-record-grid div,
+.admin-client-brand-card__preview-copy,
+.admin-client-brand-card__logo-copy,
+.topbar__copy,
+.topbar__title-row {
+  min-width: 0;
+}
+
+.shell {
+  margin: 0 auto;
+  max-width: 100%;
+  padding: 16px;
+}
+
+.app-shell {
+  display: block;
+  min-height: 100svh;
+}
+
+.app-sidebar {
+  display: none;
+}
+
+.app-frame,
+.app-content {
+  min-height: 100svh;
+}
+
+.topbar {
+  align-items: flex-start;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+}
+
+.topbar__main,
+.topbar__actions {
+  width: 100%;
+}
+
+.topbar__leading {
+  align-items: center;
+  display: inline-flex;
+  flex: 0 0 auto;
+}
+
+.topbar__copy {
+  gap: 6px;
+}
+
+.topbar__title-row h1,
+.admin-clients-hero__title,
+.admin-page-title,
+.client-page-header__title,
+.client-hero__title,
+.settings-header__copy h1,
+.campaign-record-link__title,
+.client-row__title,
+.admin-overview__item-title,
+.admin-overview__section-title,
+.settings-row__value,
+.admin-client-brand-card__preview-copy code,
+.admin-client-detail__portal-slug {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.topbar__title-row h1 {
+  font-size: clamp(1.18rem, 5.2vw, 1.55rem);
+}
+
+.topbar__actions {
+  justify-content: flex-start;
+}
+
+.mobile-nav-trigger {
+  align-items: center;
+  background: var(--sw-surface-strong);
+  box-shadow: 0 12px 24px rgba(15, 23, 42, 0.08);
+  color: var(--sw-text);
+  display: inline-flex;
+  justify-content: center;
+  position: relative;
+  z-index: 30;
+}
+
+.mobile-nav-sheet {
+  max-width: 22rem;
+  width: min(88vw, 22rem);
+}
+
+.mobile-nav-content .main-nav__link,
+.sidebar-account__action,
+.settings-row__action,
+.client-dashboard-hero__action,
+.campaign-record-link__open,
+.campaign-back-link {
+  min-height: 44px;
+}
+
+.main-nav__link {
+  min-height: 48px;
+}
+
+.admin-page-shell,
+.admin-overview,
+.admin-clients-control-panel,
+.admin-client-detail,
+.client-page-shell,
+.client-dashboard {
+  gap: 16px;
+}
+
+.admin-clients-hero,
+.admin-page-header,
+.admin-clients-card,
+.admin-surface,
+.client-page-header,
+.client-hero,
+.client-surface,
+.campaign-panel,
+.settings-shell,
+.settings-section {
+  border-radius: 22px;
+  padding: 18px;
+}
+
+.admin-page-header,
+.client-page-header,
+.client-dashboard-hero {
+  gap: 14px;
+}
+
+.admin-page-header,
+.client-page-header,
+.campaign-record-link__header,
+.settings-row {
+  grid-template-columns: 1fr;
+}
+
+.admin-page-stat-grid,
+.admin-record-grid,
+.admin-limit-editor,
+.admin-kpi-grid,
+.admin-rail,
+.admin-dashboard__content,
+.admin-system-config-grid,
+.admin-overview__hero-meta,
+.admin-overview__grid,
+.admin-overview__stack,
+.admin-overview__metric-row,
+.admin-clients-stats,
+.admin-client-detail__grid,
+.admin-client-detail__facts,
+.admin-client-brand-card__grid,
+.admin-client-brand-card__preview,
+.admin-client-actions__buttons,
+.admin-client-actions__confirm-buttons,
+.client-page-stat-grid,
+.client-fact-grid,
+.client-detail-grid,
+.client-hero__facts,
+.client-dashboard__content,
+.client-dashboard-hero__facts,
+.client-row__stats,
+.client-performance-summary,
+.client-status-summary,
+.client-metric-stack,
+.campaign-form-grid,
+.campaign-review-overview,
+.campaign-dispatch-result__stats,
+.campaign-detail-metrics,
+.campaign-provider-metrics,
+.campaign-status-panel__grid,
+.campaign-content-grid,
+.campaign-template-save-grid,
+.campaign-template-grid,
+.campaign-stepper,
+.campaign-create-progress__steps,
+.theme-preference__options {
+  grid-template-columns: 1fr;
+}
+
+.admin-clients-table-shell {
+  overflow: visible;
+}
+
+.admin-clients-table {
+  gap: 12px;
+  grid-template-columns: 1fr;
+}
+
+.admin-clients-table--header {
+  display: none;
+}
+
+.admin-clients-table--row {
+  gap: 12px;
+  padding: 16px;
+}
+
+.admin-clients-cell__label {
+  display: block;
+}
+
+.admin-clients-cell span,
+.client-row__meta,
+.client-row__support,
+.campaign-template-card__description,
+.campaign-template-card__excerpt {
+  overflow-wrap: anywhere;
+}
+
+.admin-clients-cell--chevron {
+  display: none;
+}
+
+.admin-client-detail__back-row,
+.campaign-page-back {
+  display: flex;
+}
+
+.admin-client-detail__back-button[data-slot="button"] {
+  align-items: center;
+  background: var(--sw-surface-strong);
+  border-color: var(--sw-border);
+  border-radius: 999px;
+  box-shadow: 0 12px 24px rgba(15, 23, 42, 0.08);
+  color: var(--sw-text);
+  justify-content: flex-start;
+  min-height: 44px;
+  padding-inline: 16px;
+  width: 100%;
+}
+
+.admin-client-detail__back-button[data-slot="button"]:hover,
+.admin-client-detail__back-button[data-slot="button"]:focus-visible {
+  background: var(--sw-surface);
+  border-color: var(--sw-primary);
+  color: var(--sw-text);
+}
+
+.campaign-back-link {
+  align-items: center;
+  background: var(--sw-surface-strong);
+  border: 1px solid var(--sw-border);
+  border-radius: 999px;
+  color: var(--sw-text);
+  display: inline-flex;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 16px;
+  text-decoration: none;
+}
+
+.campaign-back-link:hover,
+.campaign-back-link:focus-visible {
+  border-color: var(--sw-primary);
+  color: var(--sw-text);
+  transform: translateX(-1px);
+}
+
+.client-page-header__actions,
+.campaign-record-link__actions {
+  justify-content: flex-start;
+  min-width: 0;
+}
+
+.campaign-record-link__actions,
+.campaign-action-row,
+.campaign-action-row__group,
+.campaign-contact-manual-action,
+.campaign-template-toolbar,
+.campaign-template-toolbar__actions,
+.campaign-template-actions,
+.campaign-field__header,
+.campaign-editor-toolbar,
+.settings-row,
+.client-period-selector {
+  flex-wrap: wrap;
+}
+
+.campaign-record-link__actions,
+.campaign-action-row,
+.campaign-action-row__group,
+.campaign-contact-manual-action,
+.campaign-template-toolbar,
+.campaign-template-toolbar__actions,
+.campaign-template-actions,
+.campaign-field__header,
+.campaign-editor-toolbar {
+  flex-direction: column;
+}
+
+.campaign-record-link__open,
+.campaign-record-link__actions,
+.campaign-action-row > [data-slot="button"],
+.campaign-action-row__group > [data-slot="button"],
+.campaign-template-actions > [data-slot="button"],
+.campaign-contact-manual-action > [data-slot="button"],
+.campaign-contact-import-actions > [data-slot="button"],
+.client-page-header__actions > *,
+.campaign-create-progress__header > strong,
+.campaign-create-progress__header > span {
+  width: 100%;
+}
+
+.campaign-create-progress__header,
+.campaign-dispatch-result__header {
+  align-items: stretch;
+  flex-direction: column;
+}
+
+.campaign-editor-shell[data-mode="split"] {
+  grid-template-columns: 1fr;
+}
+
+.campaign-preview-viewport {
+  height: auto;
+  min-height: 0;
+  padding: 12px;
+}
+
+.campaign-email-preview-frame--editor {
+  height: 720px;
+  min-height: 720px;
+}
+
+.campaign-preview-viewport__canvas {
+  width: 100%;
+}
+
+.client-period-selector {
+  justify-content: flex-start;
+}
+
+.client-dashboard-hero {
+  padding: 18px;
+}
+
+.client-dashboard-hero__copy h2 {
+  font-size: clamp(1.5rem, 6vw, 2rem);
+  line-height: 1.05;
+}
+
+.client-hero__title {
+  font-size: clamp(2rem, 9vw, 3.4rem);
+  line-height: 0.95;
+  max-width: none;
+}
+
+.client-dashboard-hero__facts,
+.client-performance-summary,
+.client-status-summary,
+.client-metric-stack,
+.theme-preference__options {
+  gap: 10px;
+}
+
+.client-row__chips,
+.campaign-hero-actions,
+.campaign-inline-summary,
+.client-row__summary {
+  flex-wrap: wrap;
+}
+
+.theme-preference__option {
+  min-height: 80px;
+}
+
+@media (min-width: 768px) {
+  .shell {
+    padding: 24px;
+  }
+
+  .topbar {
+    padding: 18px 20px;
+  }
+
+  .admin-page-stat-grid,
+  .admin-record-grid,
+  .admin-kpi-grid,
+  .admin-system-config-grid,
+  .admin-overview__hero-meta,
+  .admin-overview__metric-row,
+  .admin-clients-stats,
+  .admin-client-detail__facts,
+  .admin-client-brand-card__grid,
+  .admin-client-actions__buttons,
+  .admin-client-actions__confirm-buttons,
+  .client-page-stat-grid,
+  .client-fact-grid,
+  .client-detail-grid,
+  .client-hero__facts,
+  .client-dashboard-hero__facts,
+  .client-row__stats,
+  .client-performance-summary,
+  .client-status-summary,
+  .client-metric-stack,
+  .campaign-form-grid,
+  .campaign-review-overview,
+  .campaign-dispatch-result__stats,
+  .campaign-detail-metrics,
+  .campaign-provider-metrics,
+  .campaign-content-grid,
+  .campaign-template-save-grid,
+  .campaign-template-grid,
+  .campaign-stepper,
+  .theme-preference__options {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .admin-client-brand-card__preview,
+  .client-dashboard__content,
+  .admin-overview__grid,
+  .admin-overview__stack,
+  .campaign-status-panel__grid,
+  .campaign-create-progress__steps {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .admin-page-header,
+  .client-page-header,
+  .campaign-record-link__header,
+  .settings-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .client-page-header__actions {
+    width: auto;
+  }
+
+  .campaign-record-link__actions,
+  .campaign-action-row,
+  .campaign-action-row__group,
+  .campaign-contact-manual-action,
+  .campaign-template-toolbar,
+  .campaign-template-toolbar__actions,
+  .campaign-template-actions,
+  .campaign-field__header,
+  .campaign-editor-toolbar,
+  .campaign-create-progress__header,
+  .campaign-dispatch-result__header {
+    align-items: center;
+    flex-direction: row;
+  }
+
+  .campaign-record-link__actions {
+    justify-content: flex-end;
+    width: auto;
+  }
+
+  .campaign-record-link__open,
+  .campaign-action-row > [data-slot="button"],
+  .campaign-action-row__group > [data-slot="button"],
+  .campaign-template-actions > [data-slot="button"],
+  .client-page-header__actions > *,
+  .campaign-create-progress__header > strong,
+  .campaign-create-progress__header > span {
+    width: auto;
+  }
+
+  .admin-client-detail__back-button[data-slot="button"] {
+    width: auto;
+  }
+
+  .campaign-preview-viewport {
+    padding: 16px;
+  }
+
+  .campaign-email-preview-frame--editor {
+    height: 820px;
+    min-height: 820px;
+  }
+}
+
+@media (min-width: 1024px) {
+  .app-shell {
+    display: grid;
+    grid-template-columns: 264px minmax(0, 1fr);
+  }
+
+  .app-sidebar {
+    display: block;
+  }
+
+  .topbar {
+    align-items: center;
+    flex-direction: row;
+    gap: 18px;
+    justify-content: space-between;
+    padding: 18px 28px;
+  }
+
+  .topbar__main,
+  .topbar__actions {
+    width: auto;
+  }
+
+  .topbar__leading,
+  .mobile-nav-trigger {
+    display: none;
+  }
+
+  .topbar__actions {
+    justify-content: flex-end;
+  }
+
+  .shell {
+    padding: 32px;
+  }
+
+  .admin-page-stat-grid,
+  .admin-clients-stats,
+  .client-page-stat-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .admin-overview__hero-meta {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .admin-overview__grid {
+    grid-template-columns: minmax(0, 1.2fr) repeat(2, minmax(0, 0.9fr));
+  }
+
+  .admin-overview__stack {
+    grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr);
+  }
+
+  .admin-client-detail__grid,
+  .admin-client-detail__facts,
+  .admin-client-brand-card__grid,
+  .admin-client-actions__buttons,
+  .admin-client-actions__confirm-buttons,
+  .admin-system-config-grid,
+  .client-dashboard__content,
+  .client-dashboard-hero__facts,
+  .client-fact-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .admin-client-brand-card__preview {
+    grid-template-columns: 88px minmax(0, 1fr);
+  }
+
+  .client-detail-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .client-dashboard__content {
+    grid-template-columns: minmax(0, 1.5fr) minmax(320px, 0.9fr);
+  }
+
+  .theme-preference__options {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .campaign-editor-shell[data-mode="split"] {
+    grid-template-columns: minmax(0, 1.08fr) minmax(320px, 0.92fr);
+  }
+
+  .campaign-status-panel__grid {
+    grid-template-columns: minmax(280px, 0.72fr) minmax(0, 1.28fr);
+  }
+
+  .campaign-stepper {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .campaign-create-progress__steps {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+
+  .admin-clients-table {
+    grid-template-columns:
+      minmax(220px, 1.8fr)
+      minmax(140px, 0.9fr)
+      minmax(140px, 0.9fr)
+      minmax(180px, 1fr)
+      minmax(160px, 0.95fr)
+      28px;
+  }
+
+  .admin-clients-table--header {
+    display: grid;
+  }
+
+  .admin-clients-cell__label {
+    display: none;
+  }
+
+  .admin-clients-cell--chevron {
+    display: grid;
   }
 }

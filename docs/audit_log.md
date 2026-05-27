@@ -4273,3 +4273,32 @@ Residual risk:
 
 Scope confirmation:
 - No real send, runtime DB mutation, webhook replay, Mailgun/Listmonk/Caddy/Docker/runtime setting change, BIMI work, follow-up logic change, secret read, or recipient email output was performed.
+
+## Milestone 20.2-FOLLOWUP-LIMITS - Campaign Follow-Up Limits And Delay Settings
+
+Date: 2026-05-27
+Branch: main
+
+Verified state:
+- Campaign-level follow-up configuration is now persisted in `campaign_sending_limits` with dedicated fields for `followup_enabled`, separate daily/monthly follow-up caps, and a delay value/unit.
+- Normal campaign limits remain separate from follow-up limits because primary campaign usage keeps reading `email_logs.send_kind='campaign'` while follow-up helper checks read `send_kind='followup'`.
+- Admin create/setup/detail/review flows now expose follow-up settings with the explicit helper copy `I follow-up usano limiti separati dagli invii principali.`.
+- Backend follow-up enforcement is scaffolded only as an eligibility helper. It blocks with explicit reasons for disabled follow-up, missing reference timestamp, delay not elapsed, daily cap reached, and monthly cap reached.
+- No follow-up executor or real follow-up dispatch path was added in this milestone.
+
+Checks executed:
+- `PYTHONPATH=backend python3 -m pytest backend/tests` was attempted but failed during collection because the local system Python is 3.9 while the codebase evaluates modern `X | Y` annotations at import time.
+- `docker run --rm ... python:3.11-slim ... pytest ...` was attempted and failed because Docker Desktop was not running in this environment.
+- `python3 -c '... compile(...) ...'` over the touched backend files.
+- `cd frontend && npm run lint`
+- `cd frontend && npm run build`
+- `bash scripts/audit.sh`
+- `bash scripts/smoke_test.sh`
+- `git diff --check`
+
+Residual risk:
+- Full backend pytest remains unverified in this environment because no compatible local Python runtime was available and Docker was unavailable for the fallback run.
+- Follow-up execution is still future work; only settings, persistence, UI exposure, and enforcement scaffolding were added here.
+
+Scope confirmation:
+- No runtime DB mutation, real send, provider event replay, Mailgun/Listmonk/Caddy/Docker/runtime setting change, auth change, sender branding regression, campaign slot lifecycle change, secret read, or recipient email output was performed.

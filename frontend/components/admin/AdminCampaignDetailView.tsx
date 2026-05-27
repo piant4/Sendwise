@@ -382,6 +382,16 @@ export function AdminCampaignDetailView({
                 label: "Limite invii giornaliero",
                 value: campaign.dailyEmailLimit.toLocaleString("it-IT"),
               },
+              {
+                label: "Follow-up",
+                value: campaign.followupEnabled
+                  ? `${campaign.followupDailyLimit?.toLocaleString("it-IT") ?? "-"} / giorno · ${campaign.followupMonthlyLimit?.toLocaleString("it-IT") ?? "-"} / mese`
+                  : "Disabilitati",
+              },
+              {
+                label: "Ritardo follow-up",
+                value: `${campaign.followupDelayValue.toLocaleString("it-IT")} ${campaign.followupDelayUnit === "hours" ? "ore" : "giorni"}`,
+              },
             ].map((item) => (
               <article key={item.label}>
                 <span className="admin-record-row__note">{item.label}</span>

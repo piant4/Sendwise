@@ -137,6 +137,10 @@ SUPPORTED_TEMPLATE_PLACEHOLDERS = set(KNOWN_TEMPLATE_VARIABLES) - {
 TEMPLATE_PLACEHOLDER_PATTERN = re.compile(r"{{\s*([A-Za-z0-9_]+)\s*}}")
 DEFAULT_CAMPAIGN_PERIOD_EMAIL_LIMIT = 1000
 DEFAULT_CAMPAIGN_DAILY_EMAIL_LIMIT = 50
+DEFAULT_FOLLOWUP_DELAY_VALUE = 3
+DEFAULT_FOLLOWUP_DELAY_UNIT = "days"
+ALLOWED_FOLLOWUP_DELAY_UNITS = {"hours", "days"}
+MINIMUM_FOLLOWUP_DELAY_HOURS = 24
 DEFAULT_DOMAIN_WARMUP_DAILY_LIMIT = 20
 CAMPAIGN_PERIOD_WINDOW = timedelta(days=30)
 
@@ -148,6 +152,37 @@ def _get_business_day_start(current_time: datetime, settings: Settings) -> datet
         time.min,
         tzinfo=settings.business_timezone,
     ).astimezone(timezone.utc)
+
+
+def _get_business_month_window(
+    current_time: datetime,
+    settings: Settings,
+) -> tuple[datetime, datetime]:
+    business_now = current_time.astimezone(settings.business_timezone)
+    month_started_at = datetime(
+        year=business_now.year,
+        month=business_now.month,
+        day=1,
+        tzinfo=settings.business_timezone,
+    )
+    if business_now.month == 12:
+        next_month_started_at = datetime(
+            year=business_now.year + 1,
+            month=1,
+            day=1,
+            tzinfo=settings.business_timezone,
+        )
+    else:
+        next_month_started_at = datetime(
+            year=business_now.year,
+            month=business_now.month + 1,
+            day=1,
+            tzinfo=settings.business_timezone,
+        )
+    return (
+        month_started_at.astimezone(timezone.utc),
+        next_month_started_at.astimezone(timezone.utc),
+    )
 IN_PROGRESS_LOG_STATUSES = {"queued"}
 ACCEPTED_OR_COMPLETED_LOG_STATUSES = {
     "sent",
@@ -541,6 +576,23 @@ class CampaignLimitContext:
 
 
 @dataclass(frozen=True)
+class FollowupEligibilityResult:
+    allowed: bool
+    decision: str
+    code: str
+    reason: str
+    followup_enabled: bool
+    followup_daily_limit: int | None
+    followup_daily_used: int
+    followup_monthly_limit: int | None
+    followup_monthly_used: int
+    followup_delay_value: int
+    followup_delay_unit: str
+    reference_time: datetime | None = None
+    eligible_at: datetime | None = None
+
+
+@dataclass(frozen=True)
 class CampaignDispatchDuplicateGuard:
     blocked: bool
     code: str | None = None
@@ -663,6 +715,11 @@ class AdminCampaignService:
             period_remaining=evaluation.limit_usage.period_remaining,
             period_started_at=evaluation.limit_usage.period_started_at,
             period_ends_at=evaluation.limit_usage.period_ends_at,
+            followup_enabled=evaluation.limit_record.followup_enabled,
+            followup_daily_limit=evaluation.limit_record.followup_daily_limit,
+            followup_monthly_limit=evaluation.limit_record.followup_monthly_limit,
+            followup_delay_value=evaluation.limit_record.followup_delay_value,
+            followup_delay_unit=evaluation.limit_record.followup_delay_unit,
             provider_history=evaluation.provider_history,
         )
 
@@ -692,6 +749,11 @@ class AdminCampaignService:
         subject: str,
         period_email_limit: int | None = None,
         daily_email_limit: int | None = None,
+        followup_enabled: bool | None = None,
+        followup_daily_limit: int | None = None,
+        followup_monthly_limit: int | None = None,
+        followup_delay_value: int | None = None,
+        followup_delay_unit: str | None = None,
     ) -> AdminCampaignDetail:
         client = self._get_writable_client(client_id)
         campaign = self.repository.create_campaign(
@@ -703,6 +765,13 @@ class AdminCampaignService:
             contacts_ready=False,
             review_ready=False,
             current_step="setup",
+        )
+        normalized_followup = self._resolve_followup_settings(
+            followup_enabled=followup_enabled,
+            followup_daily_limit=followup_daily_limit,
+            followup_monthly_limit=followup_monthly_limit,
+            followup_delay_value=followup_delay_value,
+            followup_delay_unit=followup_delay_unit,
         )
         limits = self.campaign_limit_repository.ensure_for_campaign(
             campaign_id=campaign.id,
@@ -716,6 +785,11 @@ class AdminCampaignService:
                 field_label="daily_email_limit",
                 default=DEFAULT_CAMPAIGN_DAILY_EMAIL_LIMIT,
             ),
+            followup_enabled=normalized_followup["followup_enabled"],
+            followup_daily_limit=normalized_followup["followup_daily_limit"],
+            followup_monthly_limit=normalized_followup["followup_monthly_limit"],
+            followup_delay_value=normalized_followup["followup_delay_value"],
+            followup_delay_unit=normalized_followup["followup_delay_unit"],
         )
         return self._build_detail(campaign=campaign, client=client, limits=limits)
 
@@ -729,6 +803,11 @@ class AdminCampaignService:
         current_step: str | None = None,
         period_email_limit: int | None = None,
         daily_email_limit: int | None = None,
+        followup_enabled: bool | None = None,
+        followup_daily_limit: int | None = None,
+        followup_monthly_limit: int | None = None,
+        followup_delay_value: int | None = None,
+        followup_delay_unit: str | None = None,
     ) -> AdminCampaignDetail:
         campaign = self.get_campaign_record(campaign_id)
         client = self._get_writable_client(campaign.client_id)
@@ -777,6 +856,11 @@ class AdminCampaignService:
             campaign=updated,
             period_email_limit=period_email_limit,
             daily_email_limit=daily_email_limit,
+            followup_enabled=followup_enabled,
+            followup_daily_limit=followup_daily_limit,
+            followup_monthly_limit=followup_monthly_limit,
+            followup_delay_value=followup_delay_value,
+            followup_delay_unit=followup_delay_unit,
         )
         return self._build_detail(campaign=updated, client=client, limits=limits)
 
@@ -1242,6 +1326,144 @@ class AdminCampaignService:
             )
         return value
 
+    def _validate_non_negative_optional_int(
+        self,
+        value: int | None,
+        *,
+        field_label: str,
+    ) -> int | None:
+        if value is None:
+            return None
+        if value < 0:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"{field_label} cannot be negative.",
+            )
+        if value == 0:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"{field_label} must be greater than zero.",
+            )
+        return value
+
+    def _validate_followup_delay_unit(self, value: str | None) -> str:
+        normalized = (value or DEFAULT_FOLLOWUP_DELAY_UNIT).strip().lower()
+        if normalized not in ALLOWED_FOLLOWUP_DELAY_UNITS:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="followup_delay_unit must be hours or days.",
+            )
+        return normalized
+
+    def _validate_followup_delay_value(
+        self,
+        value: int | None,
+        *,
+        unit: str,
+    ) -> int:
+        if value is None:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="followup_delay_value is required when follow-up is enabled.",
+            )
+        if value <= 0:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="followup_delay_value must be greater than zero.",
+            )
+        normalized_hours = value if unit == "hours" else value * 24
+        if normalized_hours < MINIMUM_FOLLOWUP_DELAY_HOURS:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="followup_delay_value must be at least 24 hours.",
+            )
+        return value
+
+    def _resolve_followup_settings(
+        self,
+        *,
+        followup_enabled: bool | None,
+        followup_daily_limit: int | None,
+        followup_monthly_limit: int | None,
+        followup_delay_value: int | None,
+        followup_delay_unit: str | None,
+        existing_limits: CampaignSendingLimitRecord | None = None,
+    ) -> dict[str, object]:
+        resolved_enabled = (
+            existing_limits.followup_enabled if existing_limits is not None else False
+        )
+        if followup_enabled is not None:
+            resolved_enabled = followup_enabled
+
+        resolved_daily_limit = (
+            existing_limits.followup_daily_limit if existing_limits is not None else None
+        )
+        if followup_daily_limit is not None:
+            resolved_daily_limit = self._validate_non_negative_optional_int(
+                followup_daily_limit,
+                field_label="followup_daily_limit",
+            )
+
+        resolved_monthly_limit = (
+            existing_limits.followup_monthly_limit if existing_limits is not None else None
+        )
+        if followup_monthly_limit is not None:
+            resolved_monthly_limit = self._validate_non_negative_optional_int(
+                followup_monthly_limit,
+                field_label="followup_monthly_limit",
+            )
+
+        resolved_delay_unit = (
+            existing_limits.followup_delay_unit
+            if existing_limits is not None
+            else DEFAULT_FOLLOWUP_DELAY_UNIT
+        )
+        if followup_delay_unit is not None or existing_limits is None:
+            resolved_delay_unit = self._validate_followup_delay_unit(followup_delay_unit)
+
+        resolved_delay_value = (
+            existing_limits.followup_delay_value
+            if existing_limits is not None
+            else DEFAULT_FOLLOWUP_DELAY_VALUE
+        )
+        if followup_delay_value is not None:
+            resolved_delay_value = followup_delay_value
+
+        if resolved_enabled:
+            if resolved_daily_limit is None:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail="followup_daily_limit is required when follow-up is enabled.",
+                )
+            if resolved_monthly_limit is None:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail="followup_monthly_limit is required when follow-up is enabled.",
+                )
+            resolved_delay_value = self._validate_followup_delay_value(
+                resolved_delay_value,
+                unit=resolved_delay_unit,
+            )
+            if resolved_monthly_limit < resolved_daily_limit:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail="followup_monthly_limit must be greater than or equal to followup_daily_limit.",
+                )
+        else:
+            if followup_delay_value is not None:
+                resolved_delay_value = self._validate_followup_delay_value(
+                    followup_delay_value,
+                    unit=resolved_delay_unit,
+                )
+
+        return {
+            "followup_enabled": resolved_enabled,
+            "followup_daily_limit": resolved_daily_limit,
+            "followup_monthly_limit": resolved_monthly_limit,
+            "followup_delay_value": resolved_delay_value,
+            "followup_delay_unit": resolved_delay_unit,
+        }
+
     def _ensure_campaign_limits(
         self,
         campaign_id: str,
@@ -1250,6 +1472,11 @@ class AdminCampaignService:
             campaign_id=campaign_id,
             period_email_limit=DEFAULT_CAMPAIGN_PERIOD_EMAIL_LIMIT,
             daily_email_limit=DEFAULT_CAMPAIGN_DAILY_EMAIL_LIMIT,
+            followup_enabled=False,
+            followup_daily_limit=None,
+            followup_monthly_limit=None,
+            followup_delay_value=DEFAULT_FOLLOWUP_DELAY_VALUE,
+            followup_delay_unit=DEFAULT_FOLLOWUP_DELAY_UNIT,
         )
 
     def _update_campaign_limits(
@@ -1258,10 +1485,31 @@ class AdminCampaignService:
         campaign: CampaignRecord,
         period_email_limit: int | None,
         daily_email_limit: int | None,
+        followup_enabled: bool | None,
+        followup_daily_limit: int | None,
+        followup_monthly_limit: int | None,
+        followup_delay_value: int | None,
+        followup_delay_unit: str | None,
     ) -> CampaignSendingLimitRecord:
         limits = self._ensure_campaign_limits(campaign.id)
-        if period_email_limit is None and daily_email_limit is None:
+        if (
+            period_email_limit is None
+            and daily_email_limit is None
+            and followup_enabled is None
+            and followup_daily_limit is None
+            and followup_monthly_limit is None
+            and followup_delay_value is None
+            and followup_delay_unit is None
+        ):
             return limits
+        normalized_followup = self._resolve_followup_settings(
+            followup_enabled=followup_enabled,
+            followup_daily_limit=followup_daily_limit,
+            followup_monthly_limit=followup_monthly_limit,
+            followup_delay_value=followup_delay_value,
+            followup_delay_unit=followup_delay_unit,
+            existing_limits=limits,
+        )
         return self.campaign_limit_repository.update_for_campaign(
             campaign_id=campaign.id,
             period_email_limit=(
@@ -1280,6 +1528,11 @@ class AdminCampaignService:
                 if daily_email_limit is not None
                 else limits.daily_email_limit
             ),
+            followup_enabled=normalized_followup["followup_enabled"],
+            followup_daily_limit=normalized_followup["followup_daily_limit"],
+            followup_monthly_limit=normalized_followup["followup_monthly_limit"],
+            followup_delay_value=normalized_followup["followup_delay_value"],
+            followup_delay_unit=normalized_followup["followup_delay_unit"],
         )
 
     def _build_campaign_limit_context(
@@ -1408,6 +1661,11 @@ class AdminCampaignService:
             review_ready=campaign.review_ready,
             period_email_limit=limit_record.period_email_limit,
             daily_email_limit=limit_record.daily_email_limit,
+            followup_enabled=limit_record.followup_enabled,
+            followup_daily_limit=limit_record.followup_daily_limit,
+            followup_monthly_limit=limit_record.followup_monthly_limit,
+            followup_delay_value=limit_record.followup_delay_value,
+            followup_delay_unit=limit_record.followup_delay_unit,
             period_started_at=limit_record.period_started_at,
             created_at=campaign.created_at,
             updated_at=campaign.updated_at,
@@ -1986,6 +2244,152 @@ class AdminCampaignService:
             total=total,
             latest=latest,
         )
+
+    def evaluate_followup_eligibility(
+        self,
+        *,
+        campaign_id: str,
+        contact_id: str,
+        reference_time: datetime | None = None,
+    ) -> FollowupEligibilityResult:
+        campaign = self.get_campaign_record(campaign_id)
+        limits = self._ensure_campaign_limits(campaign.id)
+        if not limits.followup_enabled:
+            return FollowupEligibilityResult(
+                allowed=False,
+                decision="blocked",
+                code="followup_disabled",
+                reason="Follow-up is disabled for this campaign.",
+                followup_enabled=False,
+                followup_daily_limit=limits.followup_daily_limit,
+                followup_daily_used=0,
+                followup_monthly_limit=limits.followup_monthly_limit,
+                followup_monthly_used=0,
+                followup_delay_value=limits.followup_delay_value,
+                followup_delay_unit=limits.followup_delay_unit,
+            )
+
+        resolved_reference_time = reference_time or self.email_log_repository.get_first_contact_log_at(
+            client_id=campaign.client_id,
+            campaign_id=campaign.id,
+            contact_id=contact_id,
+            send_kind="campaign",
+        )
+        if resolved_reference_time is None:
+            return FollowupEligibilityResult(
+                allowed=False,
+                decision="blocked",
+                code="followup_missing_reference_time",
+                reason="Follow-up requires a reference timestamp from the original campaign send.",
+                followup_enabled=True,
+                followup_daily_limit=limits.followup_daily_limit,
+                followup_daily_used=0,
+                followup_monthly_limit=limits.followup_monthly_limit,
+                followup_monthly_used=0,
+                followup_delay_value=limits.followup_delay_value,
+                followup_delay_unit=limits.followup_delay_unit,
+            )
+
+        now = datetime.now(timezone.utc)
+        eligible_at = resolved_reference_time + self._followup_delay_delta(
+            value=limits.followup_delay_value,
+            unit=limits.followup_delay_unit,
+        )
+        day_started_at = _get_business_day_start(now, self.settings)
+        month_started_at, next_month_started_at = _get_business_month_window(
+            now,
+            self.settings,
+        )
+        daily_used = self.email_log_repository.count_real_campaign_logs_since(
+            client_id=campaign.client_id,
+            campaign_id=campaign.id,
+            send_kind="followup",
+            started_at=day_started_at,
+        )
+        monthly_used = self.email_log_repository.count_real_campaign_logs_since(
+            client_id=campaign.client_id,
+            campaign_id=campaign.id,
+            send_kind="followup",
+            started_at=month_started_at,
+            ended_at=next_month_started_at,
+        )
+        if now < eligible_at:
+            return FollowupEligibilityResult(
+                allowed=False,
+                decision="blocked",
+                code="followup_delay_not_elapsed",
+                reason="Follow-up delay has not elapsed yet.",
+                followup_enabled=True,
+                followup_daily_limit=limits.followup_daily_limit,
+                followup_daily_used=daily_used,
+                followup_monthly_limit=limits.followup_monthly_limit,
+                followup_monthly_used=monthly_used,
+                followup_delay_value=limits.followup_delay_value,
+                followup_delay_unit=limits.followup_delay_unit,
+                reference_time=resolved_reference_time,
+                eligible_at=eligible_at,
+            )
+
+        if (
+            limits.followup_daily_limit is not None
+            and daily_used >= limits.followup_daily_limit
+        ):
+            return FollowupEligibilityResult(
+                allowed=False,
+                decision="blocked",
+                code="followup_daily_limit_exceeded",
+                reason="Follow-up daily limit reached for this campaign.",
+                followup_enabled=True,
+                followup_daily_limit=limits.followup_daily_limit,
+                followup_daily_used=daily_used,
+                followup_monthly_limit=limits.followup_monthly_limit,
+                followup_monthly_used=monthly_used,
+                followup_delay_value=limits.followup_delay_value,
+                followup_delay_unit=limits.followup_delay_unit,
+                reference_time=resolved_reference_time,
+                eligible_at=eligible_at,
+            )
+
+        if (
+            limits.followup_monthly_limit is not None
+            and monthly_used >= limits.followup_monthly_limit
+        ):
+            return FollowupEligibilityResult(
+                allowed=False,
+                decision="blocked",
+                code="followup_monthly_limit_exceeded",
+                reason="Follow-up monthly limit reached for this campaign.",
+                followup_enabled=True,
+                followup_daily_limit=limits.followup_daily_limit,
+                followup_daily_used=daily_used,
+                followup_monthly_limit=limits.followup_monthly_limit,
+                followup_monthly_used=monthly_used,
+                followup_delay_value=limits.followup_delay_value,
+                followup_delay_unit=limits.followup_delay_unit,
+                reference_time=resolved_reference_time,
+                eligible_at=eligible_at,
+            )
+
+        return FollowupEligibilityResult(
+            allowed=True,
+            decision="authorized",
+            code="followup_allowed",
+            reason="Follow-up is allowed for this campaign contact.",
+            followup_enabled=True,
+            followup_daily_limit=limits.followup_daily_limit,
+            followup_daily_used=daily_used,
+            followup_monthly_limit=limits.followup_monthly_limit,
+            followup_monthly_used=monthly_used,
+            followup_delay_value=limits.followup_delay_value,
+            followup_delay_unit=limits.followup_delay_unit,
+            reference_time=resolved_reference_time,
+            eligible_at=eligible_at,
+        )
+
+    def _followup_delay_delta(self, *, value: int, unit: str) -> timedelta:
+        if unit == "hours":
+            return timedelta(hours=value)
+        return timedelta(days=value)
 
     def _count_active_campaigns(self, client_id: str) -> int:
         return sum(

@@ -27,6 +27,11 @@ class AdminCampaignCreateRequest(BaseModel):
     subject: str
     period_email_limit: Optional[int] = None
     daily_email_limit: Optional[int] = None
+    followup_enabled: Optional[bool] = None
+    followup_daily_limit: Optional[int] = None
+    followup_monthly_limit: Optional[int] = None
+    followup_delay_value: Optional[int] = None
+    followup_delay_unit: Optional[str] = None
 
 
 class AdminClientCampaignCreateRequest(BaseModel):
@@ -36,6 +41,11 @@ class AdminClientCampaignCreateRequest(BaseModel):
     subject: str
     period_email_limit: Optional[int] = None
     daily_email_limit: Optional[int] = None
+    followup_enabled: Optional[bool] = None
+    followup_daily_limit: Optional[int] = None
+    followup_monthly_limit: Optional[int] = None
+    followup_delay_value: Optional[int] = None
+    followup_delay_unit: Optional[str] = None
 
 
 class AdminCampaignUpdateRequest(BaseModel):
@@ -47,6 +57,11 @@ class AdminCampaignUpdateRequest(BaseModel):
     current_step: Optional[str] = None
     period_email_limit: Optional[int] = None
     daily_email_limit: Optional[int] = None
+    followup_enabled: Optional[bool] = None
+    followup_daily_limit: Optional[int] = None
+    followup_monthly_limit: Optional[int] = None
+    followup_delay_value: Optional[int] = None
+    followup_delay_unit: Optional[str] = None
 
 
 class AdminCampaignContentRequest(BaseModel):
@@ -108,6 +123,11 @@ class AdminCampaignDetail(BaseModel):
     review_ready: bool
     period_email_limit: int = 1000
     daily_email_limit: int = 50
+    followup_enabled: bool = False
+    followup_daily_limit: Optional[int] = None
+    followup_monthly_limit: Optional[int] = None
+    followup_delay_value: int = 3
+    followup_delay_unit: str = "days"
     period_started_at: Optional[datetime] = None
     created_at: datetime
     updated_at: datetime
@@ -158,6 +178,11 @@ class AdminCampaignReviewResponse(BaseModel):
     period_remaining: Optional[int] = None
     period_started_at: Optional[datetime] = None
     period_ends_at: Optional[datetime] = None
+    followup_enabled: bool = False
+    followup_daily_limit: Optional[int] = None
+    followup_monthly_limit: Optional[int] = None
+    followup_delay_value: int = 3
+    followup_delay_unit: str = "days"
     provider_history: list[ProviderHistoryPolicySummary] = Field(default_factory=list)
 
 

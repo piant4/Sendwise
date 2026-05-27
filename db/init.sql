@@ -75,11 +75,33 @@ CREATE TABLE IF NOT EXISTS campaign_sending_limits (
     campaign_id UUID PRIMARY KEY REFERENCES campaigns(id) ON DELETE CASCADE,
     period_email_limit INTEGER NOT NULL DEFAULT 1000,
     daily_email_limit INTEGER NOT NULL DEFAULT 50,
+    followup_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+    followup_daily_limit INTEGER,
+    followup_monthly_limit INTEGER,
+    followup_delay_value INTEGER NOT NULL DEFAULT 3,
+    followup_delay_unit TEXT NOT NULL DEFAULT 'days',
     period_started_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     CONSTRAINT campaign_sending_limits_period_email_limit_check CHECK (period_email_limit > 0),
-    CONSTRAINT campaign_sending_limits_daily_email_limit_check CHECK (daily_email_limit > 0)
+    CONSTRAINT campaign_sending_limits_daily_email_limit_check CHECK (daily_email_limit > 0),
+    CONSTRAINT campaign_sending_limits_followup_daily_limit_check CHECK (
+        followup_daily_limit IS NULL OR followup_daily_limit > 0
+    ),
+    CONSTRAINT campaign_sending_limits_followup_monthly_limit_check CHECK (
+        followup_monthly_limit IS NULL OR followup_monthly_limit > 0
+    ),
+    CONSTRAINT campaign_sending_limits_followup_delay_value_check CHECK (
+        followup_delay_value > 0
+    ),
+    CONSTRAINT campaign_sending_limits_followup_delay_unit_check CHECK (
+        followup_delay_unit IN ('hours', 'days')
+    ),
+    CONSTRAINT campaign_sending_limits_followup_monthly_gte_daily_check CHECK (
+        followup_daily_limit IS NULL
+        OR followup_monthly_limit IS NULL
+        OR followup_monthly_limit >= followup_daily_limit
+    )
 );
 
 CREATE TABLE IF NOT EXISTS email_templates (
@@ -163,11 +185,16 @@ CREATE TABLE IF NOT EXISTS email_logs (
     client_id UUID NOT NULL REFERENCES clients(id),
     campaign_id UUID REFERENCES campaigns(id),
     contact_id UUID REFERENCES contacts(id),
+    send_kind TEXT NOT NULL DEFAULT 'campaign',
     status TEXT NOT NULL,
     provider_message_id TEXT,
     body TEXT,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT email_logs_send_kind_check CHECK (send_kind IN ('campaign', 'followup'))
 );
+
+CREATE INDEX IF NOT EXISTS email_logs_campaign_send_kind_created_at_idx
+    ON email_logs (campaign_id, send_kind, created_at DESC);
 
 INSERT INTO campaign_sending_limits (
     campaign_id,

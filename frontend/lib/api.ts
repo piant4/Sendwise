@@ -279,6 +279,11 @@ interface AdminCampaignDetailApiResponse {
   review_ready: boolean;
   period_email_limit: number;
   daily_email_limit: number;
+  followup_enabled: boolean;
+  followup_daily_limit?: number | null;
+  followup_monthly_limit?: number | null;
+  followup_delay_value: number;
+  followup_delay_unit: "hours" | "days";
   period_started_at?: string | null;
   created_at: string;
   updated_at: string;
@@ -373,6 +378,11 @@ interface AdminCampaignReviewApiResponse {
   period_remaining?: number | null;
   period_started_at?: string | null;
   period_ends_at?: string | null;
+  followup_enabled: boolean;
+  followup_daily_limit?: number | null;
+  followup_monthly_limit?: number | null;
+  followup_delay_value: number;
+  followup_delay_unit: "hours" | "days";
   provider_history?: ProviderHistoryPolicyApiItem[];
 }
 
@@ -1197,6 +1207,11 @@ async function patchAdminCampaign(
       subject?: string | null;
       period_email_limit?: number | null;
       daily_email_limit?: number | null;
+      followup_enabled?: boolean | null;
+      followup_daily_limit?: number | null;
+      followup_monthly_limit?: number | null;
+      followup_delay_value?: number | null;
+      followup_delay_unit?: "hours" | "days" | null;
     }
   >(
     `/admin/campaigns/${campaignId}`,
@@ -1205,6 +1220,11 @@ async function patchAdminCampaign(
       subject: payload.subject,
       period_email_limit: payload.periodEmailLimit,
       daily_email_limit: payload.dailyEmailLimit,
+      followup_enabled: payload.followupEnabled,
+      followup_daily_limit: payload.followupDailyLimit,
+      followup_monthly_limit: payload.followupMonthlyLimit,
+      followup_delay_value: payload.followupDelayValue,
+      followup_delay_unit: payload.followupDelayUnit,
     },
     accessToken,
   );
@@ -1356,6 +1376,11 @@ async function postAdminClientCampaign(
       subject: string;
       period_email_limit?: number | null;
       daily_email_limit?: number | null;
+      followup_enabled?: boolean | null;
+      followup_daily_limit?: number | null;
+      followup_monthly_limit?: number | null;
+      followup_delay_value?: number | null;
+      followup_delay_unit?: "hours" | "days" | null;
     }
   >(
     `/admin/clients/${clientId}/campaigns`,
@@ -1364,6 +1389,11 @@ async function postAdminClientCampaign(
       subject: payload.subject,
       period_email_limit: payload.periodEmailLimit,
       daily_email_limit: payload.dailyEmailLimit,
+      followup_enabled: payload.followupEnabled,
+      followup_daily_limit: payload.followupDailyLimit,
+      followup_monthly_limit: payload.followupMonthlyLimit,
+      followup_delay_value: payload.followupDelayValue,
+      followup_delay_unit: payload.followupDelayUnit,
     },
     accessToken,
   );
@@ -1379,6 +1409,11 @@ async function postAdminCampaign(
     subject: string;
     period_email_limit?: number | null;
     daily_email_limit?: number | null;
+    followup_enabled?: boolean | null;
+    followup_daily_limit?: number | null;
+    followup_monthly_limit?: number | null;
+    followup_delay_value?: number | null;
+    followup_delay_unit?: "hours" | "days" | null;
   }>(
     "/admin/campaigns",
     {
@@ -1387,6 +1422,11 @@ async function postAdminCampaign(
       subject: payload.subject,
       period_email_limit: payload.periodEmailLimit,
       daily_email_limit: payload.dailyEmailLimit,
+      followup_enabled: payload.followupEnabled,
+      followup_daily_limit: payload.followupDailyLimit,
+      followup_monthly_limit: payload.followupMonthlyLimit,
+      followup_delay_value: payload.followupDelayValue,
+      followup_delay_unit: payload.followupDelayUnit,
     },
     accessToken,
   );
@@ -1780,6 +1820,11 @@ function mapAdminCampaignDetail(
     reviewReady: payload.review_ready,
     periodEmailLimit: payload.period_email_limit,
     dailyEmailLimit: payload.daily_email_limit,
+    followupEnabled: payload.followup_enabled,
+    followupDailyLimit: payload.followup_daily_limit ?? null,
+    followupMonthlyLimit: payload.followup_monthly_limit ?? null,
+    followupDelayValue: payload.followup_delay_value,
+    followupDelayUnit: payload.followup_delay_unit,
     periodStartedAt: payload.period_started_at ?? null,
     createdAt: payload.created_at,
     updatedAt: payload.updated_at,
@@ -1890,6 +1935,11 @@ function mapAdminCampaignReviewResult(
     periodRemaining: payload.period_remaining ?? null,
     periodStartedAt: payload.period_started_at ?? null,
     periodEndsAt: payload.period_ends_at ?? null,
+    followupEnabled: payload.followup_enabled,
+    followupDailyLimit: payload.followup_daily_limit ?? null,
+    followupMonthlyLimit: payload.followup_monthly_limit ?? null,
+    followupDelayValue: payload.followup_delay_value,
+    followupDelayUnit: payload.followup_delay_unit,
     providerHistory: mapProviderHistoryPolicy(payload.provider_history ?? []),
   };
 }

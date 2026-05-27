@@ -19,6 +19,42 @@ interface AdminCampaignCreateWizardProps {
 
 const TECHNICAL_NAME_PATTERN = /^[A-Za-z0-9-]+$/;
 const WIZARD_STEPS = ["Setup", "Template", "Editor", "Destinatari", "Review", "Invio"] as const;
+const MINIMUM_FOLLOWUP_DELAY_HOURS = 24;
+
+function validateFollowupInputs(
+  enabled: boolean,
+  dailyLimit: string,
+  monthlyLimit: string,
+  delayValue: string,
+  delayUnit: "hours" | "days",
+): string | null {
+  if (!enabled) {
+    return null;
+  }
+
+  const dailyValue = Number(dailyLimit);
+  const monthlyValue = Number(monthlyLimit);
+  const normalizedDelayValue = Number(delayValue);
+
+  if (!Number.isInteger(dailyValue) || dailyValue <= 0) {
+    return "Il limite giornaliero follow-up deve essere un intero maggiore di zero.";
+  }
+
+  if (!Number.isInteger(monthlyValue) || monthlyValue < dailyValue) {
+    return "Il limite mensile follow-up deve essere un intero maggiore o uguale al limite giornaliero.";
+  }
+
+  if (!Number.isInteger(normalizedDelayValue) || normalizedDelayValue <= 0) {
+    return "Il ritardo follow-up deve essere un intero maggiore di zero.";
+  }
+
+  const delayHours = delayUnit === "hours" ? normalizedDelayValue : normalizedDelayValue * 24;
+  if (delayHours < MINIMUM_FOLLOWUP_DELAY_HOURS) {
+    return "Il ritardo follow-up deve essere di almeno 24 ore.";
+  }
+
+  return null;
+}
 
 function getClientDisplayName(client: Client): string {
   return client.personal_name || client.name || client.email;
@@ -42,12 +78,12 @@ function getSafeCreateErrorMessage(error: unknown): string {
       return "Il backend ha rifiutato la creazione per un conflitto operativo.";
     }
 
-    if (error.status === 422) {
-      return "Compila cliente e nome campagna prima di creare la bozza.";
-    }
-
     if (error.detail.trim()) {
       return error.detail;
+    }
+
+    if (error.status === 422) {
+      return "Compila cliente, nome campagna e limiti prima di creare la bozza.";
     }
   }
 
@@ -63,6 +99,11 @@ export function AdminCampaignCreateWizard({
   const [name, setName] = useState("");
   const [periodEmailLimit, setPeriodEmailLimit] = useState("1000");
   const [dailyEmailLimit, setDailyEmailLimit] = useState("50");
+  const [followupEnabled, setFollowupEnabled] = useState(false);
+  const [followupDailyLimit, setFollowupDailyLimit] = useState("10");
+  const [followupMonthlyLimit, setFollowupMonthlyLimit] = useState("200");
+  const [followupDelayValue, setFollowupDelayValue] = useState("3");
+  const [followupDelayUnit, setFollowupDelayUnit] = useState<"hours" | "days">("days");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -102,6 +143,18 @@ export function AdminCampaignCreateWizard({
       return;
     }
 
+    const followupValidationError = validateFollowupInputs(
+      followupEnabled,
+      followupDailyLimit,
+      followupMonthlyLimit,
+      followupDelayValue,
+      followupDelayUnit,
+    );
+    if (followupValidationError) {
+      setErrorMessage(followupValidationError);
+      return;
+    }
+
     setIsSubmitting(true);
     setErrorMessage(null);
 
@@ -114,6 +167,11 @@ export function AdminCampaignCreateWizard({
           subject: INTERNAL_CAMPAIGN_DRAFT_SUBJECT,
           periodEmailLimit: periodLimitValue,
           dailyEmailLimit: dailyLimitValue,
+          followupEnabled,
+          followupDailyLimit: followupEnabled ? Number(followupDailyLimit) : null,
+          followupMonthlyLimit: followupEnabled ? Number(followupMonthlyLimit) : null,
+          followupDelayValue: followupEnabled ? Number(followupDelayValue) : null,
+          followupDelayUnit,
         },
         token,
       );
@@ -308,6 +366,93 @@ export function AdminCampaignCreateWizard({
               value={dailyEmailLimit}
             />
           </label>
+        </div>
+        <div
+          className="campaign-callout"
+          style={{
+            display: "grid",
+            gap: 14,
+            gridColumn: "1 / -1",
+          }}
+        >
+          <label
+            style={{
+              alignItems: "center",
+              display: "flex",
+              gap: 10,
+            }}
+          >
+            <input
+              checked={followupEnabled}
+              disabled={isSubmitting}
+              onChange={(event) => setFollowupEnabled(event.target.checked)}
+              type="checkbox"
+            />
+            <span className="campaign-field__label" style={{ margin: 0 }}>
+              Abilita follow-up campagna
+            </span>
+          </label>
+          <span className="campaign-field__helper">
+            I follow-up usano limiti separati dagli invii principali.
+          </span>
+          {followupEnabled ? (
+            <div
+              style={{
+                display: "grid",
+                gap: 14,
+                gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+              }}
+            >
+              <label className="campaign-field" style={{ marginBottom: 0 }}>
+                <span className="campaign-field__label">Limite follow-up giornaliero</span>
+                <input
+                  className="campaign-input"
+                  disabled={isSubmitting}
+                  min={1}
+                  onChange={(event) => setFollowupDailyLimit(event.target.value)}
+                  required={followupEnabled}
+                  type="number"
+                  value={followupDailyLimit}
+                />
+              </label>
+              <label className="campaign-field" style={{ marginBottom: 0 }}>
+                <span className="campaign-field__label">Limite follow-up mensile</span>
+                <input
+                  className="campaign-input"
+                  disabled={isSubmitting}
+                  min={1}
+                  onChange={(event) => setFollowupMonthlyLimit(event.target.value)}
+                  required={followupEnabled}
+                  type="number"
+                  value={followupMonthlyLimit}
+                />
+              </label>
+              <label className="campaign-field" style={{ marginBottom: 0 }}>
+                <span className="campaign-field__label">Ritardo follow-up</span>
+                <input
+                  className="campaign-input"
+                  disabled={isSubmitting}
+                  min={1}
+                  onChange={(event) => setFollowupDelayValue(event.target.value)}
+                  required={followupEnabled}
+                  type="number"
+                  value={followupDelayValue}
+                />
+              </label>
+              <label className="campaign-field" style={{ marginBottom: 0 }}>
+                <span className="campaign-field__label">Unita ritardo</span>
+                <select
+                  className="campaign-select"
+                  disabled={isSubmitting}
+                  onChange={(event) => setFollowupDelayUnit(event.target.value as "hours" | "days")}
+                  value={followupDelayUnit}
+                >
+                  <option value="hours">Ore</option>
+                  <option value="days">Giorni</option>
+                </select>
+              </label>
+            </div>
+          ) : null}
         </div>
         <div
           className="campaign-callout"

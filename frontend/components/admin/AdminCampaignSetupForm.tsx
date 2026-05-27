@@ -18,6 +18,42 @@ interface AdminCampaignSetupFormProps {
 }
 
 const TECHNICAL_NAME_PATTERN = /^[A-Za-z0-9-]+$/;
+const MINIMUM_FOLLOWUP_DELAY_HOURS = 24;
+
+function validateFollowupInputs(
+  enabled: boolean,
+  dailyLimit: string,
+  monthlyLimit: string,
+  delayValue: string,
+  delayUnit: "hours" | "days",
+): string | null {
+  if (!enabled) {
+    return null;
+  }
+
+  const dailyValue = Number(dailyLimit);
+  const monthlyValue = Number(monthlyLimit);
+  const normalizedDelayValue = Number(delayValue);
+
+  if (!Number.isInteger(dailyValue) || dailyValue <= 0) {
+    return "Il limite giornaliero follow-up deve essere un intero maggiore di zero.";
+  }
+
+  if (!Number.isInteger(monthlyValue) || monthlyValue < dailyValue) {
+    return "Il limite mensile follow-up deve essere un intero maggiore o uguale al limite giornaliero.";
+  }
+
+  if (!Number.isInteger(normalizedDelayValue) || normalizedDelayValue <= 0) {
+    return "Il ritardo follow-up deve essere un intero maggiore di zero.";
+  }
+
+  const delayHours = delayUnit === "hours" ? normalizedDelayValue : normalizedDelayValue * 24;
+  if (delayHours < MINIMUM_FOLLOWUP_DELAY_HOURS) {
+    return "Il ritardo follow-up deve essere di almeno 24 ore.";
+  }
+
+  return null;
+}
 
 function getSafeUpdateErrorMessage(error: unknown): string {
   if (isApiError(error)) {
@@ -37,12 +73,12 @@ function getSafeUpdateErrorMessage(error: unknown): string {
       return "Il backend ha rifiutato la modifica per lo stato corrente della campagna.";
     }
 
-    if (error.status === 422) {
-      return "Verifica nome campagna e limiti invio prima di salvare.";
-    }
-
     if (error.detail.trim()) {
       return error.detail;
+    }
+
+    if (error.status === 422) {
+      return "Verifica nome campagna, limiti invio e configurazione follow-up prima di salvare.";
     }
   }
 
@@ -62,6 +98,19 @@ export function AdminCampaignSetupForm({
   );
   const [dailyEmailLimit, setDailyEmailLimit] = useState(
     String(campaign.dailyEmailLimit),
+  );
+  const [followupEnabled, setFollowupEnabled] = useState(campaign.followupEnabled);
+  const [followupDailyLimit, setFollowupDailyLimit] = useState(
+    String(campaign.followupDailyLimit ?? 10),
+  );
+  const [followupMonthlyLimit, setFollowupMonthlyLimit] = useState(
+    String(campaign.followupMonthlyLimit ?? 200),
+  );
+  const [followupDelayValue, setFollowupDelayValue] = useState(
+    String(campaign.followupDelayValue),
+  );
+  const [followupDelayUnit, setFollowupDelayUnit] = useState<"hours" | "days">(
+    campaign.followupDelayUnit,
   );
   const [isEditingBase, setIsEditingBase] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -99,10 +148,42 @@ export function AdminCampaignSetupForm({
       setErrorMessage("Inserisci limiti interi maggiori di zero per periodo e giorno.");
       return;
     }
+    const followupValidationError = validateFollowupInputs(
+      followupEnabled,
+      followupDailyLimit,
+      followupMonthlyLimit,
+      followupDelayValue,
+      followupDelayUnit,
+    );
+    if (followupValidationError) {
+      setErrorMessage(followupValidationError);
+      return;
+    }
     const periodLimitChanged = periodLimitValue !== campaign.periodEmailLimit;
     const dailyLimitChanged = dailyLimitValue !== campaign.dailyEmailLimit;
+    const followupEnabledChanged = followupEnabled !== campaign.followupEnabled;
+    const followupDailyLimitValue = followupEnabled ? Number(followupDailyLimit) : null;
+    const followupMonthlyLimitValue = followupEnabled ? Number(followupMonthlyLimit) : null;
+    const followupDelayValueNumber = followupEnabled ? Number(followupDelayValue) : null;
+    const followupDailyLimitChanged =
+      followupDailyLimitValue !== (campaign.followupDailyLimit ?? null);
+    const followupMonthlyLimitChanged =
+      followupMonthlyLimitValue !== (campaign.followupMonthlyLimit ?? null);
+    const followupDelayValueChanged =
+      followupDelayValueNumber !== (campaign.followupEnabled ? campaign.followupDelayValue : null);
+    const followupDelayUnitChanged =
+      followupDelayUnit !== campaign.followupDelayUnit;
 
-    if (!nameChanged && !periodLimitChanged && !dailyLimitChanged) {
+    if (
+      !nameChanged &&
+      !periodLimitChanged &&
+      !dailyLimitChanged &&
+      !followupEnabledChanged &&
+      !followupDailyLimitChanged &&
+      !followupMonthlyLimitChanged &&
+      !followupDelayValueChanged &&
+      !followupDelayUnitChanged
+    ) {
       setSuccessMessage("Dati base invariati.");
       setErrorMessage(null);
       onContinue?.();
@@ -122,6 +203,11 @@ export function AdminCampaignSetupForm({
           ...(nameChanged ? { name: name.trim() } : {}),
           ...(periodLimitChanged ? { periodEmailLimit: periodLimitValue } : {}),
           ...(dailyLimitChanged ? { dailyEmailLimit: dailyLimitValue } : {}),
+          ...(followupEnabledChanged ? { followupEnabled } : {}),
+          ...(followupDailyLimitChanged ? { followupDailyLimit: followupDailyLimitValue } : {}),
+          ...(followupMonthlyLimitChanged ? { followupMonthlyLimit: followupMonthlyLimitValue } : {}),
+          ...(followupDelayValueChanged ? { followupDelayValue: followupDelayValueNumber } : {}),
+          ...(followupDelayUnitChanged ? { followupDelayUnit } : {}),
         },
         token,
       );
@@ -175,6 +261,16 @@ export function AdminCampaignSetupForm({
             ["Nome tecnico campagna", campaign.name],
             ["Limite invii 30 giorni", campaign.periodEmailLimit.toLocaleString("it-IT")],
             ["Limite invii giornaliero", campaign.dailyEmailLimit.toLocaleString("it-IT")],
+            [
+              "Follow-up",
+              campaign.followupEnabled
+                ? `${campaign.followupDailyLimit?.toLocaleString("it-IT") ?? "-"} / giorno · ${campaign.followupMonthlyLimit?.toLocaleString("it-IT") ?? "-"} / mese`
+                : "Disabilitati",
+            ],
+            [
+              "Ritardo follow-up",
+              `${campaign.followupDelayValue.toLocaleString("it-IT")} ${campaign.followupDelayUnit === "hours" ? "ore" : "giorni"}`,
+            ],
           ].map(([label, value]) => (
             <article
               key={label}
@@ -235,6 +331,93 @@ export function AdminCampaignSetupForm({
                 value={dailyEmailLimit}
               />
             </label>
+          </div>
+          <div
+            className="campaign-callout"
+            style={{
+              display: "grid",
+              gap: 14,
+              gridColumn: "1 / -1",
+            }}
+          >
+            <label
+              style={{
+                alignItems: "center",
+                display: "flex",
+                gap: 10,
+              }}
+            >
+              <input
+                checked={followupEnabled}
+                disabled={isSubmitting}
+                onChange={(event) => setFollowupEnabled(event.target.checked)}
+                type="checkbox"
+              />
+              <span className="campaign-field__label" style={{ margin: 0 }}>
+                Abilita follow-up campagna
+              </span>
+            </label>
+            <span className="campaign-field__helper">
+              I follow-up usano limiti separati dagli invii principali.
+            </span>
+            {followupEnabled ? (
+              <div
+                style={{
+                  display: "grid",
+                  gap: 14,
+                  gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+                }}
+              >
+                <label className="campaign-field" style={{ marginBottom: 0 }}>
+                  <span className="campaign-field__label">Limite follow-up giornaliero</span>
+                  <input
+                    className="campaign-input"
+                    disabled={isSubmitting}
+                    min={1}
+                    onChange={(event) => setFollowupDailyLimit(event.target.value)}
+                    required={followupEnabled}
+                    type="number"
+                    value={followupDailyLimit}
+                  />
+                </label>
+                <label className="campaign-field" style={{ marginBottom: 0 }}>
+                  <span className="campaign-field__label">Limite follow-up mensile</span>
+                  <input
+                    className="campaign-input"
+                    disabled={isSubmitting}
+                    min={1}
+                    onChange={(event) => setFollowupMonthlyLimit(event.target.value)}
+                    required={followupEnabled}
+                    type="number"
+                    value={followupMonthlyLimit}
+                  />
+                </label>
+                <label className="campaign-field" style={{ marginBottom: 0 }}>
+                  <span className="campaign-field__label">Ritardo follow-up</span>
+                  <input
+                    className="campaign-input"
+                    disabled={isSubmitting}
+                    min={1}
+                    onChange={(event) => setFollowupDelayValue(event.target.value)}
+                    required={followupEnabled}
+                    type="number"
+                    value={followupDelayValue}
+                  />
+                </label>
+                <label className="campaign-field" style={{ marginBottom: 0 }}>
+                  <span className="campaign-field__label">Unita ritardo</span>
+                  <select
+                    className="campaign-select"
+                    disabled={isSubmitting}
+                    onChange={(event) => setFollowupDelayUnit(event.target.value as "hours" | "days")}
+                    value={followupDelayUnit}
+                  >
+                    <option value="hours">Ore</option>
+                    <option value="days">Giorni</option>
+                  </select>
+                </label>
+              </div>
+            ) : null}
           </div>
         </div>
       )}

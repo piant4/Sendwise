@@ -242,6 +242,11 @@ def create_client_campaign(
         subject=payload.subject,
         period_email_limit=payload.period_email_limit,
         daily_email_limit=payload.daily_email_limit,
+        followup_enabled=payload.followup_enabled,
+        followup_daily_limit=payload.followup_daily_limit,
+        followup_monthly_limit=payload.followup_monthly_limit,
+        followup_delay_value=payload.followup_delay_value,
+        followup_delay_unit=payload.followup_delay_unit,
     )
 
 
@@ -296,6 +301,11 @@ def create_campaign(
         subject=payload.subject,
         period_email_limit=payload.period_email_limit,
         daily_email_limit=payload.daily_email_limit,
+        followup_enabled=payload.followup_enabled,
+        followup_daily_limit=payload.followup_daily_limit,
+        followup_monthly_limit=payload.followup_monthly_limit,
+        followup_delay_value=payload.followup_delay_value,
+        followup_delay_unit=payload.followup_delay_unit,
     )
 
 
@@ -343,6 +353,11 @@ def update_campaign(
         current_step=payload.current_step,
         period_email_limit=payload.period_email_limit,
         daily_email_limit=payload.daily_email_limit,
+        followup_enabled=payload.followup_enabled,
+        followup_daily_limit=payload.followup_daily_limit,
+        followup_monthly_limit=payload.followup_monthly_limit,
+        followup_delay_value=payload.followup_delay_value,
+        followup_delay_unit=payload.followup_delay_unit,
     )
 
 

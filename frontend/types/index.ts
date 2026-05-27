@@ -335,6 +335,11 @@ export interface AdminCampaignCreateInput {
   subject: string;
   periodEmailLimit?: number | null;
   dailyEmailLimit?: number | null;
+  followupEnabled?: boolean | null;
+  followupDailyLimit?: number | null;
+  followupMonthlyLimit?: number | null;
+  followupDelayValue?: number | null;
+  followupDelayUnit?: "hours" | "days" | null;
 }
 
 export interface AdminCampaignUpdateInput {
@@ -342,6 +347,11 @@ export interface AdminCampaignUpdateInput {
   subject?: string | null;
   periodEmailLimit?: number | null;
   dailyEmailLimit?: number | null;
+  followupEnabled?: boolean | null;
+  followupDailyLimit?: number | null;
+  followupMonthlyLimit?: number | null;
+  followupDelayValue?: number | null;
+  followupDelayUnit?: "hours" | "days" | null;
 }
 
 export interface AdminCampaignContentInput {
@@ -453,6 +463,11 @@ export interface AdminCampaignReviewResult {
   periodRemaining?: number | null;
   periodStartedAt?: string | null;
   periodEndsAt?: string | null;
+  followupEnabled: boolean;
+  followupDailyLimit?: number | null;
+  followupMonthlyLimit?: number | null;
+  followupDelayValue: number;
+  followupDelayUnit: "hours" | "days";
   providerHistory: ProviderHistoryPolicySummary[];
 }
 
@@ -476,6 +491,11 @@ export interface AdminCampaignDetail {
   reviewReady: boolean;
   periodEmailLimit: number;
   dailyEmailLimit: number;
+  followupEnabled: boolean;
+  followupDailyLimit?: number | null;
+  followupMonthlyLimit?: number | null;
+  followupDelayValue: number;
+  followupDelayUnit: "hours" | "days";
   periodStartedAt?: string | null;
   createdAt: string;
   updatedAt: string;

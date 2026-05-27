@@ -18,6 +18,7 @@ class EmailLogRecord(BaseModel):
     client_id: str
     campaign_id: Optional[str] = None
     contact_id: Optional[str] = None
+    send_kind: str = "campaign"
     status: str
     provider_message_id: Optional[str] = None
     sending_domain: Optional[str] = None
@@ -43,6 +44,7 @@ class EmailLogRepository:
         client_id: str,
         campaign_id: str,
         contact_id: str,
+        send_kind: str = "campaign",
         status: str,
         provider_message_id: Optional[str] = None,
         sending_domain: Optional[str] = None,
@@ -57,6 +59,7 @@ class EmailLogRepository:
         client_id: str,
         campaign_id: str,
         contact_ids: list[str],
+        send_kind: str = "campaign",
         status: str,
         provider_message_id: Optional[str] = None,
         sending_domain: Optional[str] = None,
@@ -68,6 +71,7 @@ class EmailLogRepository:
                 client_id=client_id,
                 campaign_id=campaign_id,
                 contact_id=contact_id,
+                send_kind=send_kind,
                 status=status,
                 provider_message_id=provider_message_id,
                 sending_domain=sending_domain,
@@ -118,6 +122,7 @@ class EmailLogRepository:
         *,
         client_id: str,
         campaign_id: str,
+        send_kind: str = "campaign",
     ) -> dict[str, int]:
         raise NotImplementedError
 
@@ -126,6 +131,7 @@ class EmailLogRepository:
         *,
         client_id: str,
         campaign_id: str,
+        send_kind: str = "campaign",
         started_at: datetime,
         ended_at: Optional[datetime] = None,
     ) -> int:
@@ -136,6 +142,17 @@ class EmailLogRepository:
         *,
         client_id: str,
         campaign_id: str,
+        send_kind: str = "campaign",
+    ) -> Optional[datetime]:
+        raise NotImplementedError
+
+    def get_first_contact_log_at(
+        self,
+        *,
+        client_id: str,
+        campaign_id: str,
+        contact_id: str,
+        send_kind: str = "campaign",
     ) -> Optional[datetime]:
         raise NotImplementedError
 
@@ -172,6 +189,7 @@ class EmailLogRepository:
         client_id: str,
         campaign_id: str,
         contact_id: str,
+        send_kind: str = "campaign",
     ) -> Optional[EmailLogRecord]:
         raise NotImplementedError
 
@@ -180,6 +198,7 @@ class EmailLogRepository:
         *,
         client_id: str,
         campaign_id: str,
+        send_kind: str = "campaign",
     ) -> list[EmailLogRecord]:
         raise NotImplementedError
 
@@ -223,6 +242,7 @@ class PostgresEmailLogRepository(EmailLogRepository):
                 client_id::text AS client_id,
                 campaign_id::text AS campaign_id,
                 contact_id::text AS contact_id,
+                send_kind,
                 status,
                 provider_message_id,
                 sending_domain,
@@ -245,6 +265,7 @@ class PostgresEmailLogRepository(EmailLogRepository):
         client_id: str,
         campaign_id: str,
         contact_id: str,
+        send_kind: str = "campaign",
         status: str,
         provider_message_id: Optional[str] = None,
         sending_domain: Optional[str] = None,
@@ -255,6 +276,7 @@ class PostgresEmailLogRepository(EmailLogRepository):
             "client_id",
             "campaign_id",
             "contact_id",
+            "send_kind",
             "status",
             "provider_message_id",
             "sending_domain",
@@ -264,6 +286,7 @@ class PostgresEmailLogRepository(EmailLogRepository):
             client_id,
             campaign_id,
             contact_id,
+            send_kind,
             status,
             provider_message_id,
             sending_domain,
@@ -283,6 +306,7 @@ class PostgresEmailLogRepository(EmailLogRepository):
                 client_id::text AS client_id,
                 campaign_id::text AS campaign_id,
                 contact_id::text AS contact_id,
+                send_kind,
                 status,
                 provider_message_id,
                 sending_domain,
@@ -303,6 +327,7 @@ class PostgresEmailLogRepository(EmailLogRepository):
         *,
         client_id: str,
         campaign_id: str,
+        send_kind: str = "campaign",
     ) -> dict[str, int]:
         query = """
             SELECT
@@ -311,12 +336,13 @@ class PostgresEmailLogRepository(EmailLogRepository):
             FROM email_logs
             WHERE client_id::text = %s
                 AND campaign_id::text = %s
+                AND send_kind = %s
             GROUP BY status
         """
 
         with postgres_connection(self._settings) as connection:
             with connection.cursor() as cursor:
-                cursor.execute(query, (client_id, campaign_id))
+                cursor.execute(query, (client_id, campaign_id, send_kind))
                 rows = cursor.fetchall()
 
         return {str(row["status"]): int(row["total"]) for row in rows}
@@ -326,6 +352,7 @@ class PostgresEmailLogRepository(EmailLogRepository):
         *,
         client_id: str,
         campaign_id: str,
+        send_kind: str = "campaign",
         started_at: datetime,
         ended_at: Optional[datetime] = None,
     ) -> int:
@@ -334,10 +361,11 @@ class PostgresEmailLogRepository(EmailLogRepository):
             FROM email_logs
             WHERE client_id::text = %s
                 AND campaign_id::text = %s
+                AND send_kind = %s
                 AND status <> 'simulated'
                 AND created_at >= %s
         """
-        parameters: list[object] = [client_id, campaign_id, started_at]
+        parameters: list[object] = [client_id, campaign_id, send_kind, started_at]
         if ended_at is not None:
             query = f"{query}\n                AND created_at < %s"
             parameters.append(ended_at)
@@ -356,18 +384,47 @@ class PostgresEmailLogRepository(EmailLogRepository):
         *,
         client_id: str,
         campaign_id: str,
+        send_kind: str = "campaign",
     ) -> Optional[datetime]:
         query = """
             SELECT MIN(created_at) AS first_created_at
             FROM email_logs
             WHERE client_id::text = %s
                 AND campaign_id::text = %s
+                AND send_kind = %s
                 AND status <> 'simulated'
         """
 
         with postgres_connection(self._settings) as connection:
             with connection.cursor() as cursor:
-                cursor.execute(query, (client_id, campaign_id))
+                cursor.execute(query, (client_id, campaign_id, send_kind))
+                row = cursor.fetchone()
+
+        if row is None:
+            return None
+        return row["first_created_at"]
+
+    def get_first_contact_log_at(
+        self,
+        *,
+        client_id: str,
+        campaign_id: str,
+        contact_id: str,
+        send_kind: str = "campaign",
+    ) -> Optional[datetime]:
+        query = """
+            SELECT MIN(created_at) AS first_created_at
+            FROM email_logs
+            WHERE client_id::text = %s
+                AND campaign_id::text = %s
+                AND contact_id::text = %s
+                AND send_kind = %s
+                AND status <> 'simulated'
+        """
+
+        with postgres_connection(self._settings) as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(query, (client_id, campaign_id, contact_id, send_kind))
                 row = cursor.fetchone()
 
         if row is None:
@@ -453,6 +510,7 @@ class PostgresEmailLogRepository(EmailLogRepository):
                 client_id::text AS client_id,
                 campaign_id::text AS campaign_id,
                 contact_id::text AS contact_id,
+                send_kind,
                 status,
                 provider_message_id,
                 sending_domain,
@@ -477,6 +535,7 @@ class PostgresEmailLogRepository(EmailLogRepository):
         client_id: str,
         campaign_id: str,
         contact_id: str,
+        send_kind: str = "campaign",
     ) -> Optional[EmailLogRecord]:
         query = """
             SELECT
@@ -484,6 +543,7 @@ class PostgresEmailLogRepository(EmailLogRepository):
                 client_id::text AS client_id,
                 campaign_id::text AS campaign_id,
                 contact_id::text AS contact_id,
+                send_kind,
                 status,
                 provider_message_id,
                 sending_domain,
@@ -493,6 +553,7 @@ class PostgresEmailLogRepository(EmailLogRepository):
             WHERE client_id::text = %s
                 AND campaign_id::text = %s
                 AND contact_id::text = %s
+                AND send_kind = %s
                 AND status <> 'simulated'
             ORDER BY created_at DESC, id DESC
             LIMIT 1
@@ -500,7 +561,7 @@ class PostgresEmailLogRepository(EmailLogRepository):
 
         with postgres_connection(self._settings) as connection:
             with connection.cursor() as cursor:
-                cursor.execute(query, (client_id, campaign_id, contact_id))
+                cursor.execute(query, (client_id, campaign_id, contact_id, send_kind))
                 row = cursor.fetchone()
 
         return EmailLogRecord.model_validate(row) if row is not None else None
@@ -510,6 +571,7 @@ class PostgresEmailLogRepository(EmailLogRepository):
         *,
         client_id: str,
         campaign_id: str,
+        send_kind: str = "campaign",
     ) -> list[EmailLogRecord]:
         query = """
             SELECT DISTINCT ON (contact_id)
@@ -517,6 +579,7 @@ class PostgresEmailLogRepository(EmailLogRepository):
                 client_id::text AS client_id,
                 campaign_id::text AS campaign_id,
                 contact_id::text AS contact_id,
+                send_kind,
                 status,
                 provider_message_id,
                 sending_domain,
@@ -525,6 +588,7 @@ class PostgresEmailLogRepository(EmailLogRepository):
             FROM email_logs
             WHERE client_id::text = %s
                 AND campaign_id::text = %s
+                AND send_kind = %s
                 AND status <> 'simulated'
                 AND contact_id IS NOT NULL
             ORDER BY contact_id, created_at DESC, id DESC
@@ -532,7 +596,7 @@ class PostgresEmailLogRepository(EmailLogRepository):
 
         with postgres_connection(self._settings) as connection:
             with connection.cursor() as cursor:
-                cursor.execute(query, (client_id, campaign_id))
+                cursor.execute(query, (client_id, campaign_id, send_kind))
                 rows = cursor.fetchall()
 
         return [EmailLogRecord.model_validate(row) for row in rows]
@@ -552,6 +616,7 @@ class PostgresEmailLogRepository(EmailLogRepository):
                 client_id::text AS client_id,
                 campaign_id::text AS campaign_id,
                 contact_id::text AS contact_id,
+                send_kind,
                 status,
                 provider_message_id,
                 sending_domain,
@@ -598,6 +663,7 @@ class InMemoryEmailLogRepository(EmailLogRepository):
         client_id: str,
         campaign_id: str,
         contact_id: str,
+        send_kind: str = "campaign",
         status: str,
         provider_message_id: Optional[str] = None,
         sending_domain: Optional[str] = None,
@@ -609,6 +675,7 @@ class InMemoryEmailLogRepository(EmailLogRepository):
             client_id=client_id,
             campaign_id=campaign_id,
             contact_id=contact_id,
+            send_kind=send_kind,
             status=status,
             provider_message_id=provider_message_id,
             sending_domain=sending_domain,
@@ -630,10 +697,15 @@ class InMemoryEmailLogRepository(EmailLogRepository):
         *,
         client_id: str,
         campaign_id: str,
+        send_kind: str = "campaign",
     ) -> dict[str, int]:
         counts: dict[str, int] = {}
         for record in self._records:
-            if record.client_id != client_id or record.campaign_id != campaign_id:
+            if (
+                record.client_id != client_id
+                or record.campaign_id != campaign_id
+                or record.send_kind != send_kind
+            ):
                 continue
             counts[record.status] = counts.get(record.status, 0) + 1
         return counts
@@ -643,12 +715,17 @@ class InMemoryEmailLogRepository(EmailLogRepository):
         *,
         client_id: str,
         campaign_id: str,
+        send_kind: str = "campaign",
         started_at: datetime,
         ended_at: Optional[datetime] = None,
     ) -> int:
         total = 0
         for record in self._records:
-            if record.client_id != client_id or record.campaign_id != campaign_id:
+            if (
+                record.client_id != client_id
+                or record.campaign_id != campaign_id
+                or record.send_kind != send_kind
+            ):
                 continue
             if record.status == "simulated":
                 continue
@@ -664,12 +741,35 @@ class InMemoryEmailLogRepository(EmailLogRepository):
         *,
         client_id: str,
         campaign_id: str,
+        send_kind: str = "campaign",
     ) -> Optional[datetime]:
         matching = [
             record.created_at
             for record in self._records
             if record.client_id == client_id
             and record.campaign_id == campaign_id
+            and record.send_kind == send_kind
+            and record.status != "simulated"
+        ]
+        if not matching:
+            return None
+        return min(matching)
+
+    def get_first_contact_log_at(
+        self,
+        *,
+        client_id: str,
+        campaign_id: str,
+        contact_id: str,
+        send_kind: str = "campaign",
+    ) -> Optional[datetime]:
+        matching = [
+            record.created_at
+            for record in self._records
+            if record.client_id == client_id
+            and record.campaign_id == campaign_id
+            and record.contact_id == contact_id
+            and record.send_kind == send_kind
             and record.status != "simulated"
         ]
         if not matching:
@@ -734,12 +834,14 @@ class InMemoryEmailLogRepository(EmailLogRepository):
         client_id: str,
         campaign_id: str,
         contact_id: str,
+        send_kind: str = "campaign",
     ) -> Optional[EmailLogRecord]:
         for record in reversed(self._records):
             if (
                 record.client_id == client_id
                 and record.campaign_id == campaign_id
                 and record.contact_id == contact_id
+                and record.send_kind == send_kind
                 and record.status != "simulated"
             ):
                 return record
@@ -750,12 +852,14 @@ class InMemoryEmailLogRepository(EmailLogRepository):
         *,
         client_id: str,
         campaign_id: str,
+        send_kind: str = "campaign",
     ) -> list[EmailLogRecord]:
         latest_by_contact: dict[str, EmailLogRecord] = {}
         for record in reversed(self._records):
             if (
                 record.client_id != client_id
                 or record.campaign_id != campaign_id
+                or record.send_kind != send_kind
                 or record.status == "simulated"
                 or record.contact_id is None
                 or record.contact_id in latest_by_contact

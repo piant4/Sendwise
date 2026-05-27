@@ -520,3 +520,8 @@ Do not run any of the following on staging or production unless the incident pro
 - Staging may continue on the VPS PostgreSQL container while backup validation is in place.
 - Production should prefer managed PostgreSQL with automated backups and point-in-time recovery.
 - Keeping the application VPS stateless reduces deploy and rollback risk.
+
+## Follow-Up Limits Note
+
+- Milestone `20.2-FOLLOWUP-LIMITS` adds persisted follow-up settings and a backend eligibility helper only.
+- Staging verification must remain no-send: do not invent or trigger a follow-up executor until a dedicated runtime path is implemented and explicitly approved.

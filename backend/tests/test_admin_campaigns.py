@@ -26,6 +26,7 @@ from app.repositories.suppression_list import (
     SuppressionRecord,
 )
 from app.schemas.campaigns import AdminCampaignContactPayload
+from app.services import campaigns as campaigns_module
 from app.services.campaign_slots import CampaignSlotService
 from app.services.campaigns import (
     AdminCampaignService,
@@ -754,6 +755,40 @@ def test_admin_create_campaign_persists_default_sending_limits() -> None:
     assert limits.daily_email_limit == 50
 
 
+def test_admin_create_campaign_persists_followup_limits() -> None:
+    repository = InMemoryCampaignRepository()
+    limit_repository = InMemoryCampaignSendingLimitRepository()
+    service = build_admin_service(
+        campaign_repository=repository,
+        campaign_limit_repository=limit_repository,
+    )
+
+    created = service.create_campaign(
+        client_id="client_123",
+        name="Launch campaign",
+        subject="Spring launch",
+        followup_enabled=True,
+        followup_daily_limit=12,
+        followup_monthly_limit=120,
+        followup_delay_value=3,
+        followup_delay_unit="days",
+    )
+
+    limits = limit_repository.get_by_campaign_id(campaign_id=created.campaign_id)
+
+    assert created.followup_enabled is True
+    assert created.followup_daily_limit == 12
+    assert created.followup_monthly_limit == 120
+    assert created.followup_delay_value == 3
+    assert created.followup_delay_unit == "days"
+    assert limits is not None
+    assert limits.followup_enabled is True
+    assert limits.followup_daily_limit == 12
+    assert limits.followup_monthly_limit == 120
+    assert limits.followup_delay_value == 3
+    assert limits.followup_delay_unit == "days"
+
+
 def test_admin_update_campaign_limits() -> None:
     repository = InMemoryCampaignRepository()
     campaign = repository.add_campaign(campaign_id="campaign_123", client_id="client_123")
@@ -778,6 +813,39 @@ def test_admin_update_campaign_limits() -> None:
     assert limits.daily_email_limit == 120
 
 
+def test_admin_update_campaign_followup_limits() -> None:
+    repository = InMemoryCampaignRepository()
+    campaign = repository.add_campaign(campaign_id="campaign_123", client_id="client_123")
+    limit_repository = InMemoryCampaignSendingLimitRepository()
+    service = build_admin_service(
+        campaign_repository=repository,
+        campaign_limit_repository=limit_repository,
+    )
+
+    updated = service.update_campaign(
+        campaign_id=campaign.id,
+        followup_enabled=True,
+        followup_daily_limit=15,
+        followup_monthly_limit=180,
+        followup_delay_value=48,
+        followup_delay_unit="hours",
+    )
+
+    limits = limit_repository.get_by_campaign_id(campaign_id=campaign.id)
+
+    assert updated.followup_enabled is True
+    assert updated.followup_daily_limit == 15
+    assert updated.followup_monthly_limit == 180
+    assert updated.followup_delay_value == 48
+    assert updated.followup_delay_unit == "hours"
+    assert limits is not None
+    assert limits.followup_enabled is True
+    assert limits.followup_daily_limit == 15
+    assert limits.followup_monthly_limit == 180
+    assert limits.followup_delay_value == 48
+    assert limits.followup_delay_unit == "hours"
+
+
 def test_admin_update_campaign_rejects_non_positive_limits() -> None:
     repository = InMemoryCampaignRepository()
     campaign = repository.add_campaign(campaign_id="campaign_123", client_id="client_123")
@@ -793,6 +861,69 @@ def test_admin_update_campaign_rejects_non_positive_limits() -> None:
         assert error.detail == "period_email_limit must be greater than zero."
     else:
         raise AssertionError("Expected campaign period limit validation error")
+
+
+def test_admin_update_campaign_rejects_invalid_followup_limits() -> None:
+    repository = InMemoryCampaignRepository()
+    campaign = repository.add_campaign(campaign_id="campaign_123", client_id="client_123")
+    service = build_admin_service(campaign_repository=repository)
+
+    try:
+        service.update_campaign(
+            campaign_id=campaign.id,
+            followup_enabled=True,
+            followup_daily_limit=0,
+            followup_monthly_limit=5,
+            followup_delay_value=12,
+            followup_delay_unit="hours",
+        )
+    except HTTPException as error:
+        assert error.status_code == 422
+        assert error.detail == "followup_daily_limit must be greater than zero."
+    else:
+        raise AssertionError("Expected follow-up daily limit validation error")
+
+
+def test_admin_update_campaign_rejects_unsafe_followup_delay() -> None:
+    repository = InMemoryCampaignRepository()
+    campaign = repository.add_campaign(campaign_id="campaign_123", client_id="client_123")
+    service = build_admin_service(campaign_repository=repository)
+
+    try:
+        service.update_campaign(
+            campaign_id=campaign.id,
+            followup_enabled=True,
+            followup_daily_limit=5,
+            followup_monthly_limit=20,
+            followup_delay_value=12,
+            followup_delay_unit="hours",
+        )
+    except HTTPException as error:
+        assert error.status_code == 422
+        assert error.detail == "followup_delay_value must be at least 24 hours."
+    else:
+        raise AssertionError("Expected follow-up delay validation error")
+
+
+def test_admin_update_campaign_rejects_negative_followup_limit() -> None:
+    repository = InMemoryCampaignRepository()
+    campaign = repository.add_campaign(campaign_id="campaign_123", client_id="client_123")
+    service = build_admin_service(campaign_repository=repository)
+
+    try:
+        service.update_campaign(
+            campaign_id=campaign.id,
+            followup_enabled=True,
+            followup_daily_limit=-1,
+            followup_monthly_limit=20,
+            followup_delay_value=2,
+            followup_delay_unit="days",
+        )
+    except HTTPException as error:
+        assert error.status_code == 422
+        assert error.detail == "followup_daily_limit cannot be negative."
+    else:
+        raise AssertionError("Expected negative follow-up limit validation error")
 
 
 def test_admin_create_rejects_archived_blocked_and_suspended_clients() -> None:
@@ -1001,6 +1132,58 @@ def test_admin_review_exposes_template_readiness_blocking_reason() -> None:
     )
 
 
+def test_followup_settings_do_not_change_template_readiness_blockers() -> None:
+    repository = InMemoryCampaignRepository()
+    campaign = repository.add_campaign(
+        campaign_id="campaign_123",
+        status="draft",
+        subject="Launch",
+        body_html=(
+            "<html><body><p>Ricevi questa email perche sei iscritto agli "
+            "aggiornamenti di {{company_name}}.</p></body></html>"
+        ),
+        content_ready=True,
+        contacts_ready=True,
+    )
+    contact = build_contact(
+        contact_id="contact_123",
+        email="person@example.test",
+    )
+    limit_repository = InMemoryCampaignSendingLimitRepository()
+    limit_repository.ensure_for_campaign(
+        campaign_id=campaign.id,
+        followup_enabled=True,
+        followup_daily_limit=5,
+        followup_monthly_limit=50,
+        followup_delay_value=3,
+        followup_delay_unit="days",
+    )
+    service = build_admin_service(
+        settings=Settings(email_sending_enabled_raw="true"),
+        campaign_repository=repository,
+        campaign_limit_repository=limit_repository,
+        clients=[
+            build_client(
+                metadata={
+                    "email_brand": {
+                        "website_url": "https://acme.example.test",
+                    }
+                }
+            )
+        ],
+        contacts=[contact],
+        campaign_contacts={(campaign.client_id, campaign.id, contact.id)},
+    )
+
+    result = service.review_campaign(campaign.id)
+
+    assert result.followup_enabled is True
+    assert any(
+        error.startswith("template_missing_company_name:")
+        for error in result.blocking_errors
+    )
+
+
 def test_admin_campaign_detail_includes_email_brand() -> None:
     repository = InMemoryCampaignRepository()
     campaign = repository.add_campaign(campaign_id="campaign_123", client_id="client_123")
@@ -1026,6 +1209,296 @@ def test_admin_campaign_detail_includes_email_brand() -> None:
         "sender_name": "Team Acme",
         "website_url": "https://acme.example.test/",
     }
+
+
+def test_followup_eligibility_returns_disabled_result() -> None:
+    repository = InMemoryCampaignRepository()
+    campaign = repository.add_campaign(campaign_id="campaign_123", client_id="client_123")
+    service = build_admin_service(campaign_repository=repository)
+
+    result = service.evaluate_followup_eligibility(
+        campaign_id=campaign.id,
+        contact_id="contact_123",
+    )
+
+    assert result.allowed is False
+    assert result.code == "followup_disabled"
+
+
+def test_followup_eligibility_requires_reference_time() -> None:
+    repository = InMemoryCampaignRepository()
+    campaign = repository.add_campaign(campaign_id="campaign_123", client_id="client_123")
+    limit_repository = InMemoryCampaignSendingLimitRepository()
+    limit_repository.ensure_for_campaign(
+        campaign_id=campaign.id,
+        followup_enabled=True,
+        followup_daily_limit=5,
+        followup_monthly_limit=50,
+        followup_delay_value=3,
+        followup_delay_unit="days",
+    )
+    service = build_admin_service(
+        campaign_repository=repository,
+        campaign_limit_repository=limit_repository,
+    )
+
+    result = service.evaluate_followup_eligibility(
+        campaign_id=campaign.id,
+        contact_id="contact_missing",
+    )
+
+    assert result.allowed is False
+    assert result.code == "followup_missing_reference_time"
+
+
+def test_followup_eligibility_blocks_until_delay_elapsed(monkeypatch: Any) -> None:
+    class FixedDateTime(datetime):
+        @classmethod
+        def now(cls, tz: timezone | None = None) -> datetime:
+            current_time = cls(2026, 5, 27, 10, 0, tzinfo=timezone.utc)
+            return current_time.astimezone(tz) if tz is not None else current_time
+
+    monkeypatch.setattr(campaigns_module, "datetime", FixedDateTime)
+
+    repository = InMemoryCampaignRepository()
+    campaign = repository.add_campaign(campaign_id="campaign_123", client_id="client_123")
+    limit_repository = InMemoryCampaignSendingLimitRepository()
+    limit_repository.ensure_for_campaign(
+        campaign_id=campaign.id,
+        followup_enabled=True,
+        followup_daily_limit=5,
+        followup_monthly_limit=50,
+        followup_delay_value=3,
+        followup_delay_unit="days",
+    )
+    email_log_repository = InMemoryEmailLogRepository()
+    email_log_repository.create_email_log(
+        client_id=campaign.client_id,
+        campaign_id=campaign.id,
+        contact_id="contact_123",
+        send_kind="campaign",
+        status="queued",
+        created_at=datetime(2026, 5, 26, 10, 0, tzinfo=timezone.utc),
+    )
+    service = build_admin_service(
+        campaign_repository=repository,
+        campaign_limit_repository=limit_repository,
+        email_log_repository=email_log_repository,
+    )
+
+    result = service.evaluate_followup_eligibility(
+        campaign_id=campaign.id,
+        contact_id="contact_123",
+    )
+
+    assert result.allowed is False
+    assert result.code == "followup_delay_not_elapsed"
+
+
+def test_followup_eligibility_allows_send_after_delay(monkeypatch: Any) -> None:
+    class FixedDateTime(datetime):
+        @classmethod
+        def now(cls, tz: timezone | None = None) -> datetime:
+            current_time = cls(2026, 5, 27, 10, 0, tzinfo=timezone.utc)
+            return current_time.astimezone(tz) if tz is not None else current_time
+
+    monkeypatch.setattr(campaigns_module, "datetime", FixedDateTime)
+
+    repository = InMemoryCampaignRepository()
+    campaign = repository.add_campaign(campaign_id="campaign_123", client_id="client_123")
+    limit_repository = InMemoryCampaignSendingLimitRepository()
+    limit_repository.ensure_for_campaign(
+        campaign_id=campaign.id,
+        followup_enabled=True,
+        followup_daily_limit=5,
+        followup_monthly_limit=50,
+        followup_delay_value=2,
+        followup_delay_unit="days",
+    )
+    email_log_repository = InMemoryEmailLogRepository()
+    email_log_repository.create_email_log(
+        client_id=campaign.client_id,
+        campaign_id=campaign.id,
+        contact_id="contact_123",
+        send_kind="campaign",
+        status="queued",
+        created_at=datetime(2026, 5, 24, 10, 0, tzinfo=timezone.utc),
+    )
+    service = build_admin_service(
+        campaign_repository=repository,
+        campaign_limit_repository=limit_repository,
+        email_log_repository=email_log_repository,
+    )
+
+    result = service.evaluate_followup_eligibility(
+        campaign_id=campaign.id,
+        contact_id="contact_123",
+    )
+
+    assert result.allowed is True
+    assert result.code == "followup_allowed"
+
+
+def test_followup_eligibility_blocks_when_daily_limit_exceeded(monkeypatch: Any) -> None:
+    class FixedDateTime(datetime):
+        @classmethod
+        def now(cls, tz: timezone | None = None) -> datetime:
+            current_time = cls(2026, 5, 27, 10, 0, tzinfo=timezone.utc)
+            return current_time.astimezone(tz) if tz is not None else current_time
+
+    monkeypatch.setattr(campaigns_module, "datetime", FixedDateTime)
+
+    repository = InMemoryCampaignRepository()
+    campaign = repository.add_campaign(campaign_id="campaign_123", client_id="client_123")
+    limit_repository = InMemoryCampaignSendingLimitRepository()
+    limit_repository.ensure_for_campaign(
+        campaign_id=campaign.id,
+        followup_enabled=True,
+        followup_daily_limit=1,
+        followup_monthly_limit=50,
+        followup_delay_value=2,
+        followup_delay_unit="days",
+    )
+    email_log_repository = InMemoryEmailLogRepository()
+    email_log_repository.create_email_log(
+        client_id=campaign.client_id,
+        campaign_id=campaign.id,
+        contact_id="contact_123",
+        send_kind="campaign",
+        status="queued",
+        created_at=datetime(2026, 5, 24, 10, 0, tzinfo=timezone.utc),
+    )
+    email_log_repository.create_email_log(
+        client_id=campaign.client_id,
+        campaign_id=campaign.id,
+        contact_id="contact_followup",
+        send_kind="followup",
+        status="queued",
+        created_at=datetime(2026, 5, 27, 8, 0, tzinfo=timezone.utc),
+    )
+    service = build_admin_service(
+        campaign_repository=repository,
+        campaign_limit_repository=limit_repository,
+        email_log_repository=email_log_repository,
+    )
+
+    result = service.evaluate_followup_eligibility(
+        campaign_id=campaign.id,
+        contact_id="contact_123",
+    )
+
+    assert result.allowed is False
+    assert result.code == "followup_daily_limit_exceeded"
+
+
+def test_followup_eligibility_blocks_when_monthly_limit_exceeded(monkeypatch: Any) -> None:
+    class FixedDateTime(datetime):
+        @classmethod
+        def now(cls, tz: timezone | None = None) -> datetime:
+            current_time = cls(2026, 5, 27, 10, 0, tzinfo=timezone.utc)
+            return current_time.astimezone(tz) if tz is not None else current_time
+
+    monkeypatch.setattr(campaigns_module, "datetime", FixedDateTime)
+
+    repository = InMemoryCampaignRepository()
+    campaign = repository.add_campaign(campaign_id="campaign_123", client_id="client_123")
+    limit_repository = InMemoryCampaignSendingLimitRepository()
+    limit_repository.ensure_for_campaign(
+        campaign_id=campaign.id,
+        followup_enabled=True,
+        followup_daily_limit=5,
+        followup_monthly_limit=1,
+        followup_delay_value=2,
+        followup_delay_unit="days",
+    )
+    email_log_repository = InMemoryEmailLogRepository()
+    email_log_repository.create_email_log(
+        client_id=campaign.client_id,
+        campaign_id=campaign.id,
+        contact_id="contact_123",
+        send_kind="campaign",
+        status="queued",
+        created_at=datetime(2026, 5, 24, 10, 0, tzinfo=timezone.utc),
+    )
+    email_log_repository.create_email_log(
+        client_id=campaign.client_id,
+        campaign_id=campaign.id,
+        contact_id="contact_followup",
+        send_kind="followup",
+        status="queued",
+        created_at=datetime(2026, 5, 2, 8, 0, tzinfo=timezone.utc),
+    )
+    service = build_admin_service(
+        campaign_repository=repository,
+        campaign_limit_repository=limit_repository,
+        email_log_repository=email_log_repository,
+    )
+
+    result = service.evaluate_followup_eligibility(
+        campaign_id=campaign.id,
+        contact_id="contact_123",
+    )
+
+    assert result.allowed is False
+    assert result.code == "followup_monthly_limit_exceeded"
+
+
+def test_primary_campaign_limits_ignore_followup_logs(monkeypatch: Any) -> None:
+    class FixedDateTime(datetime):
+        @classmethod
+        def now(cls, tz: timezone | None = None) -> datetime:
+            current_time = cls(2026, 5, 27, 10, 0, tzinfo=timezone.utc)
+            return current_time.astimezone(tz) if tz is not None else current_time
+
+    monkeypatch.setattr(campaigns_module, "datetime", FixedDateTime)
+
+    repository = InMemoryCampaignRepository()
+    campaign = repository.add_campaign(
+        campaign_id="campaign_123",
+        client_id="client_123",
+        subject="Launch",
+        body_html="<p>Hello</p>",
+        content_ready=True,
+        contacts_ready=True,
+        review_ready=True,
+        current_step="review",
+        status="ready",
+    )
+    contact = build_contact(contact_id="contact_123", email="person@example.test")
+    limit_repository = InMemoryCampaignSendingLimitRepository()
+    limit_repository.ensure_for_campaign(
+        campaign_id=campaign.id,
+        period_email_limit=1,
+        daily_email_limit=1,
+        followup_enabled=True,
+        followup_daily_limit=5,
+        followup_monthly_limit=50,
+        followup_delay_value=2,
+        followup_delay_unit="days",
+    )
+    email_log_repository = InMemoryEmailLogRepository()
+    email_log_repository.create_email_log(
+        client_id=campaign.client_id,
+        campaign_id=campaign.id,
+        contact_id="contact_followup",
+        send_kind="followup",
+        status="queued",
+        created_at=datetime(2026, 5, 27, 8, 0, tzinfo=timezone.utc),
+    )
+    service = build_admin_service(
+        settings=Settings(email_sending_enabled_raw="true"),
+        campaign_repository=repository,
+        campaign_limit_repository=limit_repository,
+        email_log_repository=email_log_repository,
+        contacts=[contact],
+        campaign_contacts={(campaign.client_id, campaign.id, contact.id)},
+    )
+
+    result = service.review_campaign(campaign.id)
+
+    assert result.allowed_to_send is True
+    assert result.daily_used == 0
+    assert result.period_used == 0
 
 
 def test_review_campaign_ignores_ready_and_completed_campaigns_for_running_slot_limit() -> None:

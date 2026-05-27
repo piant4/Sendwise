@@ -130,6 +130,11 @@ function getInitialState(
     periodLimit: summary?.periodLimit ?? campaign.periodEmailLimit,
     periodUsed: summary?.periodUsed ?? 0,
     periodStartedAt: summary?.periodStartedAt ?? campaign.periodStartedAt ?? null,
+    followupEnabled: campaign.followupEnabled,
+    followupDailyLimit: campaign.followupDailyLimit,
+    followupMonthlyLimit: campaign.followupMonthlyLimit,
+    followupDelayValue: campaign.followupDelayValue,
+    followupDelayUnit: campaign.followupDelayUnit,
   };
 }
 
@@ -250,6 +255,16 @@ function buildSendRecap(
       label: "Provider runtime",
       value: summary?.runtime.providerModeLabel ?? "Non disponibile",
     },
+    {
+      label: "Follow-up",
+      value: state.followupEnabled
+        ? `${(state.followupDailyLimit ?? 0).toLocaleString("it-IT")} / giorno · ${(state.followupMonthlyLimit ?? 0).toLocaleString("it-IT")} / mese`
+        : "Disabilitati",
+    },
+    {
+      label: "Ritardo follow-up",
+      value: `${state.followupDelayValue.toLocaleString("it-IT")} ${state.followupDelayUnit === "hours" ? "ore" : "giorni"}`,
+    },
     ...(summary?.runtime.sesLiveValidationStatus
       ? [
           {
@@ -324,6 +339,11 @@ export function AdminCampaignReviewPanel({
     dailyLimit: rawState.dailyLimit ?? campaign.dailyEmailLimit,
     periodLimit: rawState.periodLimit ?? campaign.periodEmailLimit,
     periodStartedAt: rawState.periodStartedAt ?? null,
+    followupEnabled: rawState.followupEnabled ?? campaign.followupEnabled,
+    followupDailyLimit: rawState.followupDailyLimit ?? campaign.followupDailyLimit ?? null,
+    followupMonthlyLimit: rawState.followupMonthlyLimit ?? campaign.followupMonthlyLimit ?? null,
+    followupDelayValue: rawState.followupDelayValue ?? campaign.followupDelayValue,
+    followupDelayUnit: rawState.followupDelayUnit ?? campaign.followupDelayUnit,
   };
   const reviewExecuted = reviewResult !== null || campaign.reviewReady;
   const reviewState = getCampaignReviewStateMeta(state.reviewReady, reviewExecuted);
@@ -737,6 +757,16 @@ export function AdminCampaignReviewPanel({
           ["Invii oggi", `${state.dailyUsed.toLocaleString("it-IT")} / ${state.dailyLimit.toLocaleString("it-IT")}`],
           ["Invii 30 giorni", `${state.periodUsed.toLocaleString("it-IT")} / ${state.periodLimit.toLocaleString("it-IT")}`],
           [
+            "Follow-up",
+            state.followupEnabled
+              ? `${(state.followupDailyLimit ?? 0).toLocaleString("it-IT")} / giorno · ${(state.followupMonthlyLimit ?? 0).toLocaleString("it-IT")} / mese`
+              : "Disabilitati",
+          ],
+          [
+            "Ritardo follow-up",
+            `${state.followupDelayValue.toLocaleString("it-IT")} ${state.followupDelayUnit === "hours" ? "ore" : "giorni"}`,
+          ],
+          [
             "Periodo",
             state.periodStartedAt ? formatDateTimeInRome(state.periodStartedAt) : "Non avviato",
           ],
@@ -747,6 +777,9 @@ export function AdminCampaignReviewPanel({
           </article>
         ))}
       </div>
+      <p className="campaign-field__helper" style={{ margin: "12px 0 0" }}>
+        I follow-up usano limiti separati dagli invii principali.
+      </p>
 
       <details className="campaign-panel campaign-panel--subtle" style={{ marginTop: 18, padding: 18 }}>
         <summary

@@ -1178,6 +1178,10 @@ def test_followup_settings_do_not_change_template_readiness_blockers() -> None:
     result = service.review_campaign(campaign.id)
 
     assert result.followup_enabled is True
+    assert result.followup_daily_limit == 5
+    assert result.followup_monthly_limit == 50
+    assert result.followup_delay_value == 3
+    assert result.followup_delay_unit == "days"
     assert any(
         error.startswith("template_missing_company_name:")
         for error in result.blocking_errors

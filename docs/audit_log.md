@@ -4302,3 +4302,30 @@ Residual risk:
 
 Scope confirmation:
 - No runtime DB mutation, real send, provider event replay, Mailgun/Listmonk/Caddy/Docker/runtime setting change, auth change, sender branding regression, campaign slot lifecycle change, secret read, or recipient email output was performed.
+
+## Milestone 20.3.1-RC-BLOCKER-CLEARANCE - Review Follow-Up Response And Backend Pytest Path
+
+Date: 2026-05-27
+Branch: main
+
+Verified state:
+- `review_campaign()` now returns the persisted follow-up settings already stored in `campaign_sending_limits`: `followup_enabled`, `followup_daily_limit`, `followup_monthly_limit`, `followup_delay_value`, and `followup_delay_unit`.
+- The review response uses the same persisted limit record already used by campaign summary/detail flows, so the admin review API and existing frontend mapping now receive real follow-up values without workaround defaults.
+- The local blocker on executing the full backend suite is cleared through the existing Docker backend image path using Python 3.12 from `backend/Dockerfile`.
+
+Checks executed:
+- `docker compose build backend`
+- `docker run --rm -v "$PWD/backend:/app" -v "$PWD/templates/dist:/templates/dist:ro" -w /app -e PYTHONPATH=/app sendwise-backend python -m pytest tests/test_admin_campaigns.py -k review -q`
+- `docker run --rm -v "$PWD:/workspace" -v "$PWD/templates/dist:/templates/dist:ro" -w /workspace -e PYTHONPATH=/workspace/backend sendwise-backend python -m pytest backend/tests`
+- `cd frontend && npm run lint`
+- `cd frontend && npm run build`
+- `bash scripts/audit.sh`
+- `bash scripts/smoke_test.sh`
+- `git diff --check`
+
+Residual risk:
+- Full backend pytest now executes, but it is not clean: unrelated failures remain concentrated in `backend/tests/test_campaign_dispatch.py`, `backend/tests/test_clerk_auth.py`, `backend/tests/test_client_repository.py`, and `backend/tests/test_contact_repository.py`.
+- This milestone fixed the review-response regression and unblocked executable validation, but it does not resolve the broader pre-existing backend suite failures.
+
+Scope confirmation:
+- No DB schema change, migration, runtime DB mutation, real send, provider replay, Mailgun/Listmonk/Caddy/Docker runtime setting change, follow-up executor work, secret read, or recipient email output was performed.

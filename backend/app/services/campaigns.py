@@ -1271,6 +1271,11 @@ class AdminCampaignService:
             period_remaining=evaluation.limit_usage.period_remaining,
             period_started_at=evaluation.limit_usage.period_started_at,
             period_ends_at=evaluation.limit_usage.period_ends_at,
+            followup_enabled=evaluation.limit_record.followup_enabled,
+            followup_daily_limit=evaluation.limit_record.followup_daily_limit,
+            followup_monthly_limit=evaluation.limit_record.followup_monthly_limit,
+            followup_delay_value=evaluation.limit_record.followup_delay_value,
+            followup_delay_unit=evaluation.limit_record.followup_delay_unit,
             provider_history=evaluation.provider_history,
         )
 

@@ -5,19 +5,12 @@ import { ClientSurface } from "../../../../components/client/ClientSurface";
 import { formatDateTimeLabel } from "../../../../components/client/clientStatus";
 import {
   formatCampaignCount,
-  formatProviderEventMetric,
-  getCampaignOperationalSendState,
-  getCampaignReadinessShortLabel,
-  getProviderEventsAvailabilityLabel,
   getCampaignStatusLabel,
   getCampaignStatusVariant,
 } from "../../../../components/shared/campaignUi";
 import { StatusBadge } from "../../../../components/ui/StatusBadge";
-import {
-  getClientCampaignDetail,
-  getClientCampaigns,
-} from "../../../../lib/api";
-import type { Campaign, CampaignReadModel } from "../../../../types";
+import { getClientCampaigns } from "../../../../lib/api";
+import type { Campaign } from "../../../../types";
 import { requireClientPortalRequest } from "../portalPageData";
 
 export const dynamic = "force-dynamic";
@@ -51,29 +44,6 @@ function buildCampaignStats(campaigns: Campaign[]): CampaignStatusSummary {
   };
 }
 
-async function loadCampaignReadModels(
-  campaigns: Campaign[],
-  accessToken: string | null,
-): Promise<Record<string, { detail: CampaignReadModel } | Error>> {
-  const entries = await Promise.all(
-    campaigns.map(async (campaign) => {
-      try {
-        const detail = await getClientCampaignDetail(campaign.id, accessToken);
-        return [campaign.id, { detail }] as const;
-      } catch (error) {
-        return [
-          campaign.id,
-          error instanceof Error
-            ? error
-            : new Error("Dati campagna non disponibili."),
-        ] as const;
-      }
-    }),
-  );
-
-  return Object.fromEntries(entries);
-}
-
 export default async function ClientCampaignsPage({
   params,
 }: ClientCampaignsPageProps) {
@@ -81,10 +51,7 @@ export default async function ClientCampaignsPage({
   const { accessToken } = await requireClientPortalRequest(portalSlug);
 
   const result = await getClientCampaigns(accessToken)
-    .then(async (campaigns) => ({
-      campaigns,
-      campaignReadModels: await loadCampaignReadModels(campaigns, accessToken),
-    }))
+    .then((campaigns) => ({ campaigns }))
     .catch((error: unknown) => ({
       errorMessage:
         error instanceof Error ? error.message : "Impossibile caricare le campagne.",
@@ -137,137 +104,33 @@ export default async function ClientCampaignsPage({
         >
           {result.campaigns.length > 0 ? (
             <div className="client-list client-list--compact">
-              {result.campaigns.map((campaign) => {
-                const readModel = result.campaignReadModels[campaign.id];
+              {result.campaigns.map((campaign) => (
+                <article key={campaign.id} className="client-row client-row--compact">
+                  <div className="client-row__header">
+                    <div className="client-row__copy">
+                      <strong className="client-row__title">{campaign.name}</strong>
+                      <span className="client-row__meta">
+                        Aggiornata {formatDateTimeLabel(campaign.updated_at)}
+                      </span>
+                    </div>
+                    <StatusBadge
+                      label={getCampaignStatusLabel(campaign.status)}
+                      variant={getCampaignStatusVariant(campaign.status)}
+                    />
+                  </div>
 
-                return (
-                  <article key={campaign.id} className="client-row client-row--compact">
-                    {!readModel || readModel instanceof Error ? (
-                      <>
-                        <div className="client-row__header">
-                          <div className="client-row__copy">
-                            <strong className="client-row__title">{campaign.name}</strong>
-                            <span className="client-row__meta">
-                              Aggiornata {formatDateTimeLabel(campaign.updated_at)}
-                            </span>
-                          </div>
-                          <StatusBadge
-                            label={getCampaignStatusLabel(campaign.status)}
-                            variant={getCampaignStatusVariant(campaign.status)}
-                          />
-                        </div>
-                        <p className="client-row__support client-note--compact">
-                          Dettagli campagna non disponibili.
-                        </p>
-                      </>
-                    ) : (
-                      (() => {
-                        const detail = readModel.detail;
-                        const sendState = getCampaignOperationalSendState(detail.logs);
-                        const providerEventsLabel = getProviderEventsAvailabilityLabel(
-                          detail.logs,
-                        );
+                  <div className="client-row__summary">
+                    <span className="client-row__chip">
+                      Oggetto: {campaign.subject?.trim() || "Non disponibile"}
+                    </span>
+                  </div>
 
-                        return (
-                          <>
-                            <div className="client-row__header">
-                              <div className="client-row__copy">
-                                <strong className="client-row__title">{campaign.name}</strong>
-                                <span className="client-row__meta">
-                                  Aggiornata {formatDateTimeLabel(campaign.updated_at)}
-                                </span>
-                              </div>
-                              <StatusBadge
-                                label={getCampaignStatusLabel(campaign.status)}
-                                variant={getCampaignStatusVariant(campaign.status)}
-                              />
-                            </div>
-
-                            <div className="client-row__summary">
-                              <span className="client-row__chip">
-                                Operativo: {sendState.label}
-                              </span>
-                              <span className="client-row__chip">
-                                Readiness:{" "}
-                                {getCampaignReadinessShortLabel(detail.campaign)}
-                              </span>
-                              <span className="client-row__chip">
-                                Eventi provider: {providerEventsLabel}
-                              </span>
-                            </div>
-
-                            <div className="client-row__stats">
-                              <div className="client-row__stat">
-                                <span>Accettate dal sistema</span>
-                                <strong>{formatCampaignCount(detail.logs.sent ?? 0)}</strong>
-                              </div>
-                              <div className="client-row__stat">
-                                <span>Errori invio</span>
-                                <strong>{formatCampaignCount(detail.logs.failed)}</strong>
-                              </div>
-                              <div className="client-row__stat">
-                                <span>Consegnate</span>
-                                <strong>
-                                  {formatProviderEventMetric(
-                                    detail.logs.delivered,
-                                    detail.logs,
-                                  )}
-                                </strong>
-                              </div>
-                              <div className="client-row__stat">
-                                <span>Aperte</span>
-                                <strong>
-                                  {formatProviderEventMetric(
-                                    detail.logs.opened,
-                                    detail.logs,
-                                  )}
-                                </strong>
-                              </div>
-                              <div className="client-row__stat">
-                                <span>Click</span>
-                                <strong>
-                                  {formatProviderEventMetric(
-                                    detail.logs.clicked,
-                                    detail.logs,
-                                  )}
-                                </strong>
-                              </div>
-                              <div className="client-row__stat">
-                                <span>Uso periodo</span>
-                                <strong>
-                                  {detail.periodUsage.hasRealUsage
-                                    ? formatCampaignCount(detail.periodUsage.periodUsed)
-                                    : "Non disponibile"}
-                                </strong>
-                              </div>
-                              <div className="client-row__stat">
-                                <span>Destinatari idonei</span>
-                                <strong>
-                                  {formatCampaignCount(detail.recipients.eligible)} /{" "}
-                                  {formatCampaignCount(detail.recipients.total)}
-                                </strong>
-                              </div>
-                              <div className="client-row__stat">
-                                <span>Destinatari bloccati</span>
-                                <strong>
-                                  {formatCampaignCount(detail.recipients.blocked)}
-                                </strong>
-                              </div>
-                            </div>
-
-                            <p className="client-row__support client-note--compact">
-                              {sendState.detail}
-                              {detail.periodUsage.periodEmailLimit
-                                ? ` Limite periodo ${formatCampaignCount(detail.periodUsage.periodEmailLimit)}.`
-                                : ""}
-                            </p>
-                          </>
-                        );
-                      })()
-                    )}
-                  </article>
-                );
-              })}
+                  <p className="client-row__support client-note--compact">
+                    Questa lista mostra solo i dati leggeri disponibili nel riepilogo
+                    campagne.
+                  </p>
+                </article>
+              ))}
             </div>
           ) : (
             <div className="client-empty-state">

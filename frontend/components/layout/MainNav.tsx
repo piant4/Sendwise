@@ -139,7 +139,7 @@ export function MainNav({ role, onNavigate, className }: MainNavProps) {
                 className="main-nav__link"
                 data-active={active}
                 aria-current={active ? "page" : undefined}
-                onClick={onNavigate}
+                onNavigate={onNavigate}
               >
                 <Icon className="main-nav__icon" aria-hidden="true" />
                 <span>{item.label}</span>

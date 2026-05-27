@@ -27,7 +27,7 @@ export function TopBar({
         <div className="topbar__mobile-bar">
           {leading ? <div className="topbar__leading">{leading}</div> : null}
           <div className="topbar__mobile-copy">
-            {eyebrow ? <p className="topbar__mobile-eyebrow">{eyebrow}</p> : null}
+            {/* {eyebrow ? <p className="topbar__mobile-eyebrow">{eyebrow}</p> : null} */}
             <div className="topbar__mobile-title-row">
               <strong className="topbar__mobile-title">{mobileLabel ?? title}</strong>
               {isMockMode ? <MockModeBadge /> : null}

@@ -365,30 +365,11 @@ export function ClientRecentCampaignsCard({
               </button>
             ))}
           </div>
-          <span
-            className="client-performance-status-chip"
-            data-tone={providerStatusTone}
-          >
-            {providerStatusLabel}
-          </span>
         </div>
       }
     >
       {hasAnyVisibleData ? (
         <>
-          <div className="client-performance-journey">
-            {funnelSteps.map((step) => (
-              <article
-                key={step.label}
-                className="client-performance-journey__step"
-                data-tone={step.accent}
-              >
-                <span className="client-performance-journey__label">{step.label}</span>
-                <strong>{step.value}</strong>
-                <span className="client-performance-journey__helper">{step.helper}</span>
-              </article>
-            ))}
-          </div>
 
           <div className="client-performance-chart" aria-label="Performance campagne nel periodo">
             {metricEntries.map((metric) => {

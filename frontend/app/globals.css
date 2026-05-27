@@ -8992,7 +8992,6 @@ p {
 
 .client-period-selector {
   display: flex;
-  flex-wrap: wrap;
   gap: 8px;
 }
 

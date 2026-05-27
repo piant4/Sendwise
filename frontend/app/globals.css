@@ -8836,9 +8836,7 @@ p {
 
 .client-period-selector {
   display: flex;
-  flex-wrap: wrap;
   gap: 8px;
-  justify-content: flex-end;
 }
 
 .client-period-selector__button {
@@ -8983,8 +8981,11 @@ p {
 }
 
 .client-performance-journey__step {
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(239, 246, 255, 0.7));
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.92),
+    rgba(239, 246, 255, 0.7)
+  );
   border: 1px solid rgba(202, 213, 225, 0.78);
   border-radius: 18px;
   display: grid;
@@ -9040,8 +9041,11 @@ p {
 }
 
 .client-performance-journey__connector {
-  background:
-    linear-gradient(90deg, rgba(96, 165, 250, 0.18), rgba(37, 99, 235, 0.45));
+  background: linear-gradient(
+    90deg,
+    rgba(96, 165, 250, 0.18),
+    rgba(37, 99, 235, 0.45)
+  );
   border-radius: 999px;
   height: 2px;
   position: absolute;

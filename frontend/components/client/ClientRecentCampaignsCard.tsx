@@ -370,12 +370,6 @@ export function ClientRecentCampaignsCard({
       title="Trend invii e segnali Mailgun"
       aside={
         <div className="client-performance-header__aside">
-          <span
-            className="client-performance-status-chip"
-            data-tone={providerStatusTone}
-          >
-            {providerStatusLabel}
-          </span>
           <div className="client-period-selector" aria-label="Selettore periodo">
             {(Object.keys(WINDOW_LABELS) as ClientDashboardWindowKey[]).map((windowKey) => (
               <button
@@ -394,17 +388,6 @@ export function ClientRecentCampaignsCard({
     >
       {hasAnyVisibleData ? (
         <>
-          <div className="client-performance-summary">
-            {metricEntries.map((metric) => (
-              <article key={metric.label} className="client-performance-summary__item">
-                <span>{metric.label}</span>
-                <strong data-unavailable={typeof metric.value !== "number"}>
-                  {metric.displayValue}
-                </strong>
-              </article>
-            ))}
-          </div>
-
           <div className="client-performance-journey">
             {funnelSteps.map((step, index) => (
               <article
@@ -449,21 +432,10 @@ export function ClientRecentCampaignsCard({
               );
             })}
           </div>
-
-          <div className="client-performance-insights" aria-label="Insight del periodo">
-            {insights.map((insight) => (
-              <p key={insight} className="client-performance-insights__item">
-                {insight}
-              </p>
-            ))}
-          </div>
         </>
       ) : (
-        <div className="client-empty-state client-empty-state--compact">
-          Nessun volume reale disponibile nel periodo selezionato.
-        </div>
+        <p className="client-dashboard-card__empty">Dati performance non disponibili.</p>
       )}
-
       <div className="client-dashboard-card__footer">
         <Link
           className="client-dashboard-hero__action client-dashboard-hero__action--inline"

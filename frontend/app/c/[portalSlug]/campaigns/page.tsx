@@ -74,7 +74,7 @@ export default async function ClientCampaignsPage({
       <section className="client-page-shell">
         <ClientPageHeader
           title="Campagne"
-          description="Stato campagna, invii accettati dal sistema e metriche provider solo quando esistono eventi reali."
+          description=""
         />
 
         <section className="client-page-stat-grid" aria-label="Riepilogo campagne">

@@ -53,7 +53,7 @@ export default async function ClientPortalPage({
 
           <div className="client-dashboard__content-side">
             <ClientRecentBlockedSendsCard summary={result.summary} />
-            <ClientDeliveryCard summary={result.summary} />
+            {/* <ClientDeliveryCard summary={result.summary} /> */}
           </div>
         </div>
       </section>

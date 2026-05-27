@@ -8824,7 +8824,7 @@ p {
 
 .client-dashboard-card__footer {
   display: flex;
-  justify-content: flex-start;
+  justify-content: flex-end;
   margin-top: 2px;
 }
 
@@ -8978,6 +8978,7 @@ p {
   display: grid;
   gap: 12px;
   grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin-bottom: 1.5rem;
 }
 
 .client-performance-journey__step {
@@ -9058,7 +9059,7 @@ p {
 .client-performance-chart {
   display: grid;
   gap: 12px;
-  margin: 0;
+  margin-bottom: 1rem;
 }
 
 .client-performance-chart__row {

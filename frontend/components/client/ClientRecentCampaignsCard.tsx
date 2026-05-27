@@ -367,7 +367,7 @@ export function ClientRecentCampaignsCard({
     <ClientSurface
       className="client-surface--performance"
       bodyClassName="client-surface__body--performance"
-      title="Trend invii e segnali Mailgun"
+      title="Trend campagne"
       aside={
         <div className="client-performance-header__aside">
           <div className="client-period-selector" aria-label="Selettore periodo">

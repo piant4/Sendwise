@@ -233,6 +233,7 @@ def build_client(
     status: str = "active",
     email_limit_per_campaign: int | None = None,
     max_campaigns: int | None = None,
+    metadata: dict[str, Any] | None = None,
 ) -> ClientRecord:
     now = datetime.now(timezone.utc)
     return ClientRecord(
@@ -242,6 +243,7 @@ def build_client(
         status=status,
         email_limit_per_campaign=email_limit_per_campaign,
         max_campaigns=max_campaigns,
+        metadata=metadata or {},
         created_at=now,
         updated_at=now,
     )
@@ -1984,6 +1986,35 @@ def test_listmonk_provider_uses_listmonk_dispatch_even_with_mailgun_smtp_host() 
             )
         },
     ]
+
+
+def test_listmonk_provider_formats_from_header_with_client_sender_name() -> None:
+    fake_listmonk = FakeListmonkClient()
+    service = build_dispatch_service(
+        fake_listmonk=fake_listmonk,
+        settings=build_ready_listmonk_settings(
+            smtp_from_email="sendwise@send.mailerpro.it",
+        ),
+        clients=[
+            build_client(
+                metadata={
+                    "email_brand": {
+                        "company_name": "Acme Labs",
+                        "sender_name": "Team Acme",
+                    }
+                }
+            )
+        ],
+        preparation_service=ListmonkReadyPreparationService(content_ready=True),
+    )
+
+    result = service.send_campaign("campaign_123")
+
+    assert result["status"] == "accepted"
+    assert (
+        fake_listmonk.created_campaign_payloads[0]["from_email"]
+        == "Team Acme <sendwise@send.mailerpro.it>"
+    )
 
 
 def test_listmonk_provider_blocks_when_recipient_specific_unsubscribe_header_url_is_missing() -> None:

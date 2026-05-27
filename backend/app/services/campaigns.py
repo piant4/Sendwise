@@ -1657,11 +1657,16 @@ class AdminCampaignService:
         ):
             return None, None
 
-        email_brand = build_brand_template_variables(None)
+        asset_origin = (
+            self.settings.backend_public_origin
+            or self.settings.backend_public_url.strip()
+        )
+        email_brand = build_brand_template_variables(None, asset_origin=asset_origin)
         brand = build_client_email_brand(client.metadata)
         if brand is not None:
             email_brand = build_brand_template_variables(
-                brand.model_dump(exclude_none=True)
+                brand.model_dump(exclude_none=True),
+                asset_origin=asset_origin,
             )
         variables = build_template_variable_values(
             subject=(campaign.subject or "").strip(),
@@ -3820,6 +3825,13 @@ class CampaignDispatchService:
             return None
 
         try:
+            email_brand: dict[str, str | None] | None = None
+            if self.client_repository is not None:
+                client = self.client_repository.get_by_id(campaign.client_id)
+                if client is not None:
+                    brand = build_client_email_brand(client.metadata)
+                    if brand is not None:
+                        email_brand = brand.model_dump(exclude_none=True)
             list_id = int(str(list_mapping.listmonk_id).strip())
         except ValueError:
             return None
@@ -3829,6 +3841,7 @@ class CampaignDispatchService:
             campaign=campaign,
             list_id=list_id,
             content=content,
+            email_brand=email_brand,
         )
         return payload
 

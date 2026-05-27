@@ -1,9 +1,7 @@
 import { DashboardErrorState } from "../../../components/dashboard/DashboardErrorState";
 import { buildPageMetadata } from "../../../components/shared/metadata";
+import { ClientDashboardAnalyticsSection } from "../../../components/client/ClientDashboardAnalyticsSection";
 import { ClientDashboardHeader } from "../../../components/client/ClientDashboardHeader";
-import { ClientKpiGrid } from "../../../components/client/ClientKpiGrid";
-import { ClientRecentBlockedSendsCard } from "../../../components/client/ClientRecentBlockedSendsCard";
-import { ClientRecentCampaignsCard } from "../../../components/client/ClientRecentCampaignsCard";
 import { getClientOverviewSummary } from "../../../lib/api";
 import { requireClientPortalRequest } from "./portalPageData";
 
@@ -43,18 +41,7 @@ export default async function ClientPortalPage({
     <main className="shell">
       <section className="client-dashboard">
         <ClientDashboardHeader summary={result.summary} />
-        <ClientKpiGrid summary={result.summary} />
-
-        <div className="client-dashboard__content">
-          <div className="client-dashboard__content-main">
-            <ClientRecentCampaignsCard summary={result.summary} />
-          </div>
-
-          <div className="client-dashboard__content-side">
-            <ClientRecentBlockedSendsCard summary={result.summary} />
-            {/* <ClientDeliveryCard summary={result.summary} /> */}
-          </div>
-        </div>
+        <ClientDashboardAnalyticsSection summary={result.summary} />
       </section>
     </main>
   );

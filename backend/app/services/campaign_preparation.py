@@ -2,8 +2,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from email.utils import formataddr
 import json
-from typing import Any
+from typing import Any, Mapping
 
 from app.core.auth import AuthenticatedUser
 from app.core.config import Settings, get_settings
@@ -52,6 +53,7 @@ def build_listmonk_campaign_payload(
     campaign: ClientCampaignRecord,
     list_id: int,
     content: dict[str, Any],
+    email_brand: Mapping[str, str | None] | None = None,
 ) -> tuple[dict[str, Any], bool]:
     subject = str(content.get("subject") or "").strip()
     content_ready = bool(content["content_ready"])
@@ -71,7 +73,10 @@ def build_listmonk_campaign_payload(
     if altbody:
         payload["altbody"] = altbody
     if settings.smtp_from_email.strip():
-        payload["from_email"] = settings.smtp_from_email.strip()
+        payload["from_email"] = build_campaign_sender_from_email(
+            settings=settings,
+            email_brand=email_brand,
+        )
     headers = _build_listmonk_campaign_headers(
         settings=settings,
         campaign=campaign,
@@ -81,6 +86,43 @@ def build_listmonk_campaign_payload(
         payload["headers"] = headers
 
     return payload, content_ready
+
+
+def build_campaign_sender_display_name(
+    email_brand: Mapping[str, str | None] | None,
+) -> str:
+    email_brand_payload = dict(email_brand or {})
+    sender_name = _sanitize_header_display_name(email_brand_payload.get("sender_name"))
+    if sender_name:
+        return sender_name
+
+    company_name = _sanitize_header_display_name(email_brand_payload.get("company_name"))
+    if company_name:
+        return company_name
+
+    return "Sendwise"
+
+
+def build_campaign_sender_from_email(
+    *,
+    settings: Settings,
+    email_brand: Mapping[str, str | None] | None = None,
+) -> str:
+    verified_sender_email = settings.smtp_from_email.strip()
+    if not verified_sender_email:
+        return ""
+    return formataddr(
+        (
+            build_campaign_sender_display_name(email_brand),
+            verified_sender_email,
+        )
+    )
+
+
+def _sanitize_header_display_name(value: str | None) -> str:
+    if value is None:
+        return ""
+    return " ".join(str(value).replace("\r", " ").replace("\n", " ").split())
 
 
 def _build_listmonk_campaign_headers(
@@ -133,7 +175,12 @@ class CampaignPreparationService:
             }
 
         client = self.client_repository.get_by_id(campaign.client_id)
-        content = self._render_campaign_content(campaign=campaign, client=client)
+        email_brand = self._resolve_email_brand(client)
+        content = self._render_campaign_content(
+            campaign=campaign,
+            client=client,
+            email_brand=email_brand,
+        )
         if not content.get("allow_listmonk_sync", True):
             return {
                 "status": "blocked",
@@ -192,6 +239,7 @@ class CampaignPreparationService:
                 campaign=campaign,
                 list_id=self._coerce_listmonk_int(list_mapping.listmonk_id, "list"),
                 content=content,
+                email_brand=email_brand,
             )
         )
 
@@ -225,11 +273,13 @@ class CampaignPreparationService:
         campaign: ClientCampaignRecord,
         list_id: int,
         content: dict[str, Any],
+        email_brand: Mapping[str, str | None],
     ) -> tuple[Any, bool, bool]:
         payload, content_ready = self._build_listmonk_campaign_payload(
             campaign=campaign,
             list_id=list_id,
             content=content,
+            email_brand=email_brand,
         )
         mapping = self.mapping_service.get_mapping(
             client_id=campaign.client_id,
@@ -257,12 +307,14 @@ class CampaignPreparationService:
         campaign: ClientCampaignRecord,
         list_id: int,
         content: dict[str, Any],
+        email_brand: Mapping[str, str | None],
     ) -> tuple[dict[str, Any], bool]:
         return build_listmonk_campaign_payload(
             settings=self.settings,
             campaign=campaign,
             list_id=list_id,
             content=content,
+            email_brand=email_brand,
         )
 
     def _render_campaign_content(
@@ -270,11 +322,11 @@ class CampaignPreparationService:
         *,
         campaign: ClientCampaignRecord,
         client: Any | None,
+        email_brand: dict[str, str],
     ) -> dict[str, Any]:
         subject = (campaign.subject or "").strip() or f"Sendwise draft {campaign.id}"
         preview_text_value = (campaign.preview_text or "").strip()
         client_name = self._resolve_client_name(client)
-        email_brand = self._resolve_email_brand(client)
         unsubscribe_url = build_unsubscribe_url(
             settings=self.settings,
             campaign_id=campaign.id,
@@ -417,14 +469,21 @@ class CampaignPreparationService:
         return variables
 
     def _resolve_email_brand(self, client: Any | None) -> dict[str, str]:
+        asset_origin = (
+            self.settings.backend_public_origin
+            or self.settings.backend_public_url.strip()
+        )
         metadata = getattr(client, "metadata", None)
         if not isinstance(metadata, dict):
-            return build_brand_template_variables(None)
+            return build_brand_template_variables(None, asset_origin=asset_origin)
 
         brand = build_client_email_brand(metadata)
         if brand is None:
-            return build_brand_template_variables(None)
-        return build_brand_template_variables(brand.model_dump(exclude_none=True))
+            return build_brand_template_variables(None, asset_origin=asset_origin)
+        return build_brand_template_variables(
+            brand.model_dump(exclude_none=True),
+            asset_origin=asset_origin,
+        )
 
     def _resolve_client_name(self, client: Any | None) -> str:
         if client is None:

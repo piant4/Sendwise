@@ -4246,3 +4246,30 @@ Residual risk:
 
 Scope confirmation:
 - No runtime DB mutation, real send, webhook replay, provider configuration change, Docker/runtime setting change, secret read, or recipient email output was performed.
+
+## Milestone 20.2-A+B - Client Filters And Sender Branding Fix
+
+Date: 2026-05-27
+Branch: main
+
+Verified state:
+- Client dashboard period selection is now owned by a shared client analytics section, so the selected window drives both the KPI strip and the detailed campaign analytics card instead of leaving the KPI strip pinned to the backend 7d summary.
+- The analytics card still uses backend-provided `performance_analytics.windows` data only; no synthetic or fallback period metrics were introduced.
+- Campaign preparation now formats the real Listmonk `from_email` header with the verified runtime sender address plus a safe display-name fallback chain: `sender_name`, then `company_name`, then `Sendwise`.
+- The verified sender email/domain remains `SMTP_FROM_EMAIL`; client brand metadata does not override the sender address.
+- Managed client brand logos are now expanded to absolute public URLs in the real campaign-preparation render path used for Business DB email bodies.
+
+Checks executed:
+- `npm run lint`
+- `npm run build`
+- `bash scripts/audit.sh`
+- `bash scripts/smoke_test.sh`
+- `git diff --check`
+- Docker targeted pytest subset for client overview analytics windows, campaign preparation branding, dispatch sender header formatting, and template rendering.
+
+Residual risk:
+- Full backend pytest was not clean in this environment because unrelated pre-existing failures remain in `backend/tests/test_campaign_dispatch.py` and `backend/tests/test_clerk_auth.py`.
+- Browser/manual QA against a live client portal was not run in this task.
+
+Scope confirmation:
+- No real send, runtime DB mutation, webhook replay, Mailgun/Listmonk/Caddy/Docker/runtime setting change, BIMI work, follow-up logic change, secret read, or recipient email output was performed.

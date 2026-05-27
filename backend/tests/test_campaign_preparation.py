@@ -178,6 +178,7 @@ def build_preparation_service(
     client_metadata: dict[str, Any] | None = None,
     mapping_repository: InMemoryListmonkMappingRepository | None = None,
     listmonk_client: FakeListmonkPreparationClient | None = None,
+    settings: Settings | None = None,
 ) -> tuple[CampaignPreparationService, FakeListmonkPreparationClient, InMemoryListmonkMappingRepository]:
     fake_listmonk = listmonk_client or FakeListmonkPreparationClient()
     repository = mapping_repository or InMemoryListmonkMappingRepository()
@@ -210,7 +211,8 @@ def build_preparation_service(
         unsubscribe_token_service=UnsubscribeTokenService(Settings(environment="test")),
     )
     service = CampaignPreparationService(
-        settings=Settings(
+        settings=settings
+        or Settings(
             environment="test",
             smtp_from_email="sender@example.test",
             frontend_url="https://app.sendwise.example.test",
@@ -249,7 +251,7 @@ def test_prepare_campaign_creates_list_subscribers_campaign_and_mappings() -> No
     assert created_payload["content_type"] == "html"
     assert created_payload["messenger"] == "email"
     assert created_payload["tags"] == ["sendwise", "content_ready:true"]
-    assert created_payload["from_email"] == "sender@example.test"
+    assert created_payload["from_email"] == "Team Acme <sender@example.test>"
     assert created_payload["altbody"] == "Persisted body."
     assert (
         created_payload["body"]
@@ -473,7 +475,80 @@ def test_build_listmonk_campaign_payload_preserves_base_fields_with_mailgun_head
     assert payload["messenger"] == "email"
     assert payload["tags"] == ["sendwise", "content_ready:true"]
     assert payload["altbody"] == "Rendered body text"
-    assert payload["from_email"] == "sender@example.test"
+    assert payload["from_email"] == "Sendwise <sender@example.test>"
+
+
+def test_build_listmonk_campaign_payload_prefers_sender_name_in_from_header() -> None:
+    campaign = build_campaign()
+
+    payload, _content_ready = build_listmonk_campaign_payload(
+        settings=Settings(
+            environment="test",
+            smtp_from_email="sender@example.test",
+        ),
+        campaign=campaign,
+        list_id=7,
+        content={
+            "subject": "Launch",
+            "content_ready": True,
+            "body": "<html><body><p>Rendered body</p></body></html>",
+            "body_text": "Rendered body text",
+        },
+        email_brand={
+            "company_name": "Acme Labs",
+            "sender_name": "Team Acme",
+        },
+    )
+
+    assert payload["from_email"] == "Team Acme <sender@example.test>"
+
+
+def test_build_listmonk_campaign_payload_falls_back_to_company_name_in_from_header() -> None:
+    campaign = build_campaign()
+
+    payload, _content_ready = build_listmonk_campaign_payload(
+        settings=Settings(
+            environment="test",
+            smtp_from_email="sender@example.test",
+        ),
+        campaign=campaign,
+        list_id=7,
+        content={
+            "subject": "Launch",
+            "content_ready": True,
+            "body": "<html><body><p>Rendered body</p></body></html>",
+            "body_text": "Rendered body text",
+        },
+        email_brand={
+            "company_name": "Acme Labs",
+        },
+    )
+
+    assert payload["from_email"] == "Acme Labs <sender@example.test>"
+
+
+def test_build_listmonk_campaign_payload_sanitizes_sender_name_in_from_header() -> None:
+    campaign = build_campaign()
+
+    payload, _content_ready = build_listmonk_campaign_payload(
+        settings=Settings(
+            environment="test",
+            smtp_from_email="sender@example.test",
+        ),
+        campaign=campaign,
+        list_id=7,
+        content={
+            "subject": "Launch",
+            "content_ready": True,
+            "body": "<html><body><p>Rendered body</p></body></html>",
+            "body_text": "Rendered body text",
+        },
+        email_brand={
+            "sender_name": "Team\r\nAcme",
+        },
+    )
+
+    assert payload["from_email"] == "Team Acme <sender@example.test>"
 
 
 def test_prepare_campaign_is_idempotent_and_updates_existing_campaign() -> None:
@@ -630,6 +705,27 @@ def test_prepare_campaign_renders_campaign_and_brand_variables() -> None:
     assert "Launch campaign" in result["content"]["body_text"]
     assert "{{ .Subscriber.Email }}" in result["content"]["body_text"]
     assert result["content"]["unsubscribe_url"] in fake_listmonk.created_campaign_payloads[0]["body"]
+
+
+def test_prepare_campaign_expands_managed_logo_paths_to_absolute_public_urls() -> None:
+    service, _fake_listmonk, _repository = build_preparation_service(
+        campaign=build_campaign(
+            body_html="<html><body><p>{{logo}}</p></body></html>",
+        ),
+        settings=Settings(
+            environment="test",
+            smtp_from_email="sender@example.test",
+            frontend_url="https://app.sendwise.example.test",
+            backend_public_url="https://api.sendwise.example.test",
+        ),
+    )
+
+    result = service.prepare_campaign("campaign_123")
+
+    assert (
+        'src="https://api.sendwise.example.test/static/client-brand-logos/acme.webp"'
+        in result["content"]["body"]
+    )
 
 
 def test_prepare_campaign_preserves_listmonk_native_placeholders() -> None:

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import {
   formatProviderEventMetric,
   getProviderEventsAvailabilityLabel,
@@ -16,6 +16,8 @@ import { ClientSurface } from "./ClientSurface";
 
 interface ClientRecentCampaignsCardProps {
   summary: ClientOverviewSummary;
+  selectedWindow: ClientDashboardWindowKey;
+  onSelectWindow: (windowKey: ClientDashboardWindowKey) => void;
 }
 
 const WINDOW_LABELS: Record<ClientDashboardWindowKey, string> = {
@@ -198,6 +200,8 @@ function getMetricEntry(
 
 export function ClientRecentCampaignsCard({
   summary,
+  selectedWindow,
+  onSelectWindow,
 }: ClientRecentCampaignsCardProps) {
   const performance = summary.clientDashboard?.performanceAnalytics;
   const windows = useMemo(
@@ -212,9 +216,6 @@ export function ClientRecentCampaignsCard({
         ),
       ),
     [performance?.windows],
-  );
-  const [selectedWindow, setSelectedWindow] = useState<ClientDashboardWindowKey>(
-    performance?.defaultWindow ?? "7d",
   );
   const selectedMetrics = windows[selectedWindow];
   const selectedWindowAvailable = availableWindowKeys.has(selectedWindow);
@@ -358,7 +359,7 @@ export function ClientRecentCampaignsCard({
                 type="button"
                 className="client-period-selector__button"
                 data-active={selectedWindow === windowKey}
-                onClick={() => setSelectedWindow(windowKey)}
+                onClick={() => onSelectWindow(windowKey)}
               >
                 {WINDOW_LABELS[windowKey]}
               </button>

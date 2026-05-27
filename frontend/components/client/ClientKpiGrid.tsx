@@ -1,7 +1,14 @@
-import type { ClientDashboardKpiValue, ClientOverviewSummary } from "../../types";
+"use client";
+
+import type {
+  ClientDashboardKpiValue,
+  ClientDashboardWindowKey,
+  ClientOverviewSummary,
+} from "../../types";
 
 interface ClientKpiGridProps {
   summary: ClientOverviewSummary;
+  selectedWindow: ClientDashboardWindowKey;
 }
 
 function formatMetric(value: ClientDashboardKpiValue, withLimit = false): string {
@@ -31,8 +38,33 @@ function formatProviderMetric(
   return "Non disponibili";
 }
 
-export function ClientKpiGrid({ summary }: ClientKpiGridProps) {
+const WINDOW_LABELS: Record<ClientDashboardWindowKey, string> = {
+  "24h": "24h",
+  "7d": "7 gg",
+  "14d": "14 gg",
+  "30d": "30 gg",
+  allTime: "Sempre",
+};
+
+function buildWindowMetric(
+  value: number | null,
+  available: boolean,
+): ClientDashboardKpiValue {
+  return {
+    value,
+    available,
+  };
+}
+
+export function ClientKpiGrid({ summary, selectedWindow }: ClientKpiGridProps) {
   const dashboard = summary.clientDashboard;
+  const selectedMetrics = dashboard?.performanceAnalytics.windows[selectedWindow];
+  const windowLabel = WINDOW_LABELS[selectedWindow];
+  const sentMetric = buildWindowMetric(
+    selectedMetrics?.sent ?? null,
+    selectedMetrics?.sentAvailable ?? false,
+  );
+
   const cards = [
     {
       title: "Campagne attive",
@@ -40,33 +72,40 @@ export function ClientKpiGrid({ summary }: ClientKpiGridProps) {
       tone: "campaigns",
     },
     {
-      title: "Mail inviate ultimi 7 gg",
-      value: formatMetric(
-        dashboard?.kpis.sentLast7d ?? { value: null, limit: null, available: false },
-      ),
+      title: `Mail inviate ${windowLabel}`,
+      value: formatMetric(sentMetric),
       tone: "sent",
     },
     {
-      title: "Consegnate ultimi 7 gg",
+      title: `Consegnate ${windowLabel}`,
       value: formatProviderMetric(
-        dashboard?.kpis.deliveredLast7d ?? { value: null, limit: null, available: false },
-        dashboard?.kpis.sentLast7d,
+        buildWindowMetric(
+          selectedMetrics?.delivered ?? null,
+          selectedMetrics?.deliveredAvailable ?? false,
+        ),
+        sentMetric,
       ),
       tone: "limits",
     },
     {
-      title: "Aperture ultimi 7 gg",
+      title: `Aperture ${windowLabel}`,
       value: formatProviderMetric(
-        dashboard?.kpis.openedLast7d ?? { value: null, limit: null, available: false },
-        dashboard?.kpis.sentLast7d,
+        buildWindowMetric(
+          selectedMetrics?.opened ?? null,
+          selectedMetrics?.openedAvailable ?? false,
+        ),
+        sentMetric,
       ),
       tone: "blocked",
     },
     {
-      title: "Click ultimi 7 gg",
+      title: `Click ${windowLabel}`,
       value: formatProviderMetric(
-        dashboard?.kpis.clickedLast7d ?? { value: null, limit: null, available: false },
-        dashboard?.kpis.sentLast7d,
+        buildWindowMetric(
+          selectedMetrics?.clicked ?? null,
+          selectedMetrics?.clickedAvailable ?? false,
+        ),
+        sentMetric,
       ),
       tone: "queued",
     },

@@ -2940,6 +2940,30 @@ class CampaignDispatchService:
                     update={"status": CampaignStatus.ready.value}
                 )
 
+            if campaign is None or client is None:
+                guard_result = self.guard.authorize_campaign_dispatch(
+                    email_sending_enabled=self.settings.email_sending_enabled,
+                    client=client,
+                    campaign=guard_campaign,
+                    slot=slot,
+                    contacts=contacts,
+                    suppressed_emails=suppressed_emails,
+                    active_campaign_count=active_campaign_count,
+                    campaign_limit_usage=limit_usage,
+                )
+                if guard_result.decision != SendDecision.AUTHORIZED:
+                    return self._blocked_response(
+                        campaign_id=campaign_id,
+                        guard_result=guard_result,
+                        blocked_send_repository=blocked_send_repository,
+                    )
+                return self._diagnostic_response(
+                    campaign_id=campaign_id,
+                    decision=SendDecision.BLOCKED,
+                    reason="Campaign not found.",
+                    code="campaign_not_found",
+                )
+
             guard_result = self.guard.authorize_campaign_dispatch(
                 email_sending_enabled=self.settings.email_sending_enabled,
                 client=client,
@@ -2950,6 +2974,18 @@ class CampaignDispatchService:
                 active_campaign_count=active_campaign_count,
                 campaign_limit_usage=limit_usage,
             )
+            if duplicate_guard.blocked and (
+                guard_result.decision == SendDecision.AUTHORIZED
+                or guard_result.code == "campaign_status_not_sendable"
+            ):
+                return self._diagnostic_response(
+                    campaign_id=campaign_id,
+                    decision=guard_result,
+                    reason=str(duplicate_guard.reason),
+                    client_id=campaign.client_id,
+                    code=str(duplicate_guard.code),
+                    content_ready=campaign.content_ready,
+                )
             if guard_result.decision != SendDecision.AUTHORIZED:
                 return self._blocked_response(
                     campaign_id=campaign_id,
@@ -2957,13 +2993,6 @@ class CampaignDispatchService:
                     blocked_send_repository=blocked_send_repository,
                 )
 
-            if campaign is None or client is None:
-                return self._diagnostic_response(
-                    campaign_id=campaign_id,
-                    decision=guard_result,
-                    reason="Campaign not found.",
-                    code="campaign_not_found",
-                )
             if duplicate_guard.blocked:
                 return self._diagnostic_response(
                     campaign_id=campaign_id,
@@ -3185,6 +3214,7 @@ class CampaignDispatchService:
                     campaign_id=campaign.id,
                     contacts=contacts,
                     status="failed",
+                    sending_domain=sending_domain,
                     body=str(content.get("body") or ""),
                     retryable_log_ids_by_contact=duplicate_guard.retryable_log_ids_by_contact,
                 )

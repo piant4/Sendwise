@@ -4329,3 +4329,31 @@ Residual risk:
 
 Scope confirmation:
 - No DB schema change, migration, runtime DB mutation, real send, provider replay, Mailgun/Listmonk/Caddy/Docker runtime setting change, follow-up executor work, secret read, or recipient email output was performed.
+
+## Milestone 20.3.2-BACKEND-TEST-SUITE-STABILIZATION - Backend Pytest Stabilization
+
+Date: 2026-05-27
+Branch: main
+
+Verified state:
+- Backend repository tests now keep the current JSON metadata write contract: contact metadata is serialized before PostgreSQL writes, and client creation still writes the legacy `name` placeholder when that column exists while also persisting JSON metadata for both schema shapes.
+- Campaign dispatch now preserves duplicate-dispatch blocking semantics for already running/completed campaigns, projects `max_campaigns` against the slot that the current dispatch would consume, and persists failed dispatch logs with the configured sending-domain context.
+- Shared backend pytest isolation is now restored after startup import-cycle tests clear `app.*` modules. `backend/tests/conftest.py` reloads the affected test modules when their imported `app` references become stale, so Clerk auth and repository monkeypatch tests stay bound to the live module graph during the full suite.
+- Full backend pytest is clean again in the Docker-backed path.
+
+Checks executed:
+- `docker compose build backend`
+- `docker run --rm -v "$PWD:/workspace" -v "$PWD/templates/dist:/templates/dist:ro" -w /workspace -e PYTHONPATH=/workspace/backend sendwise-backend python -m pytest backend/tests/test_contact_repository.py -q`
+- `docker run --rm -v "$PWD:/workspace" -v "$PWD/templates/dist:/templates/dist:ro" -w /workspace -e PYTHONPATH=/workspace/backend sendwise-backend python -m pytest backend/tests/test_client_repository.py -q`
+- `docker run --rm -v "$PWD:/workspace" -v "$PWD/templates/dist:/templates/dist:ro" -w /workspace -e PYTHONPATH=/workspace/backend sendwise-backend python -m pytest backend/tests/test_clerk_auth.py -q`
+- `docker run --rm -v "$PWD:/workspace" -v "$PWD/templates/dist:/templates/dist:ro" -w /workspace -e PYTHONPATH=/workspace/backend sendwise-backend python -m pytest backend/tests/test_campaign_dispatch.py -q`
+- `docker run --rm -v "$PWD:/workspace" -v "$PWD/templates/dist:/templates/dist:ro" -w /workspace -e PYTHONPATH=/workspace/backend sendwise-backend python -m pytest backend/tests -q`
+- `bash scripts/audit.sh`
+- `bash scripts/smoke_test.sh`
+- `git diff --check`
+
+Residual risk:
+- Validation stayed inside the backend pytest/audit/smoke scope. No frontend/browser QA was part of this milestone.
+
+Scope confirmation:
+- No DB schema change, migration, runtime DB mutation, real send, provider replay, Mailgun/Listmonk/Caddy/Docker runtime setting change, follow-up executor work, secret read, or recipient email output was performed.

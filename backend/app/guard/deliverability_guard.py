@@ -6,6 +6,7 @@ from typing import Mapping, Sequence
 from app.repositories.campaign_slots import CampaignSlotRecord
 from app.repositories.clients import ClientCampaignRecord, ClientRecord
 from app.repositories.contacts import ContactRecord
+from app.schemas.common import campaign_consumes_running_slot
 
 
 class SendDecision(StrEnum):
@@ -203,7 +204,13 @@ class DeliverabilityGuard:
                 diagnostic="Guard failed closed because max_campaigns cannot be evaluated.",
             )
 
-        if client.max_campaigns is not None and active_campaign_count > client.max_campaigns:
+        projected_active_campaign_count = active_campaign_count + (
+            0 if campaign_consumes_running_slot(campaign.status) else 1
+        )
+        if (
+            client.max_campaigns is not None
+            and projected_active_campaign_count > client.max_campaigns
+        ):
             return self._blocked(
                 code="max_campaigns_exceeded",
                 reason="Client max_campaigns limit is exceeded.",

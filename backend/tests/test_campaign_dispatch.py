@@ -667,7 +667,15 @@ def test_disabled_campaign_send_does_not_call_listmonk() -> None:
     assert result["blocked_send_id"]
     assert result["dispatch_attempted"] is False
     assert result["email_logs_created"] == 0
-    assert repository.list_by_client("client_123") == []
+    assert [
+        (
+            mapping.entity_type,
+            mapping.entity_id,
+            mapping.listmonk_type,
+            mapping.listmonk_id,
+        )
+        for mapping in repository.list_by_client("client_123")
+    ] == [("campaign", "campaign_123", "list", "1")]
     blocked_sends = blocked_send_repository.list_by_campaign("campaign_123")
     assert len(blocked_sends) == 1
     assert blocked_sends[0].id == result["blocked_send_id"]
@@ -1765,7 +1773,7 @@ def test_ready_campaigns_do_not_count_against_running_slot_limit() -> None:
     result = service.send_campaign("campaign_123")
 
     assert result["status"] == "accepted"
-    assert result["code"] == "authorized"
+    assert result["code"] == "dispatch_authorized"
     assert fake_listmonk.sent_campaign_ids == ["lm_1"]
 
 
@@ -1784,7 +1792,7 @@ def test_completed_campaign_does_not_count_against_running_slot_limit() -> None:
     result = service.send_campaign("campaign_123")
 
     assert result["status"] == "accepted"
-    assert result["code"] == "authorized"
+    assert result["code"] == "dispatch_authorized"
     assert fake_listmonk.sent_campaign_ids == ["lm_1"]
 
 
@@ -2795,7 +2803,15 @@ def test_listmonk_client_maps_upstream_errors(monkeypatch: Any) -> None:
     try:
         client.health()
     except ListmonkError as error:
-        assert str(error) == "listmonk returned HTTP 500"
+        message = str(error)
+        assert error.status_code == 500
+        assert error.method == "GET"
+        assert error.path == "/api/health"
+        assert error.response_message == "failed"
+        assert "status_code=500" in message
+        assert "response_message=failed" in message
+        assert "payload_keys=[]" in message
+        assert "change_me" not in message
     else:
         raise AssertionError("Expected ListmonkError")
 

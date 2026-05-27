@@ -95,6 +95,7 @@ def test_create_client_populates_legacy_name_with_email_placeholder(
         None,
         "solo.email@example.test",
         "active",
+        "{}",
     )
     assert record.email == "solo.email@example.test"
     assert record.personal_name is None
@@ -115,4 +116,9 @@ def test_create_client_omits_legacy_name_when_column_is_absent(
 
     insert_query, insert_parameters = connection.cursor_instance.executed[1]
     assert "\n                            name," not in insert_query
-    assert insert_parameters == ("fresh.schema@example.test", None, "active")
+    assert insert_parameters == (
+        "fresh.schema@example.test",
+        None,
+        "active",
+        "{}",
+    )

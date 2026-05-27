@@ -160,7 +160,7 @@ export function AccountSecuritySheet({
         onOpenChange(open ? mode : null);
       }}
     >
-      <SheetContent className="account-sheet w-full sm:max-w-[640px]" side="right">
+      <SheetContent className="account-sheet account-sheet--fullscreen" side="right">
         {copy ? (
           <div className="account-sheet__panel">
             <SheetHeader className="account-sheet__header">
@@ -191,7 +191,7 @@ export function AccountSecuritySheet({
                       rootBox: "w-full",
                       cardBox: "w-full",
                       card:
-                        "w-full border border-[color:var(--sw-border)] bg-[color:var(--sw-surface-elevated)] text-[color:var(--sw-text)] shadow-none",
+                        "w-full max-w-none border border-[color:var(--sw-border)] bg-[color:var(--sw-surface-elevated)] text-[color:var(--sw-text)] shadow-none",
                       navbar: "hidden",
                       pageScrollBox: "p-0",
                       scrollBox: "p-0",

@@ -116,7 +116,7 @@ Local services:
 Start with the dev Mailpit overlay:
 
 ```bash
-docker compose --env-file .env -f docker-compose.yml -f docker-compose.dev.yml up -d
+SENDWISE_ENV_FILE=.env.example docker compose --env-file .env.example -f docker-compose.yml -f docker-compose.dev.yml up -d --build
 ```
 
 Mailpit:
@@ -124,7 +124,19 @@ Mailpit:
 - Web UI: <http://localhost:8025>
 - SMTP: `localhost:1025`
 
-Mailpit is for development/staging capture only and must not be used as a production send posture.
+The dev overlay forces `EMAIL_SENDING_ENABLED=false`, `EMAIL_PROVIDER=mailpit`, and Listmonk SMTP to the local Mailpit service so local QA does not inherit staging or provider SMTP settings. Mailpit is for development/staging capture only and must not be used as a production send posture.
+
+Before local QA, run:
+
+```bash
+bash scripts/local_qa_preflight.sh
+```
+
+If the preflight reports missing migration columns on an existing local PostgreSQL volume, bring the local database current without dropping data:
+
+```bash
+SENDWISE_ENV_FILE=.env.example SENDWISE_COMPOSE_ENV_FILE=.env.example SENDWISE_COMPOSE_FILES=docker-compose.yml:docker-compose.dev.yml bash scripts/apply_migrations.sh
+```
 
 ## Migrations
 
@@ -136,6 +148,12 @@ Fresh PostgreSQL volumes are initialized by `db/init.sql`. Existing local or sta
 ```
 
 The runner applies pending files from `db/migrations` through the Docker Compose `postgres` service and records them in `schema_migrations`.
+
+For the local dev overlay, use the local-safe Compose scope:
+
+```bash
+SENDWISE_ENV_FILE=.env.example SENDWISE_COMPOSE_ENV_FILE=.env.example SENDWISE_COMPOSE_FILES=docker-compose.yml:docker-compose.dev.yml ./scripts/apply_migrations.sh
+```
 
 ## Checks
 

@@ -23,4 +23,12 @@ fi
 
 bash -n scripts/apply_migrations.sh
 
+if [ ! -f scripts/local_qa_preflight.sh ]; then
+  echo "Local QA preflight is missing: scripts/local_qa_preflight.sh"
+  exit 1
+fi
+
+bash -n scripts/local_qa_preflight.sh
+bash scripts/local_qa_preflight.sh --config-only
+
 echo "Smoke test passed."

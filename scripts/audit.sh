@@ -127,11 +127,32 @@ else
   echo "OK Mailpit present in dev compose"
 fi
 
-if ! grep -q 'LISTMONK_smtp__host: ${SMTP_HOST}' docker-compose.dev.yml; then
-  echo "FAIL dev compose must read listmonk SMTP host from selected env file"
+if ! grep -q 'LISTMONK_smtp__host: mailpit' docker-compose.dev.yml; then
+  echo "FAIL dev compose must force listmonk SMTP host to Mailpit"
   failures=$((failures + 1))
 else
-  echo "OK dev compose reads listmonk SMTP host from selected env file"
+  echo "OK dev compose forces listmonk SMTP host to Mailpit"
+fi
+
+if ! grep -q 'EMAIL_PROVIDER: "mailpit"' docker-compose.dev.yml; then
+  echo "FAIL dev compose must force backend EMAIL_PROVIDER to mailpit"
+  failures=$((failures + 1))
+else
+  echo "OK dev compose forces backend EMAIL_PROVIDER to mailpit"
+fi
+
+if ! grep -q 'EMAIL_SENDING_ENABLED: "false"' docker-compose.dev.yml; then
+  echo "FAIL dev compose must force backend EMAIL_SENDING_ENABLED=false"
+  failures=$((failures + 1))
+else
+  echo "OK dev compose forces backend EMAIL_SENDING_ENABLED=false"
+fi
+
+if [ ! -f scripts/local_qa_preflight.sh ]; then
+  echo "FAIL local QA preflight script is missing"
+  failures=$((failures + 1))
+else
+  echo "OK local QA preflight script present"
 fi
 
 if ! grep -q 'env_file:' docker-compose.yml || ! grep -q '${SENDWISE_ENV_FILE:-.env}' docker-compose.yml; then

@@ -46,18 +46,35 @@ fi
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$repo_root"
 
+compose_args=(docker compose)
+
+compose_env_file="${SENDWISE_COMPOSE_ENV_FILE:-}"
+if [ -n "$compose_env_file" ]; then
+  compose_args+=(--env-file "$compose_env_file")
+fi
+
+compose_files="${SENDWISE_COMPOSE_FILES:-}"
+if [ -n "$compose_files" ]; then
+  IFS=':' read -r -a compose_file_items <<<"$compose_files"
+  for compose_file in "${compose_file_items[@]}"; do
+    if [ -n "$compose_file" ]; then
+      compose_args+=(-f "$compose_file")
+    fi
+  done
+fi
+
 if ! command -v docker >/dev/null 2>&1; then
   echo "Docker is unavailable. Install Docker before applying migrations."
   exit 1
 fi
 
-if ! docker compose version >/dev/null 2>&1; then
+if ! "${compose_args[@]}" version >/dev/null 2>&1; then
   echo "Docker Compose is unavailable. Install Docker Compose before applying migrations."
   exit 1
 fi
 
 psql_compose() {
-  docker compose exec -T postgres sh -lc \
+  "${compose_args[@]}" exec -T postgres sh -lc \
     'psql -q -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" "$@"' \
     sh "$@"
 }

@@ -1,5 +1,21 @@
 # Audit Log
 
+## Milestone 20.4.1-LOCAL-QA-BLOCKER-FIX - Local QA Blocker Clearance
+
+Date: 2026-05-27
+Branch: main
+
+Verified state:
+- Local follow-up schema mismatch was traced to existing local PostgreSQL volumes: `db/init.sql` already contains the follow-up columns, but Docker entrypoint init SQL only runs on fresh volumes. Existing volumes need `db/migrations/20260527_campaign_followup_limits.sql` through the migration runner.
+- `scripts/apply_migrations.sh` remains the migration path and now accepts local Compose scoping through `SENDWISE_COMPOSE_ENV_FILE` and `SENDWISE_COMPOSE_FILES`, so local dev overlay migrations can be applied without dropping data.
+- `scripts/local_qa_preflight.sh` now verifies the dev-safe Compose config, live no-send runtime posture, and required follow-up columns before local QA begins.
+- `docker-compose.dev.yml` now forces local-only no-send settings: backend `EMAIL_SENDING_ENABLED=false`, backend `EMAIL_PROVIDER=mailpit`, local Mailpit SMTP, blank SMTP credentials, and Listmonk SMTP pointed at Mailpit.
+- `docs/local_qa_signoff.md` records the local RC/QA status and explicitly does not claim VPS, staging, production, or real-send approval.
+
+Scope confirmation:
+- Local-only Docker/dev script/docs change.
+- No `.env` read or edit, no VPS touch, no SSH, no remote commands, no staging/prod DB mutation, no provider replay, no real sends, no Mailgun/Listmonk/Caddy/VPS runtime setting changes, and no follow-up executor implementation.
+
 ## Milestone 19.8-CLOSE-FINAL + 19.9-AUDIT - Template Readiness Closure And Brand Configuration Flow
 
 Date: 2026-05-25

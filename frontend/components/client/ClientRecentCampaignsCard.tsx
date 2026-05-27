@@ -25,6 +25,7 @@ const WINDOW_LABELS: Record<ClientDashboardWindowKey, string> = {
   "30d": "30gg",
   allTime: "Sempre",
 };
+const WINDOW_KEYS = Object.keys(WINDOW_LABELS) as ClientDashboardWindowKey[];
 
 const METRIC_CONFIG = [
   { key: "sent", label: "Accettate", tone: "sent", providerBacked: false },
@@ -34,9 +35,8 @@ const METRIC_CONFIG = [
   { key: "clicked", label: "Click", tone: "queued", providerBacked: true },
 ] as const;
 
-function getFallbackWindows(): Record<ClientDashboardWindowKey, ClientDashboardWindowMetrics> {
-  const endedAt = new Date().toISOString();
-  const emptyWindow: ClientDashboardWindowMetrics = {
+function createEmptyWindowMetrics(): ClientDashboardWindowMetrics {
+  return {
     sent: null,
     failed: null,
     delivered: null,
@@ -54,16 +54,30 @@ function getFallbackWindows(): Record<ClientDashboardWindowKey, ClientDashboardW
     openRateAvailable: false,
     clickRateAvailable: false,
     windowStartedAt: null,
-    windowEndedAt: endedAt,
+    windowEndedAt: new Date().toISOString(),
   };
+}
 
-  return {
-    "24h": emptyWindow,
-    "7d": emptyWindow,
-    "14d": emptyWindow,
-    "30d": emptyWindow,
-    allTime: emptyWindow,
-  };
+function getFallbackWindows(): Record<ClientDashboardWindowKey, ClientDashboardWindowMetrics> {
+  return Object.fromEntries(
+    WINDOW_KEYS.map((windowKey) => [windowKey, createEmptyWindowMetrics()]),
+  ) as Record<ClientDashboardWindowKey, ClientDashboardWindowMetrics>;
+}
+
+function getNormalizedWindows(
+  windows?: Partial<Record<ClientDashboardWindowKey, ClientDashboardWindowMetrics>> | null,
+): Record<ClientDashboardWindowKey, ClientDashboardWindowMetrics> {
+  if (!windows) {
+    return getFallbackWindows();
+  }
+
+  return WINDOW_KEYS.reduce<Record<ClientDashboardWindowKey, ClientDashboardWindowMetrics>>(
+    (accumulator, windowKey) => {
+      accumulator[windowKey] = windows[windowKey] ?? createEmptyWindowMetrics();
+      return accumulator;
+    },
+    getFallbackWindows(),
+  );
 }
 
 function getValue(window: ClientDashboardWindowMetrics, key: (typeof METRIC_CONFIG)[number]["key"]) {
@@ -172,20 +186,6 @@ function getRatioLabel(
   return `${formatRate((numerator ?? 0) / denominator)} ${suffix}`;
 }
 
-function formatRatioInsight(
-  numerator: number,
-  denominator: number,
-  singular: string,
-  plural: string,
-): string {
-  if (numerator <= 0 || denominator <= 0) {
-    return "Non disponibile";
-  }
-
-  const every = Math.max(1, Math.round(denominator / numerator));
-  return `1 ${singular} su ${every} ${plural}`;
-}
-
 function getMetricEntry(
   metricEntries: Array<{
     key: (typeof METRIC_CONFIG)[number]["key"];
@@ -200,11 +200,24 @@ export function ClientRecentCampaignsCard({
   summary,
 }: ClientRecentCampaignsCardProps) {
   const performance = summary.clientDashboard?.performanceAnalytics;
-  const windows = performance?.windows ?? getFallbackWindows();
+  const windows = useMemo(
+    () => getNormalizedWindows(performance?.windows),
+    [performance?.windows],
+  );
+  const availableWindowKeys = useMemo(
+    () =>
+      new Set(
+        Object.keys(performance?.windows ?? {}).filter(
+          (windowKey): windowKey is ClientDashboardWindowKey => windowKey in WINDOW_LABELS,
+        ),
+      ),
+    [performance?.windows],
+  );
   const [selectedWindow, setSelectedWindow] = useState<ClientDashboardWindowKey>(
     performance?.defaultWindow ?? "7d",
   );
-  const selectedMetrics = windows[selectedWindow] ?? windows["7d"];
+  const selectedMetrics = windows[selectedWindow];
+  const selectedWindowAvailable = availableWindowKeys.has(selectedWindow);
   const metricEntries = useMemo(
     () =>
       METRIC_CONFIG.map((metric) => {
@@ -241,9 +254,12 @@ export function ClientRecentCampaignsCard({
       .map((metric) => metric.value ?? 0),
     0,
   );
-  const hasAnyVisibleData = metricEntries.some(
+  const hasAnyVisibleData = selectedWindowAvailable && metricEntries.some(
     (metric) => metric.available && typeof metric.value === "number",
   );
+  const emptyStateMessage = !selectedWindowAvailable
+    ? `Il riepilogo ${WINDOW_LABELS[selectedWindow]} non e disponibile in questo momento.`
+    : `Nessun dato disponibile per ${WINDOW_LABELS[selectedWindow]}.`;
   const detailedMetricHelpers: Record<(typeof METRIC_CONFIG)[number]["key"], string> = {
     sent: selectedMetrics.sentAvailable ? "Base del periodo selezionato" : "Non disponibile",
     failed: getRatioLabel(
@@ -325,41 +341,6 @@ export function ClientRecentCampaignsCard({
       accent: "queued",
     },
   ] as const;
-  const insights = [
-    selectedMetrics.failedAvailable
-      ? (selectedMetrics.failed ?? 0) === 0
-        ? "Nessun errore invio nel periodo"
-        : selectedMetrics.sentAvailable && (selectedMetrics.sent ?? 0) > 0
-          ? formatRatioInsight(
-              selectedMetrics.failed ?? 0,
-              selectedMetrics.sent ?? 0,
-              "invio fallito",
-              "accettate",
-            )
-          : "Errori invio registrati nel periodo"
-      : "Stato errori non disponibile",
-    selectedMetrics.clickedAvailable
-        && selectedMetrics.openedAvailable
-        && (selectedMetrics.opened ?? 0) > 0
-      ? formatRatioInsight(
-          selectedMetrics.clicked ?? 0,
-          selectedMetrics.opened ?? 0,
-          "click",
-          "aperture",
-        )
-      : selectedMetrics.openedAvailable
-          && selectedMetrics.deliveredAvailable
-          && (selectedMetrics.delivered ?? 0) > 0
-        ? formatRatioInsight(
-            selectedMetrics.opened ?? 0,
-            selectedMetrics.delivered ?? 0,
-            "apertura",
-            "consegnate",
-          )
-        : providerLogs.providerEventsAvailable
-          ? "Nessun segnale provider utile nel periodo"
-          : providerUnavailableLabel,
-  ];
   const campaignsHref =
     summary.clientDashboard?.cta.campaignsHref || `/c/${summary.client.portalSlug}/campaigns`;
 
@@ -371,7 +352,7 @@ export function ClientRecentCampaignsCard({
       aside={
         <div className="client-performance-header__aside">
           <div className="client-period-selector" aria-label="Selettore periodo">
-            {(Object.keys(WINDOW_LABELS) as ClientDashboardWindowKey[]).map((windowKey) => (
+            {WINDOW_KEYS.map((windowKey) => (
               <button
                 key={windowKey}
                 type="button"
@@ -383,13 +364,19 @@ export function ClientRecentCampaignsCard({
               </button>
             ))}
           </div>
+          <span
+            className="client-performance-status-chip"
+            data-tone={providerStatusTone}
+          >
+            {providerStatusLabel}
+          </span>
         </div>
       }
     >
       {hasAnyVisibleData ? (
         <>
           <div className="client-performance-journey">
-            {funnelSteps.map((step, index) => (
+            {funnelSteps.map((step) => (
               <article
                 key={step.label}
                 className="client-performance-journey__step"
@@ -398,9 +385,6 @@ export function ClientRecentCampaignsCard({
                 <span className="client-performance-journey__label">{step.label}</span>
                 <strong>{step.value}</strong>
                 <span className="client-performance-journey__helper">{step.helper}</span>
-                {index < funnelSteps.length - 1 ? (
-                  <span className="client-performance-journey__connector" aria-hidden="true" />
-                ) : null}
               </article>
             ))}
           </div>
@@ -434,7 +418,7 @@ export function ClientRecentCampaignsCard({
           </div>
         </>
       ) : (
-        <p className="client-dashboard-card__empty">Dati performance non disponibili.</p>
+        <p className="client-dashboard-card__empty">{emptyStateMessage}</p>
       )}
       <div className="client-dashboard-card__footer">
         <Link

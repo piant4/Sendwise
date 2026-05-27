@@ -444,6 +444,14 @@ button {
   padding: 12px;
 }
 
+.sidebar-account-panel[data-variant="mobile"] {
+  background: rgba(248, 250, 252, 0.78);
+  border-radius: 18px;
+  box-shadow: none;
+  gap: 14px;
+  padding: 14px;
+}
+
 .sidebar-account__identity {
   align-items: center;
   display: grid;
@@ -469,6 +477,10 @@ button {
   display: grid;
   gap: 8px;
   grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.sidebar-account-panel[data-variant="mobile"] .sidebar-account__actions {
+  grid-template-columns: 1fr;
 }
 
 .sidebar-account__action {
@@ -1026,6 +1038,28 @@ button {
   color: var(--sw-text);
 }
 
+.main-nav--mobile .main-nav__list {
+  gap: 8px;
+}
+
+.main-nav--mobile .main-nav__link {
+  background: rgba(248, 250, 252, 0.84);
+  border: 1px solid rgba(202, 213, 225, 0.76);
+  border-radius: 16px;
+  min-height: 52px;
+  padding: 13px 14px;
+}
+
+.main-nav--mobile .main-nav__link[data-active="true"] {
+  background: rgba(37, 99, 235, 0.1);
+  border-color: rgba(37, 99, 235, 0.24);
+  box-shadow: none;
+}
+
+.main-nav--mobile .main-nav__link[data-active="true"]::before {
+  display: none;
+}
+
 .main-nav__icon {
   flex-shrink: 0;
   height: 16px;
@@ -1067,18 +1101,35 @@ button {
 .mobile-nav-sheet {
   background: var(--sw-surface);
   border-right-color: var(--sw-border);
+  display: flex;
+  flex-direction: column;
   padding: 0;
 }
 
 .mobile-nav-sheet__header {
   border-bottom: 1px solid var(--sw-border);
-  padding: 20px 18px 16px;
+  display: grid;
+  gap: 12px;
+  padding: 18px 18px 14px;
 }
 
 .mobile-nav-sheet__brand-row {
   align-items: center;
   display: flex;
   justify-content: space-between;
+}
+
+.mobile-nav-sheet__brand-link {
+  align-items: center;
+  border-radius: 12px;
+  display: inline-flex;
+  min-height: 40px;
+  min-width: 0;
+  text-decoration: none;
+}
+
+.mobile-nav-sheet__badge-row {
+  min-height: 0;
 }
 
 .mobile-nav-sheet__context {
@@ -1112,21 +1163,24 @@ button {
 }
 
 .mobile-nav-content {
-  display: grid;
-  gap: 20px;
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 18px;
   min-width: 0;
-  min-height: 100%;
-  padding: 16px 18px 22px;
+  min-height: 0;
+  padding: 16px 18px 18px;
+}
+
+.mobile-nav-main {
+  display: grid;
+  gap: 14px;
 }
 
 .mobile-nav-account {
   border-top: 1px solid var(--sw-border);
   margin-top: auto;
-  padding-top: 18px;
-}
-
-.mobile-nav-badge-row {
-  padding-bottom: 4px;
+  padding-top: 16px;
 }
 
 .mock-login-submit {
@@ -6925,6 +6979,63 @@ p {
     width: 100%;
   }
 
+  .client-page-shell,
+  .client-dashboard {
+    gap: 14px;
+  }
+
+  .client-page-header,
+  .client-dashboard-hero,
+  .client-surface,
+  .client-page-stat-card,
+  .client-row,
+  .client-detail-grid div {
+    border-radius: 18px;
+    padding: 16px;
+  }
+
+  .client-page-header__copy,
+  .client-surface__body,
+  .client-dashboard__content-main,
+  .client-dashboard__content-side {
+    gap: 12px;
+  }
+
+  .client-row__header {
+    align-items: flex-start;
+    gap: 10px;
+  }
+
+  .client-row__summary,
+  .client-detail-grid,
+  .client-row__stats {
+    gap: 10px;
+  }
+
+  .client-row__chip,
+  .client-dashboard-hero__action,
+  .client-dashboard-card__footer .client-dashboard-hero__action {
+    width: 100%;
+  }
+
+  .client-dashboard-card__footer {
+    justify-content: flex-start;
+  }
+
+  .client-performance-header__aside,
+  .client-surface--performance .client-surface__aside {
+    justify-items: flex-start;
+    width: 100%;
+  }
+
+  .client-surface--performance .client-surface__header {
+    align-items: flex-start;
+  }
+
+  .client-surface--performance .client-period-selector {
+    max-width: none;
+  }
+
   .campaign-record-link__open,
   .campaign-record-link__actions,
   .admin-record-row__primary > [data-slot],
@@ -7030,6 +7141,36 @@ p {
 
   .account-sheet__body {
     padding: 16px 18px 20px;
+  }
+}
+
+@media (max-width: 420px) {
+  .shell {
+    padding: 12px;
+  }
+
+  .mobile-nav-sheet {
+    width: min(20rem, calc(100vw - 12px));
+    max-width: calc(100vw - 12px);
+  }
+
+  .client-page-header,
+  .client-dashboard-hero,
+  .client-surface,
+  .client-page-stat-card,
+  .client-row,
+  .client-detail-grid div {
+    padding: 14px;
+  }
+
+  .client-period-selector__button {
+    flex: 1 1 calc(50% - 4px);
+    justify-content: center;
+  }
+
+  .client-performance-chart__summary {
+    align-items: flex-start;
+    flex-direction: column;
   }
 }
 
@@ -7291,6 +7432,16 @@ p {
 .dark .campaign-review-checklist__badge,
 .dark .campaign-editor-toggle__button[data-active="true"] {
   color: var(--sw-text);
+}
+
+.dark .main-nav--mobile .main-nav__link {
+  background: rgba(10, 18, 31, 0.88);
+  border-color: rgba(96, 165, 250, 0.16);
+}
+
+.dark .main-nav--mobile .main-nav__link[data-active="true"] {
+  background: rgba(37, 99, 235, 0.2);
+  border-color: rgba(96, 165, 250, 0.28);
 }
 
 .dark .brand-mark,
@@ -8086,6 +8237,11 @@ p {
   color: var(--sw-text);
 }
 
+.dark .sidebar-account-panel[data-variant="mobile"] {
+  background: rgba(10, 18, 31, 0.82);
+  border-color: rgba(96, 165, 250, 0.18);
+}
+
 .dark .login-submit--secondary:hover,
 .dark .sidebar-account__action:hover,
 .dark .settings-back:hover,
@@ -8836,6 +8992,7 @@ p {
 
 .client-period-selector {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
 }
 
@@ -8848,6 +9005,7 @@ p {
   font-weight: 700;
   min-height: 34px;
   padding: 0 12px;
+  white-space: nowrap;
   transition:
     border-color 0.15s ease,
     background-color 0.15s ease,
@@ -8977,7 +9135,7 @@ p {
 .client-performance-journey {
   display: grid;
   gap: 12px;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(168px, 1fr));
   margin-bottom: 1.5rem;
 }
 
@@ -8998,14 +9156,12 @@ p {
 
 .client-performance-journey__step::before {
   background: var(--sw-campaign-accent);
-  border-radius: 999px;
+  border-radius: 18px 18px 999px 999px;
   content: "";
-  height: 8px;
-  left: 16px;
+  height: 4px;
+  inset: 0 0 auto;
   opacity: 0.92;
   position: absolute;
-  top: 16px;
-  width: 32px;
 }
 
 .client-performance-journey__step[data-tone="opened"]::before {
@@ -9024,7 +9180,6 @@ p {
   color: #526075;
   font-size: 0.76rem;
   font-weight: 700;
-  margin-top: 14px;
   text-transform: uppercase;
 }
 
@@ -9042,18 +9197,7 @@ p {
 }
 
 .client-performance-journey__connector {
-  background: linear-gradient(
-    90deg,
-    rgba(96, 165, 250, 0.18),
-    rgba(37, 99, 235, 0.45)
-  );
-  border-radius: 999px;
-  height: 2px;
-  position: absolute;
-  right: -8px;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 16px;
+  display: none;
 }
 
 .client-performance-chart {

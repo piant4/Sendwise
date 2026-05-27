@@ -1,7 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import Link from "next/link";
+import { useEffect, useMemo, useState } from "react";
 import { Menu, X } from "lucide-react";
+import { usePathname, useRouter } from "next/navigation";
 import { BrandMark } from "../shared/BrandMark";
 import { MockModeBadge } from "../shared/MockModeBadge";
 import { SidebarAccountPanel } from "../shared/SidebarAccountPanel";
@@ -9,12 +11,15 @@ import {
   Sheet,
   SheetClose,
   SheetContent,
-  SheetDescription,
-  SheetHeader,
   SheetTitle,
   SheetTrigger,
 } from "../ui/sheet";
-import { MainNav, type AppRole } from "./MainNav";
+import {
+  MainNav,
+  getClientPortalBaseHref,
+  getNavItems,
+  type AppRole,
+} from "./MainNav";
 
 interface MobileNavProps {
   accountHref: string;
@@ -26,14 +31,26 @@ interface MobileNavProps {
 
 export function MobileNav({
   accountHref,
-  currentLabel,
-  pageTitle,
   role,
   isMockMode,
 }: MobileNavProps) {
   const [open, setOpen] = useState(false);
+  const pathname = usePathname();
+  const router = useRouter();
   const navId = role === "admin" ? "admin-mobile-navigation" : "client-mobile-navigation";
-  const sectionLabel = role === "admin" ? "Operazioni admin" : "Portale cliente";
+  const navItems = useMemo(() => getNavItems(role, pathname), [pathname, role]);
+  const logoHref =
+    role === "admin" ? "/admin" : getClientPortalBaseHref(pathname) ?? "/login";
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+
+    for (const href of new Set([logoHref, accountHref, ...navItems.map((item) => item.href)])) {
+      router.prefetch(href);
+    }
+  }, [accountHref, logoHref, navItems, open, router]);
 
   return (
     <Sheet open={open} onOpenChange={setOpen}>
@@ -54,9 +71,16 @@ export function MobileNav({
         side="left"
         showCloseButton={false}
       >
-        <SheetHeader className="mobile-nav-sheet__header">
+        <div className="mobile-nav-sheet__header">
           <div className="mobile-nav-sheet__brand-row">
-            <BrandMark size="md" />
+            <Link
+              href={logoHref}
+              className="mobile-nav-sheet__brand-link"
+              prefetch
+              onClick={() => setOpen(false)}
+            >
+              <BrandMark size="md" />
+            </Link>
             <SheetClose asChild>
               <button
                 type="button"
@@ -68,34 +92,26 @@ export function MobileNav({
             </SheetClose>
           </div>
           <SheetTitle className="sr-only">Navigazione Sendwise</SheetTitle>
-          <SheetDescription className="sr-only">
-            Menu laterale mobile con navigazione contestuale per admin o cliente.
-          </SheetDescription>
-          <div className="mobile-nav-sheet__context">
-            <span className="mobile-nav-sheet__eyebrow">{sectionLabel}</span>
-            <strong>{pageTitle}</strong>
-            <span>{currentLabel}</span>
+          <div className="mobile-nav-sheet__badge-row">
+            {isMockMode ? <MockModeBadge /> : null}
           </div>
-        </SheetHeader>
+        </div>
         <div className="mobile-nav-content">
-          <div className="sidebar-section">
-            <p className="sidebar-label">
-              {role === "admin" ? "Operazioni" : "Dashboard"}
-            </p>
-            <MainNav role={role} onNavigate={() => setOpen(false)} />
+          <div className="mobile-nav-main">
+            <MainNav
+              className="main-nav--mobile"
+              role={role}
+              onNavigate={() => setOpen(false)}
+            />
           </div>
           <div className="mobile-nav-account">
             <SidebarAccountPanel
               accountHref={accountHref}
               isMockMode={isMockMode}
               onAction={() => setOpen(false)}
+              variant="mobile"
             />
           </div>
-          {isMockMode ? (
-            <div className="mobile-nav-badge-row">
-              <MockModeBadge />
-            </div>
-          ) : null}
         </div>
       </SheetContent>
     </Sheet>

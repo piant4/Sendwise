@@ -1,6 +1,5 @@
 import {
   formatCampaignCount,
-  getProviderEventsAvailabilityLabel,
   formatProviderEventMetric,
 } from "../shared/campaignUi";
 import type { CampaignLogsSummary, ClientOverviewSummary } from "../../types";

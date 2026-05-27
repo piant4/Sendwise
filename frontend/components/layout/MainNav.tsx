@@ -139,6 +139,8 @@ export function MainNav({ role, onNavigate, className }: MainNavProps) {
                 className="main-nav__link"
                 data-active={active}
                 aria-current={active ? "page" : undefined}
+                prefetch
+                onClick={() => onNavigate?.()}
                 onNavigate={onNavigate}
               >
                 <Icon className="main-nav__icon" aria-hidden="true" />

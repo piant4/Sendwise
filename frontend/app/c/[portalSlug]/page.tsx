@@ -1,7 +1,6 @@
 import { DashboardErrorState } from "../../../components/dashboard/DashboardErrorState";
 import { buildPageMetadata } from "../../../components/shared/metadata";
 import { ClientDashboardHeader } from "../../../components/client/ClientDashboardHeader";
-import { ClientDeliveryCard } from "../../../components/client/ClientDeliveryCard";
 import { ClientKpiGrid } from "../../../components/client/ClientKpiGrid";
 import { ClientRecentBlockedSendsCard } from "../../../components/client/ClientRecentBlockedSendsCard";
 import { ClientRecentCampaignsCard } from "../../../components/client/ClientRecentCampaignsCard";

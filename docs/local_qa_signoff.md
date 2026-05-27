@@ -1,26 +1,49 @@
 # Local QA Signoff
 
 Date: 2026-05-27
-Scope: Milestone 20.4.1 local-only QA blocker clearance
+Scope: Milestone 20.5.2 staging signoff documentation closure
 
 ## Last Validated Commits
 
+- `4f741b62` - Fix staging admin dark card and account security overlay
 - `e4d0003` - Stabilize backend pytest suite
 - `6466631` - Clear RC follow-up review and test blockers
 
-## Current Local QA Status
+## Current QA Status
 
-Status: local QA is ready to rerun after the local preflight passes.
+Status: staging deployment and no-dispatch browser QA are recorded as complete for Milestone 20.5.2.
 
-This artifact is local-only. It does not approve VPS staging, production deployment, provider sends, or any runtime change outside the local Docker Compose stack.
+This artifact records operator-confirmed staging closure evidence. It does not approve production deployment, provider sends, follow-up sending, or any runtime change beyond the completed staging deployment already reported by the operator.
 
-Current verified baseline from 20.4 evidence:
+Current verified staging evidence:
 
-- Backend pytest was green: `332 passed`.
-- Frontend lint and build were green.
-- Audit and smoke checks were green.
+- Deployed commit/HEAD: `4f741b62a8f5655ef720196e704c237955922a8b`.
+- Follow-up migration applied successfully.
+- Required follow-up schema columns verified.
+- Backend health passed.
+- Frontend publicly reachable.
+- Public Listmonk boundary verified.
+- `scripts/audit.sh` passed.
+- `scripts/smoke_test.sh` passed.
+- Browser QA passed for the admin campaign detail dark-mode post-send status card.
+- Browser QA passed for the Clerk account security fullscreen overlay.
+- No real sends were performed during browser QA.
+- No provider replay was performed.
+- No secrets, tokens, recipient emails, raw payloads, or raw email bodies are recorded.
 - Follow-up executor is not implemented.
 - Production deploy is not approved.
+
+UI patch verification:
+
+- Dark post-send status card rendering is corrected.
+- Fullscreen Clerk security overlay rendering is corrected.
+
+Residual product scope:
+
+- Follow-up limits and delay configuration exist.
+- The backend eligibility helper exists for follow-up checks.
+- A runtime follow-up executor, job, or worker is not implemented.
+- No operational follow-up send claim is made by this signoff.
 
 Blockers cleared by 20.4.1:
 
@@ -61,10 +84,9 @@ Required schema columns:
 
 ## Local Safety Assertions
 
-- VPS not touched.
-- No SSH.
-- No remote commands.
-- No staging or production DB mutation.
+- This documentation task did not touch VPS/runtime state.
+- No SSH or remote command was executed during this documentation task.
+- No staging or production DB mutation was performed during this documentation task.
 - No real sends.
 - No provider replay.
 - No Mailgun/Listmonk/Caddy/VPS runtime setting changes.

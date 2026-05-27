@@ -1,5 +1,36 @@
 # Audit Log
 
+## Milestone 20.5.2-STAGING-SIGNOFF-DOCS - Staging Deployment And No-Dispatch Browser QA Closure
+
+Date: 2026-05-27
+Branch: main
+Deployed commit: `4f741b62a8f5655ef720196e704c237955922a8b` - Fix staging admin dark card and account security overlay
+
+Verified staging closure:
+- Staging deployment completed successfully at the repo HEAD recorded above.
+- The follow-up migration was applied successfully, and the required schema columns were verified.
+- Backend health passed.
+- Frontend was publicly reachable.
+- The public Listmonk boundary was verified through the restricted public surface only.
+- `scripts/audit.sh` passed.
+- `scripts/smoke_test.sh` passed.
+
+Browser no-dispatch QA:
+- Admin campaign detail dark-mode post-send status card was verified after the UI patch; the dark post-send status card rendering is corrected.
+- Clerk account security fullscreen overlay was verified after the UI patch; the fullscreen account security overlay rendering is corrected.
+- No real sends were performed during this browser QA.
+
+Residual product scope:
+- Follow-up limits, delay configuration, and eligibility helper exist.
+- A runtime follow-up executor, job, or worker is not implemented.
+- No operational follow-up sending claim is made by this closure.
+
+Scope confirmation:
+- Documentation-only closure.
+- No backend or frontend application code was changed.
+- No DB change, migration command, deploy command, VPS/runtime command, Docker/Caddy/Listmonk/Mailgun setting change, provider replay, real send, or dispatch was performed in this documentation task.
+- No `.env`, secrets, tokens, recipient emails, raw payloads, or raw email bodies are recorded here.
+
 ## Milestone 20.4.1-LOCAL-QA-BLOCKER-FIX - Local QA Blocker Clearance
 
 Date: 2026-05-27

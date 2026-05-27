@@ -372,6 +372,44 @@ Public:
 - Invalid-token unsubscribe returns safe HTML.
 - Frontend public unsubscribe page loads and hides backend/internal error wording.
 
+## Milestone 20.5.2 Staging Closure
+
+Recorded closure date: 2026-05-27.
+
+Deployed commit:
+
+- `4f741b62a8f5655ef720196e704c237955922a8b` - Fix staging admin dark card and account security overlay
+
+Operator-confirmed staging evidence:
+
+- Staging deployment completed successfully.
+- Follow-up migration applied successfully.
+- Required follow-up schema columns verified.
+- Backend health passed.
+- Frontend publicly reachable.
+- Public Listmonk boundary verified.
+- `scripts/audit.sh` passed.
+- `scripts/smoke_test.sh` passed.
+- Browser no-dispatch QA passed for the admin campaign detail dark-mode post-send status card.
+- Browser no-dispatch QA passed for the Clerk account security fullscreen overlay.
+
+UI patch verification:
+
+- The dark post-send status card is corrected.
+- The fullscreen Clerk account security overlay is corrected.
+
+Residual product scope:
+
+- Follow-up limits, delay configuration, and eligibility helper exist.
+- No runtime follow-up executor, job, or worker is implemented.
+- Do not claim or rely on operational follow-up sending until a dedicated executor is implemented and approved.
+
+Safety record:
+
+- No real sends were performed during staging QA.
+- No provider replay was performed.
+- No `.env`, secrets, tokens, recipient emails, raw payloads, or raw email bodies are recorded in this closure.
+
 ## SES Readiness Later Step
 
 SES readiness is intentionally separated from first VPS deploy. A later controlled validation may enable real sending only after:

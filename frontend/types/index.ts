@@ -708,8 +708,8 @@ export interface AdminFollowupSimulationResult {
   reason: string;
   allowed: boolean;
   realSendAttempted: boolean;
-  listmonkPrepared: boolean;
-  listmonkDispatched: boolean;
+  externalPreparationPerformed: boolean;
+  externalDispatchPerformed: boolean;
   contentReady: boolean;
   dedicatedFollowupContentReady: boolean;
   totalPrimaryRecipientsEvaluated: number;
@@ -729,7 +729,7 @@ export interface AdminFollowupSimulationResult {
   };
   emailLogsCreated: number;
   providerEventsCreated: number;
-  listmonkMappingsCreated: number;
+  externalMappingsCreated: number;
 }
 
 export interface ClientCampaignStatsReadModel {

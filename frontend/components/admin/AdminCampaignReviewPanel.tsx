@@ -844,7 +844,9 @@ export function AdminCampaignReviewPanel({
           <div style={{ display: "grid", gap: 4 }}>
             <strong className="campaign-review-checklist__title">Simulazione follow-up</strong>
             <p className="campaign-review-checklist__reason">
-              La simulazione valuta solo i destinatari idonei. Nessun follow-up viene inviato.
+              {followupResult
+                ? "Simulazione completata. Nessun follow-up inviato."
+                : "Nessun follow-up inviato."}
             </p>
           </div>
           <StatusBadge
@@ -902,8 +904,7 @@ export function AdminCampaignReviewPanel({
         ) : null}
 
         <p className="campaign-field__helper" style={{ margin: 0 }}>
-          Nessun follow-up e stato inviato. Il contenuto e l&apos;oggetto dedicati sono ancora
-          necessari prima di una futura capacita di invio reale.
+          Il contenuto e l&apos;oggetto dedicati per il follow-up sono ancora necessari.
         </p>
         <div className="campaign-action-row" style={{ marginTop: 0 }}>
           <Button

@@ -219,8 +219,8 @@ class AdminFollowupSimulationResponse(BaseModel):
     reason: str
     allowed: bool
     real_send_attempted: bool = False
-    listmonk_prepared: bool = False
-    listmonk_dispatched: bool = False
+    external_preparation_performed: bool = False
+    external_dispatch_performed: bool = False
     content_ready: bool = False
     dedicated_followup_content_ready: bool = False
     total_primary_recipients_evaluated: int = 0
@@ -230,7 +230,7 @@ class AdminFollowupSimulationResponse(BaseModel):
     followup_settings: FollowupSimulationSettingsSummary
     email_logs_created: int = 0
     provider_events_created: int = 0
-    listmonk_mappings_created: int = 0
+    external_mappings_created: int = 0
 
 
 class AdminCampaignContactPayload(BaseModel):

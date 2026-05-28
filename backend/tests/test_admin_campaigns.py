@@ -2585,8 +2585,8 @@ def test_admin_simulate_followup_route_returns_safe_aggregate_response() -> None
     payload = response.json()
     assert payload["mode"] == "followup_simulation"
     assert payload["real_send_attempted"] is False
-    assert payload["listmonk_dispatched"] is False
-    assert payload["listmonk_prepared"] is False
+    assert payload["external_dispatch_performed"] is False
+    assert payload["external_preparation_performed"] is False
     assert payload["content_ready"] is False
     assert payload["dedicated_followup_content_ready"] is False
     assert payload["total_primary_recipients_evaluated"] == 1
@@ -2605,7 +2605,8 @@ def test_followup_simulation_disabled_returns_blocked_summary() -> None:
     assert result.status == "blocked"
     assert result.code == "followup_disabled"
     assert result.eligible_count == 0
-    assert result.blocked_reason_counts == {"followup_disabled": 1}
+    assert result.blocked_count == 0
+    assert result.blocked_reason_counts == {}
 
 
 def test_followup_simulation_missing_reference_time_blocks() -> None:
@@ -2616,7 +2617,8 @@ def test_followup_simulation_missing_reference_time_blocks() -> None:
     assert result.status == "blocked"
     assert result.code == "followup_missing_reference_time"
     assert result.total_primary_recipients_evaluated == 0
-    assert result.blocked_reason_counts == {"followup_missing_reference_time": 1}
+    assert result.blocked_count == 0
+    assert result.blocked_reason_counts == {}
 
 
 def test_followup_simulation_delay_not_elapsed_blocks_before_candidates() -> None:
@@ -2638,7 +2640,8 @@ def test_followup_simulation_delay_not_elapsed_blocks_before_candidates() -> Non
     assert result.status == "blocked"
     assert result.code == "followup_delay_not_elapsed"
     assert result.total_primary_recipients_evaluated == 0
-    assert result.blocked_reason_counts == {"followup_delay_not_elapsed": 1}
+    assert result.blocked_count == 0
+    assert result.blocked_reason_counts == {}
 
 
 def test_followup_simulation_daily_cap_exceeded_blocks() -> None:
@@ -2824,9 +2827,9 @@ def test_followup_simulation_candidate_reason_counts_and_no_persistence() -> Non
     }
     assert result.email_logs_created == 0
     assert result.provider_events_created == 0
-    assert result.listmonk_mappings_created == 0
+    assert result.external_mappings_created == 0
     assert result.real_send_attempted is False
-    assert result.listmonk_dispatched is False
+    assert result.external_dispatch_performed is False
     assert len(email_logs._records) == before_email_logs
     assert len(provider_events._records) == before_provider_events
 

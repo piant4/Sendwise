@@ -2419,7 +2419,7 @@ class AdminCampaignService:
                 gate=campaign_gate,
                 total_primary_recipients_evaluated=0,
                 eligible_count=0,
-                blocked_reason_counts={campaign_gate.code: 1},
+                blocked_reason_counts={},
             )
 
         campaign_contacts = self.contact_repository.list_campaign_contacts(
@@ -2431,7 +2431,7 @@ class AdminCampaignService:
             client_id=campaign.client_id,
             emails=[contact.email for contact in campaign_contacts],
         )
-        primary_logs = [
+        latest_primary_logs = [
             log
             for log in self.email_log_repository.list_latest_for_campaign(
                 client_id=campaign.client_id,
@@ -2455,20 +2455,47 @@ class AdminCampaignService:
                 continue
             events_by_log_id.setdefault(event.email_log_id, []).append(event)
 
+        primary_logs_by_contact_id: dict[str, dict[str, Any]] = {}
+        for log in latest_primary_logs:
+            if log.contact_id is None:
+                continue
+            primary_logs_by_contact_id.setdefault(log.contact_id, {})[log.id] = log
+
+        for event in processed_events:
+            if (
+                event.email_log_id is None
+                or event.contact_id is None
+                or event.contact_id not in contacts_by_id
+            ):
+                continue
+            log = self.email_log_repository.get_by_id(event.email_log_id)
+            if (
+                log is None
+                or log.client_id != campaign.client_id
+                or log.campaign_id != campaign.id
+                or log.contact_id != event.contact_id
+                or log.send_kind != "campaign"
+                or log.status == "simulated"
+            ):
+                continue
+            primary_logs_by_contact_id.setdefault(event.contact_id, {})[log.id] = log
+
         eligible_count = 0
         blocked_reason_counts: dict[str, int] = {}
-        evaluated_contact_ids: set[str] = set()
 
-        for log in primary_logs:
-            if log.contact_id is None or log.contact_id in evaluated_contact_ids:
-                continue
-            evaluated_contact_ids.add(log.contact_id)
-            contact = contacts_by_id[log.contact_id]
+        for contact_id, primary_logs_by_id in primary_logs_by_contact_id.items():
+            contact = contacts_by_id[contact_id]
+            primary_log_ids = set(primary_logs_by_id)
+            candidate_events = [
+                event
+                for log_id in primary_log_ids
+                for event in events_by_log_id.get(log_id, [])
+            ]
             reason = self._followup_candidate_block_reason(
                 campaign=campaign,
                 contact=contact,
-                primary_log_id=log.id,
-                events=events_by_log_id.get(log.id, []),
+                primary_log_ids=primary_log_ids,
+                events=candidate_events,
                 suppressed_emails=suppressed_emails,
             )
             if reason is None:
@@ -2479,7 +2506,7 @@ class AdminCampaignService:
         return self._build_followup_simulation_response(
             campaign=campaign,
             gate=campaign_gate,
-            total_primary_recipients_evaluated=len(evaluated_contact_ids),
+            total_primary_recipients_evaluated=len(primary_logs_by_contact_id),
             eligible_count=eligible_count,
             blocked_reason_counts=blocked_reason_counts,
         )
@@ -2489,7 +2516,7 @@ class AdminCampaignService:
         *,
         campaign: CampaignRecord,
         contact: ContactRecord,
-        primary_log_id: str,
+        primary_log_ids: set[str],
         events: list[Any],
         suppressed_emails: set[str],
     ) -> str | None:
@@ -2500,7 +2527,7 @@ class AdminCampaignService:
             and event.client_id == campaign.client_id
             and event.campaign_id == campaign.id
             and event.contact_id == contact.id
-            and event.email_log_id == primary_log_id
+            and event.email_log_id in primary_log_ids
             for event in events
         )
         if not has_delivered:
@@ -2511,7 +2538,7 @@ class AdminCampaignService:
             and event.client_id == campaign.client_id
             and event.campaign_id == campaign.id
             and event.contact_id == contact.id
-            and event.email_log_id == primary_log_id
+            and event.email_log_id in primary_log_ids
             for event in events
         )
         if has_opened:
@@ -2522,7 +2549,7 @@ class AdminCampaignService:
             and event.client_id == campaign.client_id
             and event.campaign_id == campaign.id
             and event.contact_id == contact.id
-            and event.email_log_id == primary_log_id
+            and event.email_log_id in primary_log_ids
             for event in events
         )
         if has_complaint:
@@ -2545,7 +2572,7 @@ class AdminCampaignService:
             and event.client_id == campaign.client_id
             and event.campaign_id == campaign.id
             and event.contact_id == contact.id
-            and event.email_log_id == primary_log_id
+            and event.email_log_id in primary_log_ids
             for event in events
         )
         if has_failure:
@@ -2556,7 +2583,7 @@ class AdminCampaignService:
             and event.client_id == campaign.client_id
             and event.campaign_id == campaign.id
             and event.contact_id == contact.id
-            and event.email_log_id == primary_log_id
+            and event.email_log_id in primary_log_ids
             for event in events
         )
         if has_unsubscribe:
@@ -2593,8 +2620,8 @@ class AdminCampaignService:
             reason=gate.reason,
             allowed=gate.allowed,
             real_send_attempted=False,
-            listmonk_prepared=False,
-            listmonk_dispatched=False,
+            external_preparation_performed=False,
+            external_dispatch_performed=False,
             content_ready=False,
             dedicated_followup_content_ready=False,
             total_primary_recipients_evaluated=total_primary_recipients_evaluated,
@@ -2614,7 +2641,7 @@ class AdminCampaignService:
             ),
             email_logs_created=0,
             provider_events_created=0,
-            listmonk_mappings_created=0,
+            external_mappings_created=0,
         )
 
     def _followup_delay_delta(self, *, value: int, unit: str) -> timedelta:

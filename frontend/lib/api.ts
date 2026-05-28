@@ -439,8 +439,8 @@ interface AdminFollowupSimulationApiResponse {
   reason: string;
   allowed: boolean;
   real_send_attempted: boolean;
-  listmonk_prepared: boolean;
-  listmonk_dispatched: boolean;
+  external_preparation_performed: boolean;
+  external_dispatch_performed: boolean;
   content_ready: boolean;
   dedicated_followup_content_ready: boolean;
   total_primary_recipients_evaluated: number;
@@ -460,7 +460,7 @@ interface AdminFollowupSimulationApiResponse {
   };
   email_logs_created: number;
   provider_events_created: number;
-  listmonk_mappings_created: number;
+  external_mappings_created: number;
 }
 
 interface ClientCampaignStatsApiResponse {
@@ -2483,8 +2483,8 @@ function mapAdminFollowupSimulationResult(
     reason: payload.reason,
     allowed: payload.allowed,
     realSendAttempted: payload.real_send_attempted,
-    listmonkPrepared: payload.listmonk_prepared,
-    listmonkDispatched: payload.listmonk_dispatched,
+    externalPreparationPerformed: payload.external_preparation_performed,
+    externalDispatchPerformed: payload.external_dispatch_performed,
     contentReady: payload.content_ready,
     dedicatedFollowupContentReady: payload.dedicated_followup_content_ready,
     totalPrimaryRecipientsEvaluated: payload.total_primary_recipients_evaluated,
@@ -2504,7 +2504,7 @@ function mapAdminFollowupSimulationResult(
     },
     emailLogsCreated: payload.email_logs_created,
     providerEventsCreated: payload.provider_events_created,
-    listmonkMappingsCreated: payload.listmonk_mappings_created,
+    externalMappingsCreated: payload.external_mappings_created,
   };
 }
 

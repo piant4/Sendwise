@@ -9,6 +9,7 @@ from app.repositories.listmonk_mappings import (
 )
 
 ENTITY_TYPE_CAMPAIGN = "campaign"
+ENTITY_TYPE_CAMPAIGN_FOLLOWUP = "campaign_followup"
 ENTITY_TYPE_CLIENT = "client"
 ENTITY_TYPE_CONTACT = "contact"
 LISTMONK_TYPE_CAMPAIGN = "campaign"
@@ -82,6 +83,19 @@ class ListmonkMappingService:
             listmonk_id=listmonk_id,
         )
 
+    def delete_business_entity_mappings(
+        self,
+        *,
+        client_id: str,
+        entity_type: str,
+        entity_id: str,
+    ) -> bool:
+        return self.repository.delete_by_business_entity(
+            client_id=client_id,
+            entity_type=entity_type,
+            entity_id=entity_id,
+        )
+
     def ensure_campaign_mapping(
         self,
         *,
@@ -92,6 +106,21 @@ class ListmonkMappingService:
         return self.upsert_mapping(
             client_id=client_id,
             entity_type=ENTITY_TYPE_CAMPAIGN,
+            entity_id=campaign_id,
+            listmonk_type=LISTMONK_TYPE_CAMPAIGN,
+            listmonk_id=listmonk_campaign_id,
+        )
+
+    def ensure_followup_campaign_mapping(
+        self,
+        *,
+        client_id: str,
+        campaign_id: str,
+        listmonk_campaign_id: str,
+    ) -> ListmonkMappingRecord:
+        return self.upsert_mapping(
+            client_id=client_id,
+            entity_type=ENTITY_TYPE_CAMPAIGN_FOLLOWUP,
             entity_id=campaign_id,
             listmonk_type=LISTMONK_TYPE_CAMPAIGN,
             listmonk_id=listmonk_campaign_id,
@@ -121,6 +150,21 @@ class ListmonkMappingService:
         return self.upsert_mapping(
             client_id=client_id,
             entity_type=ENTITY_TYPE_CAMPAIGN,
+            entity_id=campaign_id,
+            listmonk_type=LISTMONK_TYPE_LIST,
+            listmonk_id=listmonk_list_id,
+        )
+
+    def ensure_followup_campaign_list_mapping(
+        self,
+        *,
+        client_id: str,
+        campaign_id: str,
+        listmonk_list_id: str,
+    ) -> ListmonkMappingRecord:
+        return self.upsert_mapping(
+            client_id=client_id,
+            entity_type=ENTITY_TYPE_CAMPAIGN_FOLLOWUP,
             entity_id=campaign_id,
             listmonk_type=LISTMONK_TYPE_LIST,
             listmonk_id=listmonk_list_id,

@@ -836,6 +836,55 @@ def test_campaign_completes_and_frees_slot_when_all_dispatch_logs_resolve() -> N
     assert summary.logs.sent == 2
 
 
+def test_followup_provider_event_does_not_complete_primary_campaign_or_change_primary_metrics() -> None:
+    runtime = build_runtime()
+    provider_event_service: ProviderEventIngestionService = runtime["provider_event_service"]  # type: ignore[assignment]
+    email_log_repository: InMemoryEmailLogRepository = runtime["email_log_repository"]  # type: ignore[assignment]
+    provider_event_repository: InMemoryProviderEventRepository = runtime["provider_event_repository"]  # type: ignore[assignment]
+    admin_service: AdminCampaignService = runtime["admin_service"]  # type: ignore[assignment]
+
+    provider_event_service.campaign_repository.update_campaign(
+        client_id="client_123",
+        campaign_id="campaign_123",
+        status="running",
+    )
+    email_log_repository.create_email_log(
+        client_id="client_123",
+        campaign_id="campaign_123",
+        contact_id="contact_123",
+        send_kind="followup",
+        status="queued",
+        provider_message_id="msg-followup",
+    )
+
+    provider_event_service.ingest_event(
+        NormalizedProviderEvent(
+            provider="ses",
+            source="provider_webhook",
+            provider_event_id="followup-accepted-1",
+            event_type="ses_send",
+            campaign_id="campaign_123",
+            contact_id="contact_123",
+            provider_message_id="msg-followup",
+            email="person@example.test",
+            send_kind="followup",
+        )
+    )
+
+    summary = admin_service.get_campaign_summary("campaign_123")
+
+    assert summary.campaign.status == "running"
+    assert summary.logs.sent == 0
+    assert summary.logs.provider_events_available is False
+    assert len(
+        provider_event_repository.list_by_campaign(
+            client_id="client_123",
+            campaign_id="campaign_123",
+            send_kind="followup",
+        )
+    ) == 1
+
+
 def test_ses_complaint_updates_provider_events_email_logs_and_suppression_list() -> None:
     runtime = build_runtime()
     provider_event_service: ProviderEventIngestionService = runtime["provider_event_service"]  # type: ignore[assignment]

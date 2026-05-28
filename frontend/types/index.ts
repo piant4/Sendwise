@@ -359,6 +359,9 @@ export interface AdminCampaignContentInput {
   previewText?: string | null;
   bodyHtml?: string | null;
   bodyText?: string | null;
+  followupSubject?: string | null;
+  followupBodyHtml?: string | null;
+  followupBodyText?: string | null;
 }
 
 export interface AdminEmailTemplate {
@@ -468,6 +471,8 @@ export interface AdminCampaignReviewResult {
   followupMonthlyLimit?: number | null;
   followupDelayValue: number;
   followupDelayUnit: "hours" | "days";
+  followupContentReady: boolean;
+  followupContentReason?: string | null;
   providerHistory: ProviderHistoryPolicySummary[];
 }
 
@@ -496,6 +501,11 @@ export interface AdminCampaignDetail {
   followupMonthlyLimit?: number | null;
   followupDelayValue: number;
   followupDelayUnit: "hours" | "days";
+  followupSubject?: string | null;
+  followupBodyHtml?: string | null;
+  followupBodyText?: string | null;
+  followupContentReady: boolean;
+  followupContentReason?: string | null;
   periodStartedAt?: string | null;
   createdAt: string;
   updatedAt: string;
@@ -652,6 +662,8 @@ export interface AdminCampaignReadinessSummary extends CampaignReadModel {
   periodRemaining?: number | null;
   periodStartedAt?: string | null;
   periodEndsAt?: string | null;
+  followupContentReady?: boolean;
+  followupContentReason?: string | null;
 }
 
 export interface AdminCampaignDispatchResult {
@@ -689,6 +701,8 @@ export interface AdminCampaignDispatchResult {
   providerPrepared: boolean;
   providerDispatched: boolean;
   contentReady: boolean;
+  followupContentReady?: boolean;
+  followupContentReason?: string | null;
   unsubscribeReady?: boolean;
   providerEventsReady?: boolean;
   emailLogsCreated: number;
@@ -696,6 +710,7 @@ export interface AdminCampaignDispatchResult {
   queuedCount: number;
   sentOrAcceptedCount: number;
   failedCount: number;
+  sendKind?: "campaign" | "followup" | null;
 }
 
 export interface AdminFollowupSimulationResult {

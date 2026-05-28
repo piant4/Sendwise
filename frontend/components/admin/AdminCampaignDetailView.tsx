@@ -1,7 +1,18 @@
-import { ChevronRight, PenSquare, ShieldAlert } from "lucide-react";
+"use client";
+
+import { useAuth } from "@clerk/nextjs";
+import { ChevronRight, Loader2, PenSquare, SendHorizonal, ShieldAlert } from "lucide-react";
 import Link from "next/link";
-import { getBackendAssetUrl } from "../../lib/api";
+import { useRouter } from "next/navigation";
+import { useState } from "react";
+import {
+  getBackendAssetUrl,
+  isApiError,
+  sendAdminCampaignFollowup,
+  simulateAdminCampaignFollowup,
+} from "../../lib/api";
 import type {
+  AdminCampaignDispatchResult,
   AdminCampaignContactsSummary,
   AdminCampaignDetail,
   AdminCampaignReadinessSummary,
@@ -240,11 +251,34 @@ function buildProviderMetrics(logs: CampaignLogsSummary) {
   ];
 }
 
+function getSafeFollowupErrorMessage(error: unknown): string {
+  if (isApiError(error)) {
+    if (error.isNetworkError) {
+      return "Il browser non riesce a raggiungere il backend Sendwise.";
+    }
+    if (error.status === 401 || error.status === 403) {
+      return "La sessione admin non e valida per questa azione.";
+    }
+    if (error.detail.trim()) {
+      return error.detail;
+    }
+  }
+
+  return "Non e stato possibile completare l'azione follow-up.";
+}
+
 export function AdminCampaignDetailView({
   campaign,
   summary,
   contacts,
 }: AdminCampaignDetailViewProps) {
+  const router = useRouter();
+  const { getToken } = useAuth();
+  const [isSimulatingFollowup, setIsSimulatingFollowup] = useState(false);
+  const [isSendingFollowup, setIsSendingFollowup] = useState(false);
+  const [followupResult, setFollowupResult] = useState<AdminCampaignDispatchResult | null>(null);
+  const [followupError, setFollowupError] = useState<string | null>(null);
+  const [isFollowupConfirmOpen, setIsFollowupConfirmOpen] = useState(false);
   const runtimeItems = summary ? getRuntimeSafetyItems(summary.runtime) : [];
   const hasPostSendSuccess = summary ? hasSuccessfulPostSendState(summary.logs) : false;
   const blockingReasons = summary
@@ -286,6 +320,52 @@ export function AdminCampaignDetailView({
     summary?.campaign ?? campaign,
     "Non disponibile",
   );
+  const followupSimulationAvailable = campaign.followupEnabled;
+  const followupRealSendEnabled =
+    campaign.followupEnabled &&
+    campaign.followupContentReady &&
+    Boolean(summary?.runtime.realSendAvailable);
+
+  async function handleFollowupSimulation() {
+    if (isSimulatingFollowup) {
+      return;
+    }
+
+    setIsSimulatingFollowup(true);
+    setFollowupError(null);
+
+    try {
+      const token = await getToken();
+      const result = await simulateAdminCampaignFollowup(campaign.campaignId, token);
+      setFollowupResult(result);
+      router.refresh();
+    } catch (error) {
+      setFollowupError(getSafeFollowupErrorMessage(error));
+    } finally {
+      setIsSimulatingFollowup(false);
+    }
+  }
+
+  async function handleFollowupSend() {
+    if (isSendingFollowup || !followupRealSendEnabled) {
+      return;
+    }
+
+    setIsSendingFollowup(true);
+    setFollowupError(null);
+
+    try {
+      const token = await getToken();
+      const result = await sendAdminCampaignFollowup(campaign.campaignId, token);
+      setFollowupResult(result);
+      setIsFollowupConfirmOpen(false);
+      router.refresh();
+    } catch (error) {
+      setFollowupError(getSafeFollowupErrorMessage(error));
+    } finally {
+      setIsSendingFollowup(false);
+    }
+  }
 
   return (
     <div style={{ display: "grid", gap: 20 }}>
@@ -400,6 +480,121 @@ export function AdminCampaignDetailView({
             ))}
           </div>
         </div>
+      </section>
+
+      <section className="admin-clients-card campaign-panel">
+        <div className="admin-clients-card__intro">
+          <div>
+            <p className="admin-surface__eyebrow">Follow-up manuale</p>
+            <h2 className="admin-clients-card__title" style={{ color: "var(--sw-olive)" }}>
+              Readiness e invio dedicato
+            </h2>
+            <p className="admin-clients-card__description" style={{ marginTop: 8 }}>
+              Il follow-up reale usa contenuto dedicato e raggiunge solo i destinatari ancora idonei.
+            </p>
+          </div>
+          <StatusBadge
+            label={
+              campaign.followupEnabled
+                ? campaign.followupContentReady
+                  ? "Contenuto configurato"
+                  : "Contenuto da completare"
+                : "Follow-up disabilitato"
+            }
+            variant={
+              !campaign.followupEnabled
+                ? "neutral"
+                : campaign.followupContentReady
+                  ? "success"
+                  : "warning"
+            }
+          />
+        </div>
+
+        {followupError ? (
+          <p className="admin-clients-feedback admin-clients-feedback--error" role="alert">
+            {followupError}
+          </p>
+        ) : null}
+
+        <div
+          style={{
+            display: "grid",
+            gap: 12,
+            gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+          }}
+        >
+          <article className="campaign-callout" style={{ minHeight: 0 }}>
+            <span className="admin-record-row__note">Follow-up</span>
+            <strong style={{ color: "var(--sw-olive)" }}>
+              {campaign.followupEnabled ? "Abilitato" : "Disabilitato"}
+            </strong>
+          </article>
+          <article className="campaign-callout" style={{ minHeight: 0 }}>
+            <span className="admin-record-row__note">Limiti dedicati</span>
+            <strong style={{ color: "var(--sw-olive)" }}>
+              {(campaign.followupDailyLimit ?? 0).toLocaleString("it-IT")} / giorno · {(campaign.followupMonthlyLimit ?? 0).toLocaleString("it-IT")} / mese
+            </strong>
+          </article>
+          <article className="campaign-callout" style={{ minHeight: 0 }}>
+            <span className="admin-record-row__note">Ritardo</span>
+            <strong style={{ color: "var(--sw-olive)" }}>
+              {campaign.followupDelayValue.toLocaleString("it-IT")} {campaign.followupDelayUnit === "hours" ? "ore" : "giorni"}
+            </strong>
+          </article>
+          <article className="campaign-callout" style={{ minHeight: 0 }}>
+            <span className="admin-record-row__note">Contenuto dedicato</span>
+            <strong style={{ color: "var(--sw-olive)" }}>
+              {campaign.followupContentReady ? "Pronto" : "Non pronto"}
+            </strong>
+            <p className="campaign-field__helper" style={{ margin: "6px 0 0" }}>
+              {campaign.followupContentReason ?? "Oggetto e HTML dedicati salvati."}
+            </p>
+          </article>
+        </div>
+
+        <div className="campaign-action-row" style={{ marginTop: 20 }}>
+          <Button
+            type="button"
+            variant="outline"
+            className="admin-topbar-action campaign-action campaign-action--secondary"
+            disabled={!followupSimulationAvailable || isSimulatingFollowup}
+            onClick={handleFollowupSimulation}
+            style={{ minWidth: 190 }}
+          >
+            {isSimulatingFollowup ? (
+              <Loader2 aria-hidden="true" className="admin-topbar-action__icon" />
+            ) : null}
+            {isSimulatingFollowup ? "Simulazione..." : "Simula follow-up"}
+          </Button>
+          <Button
+            type="button"
+            className="admin-topbar-action campaign-action campaign-action--primary"
+            disabled={!followupRealSendEnabled || isSendingFollowup}
+            onClick={() => setIsFollowupConfirmOpen(true)}
+            style={{ minWidth: 220 }}
+          >
+            {isSendingFollowup ? (
+              <Loader2 aria-hidden="true" className="admin-topbar-action__icon" />
+            ) : (
+              <SendHorizonal aria-hidden="true" className="admin-topbar-action__icon" />
+            )}
+            {isSendingFollowup ? "Invio..." : "Invia follow-up reale"}
+          </Button>
+        </div>
+        <p className="campaign-field__helper" style={{ margin: 0 }}>
+          Il pulsante reale invia un follow-up vero; solo i destinatari ancora idonei lo ricevono.
+        </p>
+
+        {followupResult ? (
+          <article className="campaign-callout" style={{ marginTop: 18, minHeight: 0 }}>
+            <span className="admin-record-row__note">Ultimo esito follow-up</span>
+            <strong style={{ color: "var(--sw-olive)" }}>{followupResult.reason}</strong>
+            <p className="campaign-field__helper" style={{ margin: "6px 0 0" }}>
+              {followupResult.eligibleContactCount.toLocaleString("it-IT")} idonei · {followupResult.blockedContactCount.toLocaleString("it-IT")} bloccati
+            </p>
+          </article>
+        ) : null}
       </section>
 
       {blockingReasons.length > 0 ? (
@@ -661,6 +856,57 @@ export function AdminCampaignDetailView({
           ) : null}
         </div>
       </details>
+
+      {isFollowupConfirmOpen ? (
+        <div
+          className="modal-backdrop"
+          role="presentation"
+          onClick={() => {
+            if (!isSendingFollowup) {
+              setIsFollowupConfirmOpen(false);
+            }
+          }}
+        >
+          <div
+            className="invite-modal campaign-contact-remove-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="campaign-followup-send-title"
+            aria-describedby="campaign-followup-send-message"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="invite-modal__header">
+              <div>
+                <p className="invite-modal__eyebrow">Follow-up reale</p>
+                <h3 id="campaign-followup-send-title" className="invite-modal__title">
+                  Confermi l&apos;invio del follow-up?
+                </h3>
+              </div>
+            </div>
+            <p id="campaign-followup-send-message" className="invite-modal__message">
+              Questa azione invia un follow-up reale. Solo i destinatari ancora idonei lo riceveranno.
+            </p>
+            <div className="invite-modal__actions" style={{ marginTop: 18 }}>
+              <button
+                type="button"
+                className="invite-modal__button invite-modal__button--secondary"
+                disabled={isSendingFollowup}
+                onClick={() => setIsFollowupConfirmOpen(false)}
+              >
+                Annulla
+              </button>
+              <button
+                type="button"
+                className="invite-modal__button invite-modal__button--primary"
+                disabled={isSendingFollowup}
+                onClick={handleFollowupSend}
+              >
+                {isSendingFollowup ? "Invio..." : "Conferma follow-up reale"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

@@ -7,6 +7,7 @@ from html.parser import HTMLParser
 from pathlib import Path
 import re
 from typing import Mapping
+from urllib.parse import urlencode
 
 from app.core.config import Settings, get_settings
 from app.services.unsubscribe import LISTMONK_UNSUBSCRIBE_TOKEN_PLACEHOLDER
@@ -527,11 +528,22 @@ def build_unsubscribe_url(
     settings: Settings,
     campaign_id: str,
     token: str = LISTMONK_UNSUBSCRIBE_TOKEN_PLACEHOLDER,
+    send_kind: str | None = None,
 ) -> str:
-    _ = campaign_id
     base_url = settings.frontend_origin or settings.frontend_url.strip()
     base_url = base_url.rstrip("/") or "https://example.invalid"
-    return f"{base_url}/unsubscribe/{token}"
+    path = f"{base_url}/unsubscribe/{token}"
+    query_values = {
+        key: value
+        for key, value in {
+            "campaign_id": campaign_id if send_kind is not None else None,
+            "send_kind": send_kind,
+        }.items()
+        if value is not None
+    }
+    if not query_values:
+        return path
+    return f"{path}?{urlencode(query_values)}"
 
 
 def render_client_access_email_html(

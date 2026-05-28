@@ -16,6 +16,7 @@ class ProviderEventRecord(BaseModel):
     campaign_id: Optional[str] = None
     contact_id: Optional[str] = None
     email_log_id: Optional[str] = None
+    send_kind: str = "campaign"
     provider: str
     source: str
     provider_event_id: Optional[str] = None
@@ -44,6 +45,7 @@ class ProviderEventRepository:
         campaign_id: str | None,
         contact_id: str | None,
         email_log_id: str | None,
+        send_kind: str = "campaign",
         provider: str,
         source: str,
         provider_event_id: str | None,
@@ -67,6 +69,7 @@ class ProviderEventRepository:
         *,
         client_id: str,
         campaign_id: str,
+        send_kind: str = "campaign",
     ) -> dict[str, int]:
         raise NotImplementedError
 
@@ -75,6 +78,7 @@ class ProviderEventRepository:
         *,
         client_id: str,
         campaign_id: str,
+        send_kind: str = "campaign",
     ) -> bool:
         raise NotImplementedError
 
@@ -83,6 +87,7 @@ class ProviderEventRepository:
         *,
         client_id: str,
         campaign_id: str,
+        send_kind: str | None = None,
     ) -> list[ProviderEventRecord]:
         raise NotImplementedError
 
@@ -127,6 +132,7 @@ class PostgresProviderEventRepository(ProviderEventRepository):
         campaign_id: str | None,
         contact_id: str | None,
         email_log_id: str | None,
+        send_kind: str = "campaign",
         provider: str,
         source: str,
         provider_event_id: str | None,
@@ -142,6 +148,7 @@ class PostgresProviderEventRepository(ProviderEventRepository):
                 campaign_id,
                 contact_id,
                 email_log_id,
+                send_kind,
                 provider,
                 source,
                 provider_event_id,
@@ -150,7 +157,7 @@ class PostgresProviderEventRepository(ProviderEventRepository):
                 payload,
                 occurred_at
             )
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s)
             ON CONFLICT (event_key) DO NOTHING
             RETURNING
                 id::text AS id,
@@ -158,6 +165,7 @@ class PostgresProviderEventRepository(ProviderEventRepository):
                 campaign_id::text AS campaign_id,
                 contact_id::text AS contact_id,
                 email_log_id::text AS email_log_id,
+                send_kind,
                 provider,
                 source,
                 provider_event_id,
@@ -175,6 +183,7 @@ class PostgresProviderEventRepository(ProviderEventRepository):
                 campaign_id::text AS campaign_id,
                 contact_id::text AS contact_id,
                 email_log_id::text AS email_log_id,
+                send_kind,
                 provider,
                 source,
                 provider_event_id,
@@ -194,6 +203,7 @@ class PostgresProviderEventRepository(ProviderEventRepository):
                 campaign_id::text AS campaign_id,
                 contact_id::text AS contact_id,
                 email_log_id::text AS email_log_id,
+                send_kind,
                 provider,
                 source,
                 provider_event_id,
@@ -219,6 +229,7 @@ class PostgresProviderEventRepository(ProviderEventRepository):
                             campaign_id,
                             contact_id,
                             email_log_id,
+                            send_kind,
                             provider,
                             source,
                             provider_event_id,
@@ -271,6 +282,7 @@ class PostgresProviderEventRepository(ProviderEventRepository):
                 campaign_id::text AS campaign_id,
                 contact_id::text AS contact_id,
                 email_log_id::text AS email_log_id,
+                send_kind,
                 provider,
                 source,
                 provider_event_id,
@@ -299,6 +311,7 @@ class PostgresProviderEventRepository(ProviderEventRepository):
         *,
         client_id: str,
         campaign_id: str,
+        send_kind: str = "campaign",
     ) -> dict[str, int]:
         query = """
             SELECT
@@ -313,13 +326,14 @@ class PostgresProviderEventRepository(ProviderEventRepository):
             FROM provider_events
             WHERE client_id::text = %s
                 AND campaign_id::text = %s
+                AND send_kind = %s
                 AND processed_at IS NOT NULL
             GROUP BY event_type
         """
 
         with postgres_connection(self._settings) as connection:
             with connection.cursor() as cursor:
-                cursor.execute(query, (client_id, campaign_id))
+                cursor.execute(query, (client_id, campaign_id, send_kind))
                 rows = cursor.fetchall()
 
         return {str(row["event_type"]): int(row["total"]) for row in rows}
@@ -329,19 +343,21 @@ class PostgresProviderEventRepository(ProviderEventRepository):
         *,
         client_id: str,
         campaign_id: str,
+        send_kind: str = "campaign",
     ) -> bool:
         query = """
             SELECT 1 AS exists
             FROM provider_events
             WHERE client_id::text = %s
                 AND campaign_id::text = %s
+                AND send_kind = %s
                 AND processed_at IS NOT NULL
             LIMIT 1
         """
 
         with postgres_connection(self._settings) as connection:
             with connection.cursor() as cursor:
-                cursor.execute(query, (client_id, campaign_id))
+                cursor.execute(query, (client_id, campaign_id, send_kind))
                 row = cursor.fetchone()
 
         return row is not None
@@ -351,6 +367,7 @@ class PostgresProviderEventRepository(ProviderEventRepository):
         *,
         client_id: str,
         campaign_id: str,
+        send_kind: str | None = None,
     ) -> list[ProviderEventRecord]:
         query = """
             SELECT
@@ -359,6 +376,7 @@ class PostgresProviderEventRepository(ProviderEventRepository):
                 campaign_id::text AS campaign_id,
                 contact_id::text AS contact_id,
                 email_log_id::text AS email_log_id,
+                send_kind,
                 provider,
                 source,
                 provider_event_id,
@@ -371,12 +389,16 @@ class PostgresProviderEventRepository(ProviderEventRepository):
             FROM provider_events
             WHERE client_id::text = %s
                 AND campaign_id::text = %s
-            ORDER BY occurred_at ASC, created_at ASC
         """
+        parameters: list[object] = [client_id, campaign_id]
+        if send_kind is not None:
+            query = f"{query}\n                AND send_kind = %s"
+            parameters.append(send_kind)
+        query = f"{query}\n            ORDER BY occurred_at ASC, created_at ASC"
 
         with postgres_connection(self._settings) as connection:
             with connection.cursor() as cursor:
-                cursor.execute(query, (client_id, campaign_id))
+                cursor.execute(query, tuple(parameters))
                 rows = cursor.fetchall()
 
         return [ProviderEventRecord.model_validate(row) for row in rows]
@@ -515,6 +537,7 @@ class InMemoryProviderEventRepository(ProviderEventRepository):
         campaign_id: str | None,
         contact_id: str | None,
         email_log_id: str | None,
+        send_kind: str = "campaign",
         provider: str,
         source: str,
         provider_event_id: str | None,
@@ -533,6 +556,7 @@ class InMemoryProviderEventRepository(ProviderEventRepository):
             campaign_id=campaign_id,
             contact_id=contact_id,
             email_log_id=email_log_id,
+            send_kind=send_kind,
             provider=provider,
             source=source,
             provider_event_id=provider_event_id,
@@ -567,12 +591,14 @@ class InMemoryProviderEventRepository(ProviderEventRepository):
         *,
         client_id: str,
         campaign_id: str,
+        send_kind: str = "campaign",
     ) -> dict[str, int]:
         counts: dict[str, set[str]] = {}
         for record in self._records.values():
             if (
                 record.client_id != client_id
                 or record.campaign_id != campaign_id
+                or record.send_kind != send_kind
                 or record.processed_at is None
             ):
                 continue
@@ -585,10 +611,12 @@ class InMemoryProviderEventRepository(ProviderEventRepository):
         *,
         client_id: str,
         campaign_id: str,
+        send_kind: str = "campaign",
     ) -> bool:
         return any(
             record.client_id == client_id
             and record.campaign_id == campaign_id
+            and record.send_kind == send_kind
             and record.processed_at is not None
             for record in self._records.values()
         )
@@ -598,12 +626,15 @@ class InMemoryProviderEventRepository(ProviderEventRepository):
         *,
         client_id: str,
         campaign_id: str,
+        send_kind: str | None = None,
     ) -> list[ProviderEventRecord]:
         return sorted(
             [
                 record
                 for record in self._records.values()
-                if record.client_id == client_id and record.campaign_id == campaign_id
+                if record.client_id == client_id
+                and record.campaign_id == campaign_id
+                and (send_kind is None or record.send_kind == send_kind)
             ],
             key=lambda record: (record.occurred_at, record.created_at),
         )

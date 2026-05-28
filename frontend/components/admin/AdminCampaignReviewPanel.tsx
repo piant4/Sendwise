@@ -166,6 +166,10 @@ function getInitialState(
     followupMonthlyLimit: campaign.followupMonthlyLimit,
     followupDelayValue: campaign.followupDelayValue,
     followupDelayUnit: campaign.followupDelayUnit,
+    followupContentReady:
+      summary?.followupContentReady ?? campaign.followupContentReady,
+    followupContentReason:
+      summary?.followupContentReason ?? campaign.followupContentReason ?? null,
   };
 }
 
@@ -249,6 +253,25 @@ function buildReviewChecklist(state: ReturnType<typeof getInitialState>): Review
         : "Riesegui la review dopo aver corretto i problemi principali.",
     },
     {
+      id: "followup-content",
+      label: "Contenuto follow-up",
+      state: !state.followupEnabled
+        ? "warning"
+        : state.followupContentReady
+          ? "passed"
+          : "failed",
+      reason: !state.followupEnabled
+        ? "Il follow-up e disabilitato per questa campagna."
+        : state.followupContentReady
+          ? "Oggetto e HTML dedicati del follow-up risultano configurati."
+          : state.followupContentReason ?? "Il contenuto dedicato del follow-up non e pronto.",
+      nextAction: !state.followupEnabled
+        ? "Attiva il follow-up solo se ti serve questo percorso manuale."
+        : state.followupContentReady
+          ? "Nessuna azione richiesta."
+          : "Completa oggetto e HTML dedicati del follow-up nello step Editor.",
+    },
+    {
       id: "real-send",
       label: "Invio reale",
       state: state.allowedToSend ? "passed" : state.canSendWhenEnabled ? "warning" : "failed",
@@ -295,6 +318,10 @@ function buildSendRecap(
     {
       label: "Ritardo follow-up",
       value: `${state.followupDelayValue.toLocaleString("it-IT")} ${state.followupDelayUnit === "hours" ? "ore" : "giorni"}`,
+    },
+    {
+      label: "Contenuto follow-up",
+      value: campaign.followupContentReady ? "Configurato" : "Da completare",
     },
     ...(summary?.runtime.sesLiveValidationStatus
       ? [
@@ -378,6 +405,10 @@ export function AdminCampaignReviewPanel({
     followupMonthlyLimit: rawState.followupMonthlyLimit ?? campaign.followupMonthlyLimit ?? null,
     followupDelayValue: rawState.followupDelayValue ?? campaign.followupDelayValue,
     followupDelayUnit: rawState.followupDelayUnit ?? campaign.followupDelayUnit,
+    followupContentReady:
+      rawState.followupContentReady ?? campaign.followupContentReady,
+    followupContentReason:
+      rawState.followupContentReason ?? campaign.followupContentReason ?? null,
   };
   const reviewExecuted = reviewResult !== null || campaign.reviewReady;
   const reviewState = getCampaignReviewStateMeta(state.reviewReady, reviewExecuted);
@@ -820,6 +851,14 @@ export function AdminCampaignReviewPanel({
           [
             "Ritardo follow-up",
             `${state.followupDelayValue.toLocaleString("it-IT")} ${state.followupDelayUnit === "hours" ? "ore" : "giorni"}`,
+          ],
+          [
+            "Contenuto follow-up",
+            state.followupEnabled
+              ? state.followupContentReady
+                ? "Configurato"
+                : "Da completare"
+              : "Disabilitato",
           ],
           [
             "Periodo",

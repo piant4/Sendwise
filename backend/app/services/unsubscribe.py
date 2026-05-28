@@ -97,6 +97,7 @@ class UnsubscribeService:
         *,
         token: str,
         campaign_id: str | None = None,
+        send_kind: str = "campaign",
     ) -> dict[str, Any]:
         resolved = self.token_service.parse_token(token)
         contact = self.contact_repository.get_by_id(resolved["contact_id"])
@@ -108,9 +109,10 @@ class UnsubscribeService:
                 provider="sendwise",
                 source="unsubscribe_link",
                 provider_event_id=(
-                    f"unsubscribe:{contact.id}:{campaign_id or 'global'}"
+                    f"unsubscribe:{contact.id}:{campaign_id or 'global'}:{send_kind}"
                 ),
                 event_type="sendwise_unsubscribe",
+                send_kind=send_kind,
                 occurred_at=datetime.now(timezone.utc),
                 campaign_id=campaign_id,
                 contact_id=contact.id,
@@ -121,6 +123,7 @@ class UnsubscribeService:
                     "contact_id": contact.id,
                     "client_id": contact.client_id,
                     "email": contact.email,
+                    "send_kind": send_kind,
                 },
             )
         )
@@ -142,6 +145,7 @@ class UnsubscribeService:
         campaign_id: str,
         listmonk_subscriber_id: str,
         listmonk_list_id: str,
+        send_kind: str = "campaign",
     ) -> dict[str, Any]:
         contact = self.contact_repository.get_by_id(contact_id)
         if contact is None or contact.client_id != client_id:
@@ -153,9 +157,10 @@ class UnsubscribeService:
                 source="native_unsubscribe_reconciliation",
                 provider_event_id=(
                     "listmonk-native-unsubscribe:"
-                    f"{contact.id}:{campaign_id}:{listmonk_list_id}"
+                    f"{contact.id}:{campaign_id}:{listmonk_list_id}:{send_kind}"
                 ),
                 event_type="sendwise_unsubscribe",
+                send_kind=send_kind,
                 occurred_at=datetime.now(timezone.utc),
                 campaign_id=campaign_id,
                 contact_id=contact.id,
@@ -167,6 +172,7 @@ class UnsubscribeService:
                     "client_id": contact.client_id,
                     "listmonk_subscriber_id": listmonk_subscriber_id,
                     "listmonk_list_id": listmonk_list_id,
+                    "send_kind": send_kind,
                 },
             )
         )

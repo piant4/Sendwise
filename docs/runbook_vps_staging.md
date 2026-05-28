@@ -563,3 +563,6 @@ Do not run any of the following on staging or production unless the incident pro
 
 - Milestone `20.2-FOLLOWUP-LIMITS` adds persisted follow-up settings and a backend eligibility helper only.
 - Staging verification must remain no-send: do not invent or trigger a follow-up executor until a dedicated runtime path is implemented and explicitly approved.
+- Milestone `20.6-B MANUAL-REAL-FOLLOWUP-SEND` adds a guarded admin-only manual follow-up runtime path with dedicated follow-up subject/body, distinct follow-up Listmonk mapping isolation, and follow-up event correlation isolation from the primary campaign path.
+- Staging proof for the real follow-up path is still deferred. Do not call `POST /admin/campaigns/{campaign_id}/send-followup` during routine staging deploy, smoke, or validation work.
+- When the later proof milestone is approved, use only an operator-controlled dedicated test campaign plus operator-controlled test recipient addresses, keep `EMAIL_SENDING_ENABLED` and recipient allowlist gates explicit, and verify that primary campaign metrics and running-slot lifecycle remain unchanged by follow-up events.

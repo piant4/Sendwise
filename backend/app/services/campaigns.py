@@ -95,6 +95,7 @@ from app.services.clients import build_client_email_brand
 from app.services.template_renderer import (
     KNOWN_TEMPLATE_VARIABLES,
     TemplateRenderError,
+    build_unsubscribe_url,
     build_template_variable_values,
     build_brand_template_variables,
     ensure_unsubscribe_link,
@@ -108,6 +109,7 @@ from app.services.campaign_slots import (
 )
 from app.services.listmonk_mappings import (
     ENTITY_TYPE_CAMPAIGN,
+    ENTITY_TYPE_CAMPAIGN_FOLLOWUP,
     ENTITY_TYPE_CONTACT,
     LISTMONK_TYPE_CAMPAIGN,
     LISTMONK_TYPE_LIST,
@@ -607,6 +609,57 @@ class CampaignDispatchDuplicateGuard:
 
 
 @dataclass(frozen=True)
+class FollowupCandidateDecision:
+    contact: ContactRecord
+    allowed: bool
+    code: str
+    reason: str
+    eligibility: FollowupEligibilityResult | None = None
+
+
+@dataclass(frozen=True)
+class FollowupSelectionResult:
+    decisions: list[FollowupCandidateDecision]
+    daily_used: int = 0
+    daily_limit: int | None = None
+    monthly_used: int = 0
+    monthly_limit: int | None = None
+
+    @property
+    def eligible_contacts(self) -> list[ContactRecord]:
+        return [decision.contact for decision in self.decisions if decision.allowed]
+
+    @property
+    def eligible_contact_count(self) -> int:
+        return len(self.eligible_contacts)
+
+    @property
+    def blocked_contact_count(self) -> int:
+        return len(self.decisions) - self.eligible_contact_count
+
+    @property
+    def blocked_reasons(self) -> dict[str, int]:
+        counts: dict[str, int] = {}
+        for decision in self.decisions:
+            if decision.allowed:
+                continue
+            counts[decision.code] = counts.get(decision.code, 0) + 1
+        return counts
+
+    @property
+    def daily_remaining(self) -> int | None:
+        if self.daily_limit is None:
+            return None
+        return max(self.daily_limit - self.daily_used, 0)
+
+    @property
+    def monthly_remaining(self) -> int | None:
+        if self.monthly_limit is None:
+            return None
+        return max(self.monthly_limit - self.monthly_used, 0)
+
+
+@dataclass(frozen=True)
 class ListmonkNativeUnsubscribeReconciliation:
     failed: bool = False
     reason: str | None = None
@@ -878,6 +931,9 @@ class AdminCampaignService:
         preview_text: str | None,
         body_html: str | None,
         body_text: str | None,
+        followup_subject: str | None = None,
+        followup_body_html: str | None = None,
+        followup_body_text: str | None = None,
         current_step: str | None,
     ) -> AdminCampaignDetail:
         campaign = self.get_campaign_record(campaign_id)
@@ -903,6 +959,22 @@ class AdminCampaignService:
             if body_text is None
             else self._normalize_optional_text(body_text)
         )
+        limits = self._ensure_campaign_limits(campaign.id)
+        next_followup_subject = (
+            limits.followup_subject
+            if followup_subject is None
+            else self._normalize_optional_text(followup_subject)
+        )
+        next_followup_body_html = (
+            limits.followup_body_html
+            if followup_body_html is None
+            else self._normalize_optional_text(followup_body_html)
+        )
+        next_followup_body_text = (
+            limits.followup_body_text
+            if followup_body_text is None
+            else self._normalize_optional_text(followup_body_text)
+        )
         self._validate_template_placeholders(
             next_subject,
             allowed_placeholders=SUPPORTED_TEMPLATE_PLACEHOLDERS,
@@ -917,6 +989,18 @@ class AdminCampaignService:
         )
         self._validate_template_placeholders(
             next_body_text,
+            allowed_placeholders=SUPPORTED_TEMPLATE_PLACEHOLDERS,
+        )
+        self._validate_template_placeholders(
+            next_followup_subject,
+            allowed_placeholders=SUPPORTED_TEMPLATE_PLACEHOLDERS,
+        )
+        self._validate_template_placeholders(
+            next_followup_body_html,
+            allowed_placeholders=SUPPORTED_TEMPLATE_PLACEHOLDERS,
+        )
+        self._validate_template_placeholders(
+            next_followup_body_text,
             allowed_placeholders=SUPPORTED_TEMPLATE_PLACEHOLDERS,
         )
         next_step = (
@@ -939,10 +1023,16 @@ class AdminCampaignService:
             review_ready=False,
             current_step=next_step,
         )
+        updated_limits = self.campaign_limit_repository.update_for_campaign(
+            campaign_id=campaign.id,
+            followup_subject=next_followup_subject,
+            followup_body_html=next_followup_body_html,
+            followup_body_text=next_followup_body_text,
+        )
         return self._build_detail(
             campaign=updated,
             client=client,
-            limits=self._ensure_campaign_limits(updated.id),
+            limits=updated_limits,
         )
 
     def list_email_templates(self, client_id: str) -> list[AdminEmailTemplateResponse]:
@@ -1251,6 +1341,13 @@ class AdminCampaignService:
             review_ready=evaluation.review_ready,
             current_step="review",
         )
+        followup_content_ready, followup_content_reason = (
+            self._evaluate_followup_template_content_readiness(
+                campaign=updated,
+                client=client,
+                limits=evaluation.limit_record,
+            )
+        )
 
         return AdminCampaignReviewResponse(
             campaign_id=updated.id,
@@ -1282,6 +1379,8 @@ class AdminCampaignService:
             followup_monthly_limit=evaluation.limit_record.followup_monthly_limit,
             followup_delay_value=evaluation.limit_record.followup_delay_value,
             followup_delay_unit=evaluation.limit_record.followup_delay_unit,
+            followup_content_ready=followup_content_ready,
+            followup_content_reason=followup_content_reason,
             provider_history=evaluation.provider_history,
         )
 
@@ -1649,6 +1748,13 @@ class AdminCampaignService:
         client_name = client.personal_name or client.email
         email_brand = build_client_email_brand(client.metadata)
         limit_record = limits or self._ensure_campaign_limits(campaign.id)
+        followup_content_ready, followup_content_reason = (
+            self._evaluate_followup_template_content_readiness(
+                campaign=campaign,
+                client=client,
+                limits=limit_record,
+            )
+        )
         return AdminCampaignDetail(
             campaign_id=campaign.id,
             client_id=campaign.client_id,
@@ -1677,6 +1783,11 @@ class AdminCampaignService:
             followup_monthly_limit=limit_record.followup_monthly_limit,
             followup_delay_value=limit_record.followup_delay_value,
             followup_delay_unit=limit_record.followup_delay_unit,
+            followup_subject=limit_record.followup_subject,
+            followup_body_html=limit_record.followup_body_html,
+            followup_body_text=limit_record.followup_body_text,
+            followup_content_ready=followup_content_ready,
+            followup_content_reason=followup_content_reason,
             period_started_at=limit_record.period_started_at,
             created_at=campaign.created_at,
             updated_at=campaign.updated_at,
@@ -1977,6 +2088,77 @@ class AdminCampaignService:
             )
         return None, None
 
+    def _evaluate_followup_template_content_readiness(
+        self,
+        *,
+        campaign: CampaignRecord,
+        client: ClientRecord,
+        limits: CampaignSendingLimitRecord,
+    ) -> tuple[bool, str | None]:
+        if not self._followup_content_ready(limits=limits):
+            return False, "Dedicated follow-up subject and HTML content are required."
+
+        asset_origin = (
+            self.settings.backend_public_origin
+            or self.settings.backend_public_url.strip()
+        )
+        email_brand = build_brand_template_variables(None, asset_origin=asset_origin)
+        brand = build_client_email_brand(client.metadata)
+        if brand is not None:
+            email_brand = build_brand_template_variables(
+                brand.model_dump(exclude_none=True),
+                asset_origin=asset_origin,
+            )
+        unsubscribe_url = build_unsubscribe_url(
+            settings=self.settings,
+            campaign_id=campaign.id,
+            send_kind="followup",
+        )
+        variables = build_template_variable_values(
+            subject=str(limits.followup_subject or "").strip(),
+            preview_text="",
+            body=str(limits.followup_body_html or ""),
+            unsubscribe_url=unsubscribe_url,
+            client_name=client.personal_name or client.email.split("@")[0],
+            campaign_name=campaign.name,
+            current_year=datetime.now(timezone.utc).year,
+        )
+        variables.update(
+            {
+                "nome": "{{ .Subscriber.Attribs.nome }}",
+                "cognome": "{{ .Subscriber.Attribs.cognome }}",
+                "email": "{{ .Subscriber.Email }}",
+            }
+        )
+        variables.update(email_brand)
+        try:
+            rendered_subject = render_template_string(
+                str(limits.followup_subject or ""),
+                {**variables, "subject": "", "preview_text": ""},
+            ).strip()
+            rendered_body = render_template_string(
+                str(limits.followup_body_html or ""),
+                {**variables, "subject": rendered_subject, "preview_text": ""},
+            )
+            rendered_body = ensure_unsubscribe_link(rendered_body, unsubscribe_url)
+            validate_rendered_template_content_ready(
+                source_fields={
+                    "subject": limits.followup_subject,
+                    "preview_text": "",
+                    "body_html": limits.followup_body_html,
+                    "body_text": limits.followup_body_text,
+                },
+                rendered_body_html=rendered_body,
+                resolved_variables={
+                    **variables,
+                    "subject": rendered_subject,
+                    "preview_text": "",
+                },
+            )
+        except TemplateRenderError as error:
+            return False, str(error)
+        return True, None
+
     def _build_guard_campaign(
         self,
         *,
@@ -2139,14 +2321,17 @@ class AdminCampaignService:
         status_counts = self.email_log_repository.get_campaign_status_counts(
             client_id=client_id,
             campaign_id=campaign_id,
+            send_kind="campaign",
         )
         event_counts = self.provider_event_repository.get_campaign_event_counts(
             client_id=client_id,
             campaign_id=campaign_id,
+            send_kind="campaign",
         )
         provider_events_available = self.provider_event_repository.has_events_for_campaign(
             client_id=client_id,
             campaign_id=campaign_id,
+            send_kind="campaign",
         )
         sent = _prefer_provider_metric(
             status_counts=status_counts,
@@ -2678,6 +2863,16 @@ class AdminCampaignService:
     def _content_ready(self, *, subject: str | None, body_html: str | None) -> bool:
         return bool((subject or "").strip() and (body_html or "").strip())
 
+    def _followup_content_ready(
+        self,
+        *,
+        limits: CampaignSendingLimitRecord,
+    ) -> bool:
+        return bool(
+            str(limits.followup_subject or "").strip()
+            and str(limits.followup_body_html or "").strip()
+        )
+
     def _normalize_email(self, email: str) -> str:
         return email.strip().lower()
 
@@ -3052,6 +3247,7 @@ class CampaignDispatchService:
         client_id: str,
         campaign_id: str,
         contacts: list[ContactRecord],
+        send_kind: str = "campaign",
         status: str,
         sending_domain: str | None,
         body: str,
@@ -3076,6 +3272,7 @@ class CampaignDispatchService:
                 client_id=client_id,
                 campaign_id=campaign_id,
                 contact_id=contact.id,
+                send_kind=send_kind,
                 status=status,
                 sending_domain=sending_domain,
                 body=body,
@@ -3083,6 +3280,891 @@ class CampaignDispatchService:
             logs.append(created)
             created_count += 1
         return logs, created_count, updated_count
+
+    def simulate_followup_campaign(
+        self,
+        campaign_id: str,
+        current_user: AuthenticatedUser | None = None,
+    ) -> dict[str, Any]:
+        mapping_service = self.mapping_service
+        client_repository = self.client_repository
+        contact_repository = self.contact_repository
+        suppression_repository = self.suppression_list_repository
+        email_log_repository = self.email_log_repository
+        provider_event_repository = self.provider_event_repository
+        campaign_limit_repository = self.campaign_limit_repository
+
+        if (
+            mapping_service is None
+            or client_repository is None
+            or campaign_limit_repository is None
+            or contact_repository is None
+            or suppression_repository is None
+            or email_log_repository is None
+            or provider_event_repository is None
+        ):
+            return self._diagnostic_response(
+                campaign_id=campaign_id,
+                decision=SendDecision.BLOCKED,
+                reason="Follow-up simulation persistence is not configured.",
+                code="followup_persistence_unavailable",
+            )
+
+        with email_log_repository.campaign_dispatch_lock(campaign_id=campaign_id):
+            campaign = self._get_campaign_for_dispatch(
+                campaign_id=campaign_id,
+                current_user=current_user,
+                client_repository=client_repository,
+            )
+            client = self._get_client_for_dispatch(
+                campaign=campaign,
+                client_repository=client_repository,
+            )
+            if campaign is None or client is None:
+                return self._diagnostic_response(
+                    campaign_id=campaign_id,
+                    decision=SendDecision.BLOCKED,
+                    reason="Campaign not found.",
+                    code="campaign_not_found",
+                )
+
+            contacts = contact_repository.list_campaign_contacts(
+                client_id=client.id,
+                campaign_id=campaign.id,
+            )
+            suppressed_emails = suppression_repository.list_suppressed_emails_for_campaign(
+                client_id=client.id,
+                emails=[contact.email for contact in contacts],
+            )
+            limits = campaign_limit_repository.ensure_for_campaign(campaign_id=campaign.id)
+            selection = self._select_followup_candidates(
+                campaign=campaign,
+                client=client,
+                contacts=contacts,
+                suppressed_emails=suppressed_emails,
+                email_log_repository=email_log_repository,
+                provider_event_repository=provider_event_repository,
+                limits=limits,
+            )
+            content_ready, content_reason = self._evaluate_followup_content_readiness_for_dispatch(
+                campaign=campaign,
+                client=client,
+                limits=limits,
+            )
+            return {
+                "status": "simulated",
+                "mode": "followup_simulation",
+                "campaign_id": campaign.id,
+                "client_id": campaign.client_id,
+                "allowed": selection.eligible_contact_count > 0 and content_ready,
+                "decision": "authorized",
+                "reason": "Follow-up simulation completed; no real email was sent.",
+                "code": (
+                    "followup_simulation_ready"
+                    if selection.eligible_contact_count > 0 and content_ready
+                    else "followup_simulation_blocked"
+                ),
+                "severity": "info",
+                "followup_enabled": limits.followup_enabled,
+                "content_ready": content_ready,
+                "followup_content_ready": content_ready,
+                "followup_content_reason": content_reason,
+                "eligible_contact_count": selection.eligible_contact_count,
+                "blocked_contact_count": selection.blocked_contact_count,
+                "blocked_reasons": selection.blocked_reasons,
+                "listmonk_prepared": False,
+                "listmonk_dispatched": False,
+                "dispatch_attempted": False,
+                "real_send_attempted": False,
+                "email_logs_created": 0,
+                "email_logs_updated": 0,
+            }
+
+    def send_followup_campaign(
+        self,
+        campaign_id: str,
+        current_user: AuthenticatedUser | None = None,
+    ) -> dict[str, Any]:
+        mapping_service = self.mapping_service
+        client_repository = self.client_repository
+        contact_repository = self.contact_repository
+        suppression_repository = self.suppression_list_repository
+        blocked_send_repository = self.blocked_send_repository
+        email_log_repository = self.email_log_repository
+        provider_event_repository = self.provider_event_repository
+        campaign_limit_repository = self.campaign_limit_repository
+
+        if (
+            mapping_service is None
+            or client_repository is None
+            or campaign_limit_repository is None
+            or contact_repository is None
+            or suppression_repository is None
+            or email_log_repository is None
+            or provider_event_repository is None
+        ):
+            return self._diagnostic_response(
+                campaign_id=campaign_id,
+                decision=SendDecision.BLOCKED,
+                reason="Follow-up dispatch persistence is not configured.",
+                code="followup_persistence_unavailable",
+            )
+
+        with email_log_repository.campaign_dispatch_lock(campaign_id=campaign_id):
+            campaign = self._get_campaign_for_dispatch(
+                campaign_id=campaign_id,
+                current_user=current_user,
+                client_repository=client_repository,
+            )
+            client = self._get_client_for_dispatch(
+                campaign=campaign,
+                client_repository=client_repository,
+            )
+            if campaign is None or client is None:
+                return self._diagnostic_response(
+                    campaign_id=campaign_id,
+                    decision=SendDecision.BLOCKED,
+                    reason="Campaign not found.",
+                    code="campaign_not_found",
+                )
+
+            contacts = contact_repository.list_campaign_contacts(
+                client_id=client.id,
+                campaign_id=campaign.id,
+            )
+            suppressed_emails = suppression_repository.list_suppressed_emails_for_campaign(
+                client_id=client.id,
+                emails=[contact.email for contact in contacts],
+            )
+            limits = campaign_limit_repository.ensure_for_campaign(campaign_id=campaign.id)
+            selection = self._select_followup_candidates(
+                campaign=campaign,
+                client=client,
+                contacts=contacts,
+                suppressed_emails=suppressed_emails,
+                email_log_repository=email_log_repository,
+                provider_event_repository=provider_event_repository,
+                limits=limits,
+            )
+            guard_result = self._build_followup_guard_result(
+                campaign=campaign,
+                selection=selection,
+            )
+
+            kill_switch_result = self.guard.authorize_campaign_send(
+                self.settings.email_sending_enabled
+            )
+            if kill_switch_result.decision != SendDecision.AUTHORIZED:
+                return self._blocked_response(
+                    campaign_id=campaign.id,
+                    guard_result=GuardResult(
+                        decision=SendDecision.BLOCKED,
+                        reason=kill_switch_result.reason,
+                        code=kill_switch_result.code,
+                        severity=kill_switch_result.severity,
+                        client_id=campaign.client_id,
+                        campaign_id=campaign.id,
+                        eligible_contact_count=selection.eligible_contact_count,
+                        blocked_contact_count=selection.blocked_contact_count,
+                        blocked_reasons=selection.blocked_reasons,
+                        diagnostic=kill_switch_result.diagnostic,
+                    ),
+                    blocked_send_repository=blocked_send_repository,
+                )
+
+            if selection.eligible_contact_count == 0:
+                return self._blocked_response(
+                    campaign_id=campaign.id,
+                    guard_result=guard_result,
+                    blocked_send_repository=blocked_send_repository,
+                )
+
+            content_ready, content_reason = self._evaluate_followup_content_readiness_for_dispatch(
+                campaign=campaign,
+                client=client,
+                limits=limits,
+            )
+            if not content_ready:
+                return self._diagnostic_response(
+                    campaign_id=campaign.id,
+                    decision=guard_result,
+                    reason=content_reason or "Dedicated follow-up content is not ready.",
+                    client_id=campaign.client_id,
+                    code="followup_content_not_ready",
+                    content_ready=False,
+                )
+
+            runtime_provider = self._resolve_controlled_provider()
+            if runtime_provider is None:
+                return self._diagnostic_response(
+                    campaign_id=campaign.id,
+                    decision=guard_result,
+                    reason="Controlled runtime is not available for follow-up dispatch.",
+                    client_id=campaign.client_id,
+                    code="controlled_runtime_required",
+                    content_ready=True,
+                )
+
+            if self.campaign_preparation_service is None:
+                return self._diagnostic_response(
+                    campaign_id=campaign.id,
+                    decision=guard_result,
+                    reason="Campaign preparation service is not configured.",
+                    client_id=campaign.client_id,
+                    code="campaign_preparation_unavailable",
+                    content_ready=True,
+                )
+
+            try:
+                preparation = self.campaign_preparation_service.prepare_followup_campaign(
+                    campaign.id,
+                    [contact.id for contact in selection.eligible_contacts],
+                    current_user,
+                )
+            except ListmonkError as error:
+                return self._failed_response_from_listmonk_error(
+                    campaign_id=campaign.id,
+                    client_id=campaign.client_id,
+                    guard_result=guard_result,
+                    error=error,
+                    provider=runtime_provider,
+                    stage="preparation",
+                    dispatch_attempted=False,
+                    content_ready=True,
+                )
+
+            if preparation.get("status") != "synced":
+                return self._diagnostic_response(
+                    campaign_id=campaign.id,
+                    decision=guard_result,
+                    reason=str(
+                        preparation.get(
+                            "reason",
+                            "Follow-up campaign preparation failed.",
+                        )
+                    ),
+                    client_id=campaign.client_id,
+                    code=str(
+                        preparation.get("reason_code")
+                        or "followup_campaign_preparation_failed"
+                    ),
+                    content_ready=content_ready,
+                    preparation=preparation,
+                )
+
+            content = preparation.get("content")
+            if not isinstance(content, dict) or not content.get("content_ready"):
+                return self._diagnostic_response(
+                    campaign_id=campaign.id,
+                    decision=guard_result,
+                    reason=str(
+                        (content or {}).get(
+                            "reason",
+                            "Dedicated follow-up content is not ready.",
+                        )
+                    ),
+                    client_id=campaign.client_id,
+                    code="followup_content_not_ready",
+                    content_ready=False,
+                    preparation=preparation,
+                )
+
+            mapping = mapping_service.get_mapping(
+                client_id=campaign.client_id,
+                entity_type=ENTITY_TYPE_CAMPAIGN_FOLLOWUP,
+                entity_id=campaign.id,
+                listmonk_type=LISTMONK_TYPE_CAMPAIGN,
+            )
+            if mapping is None:
+                return self._diagnostic_response(
+                    campaign_id=campaign.id,
+                    decision=guard_result,
+                    reason="Follow-up Listmonk mapping is unavailable after preparation.",
+                    client_id=campaign.client_id,
+                    code="followup_mapping_unavailable",
+                    content_ready=True,
+                    preparation=preparation,
+                )
+
+            try:
+                listmonk_result = self.listmonk_client.trigger_campaign_send(mapping.listmonk_id)
+            except ListmonkError as error:
+                failed_logs, created_count, updated_count = self._persist_dispatch_logs(
+                    email_log_repository=email_log_repository,
+                    client_id=campaign.client_id,
+                    campaign_id=campaign.id,
+                    contacts=selection.eligible_contacts,
+                    send_kind="followup",
+                    status="failed",
+                    sending_domain=get_configured_sending_domain(self.settings),
+                    body=str(content.get("body") or ""),
+                    retryable_log_ids_by_contact=None,
+                )
+                return self._failed_response_from_listmonk_error(
+                    campaign_id=campaign.id,
+                    client_id=campaign.client_id,
+                    guard_result=guard_result,
+                    error=error,
+                    provider=runtime_provider,
+                    stage="dispatch",
+                    dispatch_attempted=True,
+                    preparation=preparation,
+                    content_ready=True,
+                    failed_count=len(failed_logs),
+                    email_logs_created=created_count,
+                    email_logs_updated=updated_count,
+                )
+
+            log_status, provider_status = self._classify_listmonk_dispatch_result(
+                listmonk_result
+            )
+            logs, created_count, updated_count = self._persist_dispatch_logs(
+                email_log_repository=email_log_repository,
+                client_id=campaign.client_id,
+                campaign_id=campaign.id,
+                contacts=selection.eligible_contacts,
+                send_kind="followup",
+                status=log_status,
+                sending_domain=get_configured_sending_domain(self.settings),
+                body=str(content.get("body") or ""),
+                retryable_log_ids_by_contact=None,
+            )
+            if log_status == "failed":
+                return self._failed_response(
+                    campaign_id=campaign.id,
+                    client_id=campaign.client_id,
+                    guard_result=guard_result,
+                    reason=self._extract_listmonk_failure_reason(listmonk_result),
+                    provider=runtime_provider,
+                    stage="dispatch",
+                    dispatch_attempted=True,
+                    preparation=preparation,
+                    content_ready=True,
+                    provider_status=provider_status,
+                    failed_count=len(logs),
+                    email_logs_created=created_count,
+                    email_logs_updated=updated_count,
+                )
+
+            response = {
+                "status": "accepted",
+                "mode": "manual_followup",
+                "provider": runtime_provider,
+                "provider_status": provider_status,
+                "campaign_id": campaign.id,
+                "client_id": campaign.client_id,
+                "allowed": True,
+                "decision": guard_result.decision,
+                "reason": "Manual follow-up dispatch accepted.",
+                "code": "followup_dispatch_accepted",
+                "severity": "info",
+                "eligible_contact_count": selection.eligible_contact_count,
+                "blocked_contact_count": selection.blocked_contact_count,
+                "blocked_reasons": selection.blocked_reasons,
+                "dispatch_attempted": True,
+                "real_send_attempted": True,
+                "listmonk_prepared": True,
+                "listmonk_dispatched": True,
+                "content_ready": True,
+                "followup_content_ready": True,
+                "email_logs_created": created_count,
+                "email_logs_updated": updated_count,
+                "queued_count": 0,
+                "sent_or_accepted_count": len(logs),
+                "failed_count": 0,
+                "send_kind": "followup",
+            }
+            response["preparation"] = self._sanitize_preparation_snapshot(preparation)
+            return response
+
+    def _select_followup_candidates(
+        self,
+        *,
+        campaign: ClientCampaignRecord,
+        client: ClientRecord,
+        contacts: list[ContactRecord],
+        suppressed_emails: set[str],
+        email_log_repository: EmailLogRepository,
+        provider_event_repository: ProviderEventRepository,
+        limits: CampaignSendingLimitRecord,
+    ) -> FollowupSelectionResult:
+        now = datetime.now(timezone.utc)
+        day_started_at = _get_business_day_start(now, self.settings)
+        month_started_at, next_month_started_at = _get_business_month_window(
+            now,
+            self.settings,
+        )
+        daily_used = email_log_repository.count_real_campaign_logs_since(
+            client_id=campaign.client_id,
+            campaign_id=campaign.id,
+            send_kind="followup",
+            started_at=day_started_at,
+        )
+        monthly_used = email_log_repository.count_real_campaign_logs_since(
+            client_id=campaign.client_id,
+            campaign_id=campaign.id,
+            send_kind="followup",
+            started_at=month_started_at,
+            ended_at=next_month_started_at,
+        )
+        primary_logs = {
+            str(log.contact_id): log
+            for log in email_log_repository.list_latest_for_campaign(
+                client_id=campaign.client_id,
+                campaign_id=campaign.id,
+                send_kind="campaign",
+            )
+            if log.contact_id is not None
+        }
+        followup_logs = {
+            str(log.contact_id): log
+            for log in email_log_repository.list_latest_for_campaign(
+                client_id=campaign.client_id,
+                campaign_id=campaign.id,
+                send_kind="followup",
+            )
+            if log.contact_id is not None
+        }
+        primary_events_by_contact: dict[str, set[str]] = {}
+        for event in provider_event_repository.list_by_campaign(
+            client_id=campaign.client_id,
+            campaign_id=campaign.id,
+            send_kind="campaign",
+        ):
+            if event.contact_id is None:
+                continue
+            primary_events_by_contact.setdefault(str(event.contact_id), set()).add(
+                event.event_type
+            )
+
+        decisions: list[FollowupCandidateDecision] = []
+        capacity_candidates: list[int] = []
+        capacity_code = "followup_limit_reached"
+        capacity_reason = "Follow-up capacity is exhausted for this campaign."
+        if limits.followup_daily_limit is not None:
+            capacity_candidates.append(max(limits.followup_daily_limit - daily_used, 0))
+            capacity_code = "followup_daily_limit_exceeded"
+            capacity_reason = "Follow-up daily limit reached for this campaign."
+        if limits.followup_monthly_limit is not None:
+            monthly_remaining = max(limits.followup_monthly_limit - monthly_used, 0)
+            if not capacity_candidates or monthly_remaining <= min(capacity_candidates):
+                capacity_code = "followup_monthly_limit_exceeded"
+                capacity_reason = "Follow-up monthly limit reached for this campaign."
+            capacity_candidates.append(monthly_remaining)
+        remaining_capacity = (
+            min(capacity_candidates) if capacity_candidates else len(contacts)
+        )
+
+        for contact in contacts:
+            normalized_email = contact.email.strip().lower()
+            contact_id = contact.id
+            if contact.client_id != client.id or campaign.client_id != client.id:
+                decisions.append(
+                    FollowupCandidateDecision(
+                        contact=contact,
+                        allowed=False,
+                        code="followup_contact_client_mismatch",
+                        reason="Contact does not belong to the campaign client.",
+                    )
+                )
+                continue
+
+            if contact.status.strip().lower() != self.guard.SENDABLE_CONTACT_STATUS:
+                decisions.append(
+                    FollowupCandidateDecision(
+                        contact=contact,
+                        allowed=False,
+                        code="followup_contact_not_sendable",
+                        reason=f"Contact status {contact.status} is not sendable.",
+                    )
+                )
+                continue
+
+            if normalized_email in suppressed_emails:
+                decisions.append(
+                    FollowupCandidateDecision(
+                        contact=contact,
+                        allowed=False,
+                        code="followup_contact_suppressed",
+                        reason="Contact is currently suppressed for this campaign.",
+                    )
+                )
+                continue
+
+            if contact_id in followup_logs:
+                decisions.append(
+                    FollowupCandidateDecision(
+                        contact=contact,
+                        allowed=False,
+                        code="followup_already_sent",
+                        reason="A follow-up already exists for this contact in this campaign.",
+                    )
+                )
+                continue
+
+            primary_log = primary_logs.get(contact_id)
+            if primary_log is None:
+                decisions.append(
+                    FollowupCandidateDecision(
+                        contact=contact,
+                        allowed=False,
+                        code="followup_missing_primary_send",
+                        reason="Follow-up requires an original campaign delivery reference.",
+                    )
+                )
+                continue
+
+            event_types = primary_events_by_contact.get(contact_id, set())
+            if not event_types.intersection(PROVIDER_DELIVERED_EVENT_TYPES):
+                decisions.append(
+                    FollowupCandidateDecision(
+                        contact=contact,
+                        allowed=False,
+                        code="followup_primary_not_delivered",
+                        reason="Primary campaign delivery is required before follow-up.",
+                    )
+                )
+                continue
+
+            if event_types.intersection(PROVIDER_OPENED_EVENT_TYPES):
+                decisions.append(
+                    FollowupCandidateDecision(
+                        contact=contact,
+                        allowed=False,
+                        code="followup_primary_opened",
+                        reason="Contacts who opened the primary campaign are excluded.",
+                    )
+                )
+                continue
+
+            if event_types.intersection(PROVIDER_UNSUBSCRIBE_EVENT_TYPES):
+                decisions.append(
+                    FollowupCandidateDecision(
+                        contact=contact,
+                        allowed=False,
+                        code="followup_primary_unsubscribed",
+                        reason="Contacts who unsubscribed are excluded from follow-up.",
+                    )
+                )
+                continue
+
+            if event_types.intersection(PROVIDER_COMPLAINT_EVENT_TYPES):
+                decisions.append(
+                    FollowupCandidateDecision(
+                        contact=contact,
+                        allowed=False,
+                        code="followup_primary_complaint",
+                        reason="Contacts with complaints are excluded from follow-up.",
+                    )
+                )
+                continue
+
+            if event_types.intersection(PROVIDER_BOUNCE_EVENT_TYPES):
+                decisions.append(
+                    FollowupCandidateDecision(
+                        contact=contact,
+                        allowed=False,
+                        code="followup_primary_failed",
+                        reason="Contacts with failed primary delivery are excluded.",
+                    )
+                )
+                continue
+
+            eligibility = self._evaluate_followup_contact_dispatch_eligibility(
+                campaign=campaign,
+                contact_id=contact_id,
+                reference_time=primary_log.created_at,
+                limits=limits,
+                daily_used=daily_used,
+                monthly_used=monthly_used,
+            )
+            if not eligibility.allowed:
+                decisions.append(
+                    FollowupCandidateDecision(
+                        contact=contact,
+                        allowed=False,
+                        code=eligibility.code,
+                        reason=eligibility.reason,
+                        eligibility=eligibility,
+                    )
+                )
+                continue
+
+            if remaining_capacity <= 0:
+                decisions.append(
+                    FollowupCandidateDecision(
+                        contact=contact,
+                        allowed=False,
+                        code=capacity_code,
+                        reason=capacity_reason,
+                        eligibility=eligibility,
+                    )
+                )
+                continue
+
+            decisions.append(
+                FollowupCandidateDecision(
+                    contact=contact,
+                    allowed=True,
+                    code=eligibility.code,
+                    reason=eligibility.reason,
+                    eligibility=eligibility,
+                )
+            )
+            remaining_capacity -= 1
+
+        return FollowupSelectionResult(
+            decisions=decisions,
+            daily_used=daily_used,
+            daily_limit=limits.followup_daily_limit,
+            monthly_used=monthly_used,
+            monthly_limit=limits.followup_monthly_limit,
+        )
+
+    def _evaluate_followup_contact_dispatch_eligibility(
+        self,
+        *,
+        campaign: ClientCampaignRecord,
+        contact_id: str,
+        reference_time: datetime,
+        limits: CampaignSendingLimitRecord,
+        daily_used: int,
+        monthly_used: int,
+    ) -> FollowupEligibilityResult:
+        if not limits.followup_enabled:
+            return FollowupEligibilityResult(
+                allowed=False,
+                decision="blocked",
+                code="followup_disabled",
+                reason="Follow-up is disabled for this campaign.",
+                followup_enabled=False,
+                followup_daily_limit=limits.followup_daily_limit,
+                followup_daily_used=daily_used,
+                followup_monthly_limit=limits.followup_monthly_limit,
+                followup_monthly_used=monthly_used,
+                followup_delay_value=limits.followup_delay_value,
+                followup_delay_unit=limits.followup_delay_unit,
+                reference_time=reference_time,
+            )
+
+        eligible_at = reference_time + self._followup_delay_delta_for_dispatch(
+            value=limits.followup_delay_value,
+            unit=limits.followup_delay_unit,
+        )
+        now = datetime.now(timezone.utc)
+        if now < eligible_at:
+            return FollowupEligibilityResult(
+                allowed=False,
+                decision="blocked",
+                code="followup_delay_not_elapsed",
+                reason="Follow-up delay has not elapsed yet.",
+                followup_enabled=True,
+                followup_daily_limit=limits.followup_daily_limit,
+                followup_daily_used=daily_used,
+                followup_monthly_limit=limits.followup_monthly_limit,
+                followup_monthly_used=monthly_used,
+                followup_delay_value=limits.followup_delay_value,
+                followup_delay_unit=limits.followup_delay_unit,
+                reference_time=reference_time,
+                eligible_at=eligible_at,
+            )
+
+        if (
+            limits.followup_daily_limit is not None
+            and daily_used >= limits.followup_daily_limit
+        ):
+            return FollowupEligibilityResult(
+                allowed=False,
+                decision="blocked",
+                code="followup_daily_limit_exceeded",
+                reason="Follow-up daily limit reached for this campaign.",
+                followup_enabled=True,
+                followup_daily_limit=limits.followup_daily_limit,
+                followup_daily_used=daily_used,
+                followup_monthly_limit=limits.followup_monthly_limit,
+                followup_monthly_used=monthly_used,
+                followup_delay_value=limits.followup_delay_value,
+                followup_delay_unit=limits.followup_delay_unit,
+                reference_time=reference_time,
+                eligible_at=eligible_at,
+            )
+
+        if (
+            limits.followup_monthly_limit is not None
+            and monthly_used >= limits.followup_monthly_limit
+        ):
+            return FollowupEligibilityResult(
+                allowed=False,
+                decision="blocked",
+                code="followup_monthly_limit_exceeded",
+                reason="Follow-up monthly limit reached for this campaign.",
+                followup_enabled=True,
+                followup_daily_limit=limits.followup_daily_limit,
+                followup_daily_used=daily_used,
+                followup_monthly_limit=limits.followup_monthly_limit,
+                followup_monthly_used=monthly_used,
+                followup_delay_value=limits.followup_delay_value,
+                followup_delay_unit=limits.followup_delay_unit,
+                reference_time=reference_time,
+                eligible_at=eligible_at,
+            )
+
+        return FollowupEligibilityResult(
+            allowed=True,
+            decision="authorized",
+            code="followup_allowed",
+            reason="Follow-up is allowed for this campaign contact.",
+            followup_enabled=True,
+            followup_daily_limit=limits.followup_daily_limit,
+            followup_daily_used=daily_used,
+            followup_monthly_limit=limits.followup_monthly_limit,
+            followup_monthly_used=monthly_used,
+            followup_delay_value=limits.followup_delay_value,
+            followup_delay_unit=limits.followup_delay_unit,
+            reference_time=reference_time,
+            eligible_at=eligible_at,
+        )
+
+    def _build_followup_guard_result(
+        self,
+        *,
+        campaign: ClientCampaignRecord,
+        selection: FollowupSelectionResult,
+    ) -> GuardResult:
+        blocked_reasons = selection.blocked_reasons
+        if selection.eligible_contact_count == 0:
+            primary_code = next(iter(blocked_reasons), "followup_no_eligible_contacts")
+            primary_reason = {
+                "followup_disabled": "Follow-up is disabled for this campaign.",
+                "followup_delay_not_elapsed": "Follow-up delay has not elapsed for eligible contacts.",
+                "followup_daily_limit_exceeded": "Follow-up daily limit reached for this campaign.",
+                "followup_monthly_limit_exceeded": "Follow-up monthly limit reached for this campaign.",
+            }.get(primary_code, "No contacts are eligible for follow-up.")
+            return GuardResult(
+                decision=SendDecision.BLOCKED,
+                reason=primary_reason,
+                code=primary_code,
+                severity="error",
+                client_id=campaign.client_id,
+                campaign_id=campaign.id,
+                eligible_contact_count=0,
+                blocked_contact_count=selection.blocked_contact_count,
+                blocked_reasons=blocked_reasons,
+                diagnostic="Follow-up candidate selection returned no eligible contacts.",
+                limit_source="followup_limits",
+                daily_limit=selection.daily_limit,
+                daily_used=selection.daily_used,
+                daily_remaining=selection.daily_remaining,
+                period_limit=selection.monthly_limit,
+                period_used=selection.monthly_used,
+                period_remaining=selection.monthly_remaining,
+            )
+
+        return GuardResult(
+            decision=SendDecision.AUTHORIZED,
+            reason="Follow-up dispatch is authorized for the eligible recipient subset.",
+            code="followup_authorized",
+            severity="info",
+            client_id=campaign.client_id,
+            campaign_id=campaign.id,
+            eligible_contact_count=selection.eligible_contact_count,
+            blocked_contact_count=selection.blocked_contact_count,
+            blocked_reasons=blocked_reasons,
+            diagnostic="Follow-up candidate selection passed before provider preparation.",
+            limit_source="followup_limits",
+            daily_limit=selection.daily_limit,
+            daily_used=selection.daily_used,
+            daily_remaining=selection.daily_remaining,
+            period_limit=selection.monthly_limit,
+            period_used=selection.monthly_used,
+            period_remaining=selection.monthly_remaining,
+        )
+
+    def _evaluate_followup_content_readiness_for_dispatch(
+        self,
+        *,
+        campaign: ClientCampaignRecord,
+        client: ClientRecord,
+        limits: CampaignSendingLimitRecord,
+    ) -> tuple[bool, str | None]:
+        if not self._followup_content_ready_for_dispatch(limits=limits):
+            return False, "Dedicated follow-up subject and HTML content are required."
+
+        asset_origin = (
+            self.settings.backend_public_origin
+            or self.settings.backend_public_url.strip()
+        )
+        email_brand = build_brand_template_variables(None, asset_origin=asset_origin)
+        brand = build_client_email_brand(client.metadata)
+        if brand is not None:
+            email_brand = build_brand_template_variables(
+                brand.model_dump(exclude_none=True),
+                asset_origin=asset_origin,
+            )
+        unsubscribe_url = build_unsubscribe_url(
+            settings=self.settings,
+            campaign_id=campaign.id,
+            send_kind="followup",
+        )
+        variables = build_template_variable_values(
+            subject=str(limits.followup_subject or "").strip(),
+            preview_text="",
+            body=str(limits.followup_body_html or ""),
+            unsubscribe_url=unsubscribe_url,
+            client_name=client.personal_name or client.email.split("@")[0],
+            campaign_name=campaign.name,
+            current_year=datetime.now(timezone.utc).year,
+        )
+        variables.update(
+            {
+                "nome": "{{ .Subscriber.Attribs.nome }}",
+                "cognome": "{{ .Subscriber.Attribs.cognome }}",
+                "email": "{{ .Subscriber.Email }}",
+            }
+        )
+        variables.update(email_brand)
+        try:
+            rendered_subject = render_template_string(
+                str(limits.followup_subject or ""),
+                {**variables, "subject": "", "preview_text": ""},
+            ).strip()
+            rendered_body = render_template_string(
+                str(limits.followup_body_html or ""),
+                {**variables, "subject": rendered_subject, "preview_text": ""},
+            )
+            rendered_body = ensure_unsubscribe_link(rendered_body, unsubscribe_url)
+            validate_rendered_template_content_ready(
+                source_fields={
+                    "subject": limits.followup_subject,
+                    "preview_text": "",
+                    "body_html": limits.followup_body_html,
+                    "body_text": limits.followup_body_text,
+                },
+                rendered_body_html=rendered_body,
+                resolved_variables={
+                    **variables,
+                    "subject": rendered_subject,
+                    "preview_text": "",
+                },
+            )
+        except TemplateRenderError as error:
+            return False, str(error)
+        return True, None
+
+    def _followup_delay_delta_for_dispatch(self, *, value: int, unit: str) -> timedelta:
+        if unit == "hours":
+            return timedelta(hours=value)
+        return timedelta(days=value)
+
+    def _followup_content_ready_for_dispatch(
+        self,
+        *,
+        limits: CampaignSendingLimitRecord,
+    ) -> bool:
+        return bool(
+            str(limits.followup_subject or "").strip()
+            and str(limits.followup_body_html or "").strip()
+        )
 
     def send_campaign(
         self,

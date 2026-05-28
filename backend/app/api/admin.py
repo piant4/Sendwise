@@ -391,6 +391,9 @@ def update_campaign_content(
         preview_text=payload.preview_text,
         body_html=payload.body_html,
         body_text=payload.body_text,
+        followup_subject=payload.followup_subject,
+        followup_body_html=payload.followup_body_html,
+        followup_body_text=payload.followup_body_text,
         current_step=payload.current_step,
     )
 
@@ -530,6 +533,41 @@ def send_campaign(
         return {
             "status": "dispatch_failed",
             "mode": "controlled_dev",
+            "campaign_id": campaign_id,
+            "allowed": False,
+            "decision": "authorized",
+            "reason": str(error),
+            "code": "listmonk_dispatch_failed",
+            "severity": "error",
+            "dispatch_attempted": False,
+            "real_send_attempted": False,
+            "listmonk_prepared": False,
+            "listmonk_dispatched": False,
+            "content_ready": False,
+            "email_logs_created": 0,
+            "email_logs_updated": 0,
+        }
+
+
+@router.post("/campaigns/{campaign_id}/send-followup")
+def send_followup_campaign(
+    campaign_id: str,
+    current_user: AuthenticatedUser = Depends(require_platform_admin),
+    campaign_service: AdminCampaignService = Depends(get_admin_campaign_service),
+    campaign_dispatch_service: CampaignDispatchService = Depends(
+        get_campaign_dispatch_service
+    ),
+) -> dict[str, object]:
+    campaign_service.get_campaign_record(campaign_id)
+    try:
+        return campaign_dispatch_service.send_followup_campaign(
+            campaign_id,
+            current_user,
+        )
+    except ListmonkError as error:
+        return {
+            "status": "dispatch_failed",
+            "mode": "manual_followup",
             "campaign_id": campaign_id,
             "allowed": False,
             "decision": "authorized",

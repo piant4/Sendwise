@@ -71,6 +71,9 @@ class AdminCampaignContentRequest(BaseModel):
     preview_text: Optional[str] = None
     body_html: Optional[str] = None
     body_text: Optional[str] = None
+    followup_subject: Optional[str] = None
+    followup_body_html: Optional[str] = None
+    followup_body_text: Optional[str] = None
     current_step: Optional[str] = None
 
 
@@ -128,6 +131,11 @@ class AdminCampaignDetail(BaseModel):
     followup_monthly_limit: Optional[int] = None
     followup_delay_value: int = 3
     followup_delay_unit: str = "days"
+    followup_subject: Optional[str] = None
+    followup_body_html: Optional[str] = None
+    followup_body_text: Optional[str] = None
+    followup_content_ready: bool = False
+    followup_content_reason: Optional[str] = None
     period_started_at: Optional[datetime] = None
     created_at: datetime
     updated_at: datetime
@@ -183,6 +191,8 @@ class AdminCampaignReviewResponse(BaseModel):
     followup_monthly_limit: Optional[int] = None
     followup_delay_value: int = 3
     followup_delay_unit: str = "days"
+    followup_content_ready: bool = False
+    followup_content_reason: Optional[str] = None
     provider_history: list[ProviderHistoryPolicySummary] = Field(default_factory=list)
 
 

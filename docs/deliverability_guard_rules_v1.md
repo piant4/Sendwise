@@ -141,6 +141,17 @@ Unsubscribe rate is calculated from provider or listmonk unsubscribe events over
 - Stop/review: unsubscribe rate >= 2.00% or a sharp spike after a single campaign.
 - Action: honor unsubscribe immediately, suppress future sends, and flag content/audience mismatch.
 
+### Follow-Up Policy
+
+Follow-up is a constrained re-engagement path, not a volume multiplier.
+
+- Manual only: follow-up dispatch is platform-admin initiated only; no automatic scheduler or sequence is part of V1.
+- Dedicated content: a follow-up must use its own explicit subject and body. Sendwise must not silently reuse the original campaign subject or body.
+- Eligibility: a contact is eligible only after a delivered primary campaign, with no open event, no unsubscribe, no complaint, no hard bounce/permanent failure, no suppression, and no previous follow-up for the same campaign.
+- Frequency: maximum one follow-up per contact per campaign.
+- Pacing: follow-up uses its own daily/monthly caps and minimum delay, separate from the primary campaign limits.
+- Isolation: follow-up analytics and event correlation must stay isolated from the primary campaign path so follow-up opens/clicks/unsubscribes do not mutate the primary campaign lifecycle or metrics.
+
 ### Suppression Automation
 
 Suppress automatically:

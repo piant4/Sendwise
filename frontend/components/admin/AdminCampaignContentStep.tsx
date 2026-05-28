@@ -373,6 +373,15 @@ export function AdminCampaignContentStep({
       ? initialBoilerplateTemplate.plainTextBody
       : getValue(campaign.bodyText),
   );
+  const [followupSubject, setFollowupSubject] = useState(
+    getValue(campaign.followupSubject),
+  );
+  const [followupBodyHtml, setFollowupBodyHtml] = useState(
+    getValue(campaign.followupBodyHtml),
+  );
+  const [followupBodyText, setFollowupBodyText] = useState(
+    getValue(campaign.followupBodyText),
+  );
   const [editorMode, setEditorMode] = useState<ContentEditorMode>("split");
   const [activeField, setActiveField] = useState<ActiveField>("html");
   const [previewDevice, setPreviewDevice] = useState<PreviewDevice>("desktop");
@@ -614,17 +623,28 @@ export function AdminCampaignContentStep({
     const previewValue = normalizeText(previewText);
     const bodyHtmlValue = normalizeText(bodyHtml);
     const bodyTextValue = derivePlainTextFromHtml(bodyHtmlValue);
+    const followupSubjectValue = normalizeSubjectText(followupSubject);
+    const followupBodyHtmlValue = normalizeText(followupBodyHtml);
+    const followupBodyTextValue = followupBodyHtmlValue
+      ? derivePlainTextFromHtml(followupBodyHtmlValue)
+      : normalizeText(followupBodyText);
     const unsupportedPlaceholders = [
       ...collectUnsupportedPlaceholders(subjectValue, ALLOWED_EDITOR_PLACEHOLDERS),
       ...collectUnsupportedPlaceholders(previewValue, ALLOWED_EDITOR_PLACEHOLDERS),
       ...collectUnsupportedPlaceholders(bodyHtmlValue, ALLOWED_EDITOR_PLACEHOLDERS),
       ...collectUnsupportedPlaceholders(bodyTextValue, ALLOWED_EDITOR_PLACEHOLDERS),
+      ...collectUnsupportedPlaceholders(followupSubjectValue, ALLOWED_EDITOR_PLACEHOLDERS),
+      ...collectUnsupportedPlaceholders(followupBodyHtmlValue, ALLOWED_EDITOR_PLACEHOLDERS),
+      ...collectUnsupportedPlaceholders(followupBodyTextValue, ALLOWED_EDITOR_PLACEHOLDERS),
     ];
     const contentChanged =
       subjectValue !== normalizeSubjectText(campaign.subject) ||
       previewValue !== normalizeText(campaign.previewText) ||
       bodyHtmlValue !== normalizeText(campaign.bodyHtml) ||
-      bodyTextValue !== normalizeText(campaign.bodyText);
+      bodyTextValue !== normalizeText(campaign.bodyText) ||
+      followupSubjectValue !== normalizeSubjectText(campaign.followupSubject) ||
+      followupBodyHtmlValue !== normalizeText(campaign.followupBodyHtml) ||
+      followupBodyTextValue !== normalizeText(campaign.followupBodyText);
 
     if (unsupportedPlaceholders.length > 0) {
       setErrorMessage("Completa o rimuovi le variabili del template prima di salvare.");
@@ -652,6 +672,7 @@ export function AdminCampaignContentStep({
     try {
       const token = await getToken();
       setBodyText(bodyTextValue);
+      setFollowupBodyText(followupBodyTextValue);
       await updateAdminCampaignContent(
         campaign.campaignId,
         {
@@ -659,6 +680,9 @@ export function AdminCampaignContentStep({
           previewText: previewValue,
           bodyHtml: bodyHtmlValue,
           bodyText: bodyTextValue,
+          followupSubject: followupSubjectValue,
+          followupBodyHtml: followupBodyHtmlValue,
+          followupBodyText: followupBodyTextValue,
         },
         token,
       );
@@ -737,7 +761,9 @@ export function AdminCampaignContentStep({
   const hasUnsavedChanges =
     normalizeSubjectText(subject) !== normalizeSubjectText(campaign.subject) ||
     normalizeText(previewText) !== normalizeText(campaign.previewText) ||
-    normalizeText(bodyHtml) !== normalizeText(campaign.bodyHtml);
+    normalizeText(bodyHtml) !== normalizeText(campaign.bodyHtml) ||
+    normalizeSubjectText(followupSubject) !== normalizeSubjectText(campaign.followupSubject) ||
+    normalizeText(followupBodyHtml) !== normalizeText(campaign.followupBodyHtml);
 
   return (
     <form className="admin-clients-card campaign-panel" onSubmit={handleSubmit}>
@@ -1114,6 +1140,70 @@ export function AdminCampaignContentStep({
                   </div>
                 ) : null}
               </div>
+            </section>
+
+            <section
+              className="campaign-panel campaign-panel--subtle"
+              style={{ display: "grid", gap: 14, gridColumn: "1 / -1", padding: 18 }}
+            >
+              <div style={{ display: "grid", gap: 6 }}>
+                <p className="admin-surface__eyebrow">Follow-up dedicato</p>
+                <h3 className="campaign-variable-helper__title" style={{ margin: 0 }}>
+                  Contenuto follow-up manuale
+                </h3>
+                <p className="campaign-variable-helper__note" style={{ margin: 0 }}>
+                  Il follow-up reale usa sempre questo oggetto e questo HTML. Il backend non riusa mai il contenuto principale.
+                </p>
+              </div>
+              <div
+                style={{
+                  display: "grid",
+                  gap: 14,
+                  gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
+                }}
+              >
+                <label className="campaign-field">
+                  <span className="campaign-field__label">Oggetto follow-up</span>
+                  <input
+                    className="campaign-input"
+                    disabled={isSubmitting}
+                    onChange={(event) => setFollowupSubject(event.target.value)}
+                    placeholder="Oggetto dedicato del follow-up"
+                    value={followupSubject}
+                  />
+                </label>
+                <article className="campaign-callout" style={{ minHeight: 0 }}>
+                  <span className="admin-record-row__note">Readiness follow-up</span>
+                  <strong style={{ color: "var(--sw-olive)" }}>
+                    {campaign.followupContentReady ? "Configurato" : "Da completare"}
+                  </strong>
+                  <p className="campaign-field__helper" style={{ margin: "6px 0 0" }}>
+                    {campaign.followupContentReason ??
+                      "Serve oggetto dedicato, HTML dedicato e branding/CTA validi."}
+                  </p>
+                </article>
+              </div>
+              <label className="campaign-field">
+                <span className="campaign-field__label">HTML follow-up</span>
+                <CampaignCodeEditor
+                  disabled={isSubmitting}
+                  onChange={setFollowupBodyHtml}
+                  placeholder="<html>...</html>"
+                  rows={12}
+                  style={{
+                    fontFamily:
+                      'ui-monospace, SFMono-Regular, "SF Mono", Consolas, "Liberation Mono", Menlo, monospace',
+                    lineHeight: 1.55,
+                    minHeight: 260,
+                    overflowY: "auto",
+                    resize: "vertical",
+                  }}
+                  value={followupBodyHtml}
+                />
+              </label>
+              <p className="campaign-field__helper" style={{ margin: 0 }}>
+                Placeholder supportati: {SUPPORTED_TEMPLATE_VARIABLES.map((item) => item.token).join(", ")}.
+              </p>
             </section>
           </div>
 

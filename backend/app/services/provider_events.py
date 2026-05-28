@@ -81,6 +81,7 @@ RUNNING_SLOT_COMPLETION_LOG_STATUSES = {
 class NormalizedProviderEvent:
     provider: str
     event_type: str
+    send_kind: str = "campaign"
     source: str = "webhook"
     provider_event_id: str | None = None
     occurred_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
@@ -127,6 +128,11 @@ class ProviderEventIngestionService:
             campaign_id=correlation.campaign_id if analytics_correlated else None,
             contact_id=correlation.contact_id if analytics_correlated else None,
             email_log_id=correlation.email_log.id if correlation.email_log else event.email_log_id,
+            send_kind=(
+                correlation.email_log.send_kind
+                if correlation.email_log is not None
+                else event.send_kind
+            ),
             provider=event.provider,
             source=event.source,
             provider_event_id=event.provider_event_id,
@@ -222,6 +228,7 @@ class ProviderEventIngestionService:
             raw_payload = payload
         return NormalizedProviderEvent(
             provider=provider,
+            send_kind=self._coerce_send_kind(payload.get("send_kind")),
             source=source,
             provider_event_id=self._coerce_optional_string(payload.get("provider_event_id")),
             event_type=event_type,
@@ -288,6 +295,7 @@ class ProviderEventIngestionService:
         provider_message_id = self._coerce_optional_string(mail.get("messageId"))
         return NormalizedProviderEvent(
             provider="ses",
+            send_kind=self._coerce_send_kind(self._extract_tag_value(tags, "sendwise_send_kind")),
             source=source,
             provider_event_id=provider_event_id,
             event_type=event_type,
@@ -339,6 +347,7 @@ class ProviderEventIngestionService:
                 "sendwise_campaign_id",
                 "sendwise_contact_id",
                 "sendwise_email_log_id",
+                "sendwise_send_kind",
             )
             if (
                 coerced := self._coerce_provider_identifier(custom_variables.get(key))
@@ -347,6 +356,9 @@ class ProviderEventIngestionService:
         }
         return NormalizedProviderEvent(
             provider="mailgun",
+            send_kind=self._coerce_send_kind(
+                custom_variables.get("sendwise_send_kind")
+            ),
             source=source,
             provider_event_id=provider_event_id,
             event_type=event_type,
@@ -527,6 +539,7 @@ class ProviderEventIngestionService:
                 client_id=client_id,
                 campaign_id=campaign_id,
                 contact_id=contact_id,
+                send_kind=event.send_kind,
             )
 
         if email_log is not None and not self._correlation_matches_email_log(
@@ -595,6 +608,7 @@ class ProviderEventIngestionService:
                 client_id=event.client_id,
                 campaign_id=event.campaign_id,
                 contact_id=contact_id,
+                send_kind=event.send_kind,
             )
 
         if email_log is None or not self._correlation_matches_email_log(
@@ -624,6 +638,8 @@ class ProviderEventIngestionService:
         if event.campaign_id is not None and event.campaign_id != email_log.campaign_id:
             return False
         if event.contact_id is not None and event.contact_id != email_log.contact_id:
+            return False
+        if event.send_kind != email_log.send_kind:
             return False
         return True
 
@@ -718,6 +734,8 @@ class ProviderEventIngestionService:
         *,
         email_log: EmailLogRecord,
     ) -> None:
+        if email_log.send_kind != "campaign":
+            return
         campaign_id = email_log.campaign_id
         client_id = email_log.client_id
         if campaign_id is None:
@@ -807,6 +825,7 @@ class ProviderEventIngestionService:
         raw = {
             "provider": event.provider,
             "event_type": event.event_type,
+            "send_kind": event.send_kind,
             "source": event.source,
             "occurred_at": event.occurred_at.isoformat(),
             "campaign_id": correlation.campaign_id or event.campaign_id,
@@ -830,6 +849,7 @@ class ProviderEventIngestionService:
             "contact_id": event.contact_id,
             "client_id": event.client_id,
             "email_log_id": event.email_log_id,
+            "send_kind": event.send_kind,
             "recipient_hash": self._hash_email(event.email),
             "payload": self._sanitize_payload(event.payload),
         }
@@ -892,6 +912,12 @@ class ProviderEventIngestionService:
         if "{{" in normalized or "}}" in normalized:
             return None
         return normalized
+
+    def _coerce_send_kind(self, value: Any) -> str:
+        normalized = (self._coerce_optional_string(value) or "campaign").strip().lower()
+        if normalized == "followup":
+            return "followup"
+        return "campaign"
 
     def _normalize_message_id(self, value: Any) -> str | None:
         normalized = self._coerce_optional_string(value)

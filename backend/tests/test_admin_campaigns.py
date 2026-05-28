@@ -98,6 +98,8 @@ class FakeListmonkClient:
 class FakePreparationService:
     def __init__(self) -> None:
         self.prepared_campaign_ids: list[str] = []
+        self.prepared_followup_campaign_ids: list[str] = []
+        self.mapping_service: ListmonkMappingService | None = None
 
     def prepare_campaign(
         self,
@@ -127,6 +129,63 @@ class FakePreparationService:
                 "listmonk_type": "campaign",
                 "listmonk_id": "lm_existing",
                 "created": False,
+            },
+        }
+
+    def prepare_followup_campaign(
+        self,
+        campaign_id: str,
+        contact_ids: list[str],
+        _current_user: AuthenticatedUser | None = None,
+    ) -> dict[str, Any]:
+        self.prepared_followup_campaign_ids.append(campaign_id)
+        if self.mapping_service is not None:
+            self.mapping_service.ensure_followup_campaign_list_mapping(
+                client_id="client_123",
+                campaign_id=campaign_id,
+                listmonk_list_id="lm_followup_list",
+            )
+            self.mapping_service.ensure_followup_campaign_mapping(
+                client_id="client_123",
+                campaign_id=campaign_id,
+                listmonk_campaign_id="lm_followup_campaign",
+            )
+        return {
+            "status": "synced",
+            "campaign_id": campaign_id,
+            "listmonk_synced": True,
+            "content_ready": True,
+            "contact_summary": {
+                "total_contacts": len(contact_ids),
+                "synced_count": len(contact_ids),
+                "skipped_count": 0,
+                "failed_count": 0,
+                "errors": [],
+            },
+            "content": {
+                "template_name": "campaign_followup_business_db",
+                "content_ready": True,
+                "reason": None,
+                "subject": "Follow-up launch",
+                "preview_text": "",
+                "body": "<html><body><p>Follow-up body</p></body></html>",
+                "body_text": "Follow-up body",
+                "unsubscribe_url": "http://localhost/unsubscribe?send_kind=followup",
+                "client_name": "Alpha",
+            },
+            "list_mapping": {
+                "entity_type": "campaign_followup",
+                "entity_id": campaign_id,
+                "listmonk_type": "list",
+                "listmonk_id": "lm_followup_list",
+                "created": True,
+            },
+            "listmonk_mapping": {
+                "entity_type": "campaign_followup",
+                "entity_id": campaign_id,
+                "listmonk_type": "campaign",
+                "listmonk_id": "lm_followup_campaign",
+                "created": True,
             },
         }
 
@@ -192,6 +251,7 @@ def add_processed_provider_event(
     contact_id: str,
     email_log_id: str,
     event_type: str,
+    send_kind: str = "campaign",
     event_key: str | None = None,
 ) -> None:
     now = datetime.now(timezone.utc)
@@ -205,6 +265,7 @@ def add_processed_provider_event(
         provider_event_id=f"{campaign_id}-{contact_id}-{event_type}",
         event_key=event_key or f"{campaign_id}:{contact_id}:{event_type}",
         event_type=event_type,
+        send_kind=send_kind,
         payload={},
         occurred_at=now,
     )
@@ -342,8 +403,25 @@ def build_admin_service(
 ) -> AdminCampaignService:
     repository = campaign_repository or InMemoryCampaignRepository()
     slots = slot_repository or InMemoryCampaignSlotRepository()
+    resolved_settings = settings or Settings(
+        email_sending_enabled_raw="false",
+        email_provider="mailpit",
+        smtp_host="mailpit",
+        smtp_port=1025,
+        smtp_username="",
+        smtp_password="",
+        smtp_tls_raw="false",
+        smtp_from_email="",
+        frontend_url="http://localhost:3000",
+        backend_public_url="http://localhost:8000",
+        clerk_secret_key="",
+        real_send_allowed_recipients_raw="",
+        real_send_require_allowed_recipients_raw="true",
+        real_send_max_recipients=0,
+        real_send_environments_raw="development,staging,test",
+    )
     return AdminCampaignService(
-        settings=settings or Settings(),
+        settings=resolved_settings,
         guard=DeliverabilityGuard(),
         repository=repository,
         campaign_limit_repository=campaign_limit_repository
@@ -431,6 +509,9 @@ def build_dispatch_service(
     selected_provider_event_repository = (
         provider_event_repository or InMemoryProviderEventRepository()
     )
+    selected_preparation_service = preparation_service or FakePreparationService()
+    if hasattr(selected_preparation_service, "mapping_service"):
+        selected_preparation_service.mapping_service = selected_mapping_service  # type: ignore[attr-defined]
     unsubscribe_service = UnsubscribeService(
         settings=settings,
         token_service=UnsubscribeTokenService(settings),
@@ -461,7 +542,7 @@ def build_dispatch_service(
         blocked_send_repository=InMemoryBlockedSendRepository(),
         email_log_repository=selected_email_log_repository,
         provider_event_repository=selected_provider_event_repository,
-        campaign_preparation_service=preparation_service or FakePreparationService(),
+        campaign_preparation_service=selected_preparation_service,
         unsubscribe_service=unsubscribe_service,
     )
 
@@ -984,6 +1065,71 @@ def test_admin_content_update_saves_fields_and_sets_content_ready() -> None:
     assert updated.content_ready is True
     assert updated.current_step == "review"
     assert updated.review_ready is False
+
+
+def test_admin_content_update_persists_followup_content_and_readiness() -> None:
+    repository = InMemoryCampaignRepository()
+    campaign = repository.add_campaign(campaign_id="campaign_123", client_id="client_123")
+    service = build_admin_service(campaign_repository=repository)
+
+    updated = service.update_campaign_content(
+        campaign_id=campaign.id,
+        subject="Updated subject",
+        preview_text="Preview line",
+        body_html="<p>Hello</p>",
+        body_text="Hello",
+        followup_subject="Follow-up subject",
+        followup_body_html="<p>Follow-up {{unsubscribe_url}}</p>",
+        followup_body_text="Follow-up",
+        current_step="review",
+    )
+
+    limits = service.campaign_limit_repository.ensure_for_campaign(campaign_id=campaign.id)
+    assert updated.followup_subject == "Follow-up subject"
+    assert updated.followup_body_html == "<p>Follow-up {{unsubscribe_url}}</p>"
+    assert updated.followup_body_text == "Follow-up"
+    assert updated.followup_content_ready is True
+    assert limits.followup_subject == "Follow-up subject"
+    assert limits.followup_body_html == "<p>Follow-up {{unsubscribe_url}}</p>"
+    assert limits.followup_body_text == "Follow-up"
+
+
+def test_review_campaign_reports_followup_content_not_ready() -> None:
+    repository = InMemoryCampaignRepository()
+    campaign = repository.add_campaign(
+        campaign_id="campaign_123",
+        client_id="client_123",
+        subject="Launch",
+        body_html="<p>Hello</p>",
+        body_text="Hello",
+        content_ready=True,
+        contacts_ready=True,
+        review_ready=True,
+        current_step="send",
+    )
+    contact = build_contact(contact_id="contact_1", email="one@example.test")
+    service = build_admin_service(
+        campaign_repository=repository,
+        contacts=[contact],
+        campaign_contacts={("client_123", campaign.id, contact.id)},
+    )
+    service.campaign_limit_repository.update_for_campaign(
+        campaign_id=campaign.id,
+        followup_enabled=True,
+        followup_daily_limit=5,
+        followup_monthly_limit=50,
+        followup_delay_value=3,
+        followup_delay_unit="days",
+        followup_subject="",
+        followup_body_html="",
+    )
+
+    result = service.review_campaign(campaign.id)
+
+    assert result.followup_content_ready is False
+    assert result.followup_content_reason == (
+        "Dedicated follow-up subject and HTML content are required."
+    )
 
 
 def test_admin_content_update_rejects_unsupported_template_placeholders() -> None:
@@ -2873,6 +3019,98 @@ def test_admin_send_passes_guard_and_respects_email_sending_disabled() -> None:
 
     try:
         response = TestClient(app).post("/admin/campaigns/campaign_123/send")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "blocked"
+    assert payload["code"] == "email_sending_disabled"
+    assert fake_listmonk.sent_campaign_ids == []
+
+
+def test_admin_send_followup_requires_platform_admin() -> None:
+    response = TestClient(app, raise_server_exceptions=False).post(
+        "/admin/campaigns/campaign_123/send-followup"
+    )
+
+    assert response.status_code == 401
+
+
+def test_admin_send_followup_respects_email_sending_disabled() -> None:
+    repository = InMemoryCampaignRepository(
+        campaign_contacts={("client_123", "campaign_123", "contact_1")},
+    )
+    campaign_record = repository.add_campaign(
+        campaign_id="campaign_123",
+        client_id="client_123",
+        status="ready",
+        subject="Launch",
+        body_html="<p>Hello</p>",
+        body_text="Hello",
+        content_ready=True,
+        contacts_ready=True,
+        review_ready=True,
+    )
+    client = build_client()
+    contact = build_contact(contact_id="contact_1", email="one@example.test")
+    email_log_repository = InMemoryEmailLogRepository()
+    primary_log = email_log_repository.create_email_log(
+        client_id="client_123",
+        campaign_id=campaign_record.id,
+        contact_id=contact.id,
+        send_kind="campaign",
+        status="delivered",
+    )
+    provider_events = InMemoryProviderEventRepository()
+    add_processed_provider_event(
+        provider_events,
+        client_id="client_123",
+        campaign_id=campaign_record.id,
+        contact_id=contact.id,
+        email_log_id=primary_log.id,
+        event_type="delivered",
+    )
+    campaign_limits = InMemoryCampaignSendingLimitRepository()
+    campaign_limits.update_for_campaign(
+        campaign_id=campaign_record.id,
+        followup_enabled=True,
+        followup_daily_limit=5,
+        followup_monthly_limit=50,
+        followup_delay_value=3,
+        followup_delay_unit="days",
+        followup_subject="Follow-up",
+        followup_body_html="<p>Follow-up {{unsubscribe_url}}</p>",
+        followup_body_text="Follow-up",
+    )
+    fake_listmonk = FakeListmonkClient()
+    admin_service = build_admin_service(
+        campaign_repository=repository,
+        clients=[client],
+        contacts=[contact],
+        campaign_contacts={("client_123", campaign_record.id, contact.id)},
+        email_log_repository=email_log_repository,
+        provider_event_repository=provider_events,
+        campaign_limit_repository=campaign_limits,
+    )
+    dispatch_service = build_dispatch_service(
+        settings=Settings(email_sending_enabled_raw="false"),
+        campaign=to_client_campaign(campaign_record),
+        client=client,
+        contacts=[contact],
+        campaign_contacts={("client_123", campaign_record.id, contact.id)},
+        fake_listmonk=fake_listmonk,
+        campaign_limit_repository=campaign_limits,
+        email_log_repository=email_log_repository,
+        provider_event_repository=provider_events,
+    )
+
+    app.dependency_overrides[require_platform_admin] = build_admin_user
+    app.dependency_overrides[get_admin_campaign_service] = lambda: admin_service
+    app.dependency_overrides[get_campaign_dispatch_service] = lambda: dispatch_service
+
+    try:
+        response = TestClient(app).post("/admin/campaigns/campaign_123/send-followup")
     finally:
         app.dependency_overrides.clear()
 

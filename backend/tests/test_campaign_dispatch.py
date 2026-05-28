@@ -62,6 +62,8 @@ class FakePreparationService:
     def __init__(self, *, content_ready: bool) -> None:
         self.content_ready = content_ready
         self.prepared_campaign_ids: list[str] = []
+        self.prepared_followup_campaign_ids: list[str] = []
+        self.mapping_service: ListmonkMappingService | None = None
 
     def prepare_campaign(
         self,
@@ -90,6 +92,63 @@ class FakePreparationService:
                 "listmonk_type": "campaign",
                 "listmonk_id": "lm_existing",
                 "created": False,
+            },
+        }
+
+    def prepare_followup_campaign(
+        self,
+        campaign_id: str,
+        contact_ids: list[str],
+        _current_user: AuthenticatedUser | None = None,
+    ) -> dict[str, Any]:
+        self.prepared_followup_campaign_ids.append(campaign_id)
+        if self.mapping_service is not None:
+            self.mapping_service.ensure_followup_campaign_list_mapping(
+                client_id="client_123",
+                campaign_id=campaign_id,
+                listmonk_list_id="lm_followup_list",
+            )
+            self.mapping_service.ensure_followup_campaign_mapping(
+                client_id="client_123",
+                campaign_id=campaign_id,
+                listmonk_campaign_id="lm_followup_campaign",
+            )
+        return {
+            "status": "synced",
+            "campaign_id": campaign_id,
+            "listmonk_synced": True,
+            "content_ready": self.content_ready,
+            "contact_summary": {
+                "total_contacts": len(contact_ids),
+                "synced_count": len(contact_ids),
+                "skipped_count": 0,
+                "failed_count": 0,
+                "errors": [],
+            },
+            "content": {
+                "template_name": "campaign_followup_business_db",
+                "content_ready": self.content_ready,
+                "reason": "Compiled follow-up template missing." if not self.content_ready else None,
+                "subject": "Follow-up launch",
+                "preview_text": "",
+                "body": "<html><body><p>Follow-up body</p></body></html>" if self.content_ready else "",
+                "body_text": "Follow-up body",
+                "unsubscribe_url": "https://app.sendwise.example.test/unsubscribe/token?send_kind=followup",
+                "client_name": "Test Client",
+            },
+            "list_mapping": {
+                "entity_type": "campaign_followup",
+                "entity_id": campaign_id,
+                "listmonk_type": "list",
+                "listmonk_id": "lm_followup_list",
+                "created": True,
+            },
+            "listmonk_mapping": {
+                "entity_type": "campaign_followup",
+                "entity_id": campaign_id,
+                "listmonk_type": "campaign",
+                "listmonk_id": "lm_followup_campaign",
+                "created": True,
             },
         }
 
@@ -304,6 +363,19 @@ def build_dispatch_service(
         email_sending_enabled_raw=email_sending_enabled_raw,
         environment=environment,
         email_provider=email_provider,
+        smtp_host="mailpit",
+        smtp_port=1025,
+        smtp_username="",
+        smtp_password="",
+        smtp_tls_raw="false",
+        smtp_from_email="",
+        frontend_url="http://localhost:3000",
+        backend_public_url="http://localhost:8000",
+        clerk_secret_key="",
+        real_send_allowed_recipients_raw="",
+        real_send_require_allowed_recipients_raw="true",
+        real_send_max_recipients=0,
+        real_send_environments_raw="development,staging,test",
     )
     selected_suppression_repository = (
         suppression_repository or InMemorySuppressionListRepository()
@@ -312,6 +384,11 @@ def build_dispatch_service(
     selected_provider_event_repository = (
         provider_event_repository or InMemoryProviderEventRepository()
     )
+    selected_preparation_service = preparation_service or FakePreparationService(
+        content_ready=True
+    )
+    if hasattr(selected_preparation_service, "mapping_service"):
+        selected_preparation_service.mapping_service = resolved_mapping_service  # type: ignore[attr-defined]
     campaign_repository = InMemoryCampaignRepository(
         campaigns=[
             CampaignRecord(**campaign.model_dump())
@@ -350,7 +427,7 @@ def build_dispatch_service(
         or InMemoryBlockedSendRepository(),
         email_log_repository=selected_email_log_repository,
         provider_event_repository=selected_provider_event_repository,
-        campaign_preparation_service=preparation_service,
+        campaign_preparation_service=selected_preparation_service,
         unsubscribe_service=unsubscribe_service,
     )
 
@@ -413,6 +490,7 @@ def create_processed_provider_event(
     event_key: str,
     client_id: str | None = "client_history",
     campaign_id: str | None = "campaign_history",
+    send_kind: str = "campaign",
 ) -> None:
     event, _created = repository.create_or_get_event(
         client_id=client_id,
@@ -424,6 +502,34 @@ def create_processed_provider_event(
         provider_event_id=None,
         event_key=event_key,
         event_type=event_type,
+        send_kind=send_kind,
+        payload={},
+        occurred_at=datetime.now(timezone.utc),
+    )
+    repository.mark_processed(event_id=event.id)
+
+
+def create_processed_contact_event(
+    repository: InMemoryProviderEventRepository,
+    *,
+    client_id: str,
+    campaign_id: str,
+    contact_id: str,
+    email_log_id: str,
+    event_type: str,
+    send_kind: str = "campaign",
+) -> None:
+    event, _created = repository.create_or_get_event(
+        client_id=client_id,
+        campaign_id=campaign_id,
+        contact_id=contact_id,
+        email_log_id=email_log_id,
+        provider="mailgun",
+        source="webhook",
+        provider_event_id=f"{campaign_id}:{contact_id}:{event_type}:{send_kind}",
+        event_key=f"{campaign_id}:{contact_id}:{event_type}:{send_kind}",
+        event_type=event_type,
+        send_kind=send_kind,
         payload={},
         occurred_at=datetime.now(timezone.utc),
     )
@@ -704,6 +810,7 @@ def test_ses_send_blocked_when_email_sending_disabled() -> None:
             frontend_url="https://app.sendwise.example.test",
             backend_public_url="https://sendwise.example.test",
             real_send_allowed_recipients_raw="person@example.test",
+            real_send_require_allowed_recipients_raw="true",
             real_send_max_recipients=1,
         ),
         fake_listmonk=fake_listmonk,
@@ -738,6 +845,7 @@ def test_ses_send_blocked_when_smtp_config_is_incomplete() -> None:
             frontend_url="https://app.sendwise.example.test",
             backend_public_url="https://sendwise.example.test",
             real_send_allowed_recipients_raw="person@example.test",
+            real_send_require_allowed_recipients_raw="true",
             real_send_max_recipients=1,
         ),
         fake_listmonk=fake_listmonk,
@@ -774,6 +882,7 @@ def test_ses_send_blocked_when_recipient_is_not_allowed() -> None:
             frontend_url="https://app.sendwise.example.test",
             backend_public_url="https://sendwise.example.test",
             real_send_allowed_recipients_raw="allowed@example.test",
+            real_send_require_allowed_recipients_raw="true",
             real_send_max_recipients=1,
         ),
         fake_listmonk=fake_listmonk,
@@ -818,6 +927,7 @@ def test_ses_send_blocked_when_eligible_count_exceeds_real_send_max() -> None:
             frontend_url="https://app.sendwise.example.test",
             backend_public_url="https://sendwise.example.test",
             real_send_allowed_recipients_raw="one@example.test,two@example.test",
+            real_send_require_allowed_recipients_raw="true",
             real_send_max_recipients=1,
         ),
         fake_listmonk=fake_listmonk,
@@ -943,6 +1053,7 @@ def test_ses_send_blocked_when_unsubscribe_public_url_is_not_ready() -> None:
             frontend_url="http://localhost:3000",
             backend_public_url="http://localhost:8000",
             real_send_allowed_recipients_raw="person@example.test",
+            real_send_require_allowed_recipients_raw="true",
             real_send_max_recipients=1,
         ),
         fake_listmonk=fake_listmonk,
@@ -978,6 +1089,7 @@ def test_ses_send_blocked_when_prepared_unsubscribe_link_is_missing() -> None:
             frontend_url="https://app.sendwise.example.test",
             backend_public_url="https://sendwise.example.test",
             real_send_allowed_recipients_raw="person@example.test",
+            real_send_require_allowed_recipients_raw="true",
             real_send_max_recipients=1,
         ),
         fake_listmonk=fake_listmonk,
@@ -1029,6 +1141,7 @@ def test_ses_send_allowed_only_after_safety_gate_passes() -> None:
             frontend_url="https://app.sendwise.example.test",
             backend_public_url="https://sendwise.example.test",
             real_send_allowed_recipients_raw="person@example.test",
+            real_send_require_allowed_recipients_raw="true",
             real_send_max_recipients=1,
         ),
         fake_listmonk=fake_listmonk,
@@ -1990,7 +2103,8 @@ def test_listmonk_provider_uses_listmonk_dispatch_even_with_mailgun_smtp_host() 
         {
             "X-Mailgun-Variables": (
                 '{"sendwise_campaign_id":"campaign_123",'
-                '"sendwise_client_id":"client_123"}'
+                '"sendwise_client_id":"client_123",'
+                '"sendwise_send_kind":"campaign"}'
             )
         },
     ]
@@ -2763,6 +2877,378 @@ def test_failed_listmonk_payload_marks_logs_failed_without_fake_sent_state() -> 
     assert result["failed_count"] == 1
     logs = email_log_repository.list_by_campaign("campaign_123")
     assert [log.status for log in logs] == ["failed"]
+
+
+def test_followup_simulation_is_aggregate_only_and_reports_content_not_ready() -> None:
+    contact = build_contact(contact_id="contact_1", email="one@example.test")
+    email_log_repository = InMemoryEmailLogRepository()
+    primary_log = email_log_repository.create_email_log(
+        client_id="client_123",
+        campaign_id="campaign_123",
+        contact_id=contact.id,
+        send_kind="campaign",
+        status="delivered",
+        created_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+    )
+    provider_event_repository = InMemoryProviderEventRepository()
+    create_processed_contact_event(
+        provider_event_repository,
+        client_id="client_123",
+        campaign_id="campaign_123",
+        contact_id=contact.id,
+        email_log_id=primary_log.id,
+        event_type="delivered",
+    )
+    campaign_limits = InMemoryCampaignSendingLimitRepository()
+    campaign_limits.update_for_campaign(
+        campaign_id="campaign_123",
+        followup_enabled=True,
+        followup_daily_limit=5,
+        followup_monthly_limit=50,
+        followup_delay_value=3,
+        followup_delay_unit="days",
+        followup_subject="",
+        followup_body_html="",
+    )
+    fake_listmonk = FakeListmonkClient()
+    service = build_dispatch_service(
+        settings=build_ready_listmonk_settings(),
+        campaigns=[build_campaign(status="ready", content_ready=True, contacts_ready=True, review_ready=True)],
+        clients=[build_client()],
+        contact_repository=InMemoryContactRepository(
+            contacts=[contact],
+            campaign_contacts={("client_123", "campaign_123", contact.id)},
+        ),
+        fake_listmonk=fake_listmonk,
+        campaign_limit_repository=campaign_limits,
+        email_log_repository=email_log_repository,
+        provider_event_repository=provider_event_repository,
+    )
+
+    result = service.simulate_followup_campaign("campaign_123")
+
+    assert result["status"] == "simulated"
+    assert result["dispatch_attempted"] is False
+    assert result["real_send_attempted"] is False
+    assert result["listmonk_dispatched"] is False
+    assert result["followup_content_ready"] is False
+    assert result["eligible_contact_count"] == 1
+    assert result["email_logs_created"] == 0
+    assert fake_listmonk.sent_campaign_ids == []
+
+
+def test_followup_send_uses_only_eligible_contacts_and_creates_followup_logs() -> None:
+    contacts = [
+        build_contact(contact_id="contact_ok", email="ok@example.test"),
+        build_contact(contact_id="contact_open", email="open@example.test"),
+        build_contact(contact_id="contact_suppressed", email="suppressed@example.test"),
+        build_contact(contact_id="contact_failed", email="failed@example.test"),
+        build_contact(contact_id="contact_complaint", email="complaint@example.test"),
+        build_contact(contact_id="contact_previous", email="previous@example.test"),
+    ]
+    email_log_repository = InMemoryEmailLogRepository()
+    provider_event_repository = InMemoryProviderEventRepository()
+    delivered_at = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    for contact in contacts:
+        primary_log = email_log_repository.create_email_log(
+            client_id="client_123",
+            campaign_id="campaign_123",
+            contact_id=contact.id,
+            send_kind="campaign",
+            status="delivered",
+            created_at=delivered_at,
+        )
+        create_processed_contact_event(
+            provider_event_repository,
+            client_id="client_123",
+            campaign_id="campaign_123",
+            contact_id=contact.id,
+            email_log_id=primary_log.id,
+            event_type="delivered",
+        )
+    open_log = email_log_repository.find_latest_for_contact(
+        client_id="client_123",
+        campaign_id="campaign_123",
+        contact_id="contact_open",
+    )
+    failed_log = email_log_repository.find_latest_for_contact(
+        client_id="client_123",
+        campaign_id="campaign_123",
+        contact_id="contact_failed",
+    )
+    complaint_log = email_log_repository.find_latest_for_contact(
+        client_id="client_123",
+        campaign_id="campaign_123",
+        contact_id="contact_complaint",
+    )
+    assert open_log is not None
+    assert failed_log is not None
+    assert complaint_log is not None
+    create_processed_contact_event(
+        provider_event_repository,
+        client_id="client_123",
+        campaign_id="campaign_123",
+        contact_id="contact_open",
+        email_log_id=open_log.id,
+        event_type="opened",
+    )
+    create_processed_contact_event(
+        provider_event_repository,
+        client_id="client_123",
+        campaign_id="campaign_123",
+        contact_id="contact_failed",
+        email_log_id=failed_log.id,
+        event_type="hard_bounce",
+    )
+    create_processed_contact_event(
+        provider_event_repository,
+        client_id="client_123",
+        campaign_id="campaign_123",
+        contact_id="contact_complaint",
+        email_log_id=complaint_log.id,
+        event_type="complaint",
+    )
+    email_log_repository.create_email_log(
+        client_id="client_123",
+        campaign_id="campaign_123",
+        contact_id="contact_previous",
+        send_kind="followup",
+        status="sent",
+        created_at=datetime(2026, 1, 10, tzinfo=timezone.utc),
+    )
+    suppression_repository = InMemorySuppressionListRepository()
+    suppression_repository.add_suppression(
+        client_id="client_123",
+        email="suppressed@example.test",
+        reason="manual",
+    )
+    campaign_limits = InMemoryCampaignSendingLimitRepository()
+    campaign_limits.update_for_campaign(
+        campaign_id="campaign_123",
+        followup_enabled=True,
+        followup_daily_limit=5,
+        followup_monthly_limit=50,
+        followup_delay_value=3,
+        followup_delay_unit="days",
+        followup_subject="Follow-up subject",
+        followup_body_html="<p>Follow-up {{unsubscribe_url}}</p>",
+        followup_body_text="Follow-up",
+    )
+    fake_preparation = FakePreparationService(content_ready=True)
+    fake_listmonk = FakeListmonkClient()
+    service = build_dispatch_service(
+        settings=build_ready_listmonk_settings(),
+        campaigns=[build_campaign(status="ready", content_ready=True, contacts_ready=True, review_ready=True)],
+        clients=[build_client()],
+        contact_repository=InMemoryContactRepository(
+            contacts=contacts,
+            campaign_contacts={("client_123", "campaign_123", contact.id) for contact in contacts},
+        ),
+        fake_listmonk=fake_listmonk,
+        preparation_service=fake_preparation,
+        campaign_limit_repository=campaign_limits,
+        suppression_repository=suppression_repository,
+        email_log_repository=email_log_repository,
+        provider_event_repository=provider_event_repository,
+    )
+
+    result = service.send_followup_campaign("campaign_123")
+
+    followup_logs = email_log_repository.list_latest_for_campaign(
+        client_id="client_123",
+        campaign_id="campaign_123",
+        send_kind="followup",
+    )
+    assert result["status"] == "accepted"
+    assert result["send_kind"] == "followup"
+    assert result["eligible_contact_count"] == 1
+    assert result["blocked_reasons"] == {
+        "followup_primary_opened": 1,
+        "followup_contact_suppressed": 1,
+        "followup_primary_failed": 1,
+        "followup_primary_complaint": 1,
+        "followup_already_sent": 1,
+    }
+    assert fake_preparation.prepared_followup_campaign_ids == ["campaign_123"]
+    assert fake_listmonk.sent_campaign_ids == ["lm_followup_campaign"]
+    assert len(followup_logs) == 2
+    assert any(log.contact_id == "contact_ok" for log in followup_logs)
+    assert all(log.send_kind == "followup" for log in followup_logs)
+
+
+def test_followup_send_blocks_until_delay_elapsed() -> None:
+    contact = build_contact(contact_id="contact_1", email="one@example.test")
+    email_log_repository = InMemoryEmailLogRepository()
+    primary_log = email_log_repository.create_email_log(
+        client_id="client_123",
+        campaign_id="campaign_123",
+        contact_id=contact.id,
+        send_kind="campaign",
+        status="delivered",
+        created_at=datetime.now(timezone.utc),
+    )
+    provider_event_repository = InMemoryProviderEventRepository()
+    create_processed_contact_event(
+        provider_event_repository,
+        client_id="client_123",
+        campaign_id="campaign_123",
+        contact_id=contact.id,
+        email_log_id=primary_log.id,
+        event_type="delivered",
+    )
+    campaign_limits = InMemoryCampaignSendingLimitRepository()
+    campaign_limits.update_for_campaign(
+        campaign_id="campaign_123",
+        followup_enabled=True,
+        followup_daily_limit=5,
+        followup_monthly_limit=50,
+        followup_delay_value=3,
+        followup_delay_unit="days",
+        followup_subject="Follow-up subject",
+        followup_body_html="<p>Follow-up {{unsubscribe_url}}</p>",
+        followup_body_text="Follow-up",
+    )
+    fake_preparation = FakePreparationService(content_ready=True)
+    fake_listmonk = FakeListmonkClient()
+    service = build_dispatch_service(
+        settings=build_ready_listmonk_settings(),
+        campaigns=[build_campaign(status="ready", content_ready=True, contacts_ready=True, review_ready=True)],
+        clients=[build_client()],
+        contact_repository=InMemoryContactRepository(
+            contacts=[contact],
+            campaign_contacts={("client_123", "campaign_123", contact.id)},
+        ),
+        fake_listmonk=fake_listmonk,
+        preparation_service=fake_preparation,
+        campaign_limit_repository=campaign_limits,
+        email_log_repository=email_log_repository,
+        provider_event_repository=provider_event_repository,
+    )
+
+    result = service.send_followup_campaign("campaign_123")
+
+    assert result["status"] == "blocked"
+    assert result["code"] == "followup_delay_not_elapsed"
+    assert fake_preparation.prepared_followup_campaign_ids == []
+    assert fake_listmonk.sent_campaign_ids == []
+
+
+def test_followup_send_blocks_when_daily_limit_reached() -> None:
+    contact = build_contact(contact_id="contact_1", email="one@example.test")
+    email_log_repository = InMemoryEmailLogRepository()
+    primary_log = email_log_repository.create_email_log(
+        client_id="client_123",
+        campaign_id="campaign_123",
+        contact_id=contact.id,
+        send_kind="campaign",
+        status="delivered",
+        created_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+    )
+    email_log_repository.create_email_log(
+        client_id="client_123",
+        campaign_id="campaign_123",
+        contact_id="contact_existing",
+        send_kind="followup",
+        status="sent",
+        created_at=datetime.now(timezone.utc),
+    )
+    provider_event_repository = InMemoryProviderEventRepository()
+    create_processed_contact_event(
+        provider_event_repository,
+        client_id="client_123",
+        campaign_id="campaign_123",
+        contact_id=contact.id,
+        email_log_id=primary_log.id,
+        event_type="delivered",
+    )
+    campaign_limits = InMemoryCampaignSendingLimitRepository()
+    campaign_limits.update_for_campaign(
+        campaign_id="campaign_123",
+        followup_enabled=True,
+        followup_daily_limit=1,
+        followup_monthly_limit=50,
+        followup_delay_value=3,
+        followup_delay_unit="days",
+        followup_subject="Follow-up subject",
+        followup_body_html="<p>Follow-up {{unsubscribe_url}}</p>",
+        followup_body_text="Follow-up",
+    )
+    service = build_dispatch_service(
+        settings=build_ready_listmonk_settings(),
+        campaigns=[build_campaign(status="ready", content_ready=True, contacts_ready=True, review_ready=True)],
+        clients=[build_client()],
+        contact_repository=InMemoryContactRepository(
+            contacts=[contact],
+            campaign_contacts={("client_123", "campaign_123", contact.id)},
+        ),
+        campaign_limit_repository=campaign_limits,
+        email_log_repository=email_log_repository,
+        provider_event_repository=provider_event_repository,
+    )
+
+    result = service.send_followup_campaign("campaign_123")
+
+    assert result["status"] == "blocked"
+    assert result["code"] == "followup_daily_limit_exceeded"
+
+
+def test_followup_send_blocks_when_monthly_limit_reached() -> None:
+    contact = build_contact(contact_id="contact_1", email="one@example.test")
+    email_log_repository = InMemoryEmailLogRepository()
+    primary_log = email_log_repository.create_email_log(
+        client_id="client_123",
+        campaign_id="campaign_123",
+        contact_id=contact.id,
+        send_kind="campaign",
+        status="delivered",
+        created_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+    )
+    email_log_repository.create_email_log(
+        client_id="client_123",
+        campaign_id="campaign_123",
+        contact_id="contact_existing",
+        send_kind="followup",
+        status="sent",
+        created_at=datetime.now(timezone.utc),
+    )
+    provider_event_repository = InMemoryProviderEventRepository()
+    create_processed_contact_event(
+        provider_event_repository,
+        client_id="client_123",
+        campaign_id="campaign_123",
+        contact_id=contact.id,
+        email_log_id=primary_log.id,
+        event_type="delivered",
+    )
+    campaign_limits = InMemoryCampaignSendingLimitRepository()
+    campaign_limits.update_for_campaign(
+        campaign_id="campaign_123",
+        followup_enabled=True,
+        followup_daily_limit=5,
+        followup_monthly_limit=1,
+        followup_delay_value=3,
+        followup_delay_unit="days",
+        followup_subject="Follow-up subject",
+        followup_body_html="<p>Follow-up {{unsubscribe_url}}</p>",
+        followup_body_text="Follow-up",
+    )
+    service = build_dispatch_service(
+        settings=build_ready_listmonk_settings(),
+        campaigns=[build_campaign(status="ready", content_ready=True, contacts_ready=True, review_ready=True)],
+        clients=[build_client()],
+        contact_repository=InMemoryContactRepository(
+            contacts=[contact],
+            campaign_contacts={("client_123", "campaign_123", contact.id)},
+        ),
+        campaign_limit_repository=campaign_limits,
+        email_log_repository=email_log_repository,
+        provider_event_repository=provider_event_repository,
+    )
+
+    result = service.send_followup_campaign("campaign_123")
+
+    assert result["status"] == "blocked"
+    assert result["code"] == "followup_monthly_limit_exceeded"
 
 
 def test_send_endpoint_uses_guarded_dispatch_service() -> None:

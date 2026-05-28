@@ -17,6 +17,7 @@ from app.repositories.contacts import (
 from app.repositories.listmonk_mappings import get_listmonk_mapping_repository
 from app.services.listmonk_mappings import (
     ENTITY_TYPE_CAMPAIGN,
+    ENTITY_TYPE_CAMPAIGN_FOLLOWUP,
     ENTITY_TYPE_CLIENT,
     ENTITY_TYPE_CONTACT,
     LISTMONK_TYPE_LIST,
@@ -120,6 +121,110 @@ class ContactSubscriberSyncService:
     def ensure_campaign_list(self, *, client_id: str, campaign_id: str) -> tuple[Any, bool]:
         return self._ensure_target_list(client_id=client_id, campaign_id=campaign_id)
 
+    def ensure_followup_campaign_list(
+        self,
+        *,
+        client_id: str,
+        campaign_id: str,
+        reset_existing: bool = False,
+    ) -> tuple[Any, bool]:
+        return self._ensure_target_list(
+            client_id=client_id,
+            campaign_id=campaign_id,
+            entity_type=ENTITY_TYPE_CAMPAIGN_FOLLOWUP,
+            reset_existing=reset_existing,
+        )
+
+    def sync_followup_contacts(
+        self,
+        *,
+        client_id: str,
+        campaign_id: str,
+        contact_ids: list[str],
+        list_mapping: Any | None = None,
+        list_created: bool = False,
+    ) -> dict[str, Any]:
+        resolved_list_mapping = list_mapping
+        resolved_list_created = list_created
+        if resolved_list_mapping is None:
+            resolved_list_mapping, resolved_list_created = self.ensure_followup_campaign_list(
+                client_id=client_id,
+                campaign_id=campaign_id,
+            )
+
+        selected_contact_ids = {contact_id for contact_id in contact_ids}
+        contacts = self.contact_repository.list_campaign_contacts(
+            client_id=client_id,
+            campaign_id=campaign_id,
+        )
+        summary: dict[str, Any] = {
+            "campaign_id": campaign_id,
+            "client_id": client_id,
+            "total_contacts": len(selected_contact_ids),
+            "synced_count": 0,
+            "skipped_count": 0,
+            "failed_count": 0,
+            "errors": [],
+        }
+
+        contacts_by_id = {contact.id: contact for contact in contacts}
+        for contact_id in contact_ids:
+            contact = contacts_by_id.get(contact_id)
+            if contact is None:
+                summary["skipped_count"] += 1
+                summary["errors"].append(
+                    {
+                        "contact_id": contact_id,
+                        "reason": "Contact is not assigned to this campaign in Business DB.",
+                    }
+                )
+                continue
+
+            if contact.status in SKIPPED_CAMPAIGN_CONTACT_STATUSES:
+                summary["skipped_count"] += 1
+                summary["errors"].append(
+                    {
+                        "contact_id": contact.id,
+                        "reason": f"Contact status {contact.status} is not syncable.",
+                    }
+                )
+                continue
+
+            try:
+                result = self._sync_contact_to_target_list(
+                    contact=contact,
+                    campaign_id=campaign_id,
+                    list_mapping=resolved_list_mapping,
+                    list_created=resolved_list_created,
+                )
+            except ListmonkError as error:
+                summary["failed_count"] += 1
+                summary["errors"].append(
+                    {"contact_id": contact.id, "reason": str(error)}
+                )
+                continue
+
+            if result.get("status") == "synced":
+                summary["synced_count"] += 1
+            elif result.get("status") == "not_synced":
+                summary["skipped_count"] += 1
+                summary["errors"].append(
+                    {
+                        "contact_id": contact.id,
+                        "reason": result.get("reason", "Contact was not synced."),
+                    }
+                )
+            else:
+                summary["failed_count"] += 1
+                summary["errors"].append(
+                    {
+                        "contact_id": contact.id,
+                        "reason": result.get("reason", "Contact sync failed."),
+                    }
+                )
+
+        return summary
+
     def sync_contact(
         self,
         *,
@@ -153,6 +258,21 @@ class ContactSubscriberSyncService:
             client_id=contact.client_id,
             campaign_id=campaign_id,
         )
+        return self._sync_contact_to_target_list(
+            contact=contact,
+            campaign_id=campaign_id,
+            list_mapping=list_mapping,
+            list_created=list_created,
+        )
+
+    def _sync_contact_to_target_list(
+        self,
+        *,
+        contact: ContactRecord,
+        campaign_id: str | None,
+        list_mapping: Any,
+        list_created: bool,
+    ) -> dict[str, Any]:
         list_id = self._coerce_listmonk_int(list_mapping.listmonk_id, "list")
 
         subscriber_mapping = self.mapping_service.get_mapping(
@@ -239,23 +359,45 @@ class ContactSubscriberSyncService:
         *,
         client_id: str,
         campaign_id: str | None,
+        entity_type: str | None = None,
+        reset_existing: bool = False,
     ) -> tuple[Any, bool]:
-        entity_type = ENTITY_TYPE_CAMPAIGN if campaign_id is not None else ENTITY_TYPE_CLIENT
+        resolved_entity_type = (
+            entity_type
+            if entity_type is not None
+            else (ENTITY_TYPE_CAMPAIGN if campaign_id is not None else ENTITY_TYPE_CLIENT)
+        )
         entity_id = campaign_id or client_id
         existing = self.mapping_service.get_mapping(
             client_id=client_id,
-            entity_type=entity_type,
+            entity_type=resolved_entity_type,
             entity_id=entity_id,
             listmonk_type=LISTMONK_TYPE_LIST,
         )
-        if existing is not None:
+        if existing is not None and not reset_existing:
             return existing, False
+        if existing is not None and reset_existing:
+            self.mapping_service.delete_business_entity_mappings(
+                client_id=client_id,
+                entity_type=resolved_entity_type,
+                entity_id=entity_id,
+            )
 
         created_list = self.listmonk_client.create_list(
-            self._build_list_payload(client_id=client_id, campaign_id=campaign_id)
+            self._build_list_payload(
+                client_id=client_id,
+                campaign_id=campaign_id,
+                entity_type=resolved_entity_type,
+            )
         )
         list_id = extract_listmonk_id(created_list)
-        if campaign_id is not None:
+        if campaign_id is not None and resolved_entity_type == ENTITY_TYPE_CAMPAIGN_FOLLOWUP:
+            mapping = self.mapping_service.ensure_followup_campaign_list_mapping(
+                client_id=client_id,
+                campaign_id=campaign_id,
+                listmonk_list_id=list_id,
+            )
+        elif campaign_id is not None:
             mapping = self.mapping_service.ensure_campaign_list_mapping(
                 client_id=client_id,
                 campaign_id=campaign_id,
@@ -273,10 +415,14 @@ class ContactSubscriberSyncService:
         *,
         client_id: str,
         campaign_id: str | None,
+        entity_type: str,
     ) -> dict[str, Any]:
         if campaign_id is None:
             name = f"sendwise-client-{client_id}"
             description = "Sendwise technical client list"
+        elif entity_type == ENTITY_TYPE_CAMPAIGN_FOLLOWUP:
+            name = f"sendwise-followup-{campaign_id}"
+            description = "Sendwise technical follow-up campaign list"
         else:
             name = f"sendwise-campaign-{campaign_id}"
             description = "Sendwise technical campaign list"

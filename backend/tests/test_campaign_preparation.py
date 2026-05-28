@@ -11,6 +11,7 @@ from app.main import app
 from app.repositories.clients import ClientCampaignRecord
 from app.repositories.contacts import ContactRecord, InMemoryContactRepository
 from app.repositories.listmonk_mappings import InMemoryListmonkMappingRepository
+from app.repositories.campaign_sending_limits import InMemoryCampaignSendingLimitRepository
 from app.services.campaign_preparation import (
     CampaignPreparationService,
     build_listmonk_campaign_payload,
@@ -219,6 +220,7 @@ def build_preparation_service(
         ),
         listmonk_client=fake_listmonk,  # type: ignore[arg-type]
         mapping_service=mapping_service,
+        campaign_limit_repository=InMemoryCampaignSendingLimitRepository(),
         client_repository=FakeCampaignRepository(
             [campaign_record],
             client_metadata=client_metadata,
@@ -394,8 +396,33 @@ def test_build_listmonk_campaign_payload_adds_static_mailgun_headers_when_mailgu
     assert variables == {
         "sendwise_campaign_id": "campaign_123",
         "sendwise_client_id": "client_123",
+        "sendwise_send_kind": "campaign",
     }
     assert "sendwise_contact_id" not in variables
+
+
+def test_build_listmonk_campaign_payload_marks_followup_send_kind_in_headers() -> None:
+    campaign = build_campaign()
+
+    payload, _content_ready = build_listmonk_campaign_payload(
+        settings=Settings(
+            environment="test",
+            smtp_host="smtp.mailgun.org",
+            smtp_from_email="sender@example.test",
+        ),
+        campaign=campaign,
+        list_id=7,
+        content={
+            "subject": "Follow-up",
+            "content_ready": True,
+            "body": "<html><body><p>Rendered body</p></body></html>",
+            "body_text": "Rendered body text",
+        },
+        send_kind="followup",
+    )
+
+    variables = json.loads(payload["headers"][0]["X-Mailgun-Variables"])
+    assert variables["sendwise_send_kind"] == "followup"
 
 
 def test_build_listmonk_campaign_payload_omits_custom_unsubscribe_headers_for_non_mailgun_smtp() -> None:
@@ -576,6 +603,12 @@ def test_prepare_campaign_is_idempotent_and_updates_existing_campaign() -> None:
     )
     service, fake_listmonk, _repository = build_preparation_service(
         mapping_repository=repository,
+        settings=Settings(
+            environment="test",
+            smtp_host="smtp.mailgun.org",
+            smtp_from_email="sender@example.test",
+            frontend_url="https://app.sendwise.example.test",
+        ),
     )
 
     result = service.prepare_campaign("campaign_123")
@@ -590,6 +623,69 @@ def test_prepare_campaign_is_idempotent_and_updates_existing_campaign() -> None:
         {"ids": [41], "target_list_ids": [7], "status": "confirmed"},
         {"ids": [42], "target_list_ids": [7], "status": "confirmed"},
     ]
+
+
+def test_prepare_followup_campaign_creates_distinct_mapping_and_preserves_primary_mapping() -> None:
+    repository = InMemoryListmonkMappingRepository()
+    mapping_service = ListmonkMappingService(repository)
+    mapping_service.ensure_campaign_list_mapping(
+        client_id="client_123",
+        campaign_id="campaign_123",
+        listmonk_list_id="7",
+    )
+    mapping_service.ensure_campaign_mapping(
+        client_id="client_123",
+        campaign_id="campaign_123",
+        listmonk_campaign_id="9",
+    )
+    service, fake_listmonk, _repository = build_preparation_service(
+        mapping_repository=repository,
+        settings=Settings(
+            environment="test",
+            smtp_host="smtp.mailgun.org",
+            smtp_from_email="sender@example.test",
+            frontend_url="https://app.sendwise.example.test",
+        ),
+    )
+    service.campaign_limit_repository.update_for_campaign(
+        campaign_id="campaign_123",
+        followup_enabled=True,
+        followup_daily_limit=5,
+        followup_monthly_limit=50,
+        followup_delay_value=3,
+        followup_delay_unit="days",
+        followup_subject="Follow-up launch",
+        followup_body_html="<html><body><p>Follow-up {{unsubscribe_url}}</p></body></html>",
+        followup_body_text="Follow-up",
+    )
+
+    result = service.prepare_followup_campaign("campaign_123", ["contact_1"])
+
+    primary_campaign_mapping = mapping_service.get_mapping(
+        client_id="client_123",
+        entity_type="campaign",
+        entity_id="campaign_123",
+        listmonk_type="campaign",
+    )
+    followup_campaign_mapping = mapping_service.get_mapping(
+        client_id="client_123",
+        entity_type="campaign_followup",
+        entity_id="campaign_123",
+        listmonk_type="campaign",
+    )
+    assert result["status"] == "synced"
+    assert result["list_mapping"]["entity_type"] == "campaign_followup"
+    assert result["listmonk_mapping"]["entity_type"] == "campaign_followup"
+    assert fake_listmonk.created_campaign_payloads[0]["name"] == "Launch campaign followup"
+    assert fake_listmonk.created_campaign_payloads[0]["subject"] == "Follow-up launch"
+    followup_variables = json.loads(
+        fake_listmonk.created_campaign_payloads[0]["headers"][0]["X-Mailgun-Variables"]
+    )
+    assert followup_variables["sendwise_send_kind"] == "followup"
+    assert primary_campaign_mapping is not None
+    assert primary_campaign_mapping.listmonk_id == "9"
+    assert followup_campaign_mapping is not None
+    assert followup_campaign_mapping.listmonk_id != primary_campaign_mapping.listmonk_id
 
 
 def test_prepare_campaign_skips_error_contacts_in_batch_summary() -> None:

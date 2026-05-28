@@ -80,6 +80,9 @@ CREATE TABLE IF NOT EXISTS campaign_sending_limits (
     followup_monthly_limit INTEGER,
     followup_delay_value INTEGER NOT NULL DEFAULT 3,
     followup_delay_unit TEXT NOT NULL DEFAULT 'days',
+    followup_subject TEXT,
+    followup_body_html TEXT,
+    followup_body_text TEXT,
     period_started_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -246,6 +249,7 @@ CREATE TABLE IF NOT EXISTS provider_events (
     campaign_id UUID REFERENCES campaigns(id),
     contact_id UUID REFERENCES contacts(id),
     email_log_id UUID REFERENCES email_logs(id),
+    send_kind TEXT NOT NULL DEFAULT 'campaign',
     provider TEXT NOT NULL DEFAULT 'unknown',
     source TEXT NOT NULL DEFAULT 'webhook',
     provider_event_id TEXT,
@@ -254,7 +258,8 @@ CREATE TABLE IF NOT EXISTS provider_events (
     payload JSONB NOT NULL DEFAULT '{}'::jsonb,
     occurred_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     processed_at TIMESTAMPTZ,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT provider_events_send_kind_check CHECK (send_kind IN ('campaign', 'followup'))
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS provider_events_event_key_idx
@@ -265,7 +270,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS provider_events_provider_event_id_idx
     WHERE provider_event_id IS NOT NULL;
 
 CREATE INDEX IF NOT EXISTS provider_events_campaign_idx
-    ON provider_events (campaign_id, event_type);
+    ON provider_events (campaign_id, send_kind, event_type);
 
 CREATE INDEX IF NOT EXISTS provider_events_contact_idx
     ON provider_events (contact_id, event_type);

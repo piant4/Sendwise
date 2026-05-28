@@ -20,6 +20,9 @@ class CampaignSendingLimitRecord(BaseModel):
     followup_monthly_limit: Optional[int] = None
     followup_delay_value: int = 3
     followup_delay_unit: str = "days"
+    followup_subject: Optional[str] = None
+    followup_body_html: Optional[str] = None
+    followup_body_text: Optional[str] = None
     period_started_at: Optional[datetime] = None
     created_at: datetime
     updated_at: datetime
@@ -50,6 +53,9 @@ class CampaignSendingLimitRepository:
         followup_monthly_limit: Optional[int] = None,
         followup_delay_value: int = 3,
         followup_delay_unit: str = "days",
+        followup_subject: Optional[str] = None,
+        followup_body_html: Optional[str] = None,
+        followup_body_text: Optional[str] = None,
     ) -> CampaignSendingLimitRecord:
         raise NotImplementedError
 
@@ -64,6 +70,9 @@ class CampaignSendingLimitRepository:
         followup_monthly_limit: object = _UNSET,
         followup_delay_value: object = _UNSET,
         followup_delay_unit: object = _UNSET,
+        followup_subject: object = _UNSET,
+        followup_body_html: object = _UNSET,
+        followup_body_text: object = _UNSET,
         period_started_at: object = _UNSET,
     ) -> CampaignSendingLimitRecord:
         raise NotImplementedError
@@ -88,6 +97,9 @@ class PostgresCampaignSendingLimitRepository(CampaignSendingLimitRepository):
                 followup_monthly_limit,
                 followup_delay_value,
                 followup_delay_unit,
+                followup_subject,
+                followup_body_html,
+                followup_body_text,
                 period_started_at,
                 created_at,
                 updated_at
@@ -113,6 +125,9 @@ class PostgresCampaignSendingLimitRepository(CampaignSendingLimitRepository):
         followup_monthly_limit: Optional[int] = None,
         followup_delay_value: int = 3,
         followup_delay_unit: str = "days",
+        followup_subject: Optional[str] = None,
+        followup_body_html: Optional[str] = None,
+        followup_body_text: Optional[str] = None,
     ) -> CampaignSendingLimitRecord:
         insert_query = """
             INSERT INTO campaign_sending_limits (
@@ -123,9 +138,12 @@ class PostgresCampaignSendingLimitRepository(CampaignSendingLimitRepository):
                 followup_daily_limit,
                 followup_monthly_limit,
                 followup_delay_value,
-                followup_delay_unit
+                followup_delay_unit,
+                followup_subject,
+                followup_body_html,
+                followup_body_text
             )
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT (campaign_id) DO NOTHING
             RETURNING
                 campaign_id::text AS campaign_id,
@@ -136,6 +154,9 @@ class PostgresCampaignSendingLimitRepository(CampaignSendingLimitRepository):
                 followup_monthly_limit,
                 followup_delay_value,
                 followup_delay_unit,
+                followup_subject,
+                followup_body_html,
+                followup_body_text,
                 period_started_at,
                 created_at,
                 updated_at
@@ -154,6 +175,9 @@ class PostgresCampaignSendingLimitRepository(CampaignSendingLimitRepository):
                         followup_monthly_limit,
                         followup_delay_value,
                         followup_delay_unit,
+                        followup_subject,
+                        followup_body_html,
+                        followup_body_text,
                     ),
                 )
                 row = cursor.fetchone()
@@ -178,6 +202,9 @@ class PostgresCampaignSendingLimitRepository(CampaignSendingLimitRepository):
         followup_monthly_limit: object = _UNSET,
         followup_delay_value: object = _UNSET,
         followup_delay_unit: object = _UNSET,
+        followup_subject: object = _UNSET,
+        followup_body_html: object = _UNSET,
+        followup_body_text: object = _UNSET,
         period_started_at: object = _UNSET,
     ) -> CampaignSendingLimitRecord:
         assignments: list[str] = []
@@ -190,6 +217,9 @@ class PostgresCampaignSendingLimitRepository(CampaignSendingLimitRepository):
             ("followup_monthly_limit", followup_monthly_limit),
             ("followup_delay_value", followup_delay_value),
             ("followup_delay_unit", followup_delay_unit),
+            ("followup_subject", followup_subject),
+            ("followup_body_html", followup_body_html),
+            ("followup_body_text", followup_body_text),
             ("period_started_at", period_started_at),
         ):
             if value is _UNSET:
@@ -218,6 +248,9 @@ class PostgresCampaignSendingLimitRepository(CampaignSendingLimitRepository):
                 followup_monthly_limit,
                 followup_delay_value,
                 followup_delay_unit,
+                followup_subject,
+                followup_body_html,
+                followup_body_text,
                 period_started_at,
                 created_at,
                 updated_at
@@ -262,6 +295,9 @@ class InMemoryCampaignSendingLimitRepository(CampaignSendingLimitRepository):
         followup_monthly_limit: Optional[int] = None,
         followup_delay_value: int = 3,
         followup_delay_unit: str = "days",
+        followup_subject: Optional[str] = None,
+        followup_body_html: Optional[str] = None,
+        followup_body_text: Optional[str] = None,
     ) -> CampaignSendingLimitRecord:
         existing = self.get_by_campaign_id(campaign_id=campaign_id)
         if existing is not None:
@@ -277,6 +313,9 @@ class InMemoryCampaignSendingLimitRepository(CampaignSendingLimitRepository):
             followup_monthly_limit=followup_monthly_limit,
             followup_delay_value=followup_delay_value,
             followup_delay_unit=followup_delay_unit,
+            followup_subject=followup_subject,
+            followup_body_html=followup_body_html,
+            followup_body_text=followup_body_text,
             period_started_at=None,
             created_at=now,
             updated_at=now,
@@ -295,11 +334,14 @@ class InMemoryCampaignSendingLimitRepository(CampaignSendingLimitRepository):
         followup_monthly_limit: object = _UNSET,
         followup_delay_value: object = _UNSET,
         followup_delay_unit: object = _UNSET,
+        followup_subject: object = _UNSET,
+        followup_body_html: object = _UNSET,
+        followup_body_text: object = _UNSET,
         period_started_at: object = _UNSET,
     ) -> CampaignSendingLimitRecord:
         existing = self.get_by_campaign_id(campaign_id=campaign_id)
         if existing is None:
-            raise ValueError("campaign sending limits not found")
+            existing = self.ensure_for_campaign(campaign_id=campaign_id)
 
         updates: dict[str, Any] = {
             "updated_at": datetime.now(timezone.utc),
@@ -312,6 +354,9 @@ class InMemoryCampaignSendingLimitRepository(CampaignSendingLimitRepository):
             ("followup_monthly_limit", followup_monthly_limit),
             ("followup_delay_value", followup_delay_value),
             ("followup_delay_unit", followup_delay_unit),
+            ("followup_subject", followup_subject),
+            ("followup_body_html", followup_body_html),
+            ("followup_body_text", followup_body_text),
             ("period_started_at", period_started_at),
         ):
             if value is not _UNSET:

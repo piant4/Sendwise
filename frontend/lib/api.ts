@@ -247,6 +247,8 @@ interface AdminCampaignSummaryApiResponse extends CampaignReadModelApiResponse {
   period_remaining?: number | null;
   period_started_at?: string | null;
   period_ends_at?: string | null;
+  followup_content_ready?: boolean;
+  followup_content_reason?: string | null;
 }
 
 interface ProviderHistoryPolicyApiItem {
@@ -285,6 +287,11 @@ interface AdminCampaignDetailApiResponse {
   followup_monthly_limit?: number | null;
   followup_delay_value: number;
   followup_delay_unit: "hours" | "days";
+  followup_subject?: string | null;
+  followup_body_html?: string | null;
+  followup_body_text?: string | null;
+  followup_content_ready: boolean;
+  followup_content_reason?: string | null;
   period_started_at?: string | null;
   created_at: string;
   updated_at: string;
@@ -384,6 +391,8 @@ interface AdminCampaignReviewApiResponse {
   followup_monthly_limit?: number | null;
   followup_delay_value: number;
   followup_delay_unit: "hours" | "days";
+  followup_content_ready: boolean;
+  followup_content_reason?: string | null;
   provider_history?: ProviderHistoryPolicyApiItem[];
 }
 
@@ -420,6 +429,8 @@ interface AdminCampaignDispatchApiResponse {
   dispatch_attempted: boolean;
   real_send_attempted: boolean;
   content_ready: boolean;
+  followup_content_ready?: boolean;
+  followup_content_reason?: string | null;
   unsubscribe_ready?: boolean;
   provider_events_ready?: boolean;
   email_logs_created: number;
@@ -427,6 +438,7 @@ interface AdminCampaignDispatchApiResponse {
   queued_count?: number;
   sent_or_accepted_count?: number;
   failed_count?: number;
+  send_kind?: "campaign" | "followup" | null;
 }
 
 interface AdminFollowupSimulationApiResponse {
@@ -1277,6 +1289,9 @@ async function postAdminCampaignContent(
       preview_text?: string | null;
       body_html?: string | null;
       body_text?: string | null;
+      followup_subject?: string | null;
+      followup_body_html?: string | null;
+      followup_body_text?: string | null;
     }
   >(
     `/admin/campaigns/${campaignId}/content`,
@@ -1285,6 +1300,9 @@ async function postAdminCampaignContent(
       preview_text: payload.previewText,
       body_html: payload.bodyHtml,
       body_text: payload.bodyText,
+      followup_subject: payload.followupSubject,
+      followup_body_html: payload.followupBodyHtml,
+      followup_body_text: payload.followupBodyText,
     },
     accessToken,
   );
@@ -1405,6 +1423,16 @@ async function postAdminCampaignFollowupSimulation(
 ): Promise<AdminFollowupSimulationApiResponse> {
   return apiPostWithoutPayload<AdminFollowupSimulationApiResponse>(
     `/admin/campaigns/${campaignId}/simulate-followup`,
+    accessToken,
+  );
+}
+
+async function postAdminCampaignFollowupSend(
+  campaignId: string,
+  accessToken?: string | null,
+): Promise<AdminCampaignDispatchApiResponse> {
+  return apiPostWithoutPayload<AdminCampaignDispatchApiResponse>(
+    `/admin/campaigns/${campaignId}/send-followup`,
     accessToken,
   );
 }
@@ -1870,6 +1898,11 @@ function mapAdminCampaignDetail(
     followupMonthlyLimit: payload.followup_monthly_limit ?? null,
     followupDelayValue: payload.followup_delay_value,
     followupDelayUnit: payload.followup_delay_unit,
+    followupSubject: payload.followup_subject ?? null,
+    followupBodyHtml: payload.followup_body_html ?? null,
+    followupBodyText: payload.followup_body_text ?? null,
+    followupContentReady: payload.followup_content_ready,
+    followupContentReason: payload.followup_content_reason ?? null,
     periodStartedAt: payload.period_started_at ?? null,
     createdAt: payload.created_at,
     updatedAt: payload.updated_at,
@@ -1985,6 +2018,8 @@ function mapAdminCampaignReviewResult(
     followupMonthlyLimit: payload.followup_monthly_limit ?? null,
     followupDelayValue: payload.followup_delay_value,
     followupDelayUnit: payload.followup_delay_unit,
+    followupContentReady: payload.followup_content_ready,
+    followupContentReason: payload.followup_content_reason ?? null,
     providerHistory: mapProviderHistoryPolicy(payload.provider_history ?? []),
   };
 }
@@ -2189,6 +2224,8 @@ function mapAdminCampaignReadinessSummary(
     periodRemaining: payload.period_remaining ?? null,
     periodStartedAt: payload.period_started_at ?? null,
     periodEndsAt: payload.period_ends_at ?? null,
+    followupContentReady: payload.followup_content_ready,
+    followupContentReason: payload.followup_content_reason ?? null,
   };
 }
 
@@ -2234,6 +2271,8 @@ function mapAdminCampaignDispatchResult(
     providerPrepared: Boolean(rawPayload[providerPreparedKey]),
     providerDispatched: Boolean(rawPayload[providerDispatchedKey]),
     contentReady: payload.content_ready,
+    followupContentReady: payload.followup_content_ready,
+    followupContentReason: payload.followup_content_reason ?? null,
     unsubscribeReady: payload.unsubscribe_ready,
     providerEventsReady: payload.provider_events_ready,
     emailLogsCreated: payload.email_logs_created,
@@ -2241,6 +2280,7 @@ function mapAdminCampaignDispatchResult(
     queuedCount: payload.queued_count ?? 0,
     sentOrAcceptedCount: payload.sent_or_accepted_count ?? 0,
     failedCount: payload.failed_count ?? 0,
+    sendKind: payload.send_kind ?? null,
   };
 }
 
@@ -2806,6 +2846,16 @@ export function simulateAdminCampaignFollowup(
   assertAdminBackendEnabled(`/admin/campaigns/${campaignId}/simulate-followup`);
   return postAdminCampaignFollowupSimulation(campaignId, accessToken).then(
     mapAdminFollowupSimulationResult,
+  );
+}
+
+export function sendAdminCampaignFollowup(
+  campaignId: string,
+  accessToken?: string | null,
+): Promise<AdminCampaignDispatchResult> {
+  assertAdminBackendEnabled(`/admin/campaigns/${campaignId}/send-followup`);
+  return postAdminCampaignFollowupSend(campaignId, accessToken).then(
+    mapAdminCampaignDispatchResult,
   );
 }
 

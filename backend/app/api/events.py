@@ -102,10 +102,15 @@ def require_events_api_key(
 def unsubscribe(
     token: str,
     campaign_id: str | None = Query(default=None),
+    send_kind: str = Query(default="campaign"),
     unsubscribe_service: UnsubscribeService = Depends(get_unsubscribe_service),
 ) -> HTMLResponse:
     try:
-        result = unsubscribe_service.unsubscribe(token=token, campaign_id=campaign_id)
+        result = unsubscribe_service.unsubscribe(
+            token=token,
+            campaign_id=campaign_id,
+            send_kind=send_kind,
+        )
     except InvalidUnsubscribeTokenError:
         return _render_unsubscribe_page(
             title="Link non valido",
@@ -137,10 +142,15 @@ def unsubscribe(
 def unsubscribe_json(
     token: str,
     campaign_id: str | None = Query(default=None),
+    send_kind: str = Query(default="campaign"),
     unsubscribe_service: UnsubscribeService = Depends(get_unsubscribe_service),
 ) -> JSONResponse:
     try:
-        result = unsubscribe_service.unsubscribe(token=token, campaign_id=campaign_id)
+        result = unsubscribe_service.unsubscribe(
+            token=token,
+            campaign_id=campaign_id,
+            send_kind=send_kind,
+        )
     except InvalidUnsubscribeTokenError:
         return _build_unsubscribe_json_response(
             status_value="invalid",

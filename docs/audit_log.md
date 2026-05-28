@@ -4473,3 +4473,35 @@ Residual risk:
 
 Scope confirmation:
 - No DB schema change, migration, runtime DB mutation, real send, provider replay, Mailgun/Listmonk/Caddy/Docker runtime setting change, follow-up executor work, secret read, or recipient email output was performed.
+
+## Milestone 20.6-B MANUAL-REAL-FOLLOWUP-SEND - Guarded Manual Real Follow-Up Sending
+
+Date: 2026-05-28
+Branch: main
+
+Verified state:
+- Dedicated follow-up content now persists in `campaign_sending_limits` through explicit fields `followup_subject`, `followup_body_html`, and `followup_body_text`; the real follow-up path blocks when that dedicated content is blank or not renderable.
+- Follow-up simulation and real dispatch now share the same backend candidate-selection policy: primary campaign delivery exists, no primary open event, no suppression/unsubscribe/complaint/hard-bounce exclusion, no previous follow-up, one follow-up max per contact per campaign, and follow-up delay plus daily/monthly follow-up caps enforced before dispatch.
+- A new admin-only real dispatch route `POST /admin/campaigns/{campaign_id}/send-followup` now exists beside the existing no-dispatch follow-up simulation route and remains fail-closed behind `EMAIL_SENDING_ENABLED`.
+- Real follow-up preparation uses a distinct Listmonk mapping boundary via local mapping `entity_type='campaign_followup'`, preserving the primary `entity_type='campaign'` mapping and campaign/list correlation.
+- Provider-event persistence and correlation are now send-kind aware through `provider_events.send_kind`, unsubscribe routes now preserve `send_kind`, and follow-up events are prevented from mutating primary campaign metrics or primary running-slot completion.
+- Follow-up email logs are persisted with `send_kind='followup'`; primary campaign analytics and admin/client summaries remain filtered to `send_kind='campaign'`.
+- Admin content/review/detail UI now exposes dedicated follow-up subject/body, honest follow-up readiness, follow-up simulation, and a guarded manual real-send action with explicit confirmation. The frontend does not expose provider/Listmonk names for this path.
+- One additive migration was introduced: `db/migrations/20260528_followup_content_and_provider_events_send_kind.sql`.
+
+Checks executed:
+- `git diff --check`
+- `docker compose build backend`
+- `docker compose run --rm -e PYTHONPATH=/workspace/backend -e EMAIL_SENDING_ENABLED=false -e FRONTEND_URL=http://localhost:3000 -e CLERK_SECRET_KEY= -e SMTP_HOST=mailpit -e SMTP_PORT=1025 -e SMTP_USERNAME= -e SMTP_PASSWORD= -e SMTP_TLS=false -e SMTP_FROM_EMAIL= -e REAL_SEND_ENVIRONMENTS=development,staging,test -v "$PWD:/workspace" backend sh -lc 'cd /workspace/backend && pytest tests'`
+- `cd frontend && npm run lint`
+- `cd frontend && npm run build`
+- `bash scripts/audit.sh`
+- `bash scripts/smoke_test.sh`
+
+Residual risk:
+- No real staging proof was executed in this milestone. The later proof must stay limited to an operator-controlled dedicated test campaign and operator-controlled test recipient addresses only.
+- Follow-up analytics isolation now depends on the send-kind correlation path staying present in future provider webhook expansions and unsubscribe/reconciliation flows.
+- Frontend lint remains clean for the touched follow-up surfaces, but the repo still contains two pre-existing warnings in `frontend/components/client/ClientRecentCampaignsCard.tsx`.
+
+Scope confirmation:
+- No VPS/SSH/deploy action, runtime staging/prod DB mutation, real send, provider webhook replay, scheduler/automatic follow-up, secret read, token output, recipient email output, unsubscribe token output, or raw provider payload/body output was performed.

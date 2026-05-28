@@ -1885,15 +1885,18 @@ class ClientsService:
         status_counts = self._require_email_log_repository().get_campaign_status_counts(
             client_id=client_id,
             campaign_id=campaign_id,
+            send_kind="campaign",
         )
         provider_event_repository = self._require_provider_event_repository()
         event_counts = provider_event_repository.get_campaign_event_counts(
             client_id=client_id,
             campaign_id=campaign_id,
+            send_kind="campaign",
         )
         provider_events_available = provider_event_repository.has_events_for_campaign(
             client_id=client_id,
             campaign_id=campaign_id,
+            send_kind="campaign",
         )
         sent = _prefer_provider_metric(
             status_counts=status_counts,

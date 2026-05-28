@@ -1,5 +1,38 @@
 # Audit Log
 
+## Milestone 20.6-FOLLOWUP-EXECUTOR - Follow-Up Executor Contract Audit
+
+Date: 2026-05-28
+Branch: main
+
+Audit result:
+- Existing primary campaign execution is backend-owned: admin/client routes call `CampaignDispatchService.send_campaign()`, which evaluates the Deliverability Guard, duplicate-dispatch guard, native unsubscribe reconciliation, provider/runtime safety, domain warmup, provider-history guard, Listmonk preparation, Listmonk campaign start, `email_logs` persistence, and running-slot completion.
+- Existing no-dispatch simulation is backend-owned through `SendSimulationService.simulate_campaign_send()` and persists `email_logs.status="simulated"` for normal campaign sends only, with `listmonk_dispatched=false` and `real_send_attempted=false`.
+- Existing follow-up implementation is limited to campaign settings and `evaluate_followup_eligibility()`: `followup_enabled`, follow-up daily/monthly caps, delay, delay blocked reasons, and separate `email_logs.send_kind='followup'` counting.
+- No runtime follow-up executor, job, worker, endpoint, or manual admin action exists.
+- No repository contract was found that defines the follow-up recipient segment as non-openers, non-clickers, delivered-only recipients, or another explicit group.
+- Provider events can update `email_logs` to delivered/opened/clicked/bounced/complained/unsubscribed and can preserve tenant/campaign/contact correlation, but no approved follow-up targeting rule consumes those events.
+- No separate follow-up subject, body, template, content approval state, or Listmonk campaign mapping model exists.
+- Existing Listmonk campaign mapping is keyed to the primary campaign, so a follow-up send would need an explicit approved mapping/content strategy before it can be represented without overwriting or reusing the primary campaign correlation ambiguously.
+- No approved maximum number of follow-ups per recipient/campaign was found beyond cap scaffolding; duplicate follow-up prevention is not implemented as a product rule.
+- No approved trigger model was found for follow-ups: manual admin-triggered, scheduled, automatic, and real-send behavior are all absent.
+
+Decision:
+- Implementation is blocked pending explicit product approval. A follow-up executor was not implemented because the required recipient, content, trigger, mapping, and per-recipient maximum rules are absent from the repo contract.
+
+Recommended safe V1 contract for approval:
+- Manual admin-triggered follow-up only, not automatic scheduling.
+- No-dispatch simulation endpoint first.
+- Eligible recipient: original primary send delivered, no recorded open, no suppression/unsubscribe/complaint/bounce, and no prior follow-up log.
+- Maximum one follow-up per recipient per campaign.
+- Follow-up uses separately approved content and subject, not silent reuse of the original campaign content.
+- Follow-up usage uses separate `send_kind='followup'` counts and does not consume normal campaign caps.
+
+Scope confirmation:
+- Documentation-only audit clarification.
+- No backend executor, frontend action, schema, migration, worker, scheduler, Docker, Caddy, Listmonk, Mailgun, `.env`, VPS, runtime DB, provider replay, dispatch, real send, or runtime setting change was performed.
+- No secrets, tokens, recipient emails, unsubscribe URLs/tokens, raw provider payloads, or raw email bodies are recorded here.
+
 ## Milestone 20.5.2-STAGING-SIGNOFF-DOCS - Staging Deployment And No-Dispatch Browser QA Closure
 
 Date: 2026-05-27

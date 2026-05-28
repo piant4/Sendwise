@@ -698,6 +698,40 @@ export interface AdminCampaignDispatchResult {
   failedCount: number;
 }
 
+export interface AdminFollowupSimulationResult {
+  status: string;
+  mode: "followup_simulation" | string;
+  campaignId: string;
+  clientId: string;
+  decision: string;
+  code: string;
+  reason: string;
+  allowed: boolean;
+  realSendAttempted: boolean;
+  listmonkPrepared: boolean;
+  listmonkDispatched: boolean;
+  contentReady: boolean;
+  dedicatedFollowupContentReady: boolean;
+  totalPrimaryRecipientsEvaluated: number;
+  eligibleCount: number;
+  blockedCount: number;
+  blockedReasonCounts: Record<string, number>;
+  followupSettings: {
+    followupEnabled: boolean;
+    followupDailyLimit?: number | null;
+    followupDailyUsed: number;
+    followupMonthlyLimit?: number | null;
+    followupMonthlyUsed: number;
+    followupDelayValue: number;
+    followupDelayUnit: "hours" | "days";
+    referenceTime?: string | null;
+    eligibleAt?: string | null;
+  };
+  emailLogsCreated: number;
+  providerEventsCreated: number;
+  listmonkMappingsCreated: number;
+}
+
 export interface ClientCampaignStatsReadModel {
   campaignId: string;
   clientId: string;

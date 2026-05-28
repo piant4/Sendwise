@@ -10,6 +10,7 @@ from app.schemas.campaigns import (
     AdminCampaignContentRequest,
     AdminCampaignCreateRequest,
     AdminCampaignDetail,
+    AdminFollowupSimulationResponse,
     AdminEmailTemplateCreateRequest,
     AdminEmailTemplateResponse,
     AdminCampaignReviewResponse,
@@ -499,6 +500,18 @@ def simulate_send_campaign(
             "real_send_attempted": False,
             "email_logs_created": 0,
         }
+
+
+@router.post(
+    "/campaigns/{campaign_id}/simulate-followup",
+    response_model=AdminFollowupSimulationResponse,
+)
+def simulate_followup_campaign(
+    campaign_id: str,
+    _current_user: AuthenticatedUser = Depends(require_platform_admin),
+    campaign_service: AdminCampaignService = Depends(get_admin_campaign_service),
+) -> AdminFollowupSimulationResponse:
+    return campaign_service.simulate_followup_eligibility(campaign_id=campaign_id)
 
 
 @router.post("/campaigns/{campaign_id}/send")

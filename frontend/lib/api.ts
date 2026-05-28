@@ -8,6 +8,7 @@ import type {
   AdminCampaignDispatchResult,
   AdminCampaignDetail,
   AdminCampaignContentInput,
+  AdminFollowupSimulationResult,
   AdminEmailTemplate,
   AdminCampaignReadinessSummary,
   AdminCampaignReviewResult,
@@ -426,6 +427,40 @@ interface AdminCampaignDispatchApiResponse {
   queued_count?: number;
   sent_or_accepted_count?: number;
   failed_count?: number;
+}
+
+interface AdminFollowupSimulationApiResponse {
+  status: string;
+  mode: string;
+  campaign_id: string;
+  client_id: string;
+  decision: string;
+  code: string;
+  reason: string;
+  allowed: boolean;
+  real_send_attempted: boolean;
+  listmonk_prepared: boolean;
+  listmonk_dispatched: boolean;
+  content_ready: boolean;
+  dedicated_followup_content_ready: boolean;
+  total_primary_recipients_evaluated: number;
+  eligible_count: number;
+  blocked_count: number;
+  blocked_reason_counts: Record<string, number>;
+  followup_settings: {
+    followup_enabled: boolean;
+    followup_daily_limit?: number | null;
+    followup_daily_used: number;
+    followup_monthly_limit?: number | null;
+    followup_monthly_used: number;
+    followup_delay_value: number;
+    followup_delay_unit: "hours" | "days";
+    reference_time?: string | null;
+    eligible_at?: string | null;
+  };
+  email_logs_created: number;
+  provider_events_created: number;
+  listmonk_mappings_created: number;
 }
 
 interface ClientCampaignStatsApiResponse {
@@ -1360,6 +1395,16 @@ async function postAdminCampaignSend(
 ): Promise<AdminCampaignDispatchApiResponse> {
   return apiPostWithoutPayload<AdminCampaignDispatchApiResponse>(
     `/admin/campaigns/${campaignId}/send`,
+    accessToken,
+  );
+}
+
+async function postAdminCampaignFollowupSimulation(
+  campaignId: string,
+  accessToken?: string | null,
+): Promise<AdminFollowupSimulationApiResponse> {
+  return apiPostWithoutPayload<AdminFollowupSimulationApiResponse>(
+    `/admin/campaigns/${campaignId}/simulate-followup`,
     accessToken,
   );
 }
@@ -2425,6 +2470,44 @@ function mapClientOverviewSummary(
   };
 }
 
+function mapAdminFollowupSimulationResult(
+  payload: AdminFollowupSimulationApiResponse,
+): AdminFollowupSimulationResult {
+  return {
+    status: payload.status,
+    mode: payload.mode,
+    campaignId: payload.campaign_id,
+    clientId: payload.client_id,
+    decision: payload.decision,
+    code: payload.code,
+    reason: payload.reason,
+    allowed: payload.allowed,
+    realSendAttempted: payload.real_send_attempted,
+    listmonkPrepared: payload.listmonk_prepared,
+    listmonkDispatched: payload.listmonk_dispatched,
+    contentReady: payload.content_ready,
+    dedicatedFollowupContentReady: payload.dedicated_followup_content_ready,
+    totalPrimaryRecipientsEvaluated: payload.total_primary_recipients_evaluated,
+    eligibleCount: payload.eligible_count,
+    blockedCount: payload.blocked_count,
+    blockedReasonCounts: payload.blocked_reason_counts,
+    followupSettings: {
+      followupEnabled: payload.followup_settings.followup_enabled,
+      followupDailyLimit: payload.followup_settings.followup_daily_limit ?? null,
+      followupDailyUsed: payload.followup_settings.followup_daily_used,
+      followupMonthlyLimit: payload.followup_settings.followup_monthly_limit ?? null,
+      followupMonthlyUsed: payload.followup_settings.followup_monthly_used,
+      followupDelayValue: payload.followup_settings.followup_delay_value,
+      followupDelayUnit: payload.followup_settings.followup_delay_unit,
+      referenceTime: payload.followup_settings.reference_time ?? null,
+      eligibleAt: payload.followup_settings.eligible_at ?? null,
+    },
+    emailLogsCreated: payload.email_logs_created,
+    providerEventsCreated: payload.provider_events_created,
+    listmonkMappingsCreated: payload.listmonk_mappings_created,
+  };
+}
+
 export function getAdminOverviewSummary(
   accessToken?: string | null,
 ): Promise<AdminOverviewSummary> {
@@ -2713,6 +2796,16 @@ export function sendAdminCampaign(
   assertAdminBackendEnabled(`/admin/campaigns/${campaignId}/send`);
   return postAdminCampaignSend(campaignId, accessToken).then(
     mapAdminCampaignDispatchResult,
+  );
+}
+
+export function simulateAdminCampaignFollowup(
+  campaignId: string,
+  accessToken?: string | null,
+): Promise<AdminFollowupSimulationResult> {
+  assertAdminBackendEnabled(`/admin/campaigns/${campaignId}/simulate-followup`);
+  return postAdminCampaignFollowupSimulation(campaignId, accessToken).then(
+    mapAdminFollowupSimulationResult,
   );
 }
 

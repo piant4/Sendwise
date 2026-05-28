@@ -17,10 +17,12 @@ import {
   isApiError,
   reviewAdminCampaign,
   sendAdminCampaign,
+  simulateAdminCampaignFollowup,
 } from "../../lib/api";
 import type {
   AdminCampaignDispatchResult,
   AdminCampaignDetail,
+  AdminFollowupSimulationResult,
   AdminCampaignReadinessSummary,
   AdminCampaignReviewResult,
   CampaignStatus,
@@ -107,6 +109,35 @@ function getSafeReviewErrorMessage(error: unknown, action: "review" | "send"): s
   return action === "send"
     ? "Non e stato possibile avviare l'invio. Riprova."
     : "Non e stato possibile eseguire la verifica. Riprova.";
+}
+
+function getFollowupReasonLabel(reason: string): string {
+  switch (reason) {
+    case "followup_disabled":
+      return "Follow-up disabilitati";
+    case "followup_missing_reference_time":
+      return "Invio primario non ancora registrato";
+    case "followup_delay_not_elapsed":
+      return "Ritardo follow-up non ancora trascorso";
+    case "followup_daily_limit_exceeded":
+      return "Limite giornaliero follow-up raggiunto";
+    case "followup_monthly_limit_exceeded":
+      return "Limite mensile follow-up raggiunto";
+    case "followup_not_delivered":
+      return "Primario non consegnato";
+    case "followup_already_opened":
+      return "Primario gia aperto";
+    case "followup_suppressed":
+      return "Contatto escluso o disiscritto";
+    case "followup_delivery_failed":
+      return "Bounce o delivery failure";
+    case "followup_complaint":
+      return "Reclamo provider";
+    case "followup_already_sent":
+      return "Follow-up gia registrato";
+    default:
+      return getReadableBackendReason(reason).label;
+  }
 }
 
 function getInitialState(
@@ -329,8 +360,11 @@ export function AdminCampaignReviewPanel({
   const [isDispatching, setIsDispatching] = useState(false);
   const [reviewResult, setReviewResult] = useState<AdminCampaignReviewResult | null>(null);
   const [dispatchResult, setDispatchResult] = useState<AdminCampaignDispatchResult | null>(null);
+  const [followupResult, setFollowupResult] = useState<AdminFollowupSimulationResult | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [dispatchError, setDispatchError] = useState<string | null>(null);
+  const [followupError, setFollowupError] = useState<string | null>(null);
+  const [isSimulatingFollowup, setIsSimulatingFollowup] = useState(false);
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
 
   const rawState = reviewResult ?? getInitialState(campaign, summary);
@@ -390,7 +424,9 @@ export function AdminCampaignReviewPanel({
       const result = await reviewAdminCampaign(campaign.campaignId, token);
       setReviewResult(result);
       setDispatchResult(null);
+      setFollowupResult(null);
       setDispatchError(null);
+      setFollowupError(null);
       router.refresh();
     } catch (error) {
       setFormError(getSafeReviewErrorMessage(error, "review"));
@@ -427,6 +463,25 @@ export function AdminCampaignReviewPanel({
       setDispatchError(getSafeReviewErrorMessage(error, "send"));
     } finally {
       setIsDispatching(false);
+    }
+  }
+
+  async function handleFollowupSimulation() {
+    if (isSimulatingFollowup) {
+      return;
+    }
+
+    setIsSimulatingFollowup(true);
+    setFollowupError(null);
+
+    try {
+      const token = await getToken();
+      const result = await simulateAdminCampaignFollowup(campaign.campaignId, token);
+      setFollowupResult(result);
+    } catch (error) {
+      setFollowupError(getSafeReviewErrorMessage(error, "review"));
+    } finally {
+      setIsSimulatingFollowup(false);
     }
   }
 
@@ -780,6 +835,94 @@ export function AdminCampaignReviewPanel({
       <p className="campaign-field__helper" style={{ margin: "12px 0 0" }}>
         I follow-up usano limiti separati dagli invii principali.
       </p>
+
+      <section
+        className="campaign-panel campaign-panel--subtle"
+        style={{ display: "grid", gap: 14, marginTop: 18, padding: 18 }}
+      >
+        <div className="campaign-review-checklist__header">
+          <div style={{ display: "grid", gap: 4 }}>
+            <strong className="campaign-review-checklist__title">Simulazione follow-up</strong>
+            <p className="campaign-review-checklist__reason">
+              La simulazione valuta solo i destinatari idonei. Nessun follow-up viene inviato.
+            </p>
+          </div>
+          <StatusBadge
+            label={followupResult ? (followupResult.allowed ? "Simulata" : "Bloccata") : "No-send"}
+            variant={followupResult?.allowed ? "success" : followupResult ? "warning" : "neutral"}
+          />
+        </div>
+
+        {followupError ? (
+          <p className="admin-clients-feedback admin-clients-feedback--error" role="alert">
+            {followupError}
+          </p>
+        ) : null}
+
+        {followupResult ? (
+          <div
+            style={{
+              display: "grid",
+              gap: 12,
+              gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))",
+            }}
+          >
+            <article className="campaign-callout" style={{ minHeight: 0 }}>
+              <span className="admin-record-row__note">Idonei follow-up</span>
+              <strong style={{ color: "var(--sw-olive)" }}>
+                {followupResult.eligibleCount.toLocaleString("it-IT")}
+              </strong>
+            </article>
+            <article className="campaign-callout" style={{ minHeight: 0 }}>
+              <span className="admin-record-row__note">Bloccati</span>
+              <strong style={{ color: "var(--sw-olive)" }}>
+                {followupResult.blockedCount.toLocaleString("it-IT")}
+              </strong>
+            </article>
+            <article className="campaign-callout" style={{ minHeight: 0 }}>
+              <span className="admin-record-row__note">Primari valutati</span>
+              <strong style={{ color: "var(--sw-olive)" }}>
+                {followupResult.totalPrimaryRecipientsEvaluated.toLocaleString("it-IT")}
+              </strong>
+            </article>
+          </div>
+        ) : null}
+
+        {followupResult && Object.keys(followupResult.blockedReasonCounts).length > 0 ? (
+          <div className="campaign-detail-notes">
+            <strong style={{ color: "var(--sw-olive)" }}>Motivi principali</strong>
+            <ul className="admin-record-row__note" style={{ margin: 0 }}>
+              {Object.entries(followupResult.blockedReasonCounts).map(([reason, count]) => (
+                <li key={reason}>
+                  {getFollowupReasonLabel(reason)}: {count.toLocaleString("it-IT")}
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+
+        <p className="campaign-field__helper" style={{ margin: 0 }}>
+          Nessun follow-up e stato inviato. Il contenuto e l&apos;oggetto dedicati sono ancora
+          necessari prima di una futura capacita di invio reale.
+        </p>
+        <div className="campaign-action-row" style={{ marginTop: 0 }}>
+          <Button
+            type="button"
+            variant="outline"
+            className="admin-topbar-action campaign-action campaign-action--secondary"
+            disabled={!state.followupEnabled || isSimulatingFollowup}
+            onClick={handleFollowupSimulation}
+            style={{ minWidth: 190 }}
+          >
+            {isSimulatingFollowup ? (
+              <Loader2 aria-hidden="true" className="admin-topbar-action__icon" />
+            ) : (
+              <ClipboardCheck aria-hidden="true" className="admin-topbar-action__icon" />
+            )}
+            {isSimulatingFollowup ? "Simulazione..." : "Simula follow-up"}
+          </Button>
+        </div>
+      </section>
 
       <details className="campaign-panel campaign-panel--subtle" style={{ marginTop: 18, padding: 18 }}>
         <summary

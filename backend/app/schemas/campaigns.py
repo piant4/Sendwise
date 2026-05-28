@@ -197,6 +197,42 @@ class AdminNativeUnsubscribeReconciliationResponse(BaseModel):
     severity: str
 
 
+class FollowupSimulationSettingsSummary(BaseModel):
+    followup_enabled: bool
+    followup_daily_limit: Optional[int] = None
+    followup_daily_used: int = 0
+    followup_monthly_limit: Optional[int] = None
+    followup_monthly_used: int = 0
+    followup_delay_value: int = 3
+    followup_delay_unit: str = "days"
+    reference_time: Optional[datetime] = None
+    eligible_at: Optional[datetime] = None
+
+
+class AdminFollowupSimulationResponse(BaseModel):
+    status: str
+    mode: str
+    campaign_id: str
+    client_id: str
+    decision: str
+    code: str
+    reason: str
+    allowed: bool
+    real_send_attempted: bool = False
+    listmonk_prepared: bool = False
+    listmonk_dispatched: bool = False
+    content_ready: bool = False
+    dedicated_followup_content_ready: bool = False
+    total_primary_recipients_evaluated: int = 0
+    eligible_count: int = 0
+    blocked_count: int = 0
+    blocked_reason_counts: dict[str, int] = Field(default_factory=dict)
+    followup_settings: FollowupSimulationSettingsSummary
+    email_logs_created: int = 0
+    provider_events_created: int = 0
+    listmonk_mappings_created: int = 0
+
+
 class AdminCampaignContactPayload(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

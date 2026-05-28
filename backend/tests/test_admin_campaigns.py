@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from fastapi import HTTPException
@@ -2462,6 +2462,373 @@ def test_admin_simulate_send_endpoint_uses_simulation_service() -> None:
     assert payload["status"] == "simulated"
     assert payload["listmonk_dispatched"] is False
     assert preparation_service.prepared_campaign_ids == ["campaign_123"]
+
+
+def build_followup_simulation_service(
+    *,
+    campaign_id: str = "campaign_123",
+    followup_enabled: bool = True,
+    followup_daily_limit: int = 10,
+    followup_monthly_limit: int = 100,
+    followup_delay_value: int = 1,
+    followup_delay_unit: str = "days",
+    contacts: list[ContactRecord] | None = None,
+    suppression_records: list[SuppressionRecord] | None = None,
+    email_logs: InMemoryEmailLogRepository | None = None,
+    provider_events: InMemoryProviderEventRepository | None = None,
+) -> tuple[
+    AdminCampaignService,
+    CampaignRecord,
+    InMemoryEmailLogRepository,
+    InMemoryProviderEventRepository,
+]:
+    selected_contacts = contacts or [
+        build_contact(contact_id="contact_1", email="one@example.test")
+    ]
+    campaign_contacts = {
+        ("client_123", campaign_id, contact.id) for contact in selected_contacts
+    }
+    campaign_repository = InMemoryCampaignRepository(campaign_contacts=campaign_contacts)
+    campaign = campaign_repository.add_campaign(
+        campaign_id=campaign_id,
+        client_id="client_123",
+        status="completed",
+        subject="Launch",
+        body_html="<p>Hello</p>",
+        body_text="Hello",
+        content_ready=True,
+        contacts_ready=True,
+        review_ready=True,
+    )
+    limits = InMemoryCampaignSendingLimitRepository()
+    limits.ensure_for_campaign(
+        campaign_id=campaign.id,
+        followup_enabled=followup_enabled,
+        followup_daily_limit=followup_daily_limit,
+        followup_monthly_limit=followup_monthly_limit,
+        followup_delay_value=followup_delay_value,
+        followup_delay_unit=followup_delay_unit,
+    )
+    email_log_repository = email_logs or InMemoryEmailLogRepository()
+    provider_event_repository = provider_events or InMemoryProviderEventRepository()
+    service = build_admin_service(
+        campaign_repository=campaign_repository,
+        clients=[build_client()],
+        contacts=selected_contacts,
+        campaign_contacts=campaign_contacts,
+        suppression_records=suppression_records,
+        email_log_repository=email_log_repository,
+        provider_event_repository=provider_event_repository,
+        campaign_limit_repository=limits,
+    )
+    return service, campaign, email_log_repository, provider_event_repository
+
+
+def add_primary_log_with_events(
+    *,
+    email_logs: InMemoryEmailLogRepository,
+    provider_events: InMemoryProviderEventRepository,
+    campaign: CampaignRecord,
+    contact_id: str,
+    event_types: tuple[str, ...],
+    created_at: datetime | None = None,
+    send_kind: str = "campaign",
+) -> str:
+    log = email_logs.create_email_log(
+        client_id=campaign.client_id,
+        campaign_id=campaign.id,
+        contact_id=contact_id,
+        send_kind=send_kind,
+        status="sent",
+        created_at=created_at or datetime.now(timezone.utc) - timedelta(days=3),
+    )
+    for event_type in event_types:
+        add_processed_provider_event(
+            provider_events,
+            client_id=campaign.client_id,
+            campaign_id=campaign.id,
+            contact_id=contact_id,
+            email_log_id=log.id,
+            event_type=event_type,
+            event_key=f"{campaign.id}:{contact_id}:{log.id}:{event_type}",
+        )
+    return log.id
+
+
+def test_admin_simulate_followup_route_requires_admin_auth() -> None:
+    response = TestClient(app).post("/admin/campaigns/campaign_123/simulate-followup")
+
+    assert response.status_code == 401
+
+
+def test_admin_simulate_followup_route_returns_safe_aggregate_response() -> None:
+    service, campaign, email_logs, provider_events = build_followup_simulation_service()
+    add_primary_log_with_events(
+        email_logs=email_logs,
+        provider_events=provider_events,
+        campaign=campaign,
+        contact_id="contact_1",
+        event_types=("delivered",),
+    )
+
+    app.dependency_overrides[require_platform_admin] = build_admin_user
+    app.dependency_overrides[get_admin_campaign_service] = lambda: service
+
+    try:
+        response = TestClient(app).post(
+            "/admin/campaigns/campaign_123/simulate-followup"
+        )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["mode"] == "followup_simulation"
+    assert payload["real_send_attempted"] is False
+    assert payload["listmonk_dispatched"] is False
+    assert payload["listmonk_prepared"] is False
+    assert payload["content_ready"] is False
+    assert payload["dedicated_followup_content_ready"] is False
+    assert payload["total_primary_recipients_evaluated"] == 1
+    assert payload["eligible_count"] == 1
+    assert payload["blocked_count"] == 0
+    assert "@" not in str(payload)
+
+
+def test_followup_simulation_disabled_returns_blocked_summary() -> None:
+    service, _campaign, _email_logs, _provider_events = build_followup_simulation_service(
+        followup_enabled=False
+    )
+
+    result = service.simulate_followup_eligibility(campaign_id="campaign_123")
+
+    assert result.status == "blocked"
+    assert result.code == "followup_disabled"
+    assert result.eligible_count == 0
+    assert result.blocked_reason_counts == {"followup_disabled": 1}
+
+
+def test_followup_simulation_missing_reference_time_blocks() -> None:
+    service, campaign, _email_logs, _provider_events = build_followup_simulation_service()
+
+    result = service.simulate_followup_eligibility(campaign_id=campaign.id)
+
+    assert result.status == "blocked"
+    assert result.code == "followup_missing_reference_time"
+    assert result.total_primary_recipients_evaluated == 0
+    assert result.blocked_reason_counts == {"followup_missing_reference_time": 1}
+
+
+def test_followup_simulation_delay_not_elapsed_blocks_before_candidates() -> None:
+    service, campaign, email_logs, provider_events = build_followup_simulation_service(
+        followup_delay_value=3,
+        followup_delay_unit="days",
+    )
+    add_primary_log_with_events(
+        email_logs=email_logs,
+        provider_events=provider_events,
+        campaign=campaign,
+        contact_id="contact_1",
+        event_types=("delivered",),
+        created_at=datetime.now(timezone.utc) - timedelta(hours=1),
+    )
+
+    result = service.simulate_followup_eligibility(campaign_id=campaign.id)
+
+    assert result.status == "blocked"
+    assert result.code == "followup_delay_not_elapsed"
+    assert result.total_primary_recipients_evaluated == 0
+    assert result.blocked_reason_counts == {"followup_delay_not_elapsed": 1}
+
+
+def test_followup_simulation_daily_cap_exceeded_blocks() -> None:
+    service, campaign, email_logs, provider_events = build_followup_simulation_service(
+        followup_daily_limit=1,
+    )
+    add_primary_log_with_events(
+        email_logs=email_logs,
+        provider_events=provider_events,
+        campaign=campaign,
+        contact_id="contact_1",
+        event_types=("delivered",),
+    )
+    email_logs.create_email_log(
+        client_id=campaign.client_id,
+        campaign_id=campaign.id,
+        contact_id="other_contact",
+        send_kind="followup",
+        status="sent",
+    )
+
+    result = service.simulate_followup_eligibility(campaign_id=campaign.id)
+
+    assert result.status == "blocked"
+    assert result.code == "followup_daily_limit_exceeded"
+    assert result.total_primary_recipients_evaluated == 0
+
+
+def test_followup_simulation_monthly_cap_exceeded_blocks() -> None:
+    service, campaign, email_logs, provider_events = build_followup_simulation_service(
+        followup_daily_limit=10,
+        followup_monthly_limit=1,
+    )
+    add_primary_log_with_events(
+        email_logs=email_logs,
+        provider_events=provider_events,
+        campaign=campaign,
+        contact_id="contact_1",
+        event_types=("delivered",),
+    )
+    email_logs.create_email_log(
+        client_id=campaign.client_id,
+        campaign_id=campaign.id,
+        contact_id="other_contact",
+        send_kind="followup",
+        status="sent",
+    )
+
+    result = service.simulate_followup_eligibility(campaign_id=campaign.id)
+
+    assert result.status == "blocked"
+    assert result.code == "followup_monthly_limit_exceeded"
+    assert result.total_primary_recipients_evaluated == 0
+
+
+def test_followup_simulation_candidate_reason_counts_and_no_persistence() -> None:
+    contacts = [
+        build_contact(contact_id="eligible", email="eligible@example.test"),
+        build_contact(contact_id="opened", email="opened@example.test"),
+        build_contact(contact_id="missing_delivery", email="missing@example.test"),
+        build_contact(contact_id="suppressed", email="suppressed@example.test"),
+        build_contact(
+            contact_id="unsubscribed",
+            email="unsubscribed@example.test",
+            status="unsubscribed",
+        ),
+        build_contact(contact_id="failed", email="failed@example.test"),
+        build_contact(contact_id="complaint", email="complaint@example.test"),
+        build_contact(contact_id="prior_followup", email="prior@example.test"),
+        build_contact(contact_id="normal_primary_log", email="normal@example.test"),
+    ]
+    email_logs = InMemoryEmailLogRepository()
+    provider_events = InMemoryProviderEventRepository()
+    service, campaign, email_logs, provider_events = build_followup_simulation_service(
+        contacts=contacts,
+        suppression_records=[
+            SuppressionRecord(
+                id="suppression_1",
+                client_id="client_123",
+                email="suppressed@example.test",
+                reason="manual",
+                created_at=datetime.now(timezone.utc),
+            )
+        ],
+        email_logs=email_logs,
+        provider_events=provider_events,
+    )
+    add_primary_log_with_events(
+        email_logs=email_logs,
+        provider_events=provider_events,
+        campaign=campaign,
+        contact_id="eligible",
+        event_types=("delivered",),
+    )
+    add_primary_log_with_events(
+        email_logs=email_logs,
+        provider_events=provider_events,
+        campaign=campaign,
+        contact_id="opened",
+        event_types=("delivered", "opened"),
+    )
+    add_primary_log_with_events(
+        email_logs=email_logs,
+        provider_events=provider_events,
+        campaign=campaign,
+        contact_id="missing_delivery",
+        event_types=(),
+    )
+    add_primary_log_with_events(
+        email_logs=email_logs,
+        provider_events=provider_events,
+        campaign=campaign,
+        contact_id="suppressed",
+        event_types=("delivered",),
+    )
+    add_primary_log_with_events(
+        email_logs=email_logs,
+        provider_events=provider_events,
+        campaign=campaign,
+        contact_id="unsubscribed",
+        event_types=("delivered",),
+    )
+    add_primary_log_with_events(
+        email_logs=email_logs,
+        provider_events=provider_events,
+        campaign=campaign,
+        contact_id="failed",
+        event_types=("delivered", "hard_bounce"),
+    )
+    add_primary_log_with_events(
+        email_logs=email_logs,
+        provider_events=provider_events,
+        campaign=campaign,
+        contact_id="complaint",
+        event_types=("delivered", "complaint"),
+    )
+    add_primary_log_with_events(
+        email_logs=email_logs,
+        provider_events=provider_events,
+        campaign=campaign,
+        contact_id="prior_followup",
+        event_types=("delivered",),
+    )
+    add_primary_log_with_events(
+        email_logs=email_logs,
+        provider_events=provider_events,
+        campaign=campaign,
+        contact_id="normal_primary_log",
+        event_types=("delivered",),
+    )
+    email_logs.create_email_log(
+        client_id=campaign.client_id,
+        campaign_id=campaign.id,
+        contact_id="prior_followup",
+        send_kind="followup",
+        status="sent",
+        created_at=datetime.now(timezone.utc) - timedelta(days=1),
+    )
+    email_logs.create_email_log(
+        client_id=campaign.client_id,
+        campaign_id=campaign.id,
+        contact_id="normal_primary_log",
+        send_kind="campaign",
+        status="sent",
+        created_at=datetime.now(timezone.utc) - timedelta(days=4),
+    )
+    before_email_logs = len(email_logs._records)
+    before_provider_events = len(provider_events._records)
+
+    result = service.simulate_followup_eligibility(campaign_id=campaign.id)
+
+    assert result.status == "simulated"
+    assert result.total_primary_recipients_evaluated == 9
+    assert result.eligible_count == 2
+    assert result.blocked_count == 7
+    assert result.blocked_reason_counts == {
+        "followup_already_opened": 1,
+        "followup_already_sent": 1,
+        "followup_complaint": 1,
+        "followup_delivery_failed": 1,
+        "followup_not_delivered": 1,
+        "followup_suppressed": 2,
+    }
+    assert result.email_logs_created == 0
+    assert result.provider_events_created == 0
+    assert result.listmonk_mappings_created == 0
+    assert result.real_send_attempted is False
+    assert result.listmonk_dispatched is False
+    assert len(email_logs._records) == before_email_logs
+    assert len(provider_events._records) == before_provider_events
 
 
 def test_admin_send_passes_guard_and_respects_email_sending_disabled() -> None:

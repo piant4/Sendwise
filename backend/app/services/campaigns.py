@@ -67,6 +67,7 @@ from app.schemas.campaigns import (
     AdminCampaignContactRemoveResponse,
     AdminCampaignContactsResponse,
     AdminCampaignDetail,
+    AdminFollowupSimulationResponse,
     AdminEmailTemplateResponse,
     AdminCampaignContactPayload,
     AdminCampaignReviewResponse,
@@ -81,6 +82,7 @@ from app.schemas.campaigns import (
     CampaignRecipientsSummary,
     CampaignSlotSummary,
     CampaignSummaryItem,
+    FollowupSimulationSettingsSummary,
     ProviderHistoryPolicySummary,
 )
 from app.schemas.common import CampaignStatus, campaign_consumes_running_slot
@@ -217,6 +219,10 @@ PROVIDER_BOUNCE_EVENT_TYPES = ("hard_bounce", "soft_bounce", "delivery_failed", 
 PROVIDER_HARD_BOUNCE_EVENT_TYPES = ("hard_bounce", "ses_bounce")
 PROVIDER_COMPLAINT_EVENT_TYPES = ("complaint", "ses_complaint")
 PROVIDER_UNSUBSCRIBE_EVENT_TYPES = ("unsubscribe", "sendwise_unsubscribe")
+FOLLOWUP_DELIVERED_EVENT_TYPES = set(PROVIDER_DELIVERED_EVENT_TYPES)
+FOLLOWUP_OPENED_EVENT_TYPES = set(PROVIDER_OPENED_EVENT_TYPES)
+FOLLOWUP_FAILURE_EVENT_TYPES = set(PROVIDER_BOUNCE_EVENT_TYPES) | {"rejected", "ses_reject"}
+FOLLOWUP_COMPLAINT_EVENT_TYPES = set(PROVIDER_COMPLAINT_EVENT_TYPES)
 COMPLAINT_REVIEW_RATE = 0.001
 COMPLAINT_STOP_RATE = 0.003
 HARD_BOUNCE_REVIEW_RATE = 0.03
@@ -2389,6 +2395,226 @@ class AdminCampaignService:
             followup_delay_unit=limits.followup_delay_unit,
             reference_time=resolved_reference_time,
             eligible_at=eligible_at,
+        )
+
+    def simulate_followup_eligibility(
+        self,
+        *,
+        campaign_id: str,
+    ) -> AdminFollowupSimulationResponse:
+        campaign = self.get_campaign_record(campaign_id)
+        reference_time = self.email_log_repository.get_first_real_campaign_log_at(
+            client_id=campaign.client_id,
+            campaign_id=campaign.id,
+            send_kind="campaign",
+        )
+        campaign_gate = self.evaluate_followup_eligibility(
+            campaign_id=campaign.id,
+            contact_id="",
+            reference_time=reference_time,
+        )
+        if not campaign_gate.allowed:
+            return self._build_followup_simulation_response(
+                campaign=campaign,
+                gate=campaign_gate,
+                total_primary_recipients_evaluated=0,
+                eligible_count=0,
+                blocked_reason_counts={campaign_gate.code: 1},
+            )
+
+        campaign_contacts = self.contact_repository.list_campaign_contacts(
+            client_id=campaign.client_id,
+            campaign_id=campaign.id,
+        )
+        contacts_by_id = {contact.id: contact for contact in campaign_contacts}
+        suppressed_emails = self.suppression_list_repository.list_suppressed_emails_for_campaign(
+            client_id=campaign.client_id,
+            emails=[contact.email for contact in campaign_contacts],
+        )
+        primary_logs = [
+            log
+            for log in self.email_log_repository.list_latest_for_campaign(
+                client_id=campaign.client_id,
+                campaign_id=campaign.id,
+                send_kind="campaign",
+            )
+            if log.contact_id in contacts_by_id
+        ]
+        processed_events = [
+            event
+            for event in self.provider_event_repository.list_by_campaign(
+                client_id=campaign.client_id,
+                campaign_id=campaign.id,
+            )
+            if event.processed_at is not None
+        ]
+
+        events_by_log_id: dict[str, list[Any]] = {}
+        for event in processed_events:
+            if event.email_log_id is None:
+                continue
+            events_by_log_id.setdefault(event.email_log_id, []).append(event)
+
+        eligible_count = 0
+        blocked_reason_counts: dict[str, int] = {}
+        evaluated_contact_ids: set[str] = set()
+
+        for log in primary_logs:
+            if log.contact_id is None or log.contact_id in evaluated_contact_ids:
+                continue
+            evaluated_contact_ids.add(log.contact_id)
+            contact = contacts_by_id[log.contact_id]
+            reason = self._followup_candidate_block_reason(
+                campaign=campaign,
+                contact=contact,
+                primary_log_id=log.id,
+                events=events_by_log_id.get(log.id, []),
+                suppressed_emails=suppressed_emails,
+            )
+            if reason is None:
+                eligible_count += 1
+                continue
+            blocked_reason_counts[reason] = blocked_reason_counts.get(reason, 0) + 1
+
+        return self._build_followup_simulation_response(
+            campaign=campaign,
+            gate=campaign_gate,
+            total_primary_recipients_evaluated=len(evaluated_contact_ids),
+            eligible_count=eligible_count,
+            blocked_reason_counts=blocked_reason_counts,
+        )
+
+    def _followup_candidate_block_reason(
+        self,
+        *,
+        campaign: CampaignRecord,
+        contact: ContactRecord,
+        primary_log_id: str,
+        events: list[Any],
+        suppressed_emails: set[str],
+    ) -> str | None:
+        normalized_email = self._normalize_email(contact.email)
+        contact_status = contact.status.strip().lower()
+        has_delivered = any(
+            event.event_type in FOLLOWUP_DELIVERED_EVENT_TYPES
+            and event.client_id == campaign.client_id
+            and event.campaign_id == campaign.id
+            and event.contact_id == contact.id
+            and event.email_log_id == primary_log_id
+            for event in events
+        )
+        if not has_delivered:
+            return "followup_not_delivered"
+
+        has_opened = any(
+            event.event_type in FOLLOWUP_OPENED_EVENT_TYPES
+            and event.client_id == campaign.client_id
+            and event.campaign_id == campaign.id
+            and event.contact_id == contact.id
+            and event.email_log_id == primary_log_id
+            for event in events
+        )
+        if has_opened:
+            return "followup_already_opened"
+
+        has_complaint = any(
+            event.event_type in FOLLOWUP_COMPLAINT_EVENT_TYPES
+            and event.client_id == campaign.client_id
+            and event.campaign_id == campaign.id
+            and event.contact_id == contact.id
+            and event.email_log_id == primary_log_id
+            for event in events
+        )
+        if has_complaint:
+            return "followup_complaint"
+
+        if contact_status == "unsubscribed":
+            return "followup_suppressed"
+
+        if contact_status == "bounced":
+            return "followup_delivery_failed"
+
+        if (
+            contact_status != self.guard.SENDABLE_CONTACT_STATUS
+            or normalized_email in suppressed_emails
+        ):
+            return "followup_suppressed"
+
+        has_failure = any(
+            event.event_type in FOLLOWUP_FAILURE_EVENT_TYPES
+            and event.client_id == campaign.client_id
+            and event.campaign_id == campaign.id
+            and event.contact_id == contact.id
+            and event.email_log_id == primary_log_id
+            for event in events
+        )
+        if has_failure:
+            return "followup_delivery_failed"
+
+        has_unsubscribe = any(
+            event.event_type in PROVIDER_UNSUBSCRIBE_EVENT_TYPES
+            and event.client_id == campaign.client_id
+            and event.campaign_id == campaign.id
+            and event.contact_id == contact.id
+            and event.email_log_id == primary_log_id
+            for event in events
+        )
+        if has_unsubscribe:
+            return "followup_suppressed"
+
+        prior_followup_log = self.email_log_repository.find_latest_for_contact(
+            client_id=campaign.client_id,
+            campaign_id=campaign.id,
+            contact_id=contact.id,
+            send_kind="followup",
+        )
+        if prior_followup_log is not None:
+            return "followup_already_sent"
+
+        return None
+
+    def _build_followup_simulation_response(
+        self,
+        *,
+        campaign: CampaignRecord,
+        gate: FollowupEligibilityResult,
+        total_primary_recipients_evaluated: int,
+        eligible_count: int,
+        blocked_reason_counts: dict[str, int],
+    ) -> AdminFollowupSimulationResponse:
+        blocked_count = sum(blocked_reason_counts.values())
+        return AdminFollowupSimulationResponse(
+            status="simulated" if gate.allowed else "blocked",
+            mode="followup_simulation",
+            campaign_id=campaign.id,
+            client_id=campaign.client_id,
+            decision=gate.decision,
+            code=gate.code,
+            reason=gate.reason,
+            allowed=gate.allowed,
+            real_send_attempted=False,
+            listmonk_prepared=False,
+            listmonk_dispatched=False,
+            content_ready=False,
+            dedicated_followup_content_ready=False,
+            total_primary_recipients_evaluated=total_primary_recipients_evaluated,
+            eligible_count=eligible_count,
+            blocked_count=blocked_count,
+            blocked_reason_counts=dict(sorted(blocked_reason_counts.items())),
+            followup_settings=FollowupSimulationSettingsSummary(
+                followup_enabled=gate.followup_enabled,
+                followup_daily_limit=gate.followup_daily_limit,
+                followup_daily_used=gate.followup_daily_used,
+                followup_monthly_limit=gate.followup_monthly_limit,
+                followup_monthly_used=gate.followup_monthly_used,
+                followup_delay_value=gate.followup_delay_value,
+                followup_delay_unit=gate.followup_delay_unit,
+                reference_time=gate.reference_time,
+                eligible_at=gate.eligible_at,
+            ),
+            email_logs_created=0,
+            provider_events_created=0,
+            listmonk_mappings_created=0,
         )
 
     def _followup_delay_delta(self, *, value: int, unit: str) -> timedelta:

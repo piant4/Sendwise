@@ -1,5 +1,41 @@
 # Audit Log
 
+## Milestone 20.6-A FOLLOWUP-SIMULATION-EXECUTOR - Manual Follow-Up Eligibility Simulation
+
+Date: 2026-05-28
+Branch: main
+
+Verified state:
+- Added admin-only `POST /admin/campaigns/{campaign_id}/simulate-followup` for no-dispatch follow-up eligibility simulation.
+- The route is platform-admin scoped and calls only the backend campaign service read/evaluation path.
+- Campaign-level follow-up guards run before candidate selection: disabled, missing primary reference time, delay not elapsed, daily follow-up cap reached, and monthly follow-up cap reached.
+- Candidate evaluation is campaign-scoped and tenant-scoped through Business DB repositories. It evaluates latest primary `email_logs` with `send_kind='campaign'` for contacts still attached to the campaign.
+- Eligible candidates require a processed correlated delivered provider event for the primary log, no processed correlated open event, no suppression/unsubscribe exclusion, no bounce/delivery-failure or complaint exclusion, and no existing `email_logs.send_kind='followup'` for the same campaign/contact.
+- The response is aggregate-only and includes reason counts, not recipient email addresses or message content.
+- Dedicated follow-up subject/body remains not modeled; the simulation returns `content_ready=false` and `dedicated_followup_content_ready=false`.
+
+No-dispatch/persistence scope:
+- No `email_logs` are created by follow-up simulation.
+- No `provider_events` are created by follow-up simulation.
+- No `listmonk_mappings` are created by follow-up simulation.
+- No Listmonk preparation, Listmonk dispatch, Mailgun, SMTP, provider call, provider replay, scheduler, worker, cron, or real follow-up send was implemented.
+
+Checks executed:
+- `git diff --check`
+- Syntax compile check for touched backend Python files through the bundled Python runtime.
+
+Checks attempted but not completed:
+- `docker compose build backend` could not connect to Docker Desktop.
+- Docker-backed full backend pytest could not connect to Docker.
+- Frontend lint through local `npm` was unavailable because `npm` is not installed in this shell.
+- Frontend lint through Docker could not connect to Docker.
+- `bash scripts/audit.sh` and `bash scripts/smoke_test.sh` could not run because WSL has no installed distribution.
+- Bundled Python targeted pytest could not run because pytest is not installed in the bundled runtime.
+
+Scope confirmation:
+- Local code/docs only.
+- No VPS/SSH/deploy action, DB schema change, migration, runtime DB mutation, real send, provider replay, `.env`/secret read, Mailgun/Listmonk/Caddy runtime setting change, scheduler, real follow-up dispatch endpoint, follow-up subject/body editor, or original-content reuse was performed.
+
 ## Milestone 20.6-FOLLOWUP-EXECUTOR - Follow-Up Executor Contract Audit
 
 Date: 2026-05-28

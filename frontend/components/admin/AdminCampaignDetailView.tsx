@@ -16,6 +16,7 @@ import type {
   AdminCampaignContactsSummary,
   AdminCampaignDetail,
   AdminCampaignReadinessSummary,
+  AdminFollowupSimulationResult,
   CampaignLogsSummary,
 } from "../../types";
 import {
@@ -276,7 +277,11 @@ export function AdminCampaignDetailView({
   const { getToken } = useAuth();
   const [isSimulatingFollowup, setIsSimulatingFollowup] = useState(false);
   const [isSendingFollowup, setIsSendingFollowup] = useState(false);
-  const [followupResult, setFollowupResult] = useState<AdminCampaignDispatchResult | null>(null);
+  const [followupSimulationResult, setFollowupSimulationResult] =
+    useState<AdminFollowupSimulationResult | null>(null);
+  const [followupSendResult, setFollowupSendResult] = useState<AdminCampaignDispatchResult | null>(
+    null,
+  );
   const [followupError, setFollowupError] = useState<string | null>(null);
   const [isFollowupConfirmOpen, setIsFollowupConfirmOpen] = useState(false);
   const runtimeItems = summary ? getRuntimeSafetyItems(summary.runtime) : [];
@@ -337,7 +342,7 @@ export function AdminCampaignDetailView({
     try {
       const token = await getToken();
       const result = await simulateAdminCampaignFollowup(campaign.campaignId, token);
-      setFollowupResult(result);
+      setFollowupSimulationResult(result);
       router.refresh();
     } catch (error) {
       setFollowupError(getSafeFollowupErrorMessage(error));
@@ -357,7 +362,7 @@ export function AdminCampaignDetailView({
     try {
       const token = await getToken();
       const result = await sendAdminCampaignFollowup(campaign.campaignId, token);
-      setFollowupResult(result);
+      setFollowupSendResult(result);
       setIsFollowupConfirmOpen(false);
       router.refresh();
     } catch (error) {
@@ -586,12 +591,23 @@ export function AdminCampaignDetailView({
           Il pulsante reale invia un follow-up vero; solo i destinatari ancora idonei lo ricevono.
         </p>
 
-        {followupResult ? (
+        {followupSimulationResult ? (
           <article className="campaign-callout" style={{ marginTop: 18, minHeight: 0 }}>
-            <span className="admin-record-row__note">Ultimo esito follow-up</span>
-            <strong style={{ color: "var(--sw-olive)" }}>{followupResult.reason}</strong>
+            <span className="admin-record-row__note">Ultima simulazione follow-up</span>
+            <strong style={{ color: "var(--sw-olive)" }}>{followupSimulationResult.reason}</strong>
             <p className="campaign-field__helper" style={{ margin: "6px 0 0" }}>
-              {followupResult.eligibleContactCount.toLocaleString("it-IT")} idonei · {followupResult.blockedContactCount.toLocaleString("it-IT")} bloccati
+              {followupSimulationResult.eligibleCount.toLocaleString("it-IT")} idonei ·{" "}
+              {followupSimulationResult.blockedCount.toLocaleString("it-IT")} bloccati
+            </p>
+          </article>
+        ) : null}
+        {followupSendResult ? (
+          <article className="campaign-callout" style={{ marginTop: 18, minHeight: 0 }}>
+            <span className="admin-record-row__note">Ultimo invio follow-up</span>
+            <strong style={{ color: "var(--sw-olive)" }}>{followupSendResult.reason}</strong>
+            <p className="campaign-field__helper" style={{ margin: "6px 0 0" }}>
+              {followupSendResult.eligibleContactCount.toLocaleString("it-IT")} idonei ·{" "}
+              {followupSendResult.blockedContactCount.toLocaleString("it-IT")} bloccati
             </p>
           </article>
         ) : null}

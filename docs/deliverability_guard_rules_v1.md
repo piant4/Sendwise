@@ -240,16 +240,16 @@ Default conservative schedule:
 
 | Warmup day | Maximum recipients per domain per day |
 | --- | ---: |
-| 1 | 25 |
-| 2 | 50 |
-| 3 | 75 |
-| 4 | 100 |
-| 5 | 150 |
-| 6 | 200 |
-| 7 | 300 |
-| 8-14 | Increase by at most 25% per healthy day |
+| 1 | 20 |
+| 2 | 30 |
+| 3 | 50 |
+| 4 | 75 |
+| 5+ | 100 |
 
 Rules:
+- Count only real accepted sends. Simulations do not consume warmup allowance.
+- Attribute warmup by sending domain across both primary real sends and manual real follow-up sends.
+- Use Europe/Rome business-day boundaries for daily allowance.
 - Do not increase volume after complaint, hard-bounce, unsubscribe, or webhook-health warnings.
 - Reset or pause warmup after a stop-level complaint or bounce event.
 - Attribute warmup by sending domain, not only by global provider account.
@@ -375,3 +375,12 @@ Sendwise internal policy:
 - Authoritative for Sendwise Guard behavior.
 - Conservative by design.
 - Must remain clearly labeled as product policy rather than provider mandate.
+# Persisted Sending-Domain Warmup State
+
+- Sending-domain warmup stage is persisted by `sending_domain`; it must not be inferred from the first historical send date.
+- Approved cap schedule remains `stage 1 = 20`, `stage 2 = 30`, `stage 3 = 50`, `stage 4 = 75`, `stage 5 = 100`.
+- `send.mailerpro.it` initializes conservatively at `stage 1` with `advancement_mode='manual_review_required'`.
+- Historical `email_logs` remain read-only usage evidence for Rome-day counting and must not promote warmup stage.
+- Primary real sends and manual real follow-up sends consume the same sending-domain warmup allowance.
+- Simulation paths do not consume sending-domain warmup allowance.
+- Complaint, bounce, and failure safety blocks remain unchanged; no automatic promotion or percentage-based freeze rule is added in this milestone.

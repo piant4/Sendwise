@@ -1,5 +1,33 @@
 # Audit Log
 
+## Milestone 20.7-B-PERSISTED-DOMAIN-WARMUP-STATE - Persisted Sending-Domain Warmup State
+
+Date: 2026-05-28
+Branch: main
+
+Verified state:
+- Removed the unsafe history-derived warmup ramp that inferred stage from the earliest counted `email_logs.created_at`.
+- Sending-domain warmup state is now persisted by `sending_domain` and read independently from historical send dates.
+- Warmup caps remain fixed by persisted stage: `1=20`, `2=30`, `3=50`, `4=75`, `5=100`.
+- `send.mailerpro.it` is seeded conservatively at stage `1` with `advancement_mode='manual_review_required'`.
+- If persisted warmup state is missing, the backend fails conservatively to stage `1` / cap `20` and exposes that fallback in admin warmup status.
+- Historical `email_logs` remain read-only usage evidence for Rome-day counting and do not promote stage.
+- Primary real sends and manual real follow-up sends consume the same sending-domain warmup allowance because both persist `sending_domain` on real dispatch logs.
+- Simulation paths remain no-dispatch and do not consume warmup allowance.
+- Admin readiness surfaces now expose aggregate domain warmup status only: sending domain, current stage, cap today, used today, remaining today, next possible cap, manual-review advancement status, initialization fallback when applicable, and safe correlated `delivery_failed` aggregate context.
+- Existing provider-history stop policies for complaint and hard-bounce remain enforced as independent fail-closed blocks.
+
+Safety scope:
+- No automatic stage promotion, downgrade percentage, or warning-band freeze rule was introduced because the current repo contracts do not define an approved automation policy beyond manual review and the existing provider-history stop thresholds.
+- Review-band provider-history warnings still surface to admins, and stop-band provider-history blocks still prevent dispatch.
+
+Checks executed:
+- `git diff --check`
+
+Scope confirmation:
+- Local code/docs only.
+- No VPS/SSH/deploy action, real send, provider replay, `.env`/secret read, migration, Mailgun/Listmonk/Caddy/Docker runtime setting change, or guard bypass was performed.
+
 ## Milestone 20.6-A FOLLOWUP-SIMULATION-EXECUTOR - Manual Follow-Up Eligibility Simulation
 
 Date: 2026-05-28

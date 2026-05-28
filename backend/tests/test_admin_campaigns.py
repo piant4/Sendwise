@@ -21,6 +21,9 @@ from app.repositories.contacts import ContactRecord, InMemoryContactRepository
 from app.repositories.email_logs import InMemoryEmailLogRepository
 from app.repositories.listmonk_mappings import InMemoryListmonkMappingRepository
 from app.repositories.provider_events import InMemoryProviderEventRepository
+from app.repositories.sending_domain_warmup import (
+    InMemorySendingDomainWarmupStateRepository,
+)
 from app.repositories.suppression_list import (
     InMemorySuppressionListRepository,
     SuppressionRecord,
@@ -400,6 +403,7 @@ def build_admin_service(
     provider_event_repository: InMemoryProviderEventRepository | None = None,
     campaign_limit_repository: InMemoryCampaignSendingLimitRepository | None = None,
     email_template_repository: InMemoryEmailTemplateRepository | None = None,
+    sending_domain_warmup_repository: InMemorySendingDomainWarmupStateRepository | None = None,
 ) -> AdminCampaignService:
     repository = campaign_repository or InMemoryCampaignRepository()
     slots = slot_repository or InMemoryCampaignSlotRepository()
@@ -447,6 +451,10 @@ def build_admin_service(
         email_log_repository=email_log_repository or InMemoryEmailLogRepository(),
         provider_event_repository=provider_event_repository
         or InMemoryProviderEventRepository(),
+        sending_domain_warmup_repository=(
+            sending_domain_warmup_repository
+            or InMemorySendingDomainWarmupStateRepository()
+        ),
     )
 
 
@@ -490,6 +498,7 @@ def build_dispatch_service(
     suppression_repository: InMemorySuppressionListRepository | None = None,
     email_log_repository: InMemoryEmailLogRepository | None = None,
     provider_event_repository: InMemoryProviderEventRepository | None = None,
+    sending_domain_warmup_repository: InMemorySendingDomainWarmupStateRepository | None = None,
 ) -> CampaignDispatchService:
     contact_repository = InMemoryContactRepository(
         contacts=contacts,
@@ -542,6 +551,10 @@ def build_dispatch_service(
         blocked_send_repository=InMemoryBlockedSendRepository(),
         email_log_repository=selected_email_log_repository,
         provider_event_repository=selected_provider_event_repository,
+        sending_domain_warmup_repository=(
+            sending_domain_warmup_repository
+            or InMemorySendingDomainWarmupStateRepository()
+        ),
         campaign_preparation_service=selected_preparation_service,
         unsubscribe_service=unsubscribe_service,
     )
@@ -1804,6 +1817,162 @@ def test_admin_summary_returns_campaign_client_slot_and_readiness() -> None:
     assert result.warnings == [
         'EMAIL_SENDING_ENABLED is not exactly "true"; real dispatch is disabled.'
     ]
+
+
+def test_admin_summary_exposes_domain_warmup_readiness() -> None:
+    repository = InMemoryCampaignRepository()
+    campaign = repository.add_campaign(
+        campaign_id="campaign_123",
+        client_id="client_123",
+        subject="Launch campaign",
+        body_html="<p>Body</p>",
+        content_ready=True,
+        contacts_ready=True,
+        review_ready=True,
+        current_step="review",
+        status="ready",
+    )
+    contact = build_contact(contact_id="contact_1", email="one@example.test")
+    email_logs = InMemoryEmailLogRepository()
+    provider_events = InMemoryProviderEventRepository()
+    warmup_repository = InMemorySendingDomainWarmupStateRepository()
+    warmup_repository.upsert_state(
+        sending_domain="send.mailerpro.it",
+        current_stage=1,
+        stage_started_at=datetime(2026, 5, 1, 8, 0, tzinfo=timezone.utc),
+    )
+    for index in range(20):
+        email_logs.create_email_log(
+            client_id="client_seed",
+            campaign_id=f"campaign_stage_one_{index}",
+            contact_id=f"contact_stage_one_{index}",
+            status="sent",
+            sending_domain="send.mailerpro.it",
+            created_at=datetime(2026, 5, 10, 8, 0, tzinfo=timezone.utc),
+        )
+    failed_log = email_logs.create_email_log(
+        client_id="client_seed",
+        campaign_id="campaign_failed",
+        contact_id="contact_failed",
+        status="sent",
+        sending_domain="send.mailerpro.it",
+        created_at=datetime(2026, 5, 9, 9, 0, tzinfo=timezone.utc),
+    )
+    provider_events.attach_email_log_records(email_logs._records)
+    add_processed_provider_event(
+        provider_events,
+        client_id="client_seed",
+        campaign_id="campaign_failed",
+        contact_id="contact_failed",
+        email_log_id=failed_log.id,
+        event_type="delivery_failed",
+    )
+
+    class FixedDateTime(datetime):
+        @classmethod
+        def now(cls, tz: timezone | None = None) -> datetime:
+            current_time = cls(2026, 5, 10, 10, 0, tzinfo=timezone.utc)
+            return current_time.astimezone(tz) if tz is not None else current_time
+
+    service = build_admin_service(
+        settings=build_ready_listmonk_settings(),
+        campaign_repository=repository,
+        contacts=[contact],
+        campaign_contacts={("client_123", campaign.id, contact.id)},
+        email_log_repository=email_logs,
+        provider_event_repository=provider_events,
+        sending_domain_warmup_repository=warmup_repository,
+    )
+    admin_campaigns_datetime = campaigns_module.datetime
+    try:
+        setattr(campaigns_module, "datetime", FixedDateTime)
+        result = service.get_campaign_summary(campaign.id)
+    finally:
+        setattr(campaigns_module, "datetime", admin_campaigns_datetime)
+
+    assert result.policy_state is not None
+    assert result.policy_state.domain_warmup is not None
+    assert result.policy_state.domain_warmup.sending_domain == "send.mailerpro.it"
+    assert result.policy_state.domain_warmup.current_stage == 1
+    assert result.policy_state.domain_warmup.cap_today == 20
+    assert result.policy_state.domain_warmup.used_today == 20
+    assert result.policy_state.domain_warmup.remaining_today == 0
+    assert result.policy_state.domain_warmup.next_stage_cap == 30
+    assert result.policy_state.domain_warmup.advancement_status == "manual_review_required"
+    assert result.policy_state.domain_warmup.initialization_required is False
+    assert result.policy_state.domain_warmup.delivery_failed_count == 1
+    assert result.policy_state.warmup_guard.code == "sending_domain_warmup_limit_reached"
+
+
+def test_admin_summary_defaults_domain_warmup_when_persisted_state_is_missing() -> None:
+    repository = InMemoryCampaignRepository()
+    campaign = repository.add_campaign(
+        campaign_id="campaign_123",
+        client_id="client_123",
+        subject="Launch campaign",
+        body_html="<p>Body</p>",
+        content_ready=True,
+        contacts_ready=True,
+        review_ready=True,
+        current_step="review",
+        status="ready",
+    )
+    contact = build_contact(contact_id="contact_1", email="one@example.test")
+    service = build_admin_service(
+        settings=build_ready_listmonk_settings(),
+        campaign_repository=repository,
+        contacts=[contact],
+        campaign_contacts={("client_123", campaign.id, contact.id)},
+    )
+
+    result = service.get_campaign_summary(campaign.id)
+
+    assert result.policy_state is not None
+    assert result.policy_state.domain_warmup is not None
+    assert result.policy_state.domain_warmup.current_stage == 1
+    assert result.policy_state.domain_warmup.cap_today == 20
+    assert result.policy_state.domain_warmup.remaining_today == 20
+    assert result.policy_state.domain_warmup.advancement_status == "manual_review_required"
+    assert result.policy_state.domain_warmup.initialization_required is True
+
+
+def test_admin_review_exposes_manual_domain_warmup_state() -> None:
+    repository = InMemoryCampaignRepository(
+        campaign_contacts={("client_123", "campaign_123", "contact_1")},
+    )
+    campaign = repository.add_campaign(
+        campaign_id="campaign_123",
+        client_id="client_123",
+        subject="Launch",
+        body_html="<p>Hello</p>",
+        body_text="Hello",
+        content_ready=True,
+        contacts_ready=True,
+        review_ready=True,
+        status="ready",
+    )
+    warmup_repository = InMemorySendingDomainWarmupStateRepository()
+    warmup_repository.upsert_state(
+        sending_domain="send.mailerpro.it",
+        current_stage=2,
+        stage_started_at=datetime(2026, 5, 10, 8, 0, tzinfo=timezone.utc),
+    )
+    service = build_admin_service(
+        settings=build_ready_listmonk_settings(),
+        campaign_repository=repository,
+        contacts=[build_contact(contact_id="contact_1", email="one@example.test")],
+        campaign_contacts={("client_123", campaign.id, "contact_1")},
+        sending_domain_warmup_repository=warmup_repository,
+    )
+
+    result = service.review_campaign(campaign.id)
+
+    assert result.domain_warmup is not None
+    assert result.domain_warmup.current_stage == 2
+    assert result.domain_warmup.cap_today == 30
+    assert result.domain_warmup.next_stage_cap == 50
+    assert result.domain_warmup.advancement_status == "manual_review_required"
+    assert result.domain_warmup.initialization_required is False
 
 
 def test_admin_summary_endpoint_exposes_safe_runtime_shape_without_secrets() -> None:

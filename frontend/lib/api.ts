@@ -220,6 +220,7 @@ interface CampaignReadModelApiResponse {
       reason: string;
     };
     provider_history?: ProviderHistoryPolicyApiItem[];
+    domain_warmup?: DomainWarmupStatusApiItem | null;
     score_products_available: boolean;
     domain_health_score_available: boolean;
     contact_quality_score_available: boolean;
@@ -260,6 +261,18 @@ interface ProviderHistoryPolicyApiItem {
   band: string;
   sending_domain?: string | null;
   blocking: boolean;
+}
+
+interface DomainWarmupStatusApiItem {
+  sending_domain: string;
+  current_stage: number;
+  cap_today: number;
+  used_today: number;
+  remaining_today: number;
+  next_stage_cap?: number | null;
+  advancement_status: string;
+  initialization_required: boolean;
+  delivery_failed_count?: number | null;
 }
 
 interface AdminCampaignDetailApiResponse {
@@ -394,6 +407,7 @@ interface AdminCampaignReviewApiResponse {
   followup_content_ready: boolean;
   followup_content_reason?: string | null;
   provider_history?: ProviderHistoryPolicyApiItem[];
+  domain_warmup?: DomainWarmupStatusApiItem | null;
 }
 
 interface AdminCampaignDispatchApiResponse {
@@ -2021,6 +2035,7 @@ function mapAdminCampaignReviewResult(
     followupContentReady: payload.followup_content_ready,
     followupContentReason: payload.followup_content_reason ?? null,
     providerHistory: mapProviderHistoryPolicy(payload.provider_history ?? []),
+    domainWarmup: mapDomainWarmupStatus(payload.domain_warmup),
   };
 }
 
@@ -2037,6 +2052,25 @@ function mapProviderHistoryPolicy(
     sendingDomain: item.sending_domain ?? null,
     blocking: item.blocking,
   }));
+}
+
+function mapDomainWarmupStatus(
+  payload?: DomainWarmupStatusApiItem | null,
+) {
+  if (!payload) {
+    return null;
+  }
+  return {
+    sendingDomain: payload.sending_domain,
+    currentStage: payload.current_stage,
+    capToday: payload.cap_today,
+    usedToday: payload.used_today,
+    remainingToday: payload.remaining_today,
+    nextStageCap: payload.next_stage_cap ?? null,
+    advancementStatus: payload.advancement_status,
+    initializationRequired: payload.initialization_required,
+    deliveryFailedCount: payload.delivery_failed_count ?? null,
+  };
 }
 
 function mapCampaignSummaryItem(
@@ -2148,6 +2182,7 @@ function mapCampaignPolicyState(
       reason: payload.warmup_guard.reason,
     },
     providerHistory: mapProviderHistoryPolicy(payload.provider_history ?? []),
+    domainWarmup: mapDomainWarmupStatus(payload.domain_warmup),
     scoreProductsAvailable: payload.score_products_available,
     domainHealthScoreAvailable: payload.domain_health_score_available,
     contactQualityScoreAvailable: payload.contact_quality_score_available,

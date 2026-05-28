@@ -1,5 +1,11 @@
 # Sendwise VPS Staging Runbook
 
+Warmup-state note:
+
+- Sending-domain warmup stage is now persisted in business DB state and is manually controlled by approved stage updates.
+- Do not infer warmup stage from historical `email_logs` dates during deploy planning or runtime verification.
+- `send.mailerpro.it` must remain seeded conservatively at stage `1` / cap `20` until a later approved manual advancement action.
+
 ## Purpose
 
 This staging runbook defines the safe first VPS deploy flow for Sendwise without enabling real sending. The staging app is served through Caddy HTTPS on `staging-app.mailerpro.it` and `staging-api.mailerpro.it`; Docker services bind only to localhost or remain internal.

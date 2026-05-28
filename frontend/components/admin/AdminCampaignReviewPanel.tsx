@@ -26,6 +26,7 @@ import type {
   AdminCampaignReadinessSummary,
   AdminCampaignReviewResult,
   CampaignStatus,
+  DomainWarmupStatusSummary,
 } from "../../types";
 import {
   dedupeReviewReasons,
@@ -291,6 +292,7 @@ function buildSendRecap(
   campaign: AdminCampaignDetail,
   summary: AdminCampaignReadinessSummary | null,
   state: ReturnType<typeof getInitialState>,
+  domainWarmup?: DomainWarmupStatusSummary | null,
 ) {
   return [
     { label: "Campagna", value: campaign.name },
@@ -318,6 +320,35 @@ function buildSendRecap(
     {
       label: "Ritardo follow-up",
       value: `${state.followupDelayValue.toLocaleString("it-IT")} ${state.followupDelayUnit === "hours" ? "ore" : "giorni"}`,
+    },
+    {
+      label: "Warm-up dominio",
+      value: domainWarmup
+        ? `${domainWarmup.usedToday.toLocaleString("it-IT")} / ${domainWarmup.capToday.toLocaleString("it-IT")} oggi`
+        : "Non disponibile",
+    },
+    {
+      label: "Restanti oggi",
+      value: domainWarmup
+        ? domainWarmup.remainingToday.toLocaleString("it-IT")
+        : "Non disponibile",
+    },
+    {
+      label: "Stage attuale",
+      value: domainWarmup ? `Stage ${domainWarmup.currentStage}` : "Non disponibile",
+    },
+    {
+      label: "Prossimo cap possibile",
+      value:
+        domainWarmup?.nextStageCap != null
+          ? domainWarmup.nextStageCap.toLocaleString("it-IT")
+          : domainWarmup
+            ? "Cap finale raggiunto"
+            : "Non disponibile",
+    },
+    {
+      label: "Avanzamento",
+      value: domainWarmup ? "Avanzamento soggetto a revisione manuale" : "Non disponibile",
     },
     {
       label: "Contenuto follow-up",
@@ -430,7 +461,9 @@ export function AdminCampaignReviewPanel({
         code: dispatchResult.code,
       })
     : null;
-  const sendRecap = buildSendRecap(campaign, summary, state);
+  const domainWarmup =
+    reviewResult?.domainWarmup ?? summary?.policyState?.domainWarmup ?? null;
+  const sendRecap = buildSendRecap(campaign, summary, state, domainWarmup);
   const providerHistoryPolicy =
     reviewResult?.providerHistory ?? summary?.policyState?.providerHistory ?? [];
   const primaryProblem =
@@ -864,6 +897,34 @@ export function AdminCampaignReviewPanel({
             "Periodo",
             state.periodStartedAt ? formatDateTimeInRome(state.periodStartedAt) : "Non avviato",
           ],
+          [
+            "Warm-up dominio",
+            domainWarmup
+              ? `${domainWarmup.usedToday.toLocaleString("it-IT")} / ${domainWarmup.capToday.toLocaleString("it-IT")} oggi`
+              : "Non disponibile",
+          ],
+          [
+            "Restanti oggi",
+            domainWarmup
+              ? domainWarmup.remainingToday.toLocaleString("it-IT")
+              : "Non disponibile",
+          ],
+          [
+            "Stage warm-up",
+            domainWarmup ? `Stage ${domainWarmup.currentStage}` : "Non disponibile",
+          ],
+          [
+            "Prossimo cap possibile",
+            domainWarmup?.nextStageCap != null
+              ? domainWarmup.nextStageCap.toLocaleString("it-IT")
+              : domainWarmup
+                ? "Cap finale raggiunto"
+                : "Non disponibile",
+          ],
+          [
+            "Avanzamento",
+            domainWarmup ? "Avanzamento soggetto a revisione manuale" : "Non disponibile",
+          ],
         ].map(([label, value]) => (
           <article key={label} className="campaign-review-overview__item" style={{ minHeight: 96 }}>
             <span className="campaign-review-overview__label">{label}</span>
@@ -872,8 +933,18 @@ export function AdminCampaignReviewPanel({
         ))}
       </div>
       <p className="campaign-field__helper" style={{ margin: "12px 0 0" }}>
-        I follow-up usano limiti separati dagli invii principali.
+        I follow-up hanno limiti dedicati di campagna, ma gli invii reali consumano lo stesso warm-up del dominio. Avanzamento soggetto a revisione manuale.
       </p>
+      {domainWarmup?.initializationRequired ? (
+        <p className="campaign-field__helper" style={{ margin: "8px 0 0" }}>
+          Stato warm-up persistito mancante: il backend applica il fallback conservativo stage 1 / 20 invii al giorno.
+        </p>
+      ) : null}
+      {typeof domainWarmup?.deliveryFailedCount === "number" ? (
+        <p className="campaign-field__helper" style={{ margin: "8px 0 0" }}>
+          Delivery failed correlati sul dominio: {domainWarmup.deliveryFailedCount.toLocaleString("it-IT")}.
+        </p>
+      ) : null}
 
       <section
         className="campaign-panel campaign-panel--subtle"

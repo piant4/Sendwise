@@ -474,6 +474,7 @@ export interface AdminCampaignReviewResult {
   followupContentReady: boolean;
   followupContentReason?: string | null;
   providerHistory: ProviderHistoryPolicySummary[];
+  domainWarmup?: DomainWarmupStatusSummary | null;
 }
 
 export interface AdminCampaignDetail {
@@ -601,11 +602,24 @@ export interface ProviderHistoryPolicySummary {
   blocking: boolean;
 }
 
+export interface DomainWarmupStatusSummary {
+  sendingDomain: string;
+  currentStage: number;
+  capToday: number;
+  usedToday: number;
+  remainingToday: number;
+  nextStageCap?: number | null;
+  advancementStatus: string;
+  initializationRequired: boolean;
+  deliveryFailedCount?: number | null;
+}
+
 export interface CampaignPolicyStateSummary {
   deliverabilityGuard: CampaignPolicyStatusSummary;
   duplicateGuard: CampaignPolicyStatusSummary;
   warmupGuard: CampaignPolicyStatusSummary;
   providerHistory: ProviderHistoryPolicySummary[];
+  domainWarmup?: DomainWarmupStatusSummary | null;
   scoreProductsAvailable: boolean;
   domainHealthScoreAvailable: boolean;
   contactQualityScoreAvailable: boolean;

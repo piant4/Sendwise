@@ -313,6 +313,7 @@ export function AdminCampaignDetailView({
         )
       : [];
   const providerHistoryPolicy = summary?.policyState?.providerHistory ?? [];
+  const domainWarmup = summary?.policyState?.domainWarmup ?? null;
   const operationalSummary = getOperationalSummary(summary, campaign);
   const recipientSummary = summary
     ? `${formatCampaignCount(summary.recipients.total)} totali · ${formatCampaignCount(summary.recipients.eligible)} idonei · ${formatCampaignCount(summary.recipients.blocked)} bloccati`
@@ -477,6 +478,35 @@ export function AdminCampaignDetailView({
                 label: "Ritardo follow-up",
                 value: `${campaign.followupDelayValue.toLocaleString("it-IT")} ${campaign.followupDelayUnit === "hours" ? "ore" : "giorni"}`,
               },
+              {
+                label: "Warm-up dominio",
+                value: domainWarmup
+                  ? `${domainWarmup.usedToday.toLocaleString("it-IT")} / ${domainWarmup.capToday.toLocaleString("it-IT")} oggi`
+                  : "Non disponibile",
+              },
+              {
+                label: "Disponibili oggi",
+                value: domainWarmup
+                  ? domainWarmup.remainingToday.toLocaleString("it-IT")
+                  : "Non disponibile",
+              },
+              {
+                label: "Stage warm-up",
+                value: domainWarmup ? `Stage ${domainWarmup.currentStage}` : "Non disponibile",
+              },
+              {
+                label: "Prossimo cap possibile",
+                value:
+                  domainWarmup?.nextStageCap != null
+                    ? domainWarmup.nextStageCap.toLocaleString("it-IT")
+                    : domainWarmup
+                      ? "Cap finale raggiunto"
+                      : "Non disponibile",
+              },
+              {
+                label: "Avanzamento",
+                value: domainWarmup ? "Avanzamento soggetto a revisione manuale" : "Non disponibile",
+              },
             ].map((item) => (
               <article key={item.label}>
                 <span className="admin-record-row__note">{item.label}</span>
@@ -555,6 +585,30 @@ export function AdminCampaignDetailView({
             <p className="campaign-field__helper" style={{ margin: "6px 0 0" }}>
               {campaign.followupContentReason ?? "Oggetto e HTML dedicati salvati."}
             </p>
+          </article>
+          <article className="campaign-callout" style={{ minHeight: 0 }}>
+            <span className="admin-record-row__note">Warm-up dominio</span>
+            <strong style={{ color: "var(--sw-olive)" }}>
+              {domainWarmup
+                ? `${domainWarmup.usedToday.toLocaleString("it-IT")} / ${domainWarmup.capToday.toLocaleString("it-IT")} oggi`
+                : "Non disponibile"}
+            </strong>
+            <p className="campaign-field__helper" style={{ margin: "6px 0 0" }}>
+              {domainWarmup
+                ? `Restanti oggi: ${domainWarmup.remainingToday.toLocaleString("it-IT")} · stage ${domainWarmup.currentStage}${domainWarmup.nextStageCap != null ? ` · prossimo cap possibile ${domainWarmup.nextStageCap.toLocaleString("it-IT")}` : " · cap finale raggiunto"}`
+                : "Il riepilogo warm-up del dominio non e disponibile."}
+            </p>
+            {domainWarmup ? (
+              <p className="campaign-field__helper" style={{ margin: "6px 0 0" }}>
+                Avanzamento soggetto a revisione manuale.
+                {domainWarmup.initializationRequired
+                  ? " Fallback conservativo stage 1 / 20 invii attivo finche lo stato persistito non viene inizializzato."
+                  : ""}
+                {typeof domainWarmup.deliveryFailedCount === "number"
+                  ? ` Delivery failed correlati: ${domainWarmup.deliveryFailedCount.toLocaleString("it-IT")}.`
+                  : ""}
+              </p>
+            ) : null}
           </article>
         </div>
 

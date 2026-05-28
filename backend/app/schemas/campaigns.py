@@ -161,6 +161,18 @@ class ProviderHistoryPolicySummary(BaseModel):
     blocking: bool = False
 
 
+class DomainWarmupStatusSummary(BaseModel):
+    sending_domain: str
+    current_stage: int
+    cap_today: int
+    used_today: int
+    remaining_today: int
+    next_stage_cap: Optional[int] = None
+    advancement_status: str
+    initialization_required: bool = False
+    delivery_failed_count: Optional[int] = None
+
+
 class AdminCampaignReviewResponse(BaseModel):
     campaign_id: str
     client_id: str
@@ -194,6 +206,7 @@ class AdminCampaignReviewResponse(BaseModel):
     followup_content_ready: bool = False
     followup_content_reason: Optional[str] = None
     provider_history: list[ProviderHistoryPolicySummary] = Field(default_factory=list)
+    domain_warmup: Optional[DomainWarmupStatusSummary] = None
 
 
 class AdminNativeUnsubscribeReconciliationResponse(BaseModel):
@@ -410,6 +423,7 @@ class CampaignPolicyStateSummary(BaseModel):
     duplicate_guard: CampaignPolicyStatusSummary
     warmup_guard: CampaignPolicyStatusSummary
     provider_history: list[ProviderHistoryPolicySummary] = Field(default_factory=list)
+    domain_warmup: Optional[DomainWarmupStatusSummary] = None
     score_products_available: bool = False
     domain_health_score_available: bool = False
     contact_quality_score_available: bool = False

@@ -20,6 +20,9 @@ from app.repositories.contacts import ContactRecord, InMemoryContactRepository
 from app.repositories.email_logs import InMemoryEmailLogRepository
 from app.repositories.listmonk_mappings import InMemoryListmonkMappingRepository
 from app.repositories.provider_events import InMemoryProviderEventRepository
+from app.repositories.sending_domain_warmup import (
+    InMemorySendingDomainWarmupStateRepository,
+)
 from app.repositories.suppression_list import InMemorySuppressionListRepository
 from app.services import campaigns as campaigns_module
 from app.services.campaigns import CampaignDispatchService
@@ -341,6 +344,7 @@ def build_dispatch_service(
     campaign_slot_repository: InMemoryCampaignSlotRepository | None = None,
     campaign_limit_repository: InMemoryCampaignSendingLimitRepository | None = None,
     provider_event_repository: InMemoryProviderEventRepository | None = None,
+    sending_domain_warmup_repository: InMemorySendingDomainWarmupStateRepository | None = None,
     preparation_service: FakePreparationService | None = None,
     settings: Settings | None = None,
 ) -> CampaignDispatchService:
@@ -427,6 +431,10 @@ def build_dispatch_service(
         or InMemoryBlockedSendRepository(),
         email_log_repository=selected_email_log_repository,
         provider_event_repository=selected_provider_event_repository,
+        sending_domain_warmup_repository=(
+            sending_domain_warmup_repository
+            or InMemorySendingDomainWarmupStateRepository()
+        ),
         campaign_preparation_service=selected_preparation_service,
         unsubscribe_service=unsubscribe_service,
     )
@@ -2584,11 +2592,44 @@ def test_domain_warmup_guard_allows_send_under_daily_limit() -> None:
     assert fake_listmonk.sent_campaign_ids == ["lm_1"]
 
 
+def test_domain_warmup_guard_defaults_to_stage_one_when_state_is_missing() -> None:
+    fake_listmonk = FakeListmonkClient()
+    email_log_repository = InMemoryEmailLogRepository()
+    for index in range(20):
+        email_log_repository.create_email_log(
+            client_id="client_existing",
+            campaign_id=f"campaign_existing_{index}",
+            contact_id=f"contact_existing_{index}",
+            status="sent",
+            sending_domain="send.mailerpro.it",
+        )
+    service = build_dispatch_service(
+        fake_listmonk=fake_listmonk,
+        email_log_repository=email_log_repository,
+        settings=build_ready_listmonk_settings(),
+        preparation_service=FakePreparationService(content_ready=True),
+    )
+
+    result = service.send_campaign("campaign_123")
+
+    assert result["status"] == "blocked"
+    assert result["code"] == "sending_domain_warmup_limit_reached"
+    assert result["daily_limit"] == 20
+    assert result["daily_used"] == 20
+    assert result["daily_remaining"] == 0
+
+
 def test_domain_warmup_guard_blocks_send_over_daily_limit_before_listmonk() -> None:
     fake_listmonk = FakeListmonkClient()
     email_log_repository = InMemoryEmailLogRepository()
     blocked_send_repository = InMemoryBlockedSendRepository()
     preparation_service = FakePreparationService(content_ready=True)
+    warmup_repository = InMemorySendingDomainWarmupStateRepository()
+    warmup_repository.upsert_state(
+        sending_domain="send.mailerpro.it",
+        current_stage=1,
+        stage_started_at=datetime(2026, 5, 1, 8, 0, tzinfo=timezone.utc),
+    )
     for index in range(20):
         email_log_repository.create_email_log(
             client_id="client_existing",
@@ -2602,6 +2643,7 @@ def test_domain_warmup_guard_blocks_send_over_daily_limit_before_listmonk() -> N
         email_log_repository=email_log_repository,
         blocked_send_repository=blocked_send_repository,
         settings=build_ready_listmonk_settings(),
+        sending_domain_warmup_repository=warmup_repository,
         preparation_service=preparation_service,
     )
 
@@ -2625,6 +2667,39 @@ def test_domain_warmup_guard_blocks_send_over_daily_limit_before_listmonk() -> N
     assert "one@example.test" not in result["reason"]
     assert "Body" not in result["reason"]
     assert "unsubscribe" not in result["reason"]
+
+
+def test_domain_warmup_guard_uses_persisted_stage_caps() -> None:
+    for current_stage, expected_cap in ((1, 20), (2, 30), (3, 50), (4, 75), (5, 100)):
+        fake_listmonk = FakeListmonkClient()
+        email_log_repository = InMemoryEmailLogRepository()
+        warmup_repository = InMemorySendingDomainWarmupStateRepository()
+        warmup_repository.upsert_state(
+            sending_domain="send.mailerpro.it",
+            current_stage=current_stage,
+            stage_started_at=datetime(2026, 5, 1, 8, 0, tzinfo=timezone.utc),
+        )
+        for index in range(expected_cap):
+            email_log_repository.create_email_log(
+                client_id="client_existing",
+                campaign_id=f"campaign_existing_{current_stage}_{index}",
+                contact_id=f"contact_existing_{current_stage}_{index}",
+                status="sent",
+                sending_domain="send.mailerpro.it",
+            )
+        service = build_dispatch_service(
+            fake_listmonk=fake_listmonk,
+            email_log_repository=email_log_repository,
+            settings=build_ready_listmonk_settings(),
+            sending_domain_warmup_repository=warmup_repository,
+            preparation_service=FakePreparationService(content_ready=True),
+        )
+
+        result = service.send_campaign("campaign_123")
+
+        assert result["status"] == "blocked"
+        assert result["daily_limit"] == expected_cap
+        assert result["daily_used"] == expected_cap
 
 
 def test_domain_warmup_guard_counts_only_accepted_email_logs() -> None:
@@ -2681,6 +2756,107 @@ def test_domain_warmup_guard_counts_only_accepted_email_logs() -> None:
     logs = email_log_repository.list_by_campaign("campaign_123")
     assert len(logs) == 1
     assert logs[0].sending_domain == "send.mailerpro.it"
+
+
+def test_domain_warmup_guard_does_not_auto_advance_stage_from_old_history() -> None:
+    class FixedDateTime(datetime):
+        @classmethod
+        def now(cls, tz: timezone | None = None) -> datetime:
+            current_time = cls(2026, 5, 28, 9, 0, tzinfo=timezone.utc)
+            return current_time.astimezone(tz) if tz is not None else current_time
+
+    fake_listmonk = FakeListmonkClient()
+    email_log_repository = InMemoryEmailLogRepository()
+    warmup_repository = InMemorySendingDomainWarmupStateRepository()
+    warmup_repository.upsert_state(
+        sending_domain="send.mailerpro.it",
+        current_stage=1,
+        stage_started_at=datetime(2026, 5, 23, 12, 0, tzinfo=timezone.utc),
+    )
+    email_log_repository.create_email_log(
+        client_id="client_old",
+        campaign_id="campaign_old",
+        contact_id="contact_old",
+        status="sent",
+        sending_domain="send.mailerpro.it",
+        created_at=datetime(2026, 5, 23, 12, 0, tzinfo=timezone.utc),
+    )
+    for index in range(20):
+        email_log_repository.create_email_log(
+            client_id="client_existing",
+            campaign_id=f"campaign_existing_{index}",
+            contact_id=f"contact_existing_{index}",
+            status="sent",
+            sending_domain="send.mailerpro.it",
+            created_at=datetime(2026, 5, 28, 7, 0, tzinfo=timezone.utc),
+        )
+    campaigns_module_datetime = campaigns_module.datetime
+    try:
+        setattr(campaigns_module, "datetime", FixedDateTime)
+        service = build_dispatch_service(
+            fake_listmonk=fake_listmonk,
+            email_log_repository=email_log_repository,
+            settings=build_ready_listmonk_settings(),
+            sending_domain_warmup_repository=warmup_repository,
+            preparation_service=FakePreparationService(content_ready=True),
+        )
+        result = service.send_campaign("campaign_123")
+    finally:
+        setattr(campaigns_module, "datetime", campaigns_module_datetime)
+
+    assert result["status"] == "blocked"
+    assert result["daily_limit"] == 20
+    assert result["daily_used"] == 20
+
+
+def test_domain_warmup_guard_counts_usage_on_rome_day_boundary() -> None:
+    class FixedDateTime(datetime):
+        @classmethod
+        def now(cls, tz: timezone | None = None) -> datetime:
+            current_time = cls(2026, 5, 12, 1, 0, tzinfo=timezone.utc)
+            return current_time.astimezone(tz) if tz is not None else current_time
+
+    fake_listmonk = FakeListmonkClient()
+    email_log_repository = InMemoryEmailLogRepository()
+    warmup_repository = InMemorySendingDomainWarmupStateRepository()
+    warmup_repository.upsert_state(
+        sending_domain="send.mailerpro.it",
+        current_stage=1,
+        stage_started_at=datetime(2026, 5, 1, 8, 0, tzinfo=timezone.utc),
+    )
+    email_log_repository.create_email_log(
+        client_id="client_existing",
+        campaign_id="campaign_previous_day",
+        contact_id="contact_previous_day",
+        status="sent",
+        sending_domain="send.mailerpro.it",
+        created_at=datetime(2026, 5, 11, 21, 59, tzinfo=timezone.utc),
+    )
+    for index in range(19):
+        email_log_repository.create_email_log(
+            client_id="client_existing",
+            campaign_id=f"campaign_current_day_{index}",
+            contact_id=f"contact_current_day_{index}",
+            status="sent",
+            sending_domain="send.mailerpro.it",
+            created_at=datetime(2026, 5, 11, 22, 0, tzinfo=timezone.utc),
+        )
+    campaigns_module_datetime = campaigns_module.datetime
+    try:
+        setattr(campaigns_module, "datetime", FixedDateTime)
+        service = build_dispatch_service(
+            fake_listmonk=fake_listmonk,
+            email_log_repository=email_log_repository,
+            settings=build_ready_listmonk_settings(),
+            sending_domain_warmup_repository=warmup_repository,
+            preparation_service=ListmonkReadyPreparationService(content_ready=True),
+        )
+        result = service.send_campaign("campaign_123")
+    finally:
+        setattr(campaigns_module, "datetime", campaigns_module_datetime)
+
+    assert result["status"] == "accepted"
+    assert fake_listmonk.sent_campaign_ids == ["lm_1"]
 
 
 def test_domain_warmup_guard_ignores_other_domains() -> None:
@@ -2763,6 +2939,182 @@ def test_domain_warmup_guard_uses_rome_day_boundary(monkeypatch: Any) -> None:
     assert fake_listmonk.sent_campaign_ids == ["lm_1"]
 
 
+def test_domain_warmup_guard_uses_stage_two_cap() -> None:
+    class FixedDateTime(datetime):
+        @classmethod
+        def now(cls, tz: timezone | None = None) -> datetime:
+            current_time = cls(2026, 5, 10, 10, 0, tzinfo=timezone.utc)
+            return current_time.astimezone(tz) if tz is not None else current_time
+
+    fake_listmonk = FakeListmonkClient()
+    email_log_repository = InMemoryEmailLogRepository()
+    warmup_repository = InMemorySendingDomainWarmupStateRepository()
+    warmup_repository.upsert_state(
+        sending_domain="send.mailerpro.it",
+        current_stage=2,
+        stage_started_at=datetime(2026, 5, 10, 8, 0, tzinfo=timezone.utc),
+    )
+    for index in range(30):
+        email_log_repository.create_email_log(
+            client_id="client_existing",
+            campaign_id=f"campaign_day_two_{index}",
+            contact_id=f"contact_day_two_{index}",
+            status="sent",
+            sending_domain="send.mailerpro.it",
+            created_at=datetime(2026, 5, 10, 8, 0, tzinfo=timezone.utc),
+        )
+    campaigns_module_datetime = campaigns_module.datetime
+    try:
+        setattr(campaigns_module, "datetime", FixedDateTime)
+        service = build_dispatch_service(
+            fake_listmonk=fake_listmonk,
+            email_log_repository=email_log_repository,
+            settings=build_ready_listmonk_settings(),
+            sending_domain_warmup_repository=warmup_repository,
+            preparation_service=FakePreparationService(content_ready=True),
+        )
+        result = service.send_campaign("campaign_123")
+    finally:
+        setattr(campaigns_module, "datetime", campaigns_module_datetime)
+
+    assert result["status"] == "blocked"
+    assert result["daily_limit"] == 30
+    assert result["daily_used"] == 30
+    assert result["daily_remaining"] == 0
+
+
+def test_domain_warmup_guard_uses_stage_three_cap() -> None:
+    class FixedDateTime(datetime):
+        @classmethod
+        def now(cls, tz: timezone | None = None) -> datetime:
+            current_time = cls(2026, 5, 11, 10, 0, tzinfo=timezone.utc)
+            return current_time.astimezone(tz) if tz is not None else current_time
+
+    fake_listmonk = FakeListmonkClient()
+    email_log_repository = InMemoryEmailLogRepository()
+    warmup_repository = InMemorySendingDomainWarmupStateRepository()
+    warmup_repository.upsert_state(
+        sending_domain="send.mailerpro.it",
+        current_stage=3,
+        stage_started_at=datetime(2026, 5, 11, 8, 0, tzinfo=timezone.utc),
+    )
+    for index in range(50):
+        email_log_repository.create_email_log(
+            client_id="client_existing",
+            campaign_id=f"campaign_day_three_{index}",
+            contact_id=f"contact_day_three_{index}",
+            status="sent",
+            sending_domain="send.mailerpro.it",
+            created_at=datetime(2026, 5, 11, 8, 0, tzinfo=timezone.utc),
+        )
+    campaigns_module_datetime = campaigns_module.datetime
+    try:
+        setattr(campaigns_module, "datetime", FixedDateTime)
+        service = build_dispatch_service(
+            fake_listmonk=fake_listmonk,
+            email_log_repository=email_log_repository,
+            settings=build_ready_listmonk_settings(),
+            sending_domain_warmup_repository=warmup_repository,
+            preparation_service=FakePreparationService(content_ready=True),
+        )
+        result = service.send_campaign("campaign_123")
+    finally:
+        setattr(campaigns_module, "datetime", campaigns_module_datetime)
+
+    assert result["status"] == "blocked"
+    assert result["daily_limit"] == 50
+    assert result["daily_used"] == 50
+    assert result["daily_remaining"] == 0
+
+
+def test_domain_warmup_guard_uses_stage_four_cap() -> None:
+    class FixedDateTime(datetime):
+        @classmethod
+        def now(cls, tz: timezone | None = None) -> datetime:
+            current_time = cls(2026, 5, 12, 10, 0, tzinfo=timezone.utc)
+            return current_time.astimezone(tz) if tz is not None else current_time
+
+    fake_listmonk = FakeListmonkClient()
+    email_log_repository = InMemoryEmailLogRepository()
+    warmup_repository = InMemorySendingDomainWarmupStateRepository()
+    warmup_repository.upsert_state(
+        sending_domain="send.mailerpro.it",
+        current_stage=4,
+        stage_started_at=datetime(2026, 5, 12, 8, 0, tzinfo=timezone.utc),
+    )
+    for index in range(75):
+        email_log_repository.create_email_log(
+            client_id="client_existing",
+            campaign_id=f"campaign_day_four_{index}",
+            contact_id=f"contact_day_four_{index}",
+            status="sent",
+            sending_domain="send.mailerpro.it",
+            created_at=datetime(2026, 5, 12, 8, 0, tzinfo=timezone.utc),
+        )
+    campaigns_module_datetime = campaigns_module.datetime
+    try:
+        setattr(campaigns_module, "datetime", FixedDateTime)
+        service = build_dispatch_service(
+            fake_listmonk=fake_listmonk,
+            email_log_repository=email_log_repository,
+            settings=build_ready_listmonk_settings(),
+            sending_domain_warmup_repository=warmup_repository,
+            preparation_service=FakePreparationService(content_ready=True),
+        )
+        result = service.send_campaign("campaign_123")
+    finally:
+        setattr(campaigns_module, "datetime", campaigns_module_datetime)
+
+    assert result["status"] == "blocked"
+    assert result["daily_limit"] == 75
+    assert result["daily_used"] == 75
+    assert result["daily_remaining"] == 0
+
+
+def test_domain_warmup_guard_uses_stage_five_cap() -> None:
+    class FixedDateTime(datetime):
+        @classmethod
+        def now(cls, tz: timezone | None = None) -> datetime:
+            current_time = cls(2026, 5, 13, 10, 0, tzinfo=timezone.utc)
+            return current_time.astimezone(tz) if tz is not None else current_time
+
+    fake_listmonk = FakeListmonkClient()
+    email_log_repository = InMemoryEmailLogRepository()
+    warmup_repository = InMemorySendingDomainWarmupStateRepository()
+    warmup_repository.upsert_state(
+        sending_domain="send.mailerpro.it",
+        current_stage=5,
+        stage_started_at=datetime(2026, 5, 13, 8, 0, tzinfo=timezone.utc),
+    )
+    for index in range(100):
+        email_log_repository.create_email_log(
+            client_id="client_existing",
+            campaign_id=f"campaign_day_five_{index}",
+            contact_id=f"contact_day_five_{index}",
+            status="sent",
+            sending_domain="send.mailerpro.it",
+            created_at=datetime(2026, 5, 13, 8, 0, tzinfo=timezone.utc),
+        )
+    campaigns_module_datetime = campaigns_module.datetime
+    try:
+        setattr(campaigns_module, "datetime", FixedDateTime)
+        service = build_dispatch_service(
+            fake_listmonk=fake_listmonk,
+            email_log_repository=email_log_repository,
+            settings=build_ready_listmonk_settings(),
+            sending_domain_warmup_repository=warmup_repository,
+            preparation_service=FakePreparationService(content_ready=True),
+        )
+        result = service.send_campaign("campaign_123")
+    finally:
+        setattr(campaigns_module, "datetime", campaigns_module_datetime)
+
+    assert result["status"] == "blocked"
+    assert result["daily_limit"] == 100
+    assert result["daily_used"] == 100
+    assert result["daily_remaining"] == 0
+
+
 def test_domain_warmup_guard_does_not_override_duplicate_guard() -> None:
     fake_listmonk = FakeListmonkClient()
     email_log_repository = InMemoryEmailLogRepository()
@@ -2792,6 +3144,34 @@ def test_domain_warmup_guard_does_not_override_duplicate_guard() -> None:
 
     assert result["status"] == "dispatch_blocked"
     assert result["code"] == "campaign_send_already_accepted"
+    assert fake_listmonk.sent_campaign_ids == []
+
+
+def test_domain_warmup_guard_blocks_when_batch_exceeds_remaining_capacity() -> None:
+    fake_listmonk = FakeListmonkClient()
+    email_log_repository = InMemoryEmailLogRepository()
+    for index in range(19):
+        email_log_repository.create_email_log(
+            client_id="client_existing",
+            campaign_id=f"campaign_existing_{index}",
+            contact_id=f"contact_existing_{index}",
+            status="sent",
+            sending_domain="send.mailerpro.it",
+        )
+    service = build_dispatch_service(
+        fake_listmonk=fake_listmonk,
+        email_log_repository=email_log_repository,
+        contact_repository=build_multi_contact_repository(),
+        settings=build_ready_listmonk_settings(),
+        preparation_service=FakePreparationService(content_ready=True),
+    )
+
+    result = service.send_campaign("campaign_123")
+
+    assert result["status"] == "blocked"
+    assert result["daily_limit"] == 20
+    assert result["daily_used"] == 19
+    assert result["daily_remaining"] == 1
     assert fake_listmonk.sent_campaign_ids == []
 
 
@@ -3249,6 +3629,94 @@ def test_followup_send_blocks_when_monthly_limit_reached() -> None:
 
     assert result["status"] == "blocked"
     assert result["code"] == "followup_monthly_limit_exceeded"
+
+
+def test_followup_send_consumes_same_domain_warmup_allowance() -> None:
+    class FixedDateTime(datetime):
+        @classmethod
+        def now(cls, tz: timezone | None = None) -> datetime:
+            current_time = cls(2026, 5, 12, 10, 0, tzinfo=timezone.utc)
+            return current_time.astimezone(tz) if tz is not None else current_time
+
+    contact = build_contact(contact_id="contact_1", email="one@example.test")
+    email_log_repository = InMemoryEmailLogRepository()
+    warmup_repository = InMemorySendingDomainWarmupStateRepository()
+    warmup_repository.upsert_state(
+        sending_domain="send.mailerpro.it",
+        current_stage=1,
+        stage_started_at=datetime(2026, 5, 9, 8, 0, tzinfo=timezone.utc),
+    )
+    primary_log = email_log_repository.create_email_log(
+        client_id="client_123",
+        campaign_id="campaign_123",
+        contact_id=contact.id,
+        send_kind="campaign",
+        status="delivered",
+        sending_domain="send.mailerpro.it",
+        created_at=datetime(2026, 5, 9, 8, 0, tzinfo=timezone.utc),
+    )
+    for index in range(20):
+        email_log_repository.create_email_log(
+            client_id="client_existing",
+            campaign_id=f"campaign_existing_{index}",
+            contact_id=f"contact_existing_{index}",
+            status="sent",
+            sending_domain="send.mailerpro.it",
+            created_at=datetime(2026, 5, 12, 8, 0, tzinfo=timezone.utc),
+        )
+    provider_event_repository = InMemoryProviderEventRepository()
+    create_processed_contact_event(
+        provider_event_repository,
+        client_id="client_123",
+        campaign_id="campaign_123",
+        contact_id=contact.id,
+        email_log_id=primary_log.id,
+        event_type="delivered",
+    )
+    campaign_limits = InMemoryCampaignSendingLimitRepository()
+    campaign_limits.update_for_campaign(
+        campaign_id="campaign_123",
+        followup_enabled=True,
+        followup_daily_limit=5,
+        followup_monthly_limit=50,
+        followup_delay_value=3,
+        followup_delay_unit="days",
+        followup_subject="Follow-up subject",
+        followup_body_html="<p>Follow-up {{unsubscribe_url}}</p>",
+        followup_body_text="Follow-up",
+    )
+    fake_preparation = FakePreparationService(content_ready=True)
+    fake_listmonk = FakeListmonkClient()
+    campaigns_module_datetime = campaigns_module.datetime
+    try:
+        setattr(campaigns_module, "datetime", FixedDateTime)
+        service = build_dispatch_service(
+            settings=build_ready_listmonk_settings(),
+            campaigns=[build_campaign(status="ready", content_ready=True, contacts_ready=True, review_ready=True)],
+            clients=[build_client()],
+            contact_repository=InMemoryContactRepository(
+                contacts=[contact],
+                campaign_contacts={("client_123", "campaign_123", contact.id)},
+            ),
+            fake_listmonk=fake_listmonk,
+            preparation_service=fake_preparation,
+            campaign_limit_repository=campaign_limits,
+            email_log_repository=email_log_repository,
+            provider_event_repository=provider_event_repository,
+            sending_domain_warmup_repository=warmup_repository,
+        )
+
+        result = service.send_followup_campaign("campaign_123")
+    finally:
+        setattr(campaigns_module, "datetime", campaigns_module_datetime)
+
+    assert result["status"] == "blocked"
+    assert result["code"] == "sending_domain_warmup_limit_reached"
+    assert result["daily_limit"] == 20
+    assert result["daily_used"] == 20
+    assert result["daily_remaining"] == 0
+    assert fake_preparation.prepared_followup_campaign_ids == []
+    assert fake_listmonk.sent_campaign_ids == []
 
 
 def test_send_endpoint_uses_guarded_dispatch_service() -> None:

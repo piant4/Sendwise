@@ -285,6 +285,35 @@ CREATE TABLE IF NOT EXISTS blocked_sends (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+CREATE TABLE IF NOT EXISTS sending_domain_warmup_state (
+    sending_domain TEXT PRIMARY KEY,
+    current_stage INTEGER NOT NULL,
+    stage_started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    advancement_mode TEXT NOT NULL DEFAULT 'manual_review_required',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT sending_domain_warmup_state_stage_check CHECK (
+        current_stage BETWEEN 1 AND 5
+    ),
+    CONSTRAINT sending_domain_warmup_state_advancement_mode_check CHECK (
+        advancement_mode IN ('manual_review_required')
+    )
+);
+
+INSERT INTO sending_domain_warmup_state (
+    sending_domain,
+    current_stage,
+    stage_started_at,
+    advancement_mode
+)
+VALUES (
+    'send.mailerpro.it',
+    1,
+    NOW(),
+    'manual_review_required'
+)
+ON CONFLICT (sending_domain) DO NOTHING;
+
 CREATE TABLE IF NOT EXISTS listmonk_mappings (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     client_id UUID NOT NULL REFERENCES clients(id),

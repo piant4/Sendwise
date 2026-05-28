@@ -120,6 +120,14 @@ class ProviderEventRepository:
     ) -> ProviderHistoryThresholdMetrics:
         raise NotImplementedError
 
+    def count_domain_events(
+        self,
+        *,
+        sending_domain: str,
+        event_types: tuple[str, ...],
+    ) -> int:
+        raise NotImplementedError
+
 
 class PostgresProviderEventRepository(ProviderEventRepository):
     def __init__(self, settings: Settings) -> None:
@@ -525,6 +533,34 @@ class PostgresProviderEventRepository(ProviderEventRepository):
             ),
         )
 
+    def count_domain_events(
+        self,
+        *,
+        sending_domain: str,
+        event_types: tuple[str, ...],
+    ) -> int:
+        query = """
+            SELECT COUNT(DISTINCT provider_events.email_log_id)::int AS total
+            FROM provider_events
+            INNER JOIN email_logs
+                ON email_logs.id = provider_events.email_log_id
+            WHERE email_logs.sending_domain = %s
+                AND provider_events.processed_at IS NOT NULL
+                AND provider_events.client_id IS NOT NULL
+                AND provider_events.campaign_id IS NOT NULL
+                AND provider_events.email_log_id IS NOT NULL
+                AND provider_events.event_type = ANY(%s)
+        """
+
+        with postgres_connection(self._settings) as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(query, (sending_domain, list(event_types)))
+                row = cursor.fetchone()
+
+        if row is None:
+            return 0
+        return int(row["total"])
+
 
 class InMemoryProviderEventRepository(ProviderEventRepository):
     def __init__(self) -> None:
@@ -721,6 +757,28 @@ class InMemoryProviderEventRepository(ProviderEventRepository):
                 for event_type in unsubscribe_event_types
             ),
         )
+
+    def count_domain_events(
+        self,
+        *,
+        sending_domain: str,
+        event_types: tuple[str, ...],
+    ) -> int:
+        matched_log_ids: set[str] = set()
+        for record in self._records.values():
+            if (
+                record.processed_at is None
+                or record.client_id is None
+                or record.campaign_id is None
+                or record.email_log_id is None
+                or record.event_type not in event_types
+            ):
+                continue
+            email_log = self._email_log_lookup().get(record.email_log_id)
+            if email_log is None or email_log.sending_domain != sending_domain:
+                continue
+            matched_log_ids.add(record.email_log_id)
+        return len(matched_log_ids)
 
     def attach_email_log_records(self, records: list[Any]) -> None:
         self._attached_email_logs = records

@@ -56,6 +56,10 @@ from app.repositories.provider_events import (
     ProviderEventRepository,
     get_provider_event_repository,
 )
+from app.repositories.sending_domain_warmup import (
+    SendingDomainWarmupStateRepository,
+    get_sending_domain_warmup_repository,
+)
 from app.repositories.suppression_list import (
     SuppressionListRepository,
     get_suppression_list_repository,
@@ -82,6 +86,7 @@ from app.schemas.campaigns import (
     CampaignRecipientsSummary,
     CampaignSlotSummary,
     CampaignSummaryItem,
+    DomainWarmupStatusSummary,
     FollowupSimulationSettingsSummary,
     ProviderHistoryPolicySummary,
 )
@@ -146,6 +151,9 @@ DEFAULT_FOLLOWUP_DELAY_UNIT = "days"
 ALLOWED_FOLLOWUP_DELAY_UNITS = {"hours", "days"}
 MINIMUM_FOLLOWUP_DELAY_HOURS = 24
 DEFAULT_DOMAIN_WARMUP_DAILY_LIMIT = 20
+DOMAIN_WARMUP_CAP_SCHEDULE = (20, 30, 50, 75, 100)
+DEFAULT_DOMAIN_WARMUP_STAGE = 1
+DOMAIN_WARMUP_MANUAL_REVIEW_REQUIRED = "manual_review_required"
 CAMPAIGN_PERIOD_WINDOW = timedelta(days=30)
 
 
@@ -362,6 +370,33 @@ class CampaignEvaluation:
     limit_record: CampaignSendingLimitRecord
     limit_usage: CampaignLimitUsage
     provider_history: list[ProviderHistoryPolicySummary]
+    domain_warmup: DomainWarmupStatusSummary | None
+
+
+@dataclass(frozen=True)
+class DomainWarmupStatus:
+    sending_domain: str
+    current_stage: int
+    cap_today: int
+    used_today: int
+    remaining_today: int
+    next_stage_cap: int | None = None
+    advancement_status: str = DOMAIN_WARMUP_MANUAL_REVIEW_REQUIRED
+    initialization_required: bool = False
+    delivery_failed_count: int | None = None
+
+    def to_summary(self) -> DomainWarmupStatusSummary:
+        return DomainWarmupStatusSummary(
+            sending_domain=self.sending_domain,
+            current_stage=self.current_stage,
+            cap_today=self.cap_today,
+            used_today=self.used_today,
+            remaining_today=self.remaining_today,
+            next_stage_cap=self.next_stage_cap,
+            advancement_status=self.advancement_status,
+            initialization_required=self.initialization_required,
+            delivery_failed_count=self.delivery_failed_count,
+        )
 
 
 def _build_domain_warmup_guard_result(
@@ -396,6 +431,74 @@ def _build_domain_warmup_guard_result(
         daily_used=daily_used,
         daily_remaining=max(daily_limit - daily_used, 0),
         sending_domain=sending_domain,
+    )
+
+
+def _get_domain_warmup_cap_for_stage(stage: int) -> int:
+    if stage <= 1:
+        return DOMAIN_WARMUP_CAP_SCHEDULE[0]
+    schedule_index = min(stage, len(DOMAIN_WARMUP_CAP_SCHEDULE)) - 1
+    return DOMAIN_WARMUP_CAP_SCHEDULE[schedule_index]
+
+
+def _build_domain_warmup_status(
+    *,
+    settings: Settings,
+    warmup_repository: SendingDomainWarmupStateRepository | None,
+    email_log_repository: EmailLogRepository,
+    provider_event_repository: ProviderEventRepository | None,
+    current_time: datetime,
+) -> DomainWarmupStatus | None:
+    sending_domain = get_configured_sending_domain(settings)
+    if sending_domain is None:
+        return None
+
+    persisted_state = (
+        warmup_repository.get_by_sending_domain(sending_domain=sending_domain)
+        if warmup_repository is not None
+        else None
+    )
+    today_started_at = _get_business_day_start(current_time, settings)
+    used_today = email_log_repository.count_logs_by_status_since(
+        statuses=DOMAIN_WARMUP_COUNTED_LOG_STATUSES,
+        started_at=today_started_at,
+        sending_domain=sending_domain,
+    )
+    current_stage = (
+        persisted_state.current_stage
+        if persisted_state is not None
+        else DEFAULT_DOMAIN_WARMUP_STAGE
+    )
+    cap_today = _get_domain_warmup_cap_for_stage(current_stage)
+    next_stage_cap = None
+    if current_stage < len(DOMAIN_WARMUP_CAP_SCHEDULE):
+        next_stage_cap = _get_domain_warmup_cap_for_stage(current_stage + 1)
+    delivery_failed_count = None
+    if provider_event_repository is not None:
+        if hasattr(provider_event_repository, "attach_email_log_records") and hasattr(
+            email_log_repository,
+            "_records",
+        ):
+            provider_event_repository.attach_email_log_records(email_log_repository._records)  # type: ignore[attr-defined]
+        delivery_failed_count = provider_event_repository.count_domain_events(
+            sending_domain=sending_domain,
+            event_types=("delivery_failed",),
+        )
+
+    return DomainWarmupStatus(
+        sending_domain=sending_domain,
+        current_stage=current_stage,
+        cap_today=cap_today,
+        used_today=used_today,
+        remaining_today=max(cap_today - used_today, 0),
+        next_stage_cap=next_stage_cap,
+        advancement_status=(
+            persisted_state.advancement_mode
+            if persisted_state is not None
+            else DOMAIN_WARMUP_MANUAL_REVIEW_REQUIRED
+        ),
+        initialization_required=persisted_state is None,
+        delivery_failed_count=delivery_failed_count,
     )
 
 
@@ -685,6 +788,7 @@ class AdminCampaignService:
     blocked_send_repository: BlockedSendRepository
     email_log_repository: EmailLogRepository
     provider_event_repository: ProviderEventRepository
+    sending_domain_warmup_repository: SendingDomainWarmupStateRepository | None = None
 
     def get_campaign_record(self, campaign_id: str) -> CampaignRecord:
         campaign = self.repository.get_by_id(campaign_id=campaign_id)
@@ -1382,6 +1486,7 @@ class AdminCampaignService:
             followup_content_ready=followup_content_ready,
             followup_content_reason=followup_content_reason,
             provider_history=evaluation.provider_history,
+            domain_warmup=evaluation.domain_warmup,
         )
 
     def _get_client(self, client_id: str) -> ClientRecord:
@@ -1963,6 +2068,27 @@ class AdminCampaignService:
             active_campaign_count=active_campaign_count,
             campaign_limit_usage=limit_context.usage,
         )
+        domain_warmup = _build_domain_warmup_status(
+            settings=self.settings,
+            warmup_repository=self.sending_domain_warmup_repository,
+            email_log_repository=self.email_log_repository,
+            provider_event_repository=self.provider_event_repository,
+            current_time=datetime.now(timezone.utc),
+        )
+        if (
+            guard_result.allowed
+            and domain_warmup is not None
+            and _resolve_controlled_provider(self.settings) == "listmonk"
+            and guard_result.eligible_contact_count > domain_warmup.remaining_today
+        ):
+            guard_result = _build_domain_warmup_guard_result(
+                client_id=guard_campaign.client_id,
+                campaign_id=guard_campaign.id,
+                eligible_contact_count=guard_result.eligible_contact_count,
+                daily_limit=domain_warmup.cap_today,
+                daily_used=domain_warmup.used_today,
+                sending_domain=domain_warmup.sending_domain,
+            )
         provider_history_policy: list[ProviderHistoryPolicySummary] = []
         if guard_result.allowed:
             provider_history_result, provider_history_policy = (
@@ -2023,6 +2149,7 @@ class AdminCampaignService:
             limit_record=limit_context.record,
             limit_usage=limit_context.usage,
             provider_history=provider_history_policy,
+            domain_warmup=domain_warmup.to_summary() if domain_warmup is not None else None,
         )
 
     def _evaluate_template_content_readiness(
@@ -2264,12 +2391,14 @@ class AdminCampaignService:
         evaluation: CampaignEvaluation,
     ) -> CampaignPolicyStateSummary:
         duplicate_guard = evaluation.duplicate_guard
-        limit_usage = evaluation.limit_usage
         warmup_blocked = (
             evaluation.guard_result.limit_source == "sending_domain_warmup"
             and not evaluation.guard_result.allowed
         )
-        warmup_at_limit = limit_usage.daily_used >= limit_usage.daily_limit
+        warmup_status = evaluation.domain_warmup
+        warmup_at_limit = (
+            warmup_status is not None and warmup_status.remaining_today <= 0
+        )
         warmup_allowed = not warmup_blocked and not warmup_at_limit
         return CampaignPolicyStateSummary(
             deliverability_guard=CampaignPolicyStatusSummary(
@@ -2303,13 +2432,14 @@ class AdminCampaignService:
                     evaluation.guard_result.reason
                     if warmup_blocked
                     else (
-                        "Campaign daily pacing limit reached."
+                        "Sending-domain warmup limit reached for the current Rome day."
                         if warmup_at_limit
-                        else "Campaign warmup and pacing limits have remaining capacity."
+                        else "Sending-domain warmup has remaining capacity. Advancement remains subject to manual review."
                     )
                 ),
             ),
             provider_history=evaluation.provider_history,
+            domain_warmup=warmup_status,
         )
 
     def _build_campaign_logs_summary(
@@ -3059,6 +3189,7 @@ class CampaignDispatchService:
     blocked_send_repository: BlockedSendRepository | None = None
     email_log_repository: EmailLogRepository | None = None
     provider_event_repository: ProviderEventRepository | None = None
+    sending_domain_warmup_repository: SendingDomainWarmupStateRepository | None = None
     campaign_preparation_service: Any | None = None
     unsubscribe_service: UnsubscribeService | None = None
 
@@ -3505,6 +3636,28 @@ class CampaignDispatchService:
                     content_ready=True,
                 )
 
+            sending_domain = (
+                get_configured_sending_domain(self.settings)
+                if runtime_provider == "listmonk"
+                else None
+            )
+            domain_warmup_result = self._evaluate_domain_warmup_guard(
+                provider=runtime_provider,
+                campaign=campaign,
+                eligible_contact_count=selection.eligible_contact_count,
+                blocked_contact_count=selection.blocked_contact_count,
+                blocked_reasons=selection.blocked_reasons,
+                email_log_repository=email_log_repository,
+                provider_event_repository=provider_event_repository,
+            )
+            if domain_warmup_result is not None:
+                return self._blocked_response(
+                    campaign_id=campaign.id,
+                    guard_result=domain_warmup_result,
+                    blocked_send_repository=blocked_send_repository,
+                    sending_domain=sending_domain,
+                )
+
             if self.campaign_preparation_service is None:
                 return self._diagnostic_response(
                     campaign_id=campaign.id,
@@ -3596,7 +3749,7 @@ class CampaignDispatchService:
                     contacts=selection.eligible_contacts,
                     send_kind="followup",
                     status="failed",
-                    sending_domain=get_configured_sending_domain(self.settings),
+                    sending_domain=sending_domain,
                     body=str(content.get("body") or ""),
                     retryable_log_ids_by_contact=None,
                 )
@@ -3625,7 +3778,7 @@ class CampaignDispatchService:
                 contacts=selection.eligible_contacts,
                 send_kind="followup",
                 status=log_status,
-                sending_domain=get_configured_sending_domain(self.settings),
+                sending_domain=sending_domain,
                 body=str(content.get("body") or ""),
                 retryable_log_ids_by_contact=None,
             )
@@ -4359,8 +4512,11 @@ class CampaignDispatchService:
             domain_warmup_result = self._evaluate_domain_warmup_guard(
                 provider=runtime_provider,
                 campaign=campaign,
-                guard_result=guard_result,
+                eligible_contact_count=guard_result.eligible_contact_count,
+                blocked_contact_count=guard_result.blocked_contact_count,
+                blocked_reasons=dict(guard_result.blocked_reasons or {}),
                 email_log_repository=email_log_repository,
+                provider_event_repository=provider_event_repository,
             )
             if domain_warmup_result is not None:
                 return self._blocked_response(
@@ -4895,14 +5051,23 @@ class CampaignDispatchService:
         *,
         provider: str,
         campaign: ClientCampaignRecord,
-        guard_result: GuardResult,
+        eligible_contact_count: int,
+        blocked_contact_count: int,
+        blocked_reasons: dict[str, int] | None,
         email_log_repository: EmailLogRepository,
+        provider_event_repository: ProviderEventRepository | None,
     ) -> GuardResult | None:
         if provider != "listmonk":
             return None
 
-        sending_domain = get_configured_sending_domain(self.settings)
-        if sending_domain is None:
+        domain_warmup = _build_domain_warmup_status(
+            settings=self.settings,
+            warmup_repository=self.sending_domain_warmup_repository,
+            email_log_repository=email_log_repository,
+            provider_event_repository=provider_event_repository,
+            current_time=datetime.now(timezone.utc),
+        )
+        if domain_warmup is None:
             return GuardResult(
                 decision=SendDecision.BLOCKED,
                 reason=(
@@ -4912,36 +5077,26 @@ class CampaignDispatchService:
                 severity="critical",
                 client_id=campaign.client_id,
                 campaign_id=campaign.id,
-                eligible_contact_count=guard_result.eligible_contact_count,
-                blocked_contact_count=guard_result.blocked_contact_count,
-                blocked_reasons=dict(guard_result.blocked_reasons or {}),
+                eligible_contact_count=eligible_contact_count,
+                blocked_contact_count=blocked_contact_count,
+                blocked_reasons=dict(blocked_reasons or {}),
                 diagnostic=(
                     "Domain warmup guard failed closed because SMTP_FROM_EMAIL does not "
                     "contain a usable sending domain."
                 ),
                 limit_source="sending_domain_warmup",
             )
-
-        today_started_at = _get_business_day_start(
-            datetime.now(timezone.utc),
-            self.settings,
-        )
-        today_accepted = email_log_repository.count_logs_by_status_since(
-            statuses=DOMAIN_WARMUP_COUNTED_LOG_STATUSES,
-            started_at=today_started_at,
-            sending_domain=sending_domain,
-        )
-        projected_total = today_accepted + guard_result.eligible_contact_count
-        if projected_total <= DEFAULT_DOMAIN_WARMUP_DAILY_LIMIT:
+        projected_total = domain_warmup.used_today + eligible_contact_count
+        if projected_total <= domain_warmup.cap_today:
             return None
 
         return _build_domain_warmup_guard_result(
             client_id=campaign.client_id,
             campaign_id=campaign.id,
-            eligible_contact_count=guard_result.eligible_contact_count,
-            daily_limit=DEFAULT_DOMAIN_WARMUP_DAILY_LIMIT,
-            daily_used=today_accepted,
-            sending_domain=sending_domain,
+            eligible_contact_count=eligible_contact_count,
+            daily_limit=domain_warmup.cap_today,
+            daily_used=domain_warmup.used_today,
+            sending_domain=domain_warmup.sending_domain,
         )
 
     def _evaluate_provider_history_guard(
@@ -5875,6 +6030,7 @@ def get_admin_campaign_service() -> AdminCampaignService:
         blocked_send_repository=get_blocked_send_repository(),
         email_log_repository=get_email_log_repository(),
         provider_event_repository=get_provider_event_repository(),
+        sending_domain_warmup_repository=get_sending_domain_warmup_repository(),
     )
 
 
@@ -5896,6 +6052,7 @@ def get_campaign_dispatch_service() -> CampaignDispatchService:
         blocked_send_repository=get_blocked_send_repository(),
         email_log_repository=get_email_log_repository(),
         provider_event_repository=get_provider_event_repository(),
+        sending_domain_warmup_repository=get_sending_domain_warmup_repository(),
         campaign_preparation_service=get_campaign_preparation_service(),
         unsubscribe_service=get_unsubscribe_service(),
     )
